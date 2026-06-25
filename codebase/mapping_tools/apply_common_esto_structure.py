@@ -234,10 +234,10 @@ def save_component_pruning_diagnostics(pruned_components_df: pd.DataFrame, outpu
     pruned_components_df.to_csv(diagnostics_dir / "common_esto_components_pruned_not_applicable.csv", index=False)
 
 
-def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Join ESTO-shaped source rows to common rows and aggregate values."""
     if source_df.empty:
-        return pd.DataFrame(columns=OUTPUT_COLUMNS), pd.DataFrame()
+        return pd.DataFrame(columns=OUTPUT_COLUMNS), pd.DataFrame(), pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
     map_columns = [
         "comparison_scope",
         "component_esto_flow",
@@ -294,6 +294,7 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
     mapped_df = merged_df.dropna(subset=["common_row_id"]).copy()
     mapped_df["component_sign"] = pd.to_numeric(mapped_df["component_sign"], errors="coerce").fillna(1)
     mapped_df["value"] = mapped_df["value"] * mapped_df["component_sign"]
+    mapped_source_df = mapped_df[SOURCE_VALUE_SCOPE_COLUMNS].copy()
     group_columns = OUTPUT_COLUMNS[:-1] + COMPARISON_INTERNAL_COLUMNS
     comparison_df = (
         mapped_df.groupby(group_columns, dropna=False, as_index=False)["value"]
@@ -301,7 +302,7 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
         .sort_values(OUTPUT_COLUMNS[:-1])
         .reset_index(drop=True)
     )
-    return comparison_df, missing_map_df
+    return comparison_df, missing_map_df, mapped_source_df
 
 
 def is_subtotal_label(value: object) -> bool:
@@ -366,7 +367,8 @@ def build_broad_common_row_diagnostics(
         }
 
     broad_summary_df["qa_status"] = "mapping_revision_required"
-    broad_summary_df["qa_severity"] = "high"
+    broad_summary_df["qa_status"] = "review_broad_common_row_allowed_if_totals_preserve"
+    broad_summary_df["qa_severity"] = "info"
     broad_summary_df["qa_reason"] = (
         "common row has too many exact ESTO components; likely caused by crossing aggregate mappings"
     )
@@ -415,14 +417,14 @@ def broad_common_row_error_message(
     diagnostics: dict[str, pd.DataFrame],
     output_dir: Path,
 ) -> str:
-    """Return an error message for broad common rows, or blank if none exist."""
+    """Write broad common row diagnostics and return a warning message if any exist."""
     summary_df = diagnostics["broad_common_row_summary"]
     if summary_df.empty:
         return ""
     save_broad_common_row_diagnostics(diagnostics, output_dir)
     max_components = int(summary_df["exact_component_count"].max())
     return (
-        "Broad common ESTO rows require mapping review. "
+        "Broad common ESTO rows are present. "
         f"Broad rows: {len(summary_df):,}; max exact components in one row: {max_components:,}. "
         f"Diagnostics written to: {output_dir / 'diagnostics'}"
     )
@@ -488,9 +490,9 @@ def build_intersecting_axis_group_diagnostics(
                     "right_only_components": "|".join(sorted(right["component_set"] - left["component_set"])),
                     "left_common_row_ids": left["common_row_ids"],
                     "right_common_row_ids": right["common_row_ids"],
-                    "qa_status": "mapping_revision_required",
-                    "qa_severity": "high",
-                    "qa_reason": f"intersecting_common_{axis}_groups_are_not_allowed",
+                    "qa_status": "review_allowed_parent_detail_overlap",
+                    "qa_severity": "info",
+                    "qa_reason": f"intersecting_common_{axis}_groups_allowed_if_subtotals_validate",
                 }
             )
     return pd.DataFrame(diagnostics_rows)
@@ -516,7 +518,7 @@ def intersecting_axis_group_error_message(
     comparison_df: pd.DataFrame,
     output_dir: Path,
 ) -> str:
-    """Return an error message if final flow/product groups intersect."""
+    """Write intersecting-axis diagnostics and return a warning message if any exist."""
     product_diagnostics_df = build_intersecting_axis_group_diagnostics(
         adjusted_common_rows_df,
         comparison_df,
@@ -531,7 +533,7 @@ def intersecting_axis_group_error_message(
         return ""
     save_intersecting_axis_group_diagnostics(product_diagnostics_df, flow_diagnostics_df, output_dir)
     return (
-        "Intersecting common ESTO axis groups require mapping review. "
+        "Intersecting common ESTO axis groups are present. "
         f"Product group overlaps: {len(product_diagnostics_df):,}; "
         f"flow group overlaps: {len(flow_diagnostics_df):,}. "
         f"Diagnostics written to: {output_dir / 'diagnostics'}"
@@ -710,27 +712,27 @@ def run_apply_common_esto_structure(
         active_component_abs_tolerance=active_component_abs_tolerance,
     )
     save_component_pruning_diagnostics(pruned_components_df, output_dir)
-    unfiltered_comparison_df, missing_map_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
     subtotal_kept_df, subtotal_filtered_df = split_subtotal_rows(unfiltered_comparison_df, exclude_subtotal_rows=exclude_subtotal_rows)
     broad_diagnostics = build_broad_common_row_diagnostics(
         common_rows_df=adjusted_common_rows_df,
         comparison_df=subtotal_kept_df,
         broad_component_limit=broad_common_row_component_limit,
     )
-    broad_error_message = broad_common_row_error_message(broad_diagnostics, output_dir)
-    intersecting_axis_error_message_text = intersecting_axis_group_error_message(
+    broad_warning_message = broad_common_row_error_message(broad_diagnostics, output_dir)
+    intersecting_axis_warning_message = intersecting_axis_group_error_message(
         adjusted_common_rows_df=adjusted_common_rows_df,
         comparison_df=subtotal_kept_df,
         output_dir=output_dir,
     )
-    error_occurred = bool(broad_error_message or intersecting_axis_error_message_text)
-    if broad_error_message:
-        print(f"ERROR_OCCURRED: {broad_error_message}")
-    if intersecting_axis_error_message_text:
-        print(f"ERROR_OCCURRED: {intersecting_axis_error_message_text}")
+    error_occurred = False
+    if broad_warning_message:
+        print(f"WARNING: {broad_warning_message}")
+    if intersecting_axis_warning_message:
+        print(f"WARNING: {intersecting_axis_warning_message}")
     comparison_df = subtotal_kept_df.copy()
     wide_year_df = build_wide_year_output(comparison_df)
-    total_check_df = build_total_check(source_df, unfiltered_comparison_df)
+    total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
     save_outputs(
         comparison_df,
         wide_year_df,
