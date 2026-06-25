@@ -675,7 +675,7 @@ This file is produced as a prerequisite step and can be used independently of th
 
 The current implementation validates ESTO product and flow subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year. For each non-leaf ESTO flow node, it sums all immediate flow children and compares against the parent flow value by economy, product, and year.
 
-Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses the dot-notation parent/child rows in `common_esto_tree.csv`, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, are treated as leaf-level because they do not have a natural recursive hierarchy.
+Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
 - 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 

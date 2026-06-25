@@ -485,6 +485,25 @@ def _tree_children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[s
     return children_map
 
 
+def _common_esto_validation_children_map(tree_df: pd.DataFrame, axis: str) -> dict[str, list[str]]:
+    """
+    Return Common ESTO parent/child edges that are also present in the ESTO tree.
+
+    Common ESTO can contain generated or projection-only labels such as
+    datacentres. Their numeric prefixes may look hierarchical, but they are not
+    valid subtotal checks unless the same edge exists in the source ESTO tree.
+    """
+    common_map = _tree_children_map(tree_df, "common_esto", axis)
+    esto_map = _tree_children_map(tree_df, "esto", axis)
+    esto_child_sets = {parent: set(children) for parent, children in esto_map.items()}
+    filtered: dict[str, list[str]] = {}
+    for parent, children in common_map.items():
+        valid_children = [child for child in children if child in esto_child_sets.get(parent, set())]
+        if valid_children:
+            filtered[parent] = valid_children
+    return filtered
+
+
 def _empty_esto_validation() -> pd.DataFrame:
     return pd.DataFrame(columns=ESTO_VALIDATION_COLS)
 
@@ -618,7 +637,7 @@ def _validate_common_esto_axis_recursive_sums(
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
     group_cols = ["comparison_scope", "source_system", "economy", "scenario", other_axis_col, "year"]
-    children_map = _tree_children_map(tree_df, "common_esto", axis)
+    children_map = _common_esto_validation_children_map(tree_df, axis)
     mismatches = []
 
     for parent_code, children in children_map.items():
