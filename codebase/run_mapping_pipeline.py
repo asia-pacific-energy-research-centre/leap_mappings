@@ -1,0 +1,341 @@
+"""
+run_mapping_pipeline.py
+
+End-to-end mapping pipeline for LEAP -> ESTO / 9th Outlook comparison.
+
+Stages
+------
+0  Maintenance — update subtotal flags, produce QA outputs, build tree structure
+1  Relationships — build energy_balance_relationships.csv from outlook_mappings_master.xlsx
+2  Common ESTO structure — build common comparison rows via graph partitioning
+   LEAP parse   — parse raw LEAP balance xlsx exports to long-format CSV
+   Data convert — convert LEAP and 9th data to ESTO-style rows
+   ESTO rows    — prepare non-subtotal ESTO rows as long-format CSV
+3  Apply structure — map all sources to common comparison rows and aggregate
+
+Run all stages:
+    python codebase/run_mapping_pipeline.py
+
+Run specific stages (comma-separated):
+    python codebase/run_mapping_pipeline.py --stages 1,2,3
+
+Skip stages:
+    python codebase/run_mapping_pipeline.py --skip 0
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+# ---------------------------------------------------------------------------
+# Repo root
+# ---------------------------------------------------------------------------
+
+def _find_repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        if (parent / "config" / "outlook_mappings_master.xlsx").exists():
+            return parent
+    raise RuntimeError("Could not locate repo root.")
+
+REPO_ROOT = _find_repo_root()
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+# ---------------------------------------------------------------------------
+# Default paths
+# ---------------------------------------------------------------------------
+
+WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
+NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+
+REL_DIR             = REPO_ROOT / "results" / "mapping_relationships"
+COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
+
+RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
+LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
+NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv"
+ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
+RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
+COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
+
+# LEAP export directory — check both this repo and leap_initialisation
+def _default_leap_export_dir() -> Path:
+    local = REPO_ROOT / "data" / "leap balances exports" / "20_USA"
+    if local.exists():
+        return local
+    sibling = REPO_ROOT.parent / "leap_initialisation" / "data" / "leap balances exports" / "20_USA"
+    if sibling.exists():
+        return sibling
+    return local  # return local even if it doesn't exist; error will surface in stage
+
+LEAP_EXPORT_DIR = _default_leap_export_dir()
+
+
+# ---------------------------------------------------------------------------
+# Stage 0 — Maintenance
+# ---------------------------------------------------------------------------
+
+def run_stage_0() -> None:
+    print("\n" + "=" * 60)
+    print("STAGE 0  Maintenance")
+    print("=" * 60)
+    from codebase.outlook_mapping_maintenance_workflow import run as maintenance_run
+    maintenance_run()
+
+
+# ---------------------------------------------------------------------------
+# Stage 1 — Build relationships
+# ---------------------------------------------------------------------------
+
+def run_stage_1() -> None:
+    print("\n" + "=" * 60)
+    print("STAGE 1  Build energy balance relationships")
+    print("=" * 60)
+    from codebase.mapping_tools.build_energy_balance_relationships import (
+        COMPACT_CATALOGUE_CSV_PATH,
+        FALLBACK_WORKBOOK_PATH,
+        MAPPING_WORKBOOK_PATH,
+        OUTPUT_CSV_PATH,
+        OUTPUT_XLSX_PATH,
+        QA_DIR,
+        SHEET_CONFIGS,
+        run_relationship_workflow,
+    )
+    run_relationship_workflow(
+        mapping_workbook_path=MAPPING_WORKBOOK_PATH,
+        fallback_workbook_path=FALLBACK_WORKBOOK_PATH,
+        sheet_configs=SHEET_CONFIGS,
+        output_csv_path=OUTPUT_CSV_PATH,
+        output_xlsx_path=OUTPUT_XLSX_PATH,
+        compact_catalogue_csv_path=COMPACT_CATALOGUE_CSV_PATH,
+        qa_dir=QA_DIR,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 — Common ESTO structure
+# ---------------------------------------------------------------------------
+
+def run_stage_2() -> None:
+    print("\n" + "=" * 60)
+    print("STAGE 2  Build common ESTO structure")
+    print("=" * 60)
+    from codebase.mapping_tools.build_common_esto_structure import (
+        COMMON_ESTO_LABEL_OVERRIDES_PATH,
+        COMMON_ESTO_OVERRIDES_PATH,
+        COVERAGE_EXCLUSIONS_PATH,
+        OUTPUT_DIR,
+        OUTLOOK_MAPPINGS_PATH,
+        RELATIONSHIPS_PATH as STAGE_2_RELATIONSHIPS_PATH,
+        run_common_esto_structure_workflow,
+    )
+    run_common_esto_structure_workflow(
+        relationships_path=STAGE_2_RELATIONSHIPS_PATH,
+        coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
+        common_esto_overrides_path=COMMON_ESTO_OVERRIDES_PATH,
+        common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
+        outlook_mappings_path=OUTLOOK_MAPPINGS_PATH,
+        output_dir=OUTPUT_DIR,
+    )
+
+
+# ---------------------------------------------------------------------------
+# LEAP parse — produce raw_leap_results.csv
+# ---------------------------------------------------------------------------
+
+def run_leap_parse() -> None:
+    print("\n" + "=" * 60)
+    print("LEAP PARSE  Parse LEAP balance exports")
+    print("=" * 60)
+    if not LEAP_EXPORT_DIR.exists():
+        print(f"  WARNING: LEAP export directory not found: {LEAP_EXPORT_DIR}")
+        print("  Skipping LEAP parse. Set LEAP_EXPORT_DIR in run_mapping_pipeline.py")
+        return
+
+    from codebase.mapping_tools.parse_leap_balance_export import parse_leap_balance_dir
+    parse_leap_balance_dir(LEAP_EXPORT_DIR, RAW_LEAP_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Data convert — LEAP and 9th to ESTO-style rows
+# ---------------------------------------------------------------------------
+
+def run_leap_to_esto() -> None:
+    print("\n" + "-" * 40)
+    print("  LEAP -> ESTO conversion")
+    if not RAW_LEAP_PATH.exists():
+        print(f"  WARNING: {RAW_LEAP_PATH.name} not found — run LEAP parse first.")
+        return
+
+    from codebase.mapping_tools.convert_leap_results_to_esto import run_conversion
+    run_conversion(
+        leap_results_path=RAW_LEAP_PATH,
+        relationships_path=RELATIONSHIPS_PATH,
+        output_path=LEAP_ESTO_PATH,
+    )
+
+
+def run_ninth_to_esto() -> None:
+    print("\n" + "-" * 40)
+    print("  9th -> ESTO conversion")
+    if not NINTH_CSV_PATH.exists():
+        print(f"  WARNING: {NINTH_CSV_PATH.name} not found.")
+        return
+
+    from codebase.mapping_tools.apply_ninth_to_esto_conversion import (
+        prepare_ninth_long_format,
+        load_ninth_to_esto_relationships,
+        convert_ninth_results_to_esto,
+    )
+    print("  Preparing 9th long-format data …")
+    ninth_long = prepare_ninth_long_format(NINTH_CSV_PATH)
+    print(f"  9th long-format rows: {len(ninth_long):,}")
+
+    relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
+    converted_df = convert_ninth_results_to_esto(ninth_long, relationships_df)
+
+    NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
+    converted_df.to_csv(NINTH_ESTO_PATH, index=False)
+    print(f"  Conversion relationships used: {len(relationships_df):,}")
+    print(f"  Converted ESTO rows written: {len(converted_df):,}")
+    print(f"  Wrote: {NINTH_ESTO_PATH.relative_to(REPO_ROOT)}")
+
+
+def run_esto_exact_rows() -> None:
+    print("\n" + "-" * 40)
+    print("  ESTO exact rows")
+    if not ESTO_CSV_PATH.exists():
+        print(f"  WARNING: {ESTO_CSV_PATH.name} not found.")
+        return
+
+    df = pd.read_csv(ESTO_CSV_PATH, dtype=object)
+    year_cols = [c for c in df.columns if str(c).isdigit()]
+    for col in year_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Non-subtotal rows only (leaf rows avoid double-counting)
+    df_leaf = df[df["is_subtotal"].astype(str).str.lower() == "false"].copy()
+
+    id_cols = ["economy", "flows", "products"]
+    long_df = df_leaf[id_cols + year_cols].melt(
+        id_vars=id_cols,
+        value_vars=year_cols,
+        var_name="year",
+        value_name="value",
+    ).dropna(subset=["value"])
+
+    long_df = long_df.rename(columns={"flows": "esto_flow", "products": "esto_product"})
+    long_df["source_system"] = "ESTO"
+    long_df["scenario"] = "historical"
+    long_df["year"] = long_df["year"].astype(int)
+
+    ESTO_ROWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    long_df.to_csv(ESTO_ROWS_PATH, index=False)
+    print(f"  ESTO exact rows: {len(long_df):,} -> {ESTO_ROWS_PATH.relative_to(REPO_ROOT)}")
+
+
+def run_data_convert() -> None:
+    print("\n" + "=" * 60)
+    print("DATA CONVERT  LEAP, 9th, ESTO -> common input format")
+    print("=" * 60)
+    run_leap_to_esto()
+    run_ninth_to_esto()
+    run_esto_exact_rows()
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 — Apply common ESTO structure
+# ---------------------------------------------------------------------------
+
+def run_stage_3() -> None:
+    print("\n" + "=" * 60)
+    print("STAGE 3  Apply common ESTO structure to source data")
+    print("=" * 60)
+
+    missing = [
+        p for p in [LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH, COMMON_ROWS_PATH]
+        if not p.exists()
+    ]
+    if missing:
+        print("  WARNING: Missing input files for Stage 3:")
+        for p in missing:
+            print(f"    {p.relative_to(REPO_ROOT)}")
+        print("  Run earlier stages first.")
+        return
+
+    from codebase.mapping_tools.apply_common_esto_structure import run_apply_common_esto_structure
+
+    source_paths = {
+        "LEAP":  LEAP_ESTO_PATH,
+        "NINTH": NINTH_ESTO_PATH,
+        "ESTO":  ESTO_ROWS_PATH,
+    }
+    run_apply_common_esto_structure(
+        source_paths=source_paths,
+        common_rows_path=COMMON_ROWS_PATH,
+        output_dir=COMMON_ESTO_DIR,
+        default_economy="20USA",
+        exclude_subtotal_rows=True,
+        broad_common_row_component_limit=50,
+        active_component_abs_tolerance=0.0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+_ALL_STAGES = ["0", "1", "2", "leap_parse", "data_convert", "3"]
+
+_STAGE_RUNNERS = {
+    "0":            run_stage_0,
+    "1":            run_stage_1,
+    "2":            run_stage_2,
+    "leap_parse":   run_leap_parse,
+    "data_convert": run_data_convert,
+    "3":            run_stage_3,
+}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the LEAP->ESTO mapping pipeline.")
+    parser.add_argument(
+        "--stages",
+        default=",".join(_ALL_STAGES),
+        help="Comma-separated list of stages to run (default: all).",
+    )
+    parser.add_argument(
+        "--skip",
+        default="",
+        help="Comma-separated list of stages to skip.",
+    )
+    args = parser.parse_args()
+
+    requested = [s.strip() for s in args.stages.split(",") if s.strip()]
+    skipped   = {s.strip() for s in args.skip.split(",") if s.strip()}
+
+    stages_to_run = [s for s in requested if s not in skipped]
+
+    unknown = [s for s in stages_to_run if s not in _STAGE_RUNNERS]
+    if unknown:
+        print(f"Unknown stage(s): {unknown}")
+        print(f"Valid stages: {_ALL_STAGES}")
+        sys.exit(1)
+
+    print("Running pipeline stages:", stages_to_run)
+    for stage in stages_to_run:
+        _STAGE_RUNNERS[stage]()
+
+    print("\n" + "=" * 60)
+    print("Pipeline complete.")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
