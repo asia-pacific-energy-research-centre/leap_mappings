@@ -437,6 +437,211 @@ def _subtotal_mismatches(
     ]]
 
 
+# â”€â”€ migrated legacy conflict checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def _many_to_many_conflicts(
+    cardinality_frames: list[tuple[str, pd.DataFrame]],
+) -> pd.DataFrame:
+    """Return active mapping pair cardinality rows that remain many-to-many."""
+    records = []
+    for sheet_name, frame in cardinality_frames:
+        work = frame[frame["cardinality"].eq("many_to_many")].copy()
+        if work.empty:
+            continue
+        work.insert(0, "sheet", sheet_name)
+        records.append(work)
+    if not records:
+        return pd.DataFrame(columns=["sheet", "cardinality"])
+    return pd.concat(records, ignore_index=True).fillna("")
+
+
+def _leap_source_presence_conflicts(
+    leap_esto_df: pd.DataFrame,
+    leap_ninth_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Find active LEAP source pairs present in only one of the two LEAP mapping sheets."""
+    source_cols = ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+
+    def _active_sources(frame: pd.DataFrame) -> pd.DataFrame:
+        active = _active_rows(frame)
+        for col in source_cols:
+            if col not in active.columns:
+                active[col] = ""
+            active[col] = active[col].fillna("").astype(str).map(_norm)
+        return active[active[source_cols].apply(lambda col: col.ne("")).all(axis=1)][source_cols].drop_duplicates()
+
+    esto_sources = _active_sources(leap_esto_df)
+    ninth_sources = _active_sources(leap_ninth_df)
+    esto_sources["_in_leap_combined_esto"] = True
+    ninth_sources["_in_leap_combined_ninth"] = True
+
+    merged = esto_sources.merge(ninth_sources, on=source_cols, how="outer")
+    merged["_in_leap_combined_esto"] = merged["_in_leap_combined_esto"].fillna(False).astype(bool)
+    merged["_in_leap_combined_ninth"] = merged["_in_leap_combined_ninth"].fillna(False).astype(bool)
+    conflicts = merged[merged["_in_leap_combined_esto"].ne(merged["_in_leap_combined_ninth"])].copy()
+    if conflicts.empty:
+        return pd.DataFrame(columns=[
+            *source_cols,
+            "presence_status",
+            "in_leap_combined_esto",
+            "in_leap_combined_ninth",
+        ])
+    conflicts["presence_status"] = conflicts.apply(
+        lambda row: "active_in_leap_combined_esto_only"
+        if row["_in_leap_combined_esto"]
+        else "active_in_leap_combined_ninth_only",
+        axis=1,
+    )
+    conflicts = conflicts.rename(columns={
+        "_in_leap_combined_esto": "in_leap_combined_esto",
+        "_in_leap_combined_ninth": "in_leap_combined_ninth",
+    })
+    return conflicts[[
+        *source_cols,
+        "presence_status",
+        "in_leap_combined_esto",
+        "in_leap_combined_ninth",
+    ]].sort_values(source_cols).reset_index(drop=True)
+
+
+def _crosswalk_target_conflicts(
+    leap_esto_df: pd.DataFrame,
+    leap_ninth_df: pd.DataFrame,
+    ninth_esto_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Find active LEAP->9th rows whose 9th->ESTO crosswalk target is not active
+    for the same LEAP source in leap_combined_esto.
+    """
+    source_cols = ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+    esto_cols = ["esto_flow", "esto_product"]
+    ninth_cols = ["ninth_sector", "ninth_fuel"]
+    crosswalk_ninth_cols = ["9th_sector", "9th_fuel"]
+
+    active_esto = _active_rows(leap_esto_df).copy()
+    active_ninth = _active_rows(leap_ninth_df).copy()
+    active_crosswalk = _active_rows(ninth_esto_df).copy()
+
+    for frame, cols in [
+        (active_esto, source_cols + esto_cols),
+        (active_ninth, source_cols + ninth_cols),
+        (active_crosswalk, crosswalk_ninth_cols + esto_cols),
+    ]:
+        for col in cols:
+            if col not in frame.columns:
+                frame[col] = ""
+            frame[col] = frame[col].fillna("").astype(str).map(_norm)
+
+    active_esto = active_esto[
+        active_esto[source_cols + esto_cols].apply(lambda col: col.ne("")).all(axis=1)
+    ].copy()
+    active_ninth = active_ninth[
+        active_ninth[source_cols + ninth_cols].apply(lambda col: col.ne("")).all(axis=1)
+    ].copy()
+    active_crosswalk = active_crosswalk[
+        active_crosswalk[crosswalk_ninth_cols + esto_cols].apply(lambda col: col.ne("")).all(axis=1)
+    ].copy()
+
+    if active_esto.empty or active_ninth.empty or active_crosswalk.empty:
+        return pd.DataFrame(columns=[
+            *source_cols,
+            *ninth_cols,
+            "implied_esto_targets",
+            "active_esto_targets",
+            "conflict_reason",
+        ])
+
+    active_esto_pairs = set(
+        zip(
+            active_esto["leap_sector_name_full_path"],
+            active_esto["raw_leap_fuel_name"],
+            active_esto["esto_flow"],
+            active_esto["esto_product"],
+        )
+    )
+    active_esto_targets = (
+        active_esto.assign(_target=active_esto["esto_flow"] + " || " + active_esto["esto_product"])
+        .groupby(source_cols)["_target"]
+        .agg(lambda values: " | ".join(sorted(set(values))))
+        .reset_index()
+        .rename(columns={"_target": "active_esto_targets"})
+    )
+
+    merged = active_ninth.merge(
+        active_crosswalk,
+        left_on=ninth_cols,
+        right_on=crosswalk_ninth_cols,
+        how="left",
+    )
+    merged["has_crosswalk_target"] = merged["esto_flow"].fillna("").astype(str).str.strip().ne("")
+    merged["has_matching_active_esto_target"] = merged.apply(
+        lambda row: (
+            row["leap_sector_name_full_path"],
+            row["raw_leap_fuel_name"],
+            row.get("esto_flow", ""),
+            row.get("esto_product", ""),
+        )
+        in active_esto_pairs,
+        axis=1,
+    )
+
+    grouped = (
+        merged.groupby(source_cols + ninth_cols, dropna=False)
+        .agg(
+            implied_esto_targets=(
+                "esto_flow",
+                lambda series: " | ".join(
+                    sorted(
+                        {
+                            f"{flow} || {product}"
+                            for flow, product in zip(
+                                series.astype(str),
+                                merged.loc[series.index, "esto_product"].astype(str),
+                            )
+                            if _norm(flow) and _norm(product)
+                        }
+                    )
+                ),
+            ),
+            has_crosswalk_target=("has_crosswalk_target", "max"),
+            has_matching_active_esto_target=("has_matching_active_esto_target", "max"),
+        )
+        .reset_index()
+    )
+    grouped = grouped.merge(active_esto_targets, on=source_cols, how="left")
+    grouped["active_esto_targets"] = grouped["active_esto_targets"].fillna("")
+
+    conflicts = grouped[
+        grouped["active_esto_targets"].ne("")
+        & (
+            ~grouped["has_crosswalk_target"].astype(bool)
+            | ~grouped["has_matching_active_esto_target"].astype(bool)
+        )
+    ].copy()
+    if conflicts.empty:
+        return pd.DataFrame(columns=[
+            *source_cols,
+            *ninth_cols,
+            "implied_esto_targets",
+            "active_esto_targets",
+            "conflict_reason",
+        ])
+
+    conflicts["conflict_reason"] = conflicts.apply(
+        lambda row: "ninth_pair_missing_from_crosswalk"
+        if not bool(row["has_crosswalk_target"])
+        else "implied_esto_target_not_active_for_leap_source",
+        axis=1,
+    )
+    return conflicts[[
+        *source_cols,
+        *ninth_cols,
+        "implied_esto_targets",
+        "active_esto_targets",
+        "conflict_reason",
+    ]].sort_values(source_cols + ninth_cols).reset_index(drop=True)
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def run() -> None:
@@ -547,6 +752,21 @@ def run() -> None:
           f"({(card_lcninth['cardinality'] == 'one_to_one').sum():,} one-to-one)")
     print(f"  cardinality_ninth_esto: {len(card_nesto):,} pairs  "
           f"({(card_nesto['cardinality'] == 'one_to_one').sum():,} one-to-one)")
+
+    # Migrated legacy conflict checks
+    many_to_many = _many_to_many_conflicts([
+        ("leap_combined_esto", card_lcesto),
+        ("leap_combined_ninth", card_lcninth),
+        ("ninth_pairs_to_esto_pairs", card_nesto),
+    ])
+    leap_source_presence = _leap_source_presence_conflicts(df_lcesto, df_lcninth)
+    crosswalk_conflicts = _crosswalk_target_conflicts(df_lcesto, df_lcninth, df_nesto)
+    many_to_many.to_csv(QA_DIR / "many_to_many_conflicts.csv", index=False)
+    leap_source_presence.to_csv(QA_DIR / "leap_source_presence_conflicts.csv", index=False)
+    crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts.csv", index=False)
+    print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
+    print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
+    print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")
 
     # Unmapped pairs
     unmapped_esto = _unmapped_esto_pairs([df_lcesto, df_nesto], esto_lookup)

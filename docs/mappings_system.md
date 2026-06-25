@@ -707,6 +707,7 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 | `common_esto_tree.csv` | Same dot-notation logic as ESTO, filtered to common structure rows |
 | `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products and flows |
 | `common_esto_validation.csv` | Recursive sum check results for Common ESTO products and flows when comparison data exists |
+| `common_esto_non_esto_parent_child_edges.csv` | Common ESTO parent-child edges that are not present in the source ESTO tree; review these as dashboard/additive-total risks, not subtotal validation failures |
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.
 
@@ -932,6 +933,8 @@ Stage 2 reads the expanded, rollup-augmented relationship rows from Stage 1 and 
 
 Many-to-many relationships that survive into the common structure are a high-severity problem — check `qa_common_esto_source_aggregates_split.csv` if the structure looks unexpectedly broad.
 
+Stage 2 outputs are structure outputs, not final result data. Review `common_esto_rows.csv` and `esto_to_common_esto_map.csv` for the generated comparison categories that Stage 3 will apply to LEAP, ESTO, and 9th data. The QA files above explain why rows were rolled together and whether any source aggregate was split or only partially covered. A clean Stage 2 does not mean source values match; it means the common comparison structure is internally consistent enough for Stage 3.
+
 ### Maintenance workflow (`outlook_mapping_maintenance_workflow.py`)
 
 `codebase/outlook_mapping_maintenance_workflow.py` produces QA outputs to `results/maintenance/`:
@@ -941,6 +944,9 @@ Many-to-many relationships that survive into the common structure are a high-sev
 | `cardinality_leap_esto.csv` | (LEAP source, ESTO target) pair cardinality |
 | `cardinality_leap_ninth.csv` | (LEAP source, 9th target) pair cardinality |
 | `cardinality_ninth_esto.csv` | (9th source, ESTO target) pair cardinality |
+| `many_to_many_conflicts.csv` | Active mapping pairs whose cardinality remains many-to-many before downstream rollup/common-structure handling |
+| `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
+| `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
 | `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
 | `subtotal_mismatches.csv` | Leaf source → aggregate target mismatches (see subtotal alignment above) |

@@ -473,6 +473,13 @@ COMMON_ESTO_VALIDATION_COLS = [
     "abs_error",
 ]
 
+COMMON_ESTO_NON_ESTO_EDGE_COLS = [
+    "axis",
+    "parent_code",
+    "child_code",
+    "risk_reason",
+]
+
 
 def _tree_children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, list[str]]:
     """Return direct parent -> children mapping for one tree axis."""
@@ -502,6 +509,35 @@ def _common_esto_validation_children_map(tree_df: pd.DataFrame, axis: str) -> di
         if valid_children:
             filtered[parent] = valid_children
     return filtered
+
+
+def common_esto_non_esto_parent_child_edges(tree_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return Common ESTO parent/child edges not present in the source ESTO tree.
+
+    These are review signals for dashboard/additive-total design, not recursive
+    subtotal validation failures.
+    """
+    rows = []
+    for axis in ["flow", "product"]:
+        common_map = _tree_children_map(tree_df, "common_esto", axis)
+        esto_map = _tree_children_map(tree_df, "esto", axis)
+        esto_child_sets = {parent: set(children) for parent, children in esto_map.items()}
+        for parent, children in common_map.items():
+            for child in children:
+                if child in esto_child_sets.get(parent, set()):
+                    continue
+                rows.append({
+                    "axis": axis,
+                    "parent_code": parent,
+                    "child_code": child,
+                    "risk_reason": "common_parent_child_edge_not_present_in_source_esto_tree",
+                })
+    if not rows:
+        return pd.DataFrame(columns=COMMON_ESTO_NON_ESTO_EDGE_COLS)
+    return pd.DataFrame(rows, columns=COMMON_ESTO_NON_ESTO_EDGE_COLS).sort_values(
+        ["axis", "parent_code", "child_code"]
+    ).reset_index(drop=True)
 
 
 def _empty_esto_validation() -> pd.DataFrame:
@@ -789,6 +825,14 @@ def run_tree_structure_workflow(
             print("  All Common ESTO recursive sum checks passed.")
         else:
             print(f"  {len(common_validation):,} mismatch rows -> {common_val_path.relative_to(REPO_ROOT)}")
+
+    non_esto_edges = common_esto_non_esto_parent_child_edges(all_trees)
+    non_esto_edges_path = output_dir / "common_esto_non_esto_parent_child_edges.csv"
+    non_esto_edges.to_csv(non_esto_edges_path, index=False)
+    print(
+        f"  Common ESTO non-ESTO parent/child edges: {len(non_esto_edges):,} "
+        f"-> {non_esto_edges_path.relative_to(REPO_ROOT)}"
+    )
 
     print(f"\nTree structure outputs -> {output_dir.relative_to(REPO_ROOT)}")
     return output_dir
