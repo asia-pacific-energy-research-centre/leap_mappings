@@ -673,9 +673,11 @@ This file is produced as a prerequisite step and can be used independently of th
 
 ### Validation process
 
-The current implementation validates ESTO product subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year.
+The current implementation validates ESTO product and flow subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year. For each non-leaf ESTO flow node, it sums all immediate flow children and compares against the parent flow value by economy, product, and year.
 
-- Flow-axis validation, 9th Outlook value validation, LEAP value validation, and Common ESTO value validation are not yet implemented in this tree workflow.
+Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses the dot-notation parent/child rows in `common_esto_tree.csv`, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, are treated as leaf-level because they do not have a natural recursive hierarchy.
+
+- 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 
 For example, an ESTO product check compares a parent product against the sum of its direct child products:
 
@@ -691,7 +693,7 @@ The validation checks:
 07 Petroleum products = sum(07.xx child products) by economy, flow, and year
 ```
 
-The tree files still record flow, 9th, LEAP, and Common ESTO hierarchy, but value validation is currently limited to ESTO products.
+The tree files still record flow, 9th, LEAP, and Common ESTO hierarchy, but value validation is currently limited to ESTO and Common ESTO rows with direct dot-notation parent/child relationships.
 
 ### Current implementation status
 
@@ -703,7 +705,8 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 | `ninth_tree.csv` | 9th sector (up to depth 5) and fuel (depth 2) node hierarchy |
 | `leap_tree.csv` | LEAP sector (slash-paths, depth 1–3) and fuel (flat) from mapping sheets |
 | `common_esto_tree.csv` | Same dot-notation logic as ESTO, filtered to common structure rows |
-| `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products |
+| `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products and flows |
+| `common_esto_validation.csv` | Recursive sum check results for Common ESTO products and flows when comparison data exists |
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.
 

@@ -44,6 +44,7 @@ ESTO_DATA_PATH        = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv
 NINTH_DATA_PATH       = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 COMMON_ESTO_ROWS_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
+COMMON_ESTO_COMPARISON_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv"
 TREE_OUTPUT_DIR       = REPO_ROOT / "results" / "tree_structure"
 
 TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_leaf", "is_subtotal"]
@@ -361,10 +362,10 @@ def build_common_esto_tree(common_rows_path: Path = COMMON_ESTO_ROWS_PATH) -> pd
 
 
 # ---------------------------------------------------------------------------
-# Recursive sum validation (ESTO)
+# Legacy product-only recursive sum validation
 # ---------------------------------------------------------------------------
 
-def validate_esto_recursive_sums(
+def _validate_esto_product_recursive_sums_legacy(
     tree_df: pd.DataFrame,
     data_csv_path: Path = ESTO_DATA_PATH,
     tolerance: float = 0.01,
@@ -445,6 +446,257 @@ def validate_esto_recursive_sums(
     return result.sort_values(["economy", "flow", "parent_product", "year"]).reset_index(drop=True)
 
 
+ESTO_VALIDATION_COLS = [
+    "validation_axis",
+    "economy",
+    "other_axis_value",
+    "parent_code",
+    "child_count",
+    "year",
+    "parent_value",
+    "children_sum",
+    "abs_error",
+]
+
+COMMON_ESTO_VALIDATION_COLS = [
+    "validation_axis",
+    "comparison_scope",
+    "source_system",
+    "economy",
+    "scenario",
+    "other_axis_value",
+    "parent_code",
+    "child_count",
+    "year",
+    "parent_value",
+    "children_sum",
+    "abs_error",
+]
+
+
+def _tree_children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, list[str]]:
+    """Return direct parent -> children mapping for one tree axis."""
+    axis_tree = tree_df[(tree_df["dataset"] == dataset) & (tree_df["axis"] == axis)]
+    children_map: dict[str, list[str]] = {}
+    for _, row in axis_tree.iterrows():
+        parent = _str(row["parent_code"])
+        if parent:
+            children_map.setdefault(parent, []).append(_str(row["code"]))
+    return children_map
+
+
+def _empty_esto_validation() -> pd.DataFrame:
+    return pd.DataFrame(columns=ESTO_VALIDATION_COLS)
+
+
+def _empty_common_esto_validation() -> pd.DataFrame:
+    return pd.DataFrame(columns=COMMON_ESTO_VALIDATION_COLS)
+
+
+def _validate_esto_axis_recursive_sums(
+    tree_df: pd.DataFrame,
+    data_csv_path: Path = ESTO_DATA_PATH,
+    axis: str = "product",
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Validate one ESTO axis against direct child sums."""
+    if axis not in {"product", "flow"}:
+        raise ValueError(f"Unsupported ESTO validation axis: {axis}")
+
+    data = pd.read_csv(data_csv_path, dtype=object)
+    year_cols = [c for c in data.columns if c.isdigit()]
+    data[year_cols] = data[year_cols].apply(pd.to_numeric, errors="coerce")
+
+    axis_col = "products" if axis == "product" else "flows"
+    other_axis_col = "flows" if axis == "product" else "products"
+    children_map = _tree_children_map(tree_df, "esto", axis)
+    mismatches = []
+
+    for parent_code, children in children_map.items():
+        parent_rows = data[data[axis_col] == parent_code]
+        children_rows = data[data[axis_col].isin(children)]
+        if parent_rows.empty or children_rows.empty:
+            continue
+
+        parent_sum = parent_rows.groupby(["economy", other_axis_col])[year_cols].sum()
+        children_sum = children_rows.groupby(["economy", other_axis_col])[year_cols].sum()
+        common_idx = parent_sum.index.intersection(children_sum.index)
+        if common_idx.empty:
+            continue
+
+        p_vals = parent_sum.loc[common_idx]
+        c_vals = children_sum.loc[common_idx]
+        diff = (p_vals - c_vals).abs()
+        threshold = tolerance * p_vals.abs().clip(lower=1)
+        flagged = (diff > threshold).any(axis=1)
+
+        for idx in common_idx[flagged.values]:
+            economy, other_axis_value = idx
+            for yr in year_cols:
+                pv = float(p_vals.at[idx, yr]) if not pd.isna(p_vals.at[idx, yr]) else None
+                cv = float(c_vals.at[idx, yr]) if not pd.isna(c_vals.at[idx, yr]) else None
+                if pv is None or cv is None:
+                    continue
+                err = abs(pv - cv)
+                if err > tolerance * max(abs(pv), 1):
+                    mismatches.append({
+                        "validation_axis": axis,
+                        "economy": economy,
+                        "other_axis_value": other_axis_value,
+                        "parent_code": parent_code,
+                        "child_count": len(children),
+                        "year": yr,
+                        "parent_value": pv,
+                        "children_sum": cv,
+                        "abs_error": err,
+                    })
+
+    result = pd.DataFrame(mismatches)
+    if result.empty:
+        return _empty_esto_validation()
+    return result.sort_values(
+        ["validation_axis", "economy", "other_axis_value", "parent_code", "year"]
+    ).reset_index(drop=True)
+
+
+def validate_esto_recursive_sums(
+    tree_df: pd.DataFrame,
+    data_csv_path: Path = ESTO_DATA_PATH,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Validate ESTO product and flow subtotals against direct child sums."""
+    result = pd.concat(
+        [
+            _validate_esto_axis_recursive_sums(tree_df, data_csv_path, "product", tolerance),
+            _validate_esto_axis_recursive_sums(tree_df, data_csv_path, "flow", tolerance),
+        ],
+        ignore_index=True,
+    )
+    if result.empty:
+        return _empty_esto_validation()
+    return result.sort_values(
+        ["validation_axis", "economy", "other_axis_value", "parent_code", "year"]
+    ).reset_index(drop=True)
+
+
+def _validate_common_esto_axis_recursive_sums(
+    tree_df: pd.DataFrame,
+    comparison_data_path: Path,
+    axis: str,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """
+    Validate one Common ESTO axis where dot-notation parent/child rows exist.
+
+    Graph-generated aggregate labels are treated as leaves because they do not
+    have a natural recursive hierarchy.
+    """
+    if axis not in {"product", "flow"}:
+        raise ValueError(f"Unsupported Common ESTO validation axis: {axis}")
+    if not comparison_data_path.exists():
+        return _empty_common_esto_validation()
+
+    data = pd.read_csv(comparison_data_path, dtype=object)
+    required = {
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "common_flow_label",
+        "common_product_label",
+        "value",
+    }
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(
+            f"Common ESTO comparison data is missing required columns: {sorted(missing)}"
+        )
+
+    data["value"] = pd.to_numeric(data["value"], errors="coerce").fillna(0.0)
+    data["year"] = data["year"].astype(str)
+    axis_col = "common_product_label" if axis == "product" else "common_flow_label"
+    other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
+    group_cols = ["comparison_scope", "source_system", "economy", "scenario", other_axis_col, "year"]
+    children_map = _tree_children_map(tree_df, "common_esto", axis)
+    mismatches = []
+
+    for parent_code, children in children_map.items():
+        parent_rows = data[data[axis_col] == parent_code]
+        children_rows = data[data[axis_col].isin(children)]
+        if parent_rows.empty or children_rows.empty:
+            continue
+
+        parent_sum = parent_rows.groupby(group_cols, dropna=False)["value"].sum()
+        children_sum = children_rows.groupby(group_cols, dropna=False)["value"].sum()
+        common_idx = parent_sum.index.intersection(children_sum.index)
+        if common_idx.empty:
+            continue
+
+        for idx in common_idx:
+            pv = float(parent_sum.loc[idx])
+            cv = float(children_sum.loc[idx])
+            err = abs(pv - cv)
+            if err <= tolerance * max(abs(pv), 1):
+                continue
+            scope, source_system, economy, scenario, other_axis_value, year = idx
+            mismatches.append({
+                "validation_axis": axis,
+                "comparison_scope": scope,
+                "source_system": source_system,
+                "economy": economy,
+                "scenario": scenario,
+                "other_axis_value": other_axis_value,
+                "parent_code": parent_code,
+                "child_count": len(children),
+                "year": year,
+                "parent_value": pv,
+                "children_sum": cv,
+                "abs_error": err,
+            })
+
+    result = pd.DataFrame(mismatches)
+    if result.empty:
+        return _empty_common_esto_validation()
+    return result.sort_values([
+        "validation_axis",
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "other_axis_value",
+        "parent_code",
+        "year",
+    ]).reset_index(drop=True)
+
+
+def validate_common_esto_recursive_sums(
+    tree_df: pd.DataFrame,
+    comparison_data_path: Path = COMMON_ESTO_COMPARISON_PATH,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Validate Common ESTO product and flow subtotals when comparison data exists."""
+    result = pd.concat(
+        [
+            _validate_common_esto_axis_recursive_sums(tree_df, comparison_data_path, "product", tolerance),
+            _validate_common_esto_axis_recursive_sums(tree_df, comparison_data_path, "flow", tolerance),
+        ],
+        ignore_index=True,
+    )
+    if result.empty:
+        return _empty_common_esto_validation()
+    return result.sort_values([
+        "validation_axis",
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "other_axis_value",
+        "parent_code",
+        "year",
+    ]).reset_index(drop=True)
+
+
 # ---------------------------------------------------------------------------
 # Main workflow
 # ---------------------------------------------------------------------------
@@ -454,6 +706,7 @@ def run_tree_structure_workflow(
     ninth_data_path: Path = NINTH_DATA_PATH,
     outlook_mappings_path: Path = OUTLOOK_MAPPINGS_PATH,
     common_rows_path: Path = COMMON_ESTO_ROWS_PATH,
+    common_comparison_path: Path = COMMON_ESTO_COMPARISON_PATH,
     output_dir: Path = TREE_OUTPUT_DIR,
 ) -> Path:
     """
@@ -496,6 +749,27 @@ def run_tree_structure_workflow(
         print("  All ESTO recursive sum checks passed.")
     else:
         print(f"  {len(validation):,} mismatch rows -> {val_path.relative_to(REPO_ROOT)}")
+
+    common_val_path = output_dir / "common_esto_validation.csv"
+    if common_tree.empty:
+        common_validation = _empty_common_esto_validation()
+        common_validation.to_csv(common_val_path, index=False)
+        print("  Skipping Common ESTO validation (common tree not available).")
+    elif not common_comparison_path.exists():
+        common_validation = _empty_common_esto_validation()
+        common_validation.to_csv(common_val_path, index=False)
+        print(f"  Skipping Common ESTO validation (not found: {common_comparison_path.name})")
+    else:
+        print("Running Common ESTO recursive sum validation ...")
+        common_validation = validate_common_esto_recursive_sums(
+            all_trees,
+            common_comparison_path,
+        )
+        common_validation.to_csv(common_val_path, index=False)
+        if common_validation.empty:
+            print("  All Common ESTO recursive sum checks passed.")
+        else:
+            print(f"  {len(common_validation):,} mismatch rows -> {common_val_path.relative_to(REPO_ROOT)}")
 
     print(f"\nTree structure outputs -> {output_dir.relative_to(REPO_ROOT)}")
     return output_dir

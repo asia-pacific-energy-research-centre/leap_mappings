@@ -1,11 +1,13 @@
 #%%
 
 """
-Refresh maintenance columns in config/leap_mappings.xlsx.
+Legacy refresh workflow for config/leap_mappings.xlsx.
 
-This workflow recomputes the lightweight audit columns used to maintain
-`leap_combined_esto` and `leap_combined_ninth` without rerunning the full
-dashboard process.
+The current Stage 0 path for config/outlook_mappings_master.xlsx is
+codebase/outlook_mapping_maintenance_workflow.py. Keep this file as legacy
+reference for old workbook checks and migration ideas; do not use it for the
+new canonical mapping pipeline unless a task explicitly asks for legacy
+workbook maintenance.
 """
 
 from __future__ import annotations
