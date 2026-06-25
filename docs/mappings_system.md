@@ -97,7 +97,7 @@ It contains:
 | `leap_rollup_rules` | LEAP rows rolled to known comparison categories |
 | `esto_rollup_rules` | ESTO rows rolled to known comparison categories |
 | `ninth_rollup_rules` | 9th Outlook rows rolled to known comparison categories |
-| `rollup_label_overrides` | Display-name overrides for generated or rolled categories |
+| `rollup_label_overrides` | Reserved for display-name overrides for generated or rolled categories |
 
 Each base mapping sheet records source-to-target relationships. The aim is for each row to stay simple: one source row maps to one target row where this is possible. Extra comparison logic belongs in rollup or adjustment sheets.
 
@@ -144,7 +144,7 @@ Rollup and adjustment sheets answer:
 
 > **At what level should these rows be compared?**
 
-Do not put subtotal logic, own-use/loss boundary adjustments, many-to-many fixes, interim placeholder handling, or special comparison logic directly into the base mapping rows unless there is no better option. Those rules are easier to audit and reuse when they live in the rollup rule sheets with an explicit context, type, priority, and reason.
+Do not put subtotal logic, own-use/loss boundary adjustments, many-to-many fixes, interim placeholder handling, or special comparison logic directly into the base mapping rows unless there is no better option. Those rules are easier to audit and reuse when they live in the rollup rule sheets with an explicit context and note.
 
 ---
 
@@ -167,11 +167,11 @@ The processing order matters:
 4. Calculate cardinality on those effective pairs.
 5. Flag any many-to-many relationships that remain after rollup.
 
-`pair_mapping_cardinality_raw` means cardinality before rollup. `pair_mapping_cardinality_after_rollup` means cardinality after applying the relevant rollup rules. If a workflow only keeps one visible `pair_mapping_cardinality` column, it should represent the effective after-rollup cardinality.
+The current maintenance workflow writes cardinality to QA CSVs in `results/maintenance/`; it does not write cardinality columns back into the workbook. Conceptually, `pair_mapping_cardinality_raw` means cardinality before rollup and `pair_mapping_cardinality_after_rollup` means cardinality after applying relevant rollup rules. If a future workflow writes a single visible `pair_mapping_cardinality` column, it should represent the effective after-rollup cardinality.
 
 **Many-to-many before rollup is a signal. Many-to-many after rollup is a problem.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. A many-to-many relationship that remains after rollup usually needs mapping or rollup review.
 
-Computed cardinality columns are updated by the mapping maintenance workflow, not maintained manually.
+Subtotal columns are updated by the mapping maintenance workflow, not maintained manually. Cardinality is currently reviewed through generated QA outputs.
 
 ---
 
@@ -192,7 +192,7 @@ The rollup rules live in `config/outlook_mappings_master.xlsx`:
 | `leap_rollup_rules` | LEAP sector+fuel to a rolled LEAP sector+fuel |
 | `esto_rollup_rules` | ESTO flow+product to a rolled ESTO flow+product |
 | `ninth_rollup_rules` | 9th Outlook sector+fuel to a rolled 9th sector+fuel |
-| `rollup_label_overrides` | Human-readable label overrides for rolled or generated categories |
+| `rollup_label_overrides` | Reserved for human-readable label overrides for rolled or generated categories |
 
 Each rule should be explainable from its columns:
 
@@ -208,6 +208,11 @@ Each rule should be explainable from its columns:
 
 - A blank input fuel/product means the rule applies to all fuels or products for that input sector or flow.
 - A blank rolled fuel/product means keep the original fuel or product label.
+
+Current implementation note: Stage 2 reads common-row label overrides from
+`results/mapping_relationships/common_esto_label_overrides.csv` if that file
+exists. The workbook `rollup_label_overrides` sheet is reserved but is not
+currently wired into Stage 2.
 
 ### Rollup reason/type
 
@@ -656,40 +661,37 @@ For each dataset the tree structure is recorded as a CSV with one row per node:
 | Column | Meaning |
 | --- | --- |
 | `dataset` | Source dataset (`esto`, `ninth`, `leap`, `common`) |
-| `node_code` | Code or path of this node |
-| `node_name` | Human-readable name |
+| `axis` | Flow/sector axis or product/fuel axis |
+| `code` | Code, label, or path of this node |
+| `label` | Human-readable label |
 | `parent_code` | Immediate parent code, or blank for root nodes |
-| `level` | Depth in the hierarchy (0 = root) |
+| `level` | Depth in the hierarchy |
 | `is_leaf` | Whether this node has no children |
-| `dimension` | Whether this is a sector/flow node or a fuel/product node |
+| `is_subtotal` | Whether this node has children |
 
 This file is produced as a prerequisite step and can be used independently of the mapping sheets — for example, to determine what level of detail a mapping row operates at, or to drive other validation tasks.
 
 ### Validation process
 
-For each non-leaf node the validation sums all immediate children and compares against the parent value. Because ESTO and 9th Outlook are two-dimensional (sector/flow and fuel/product), the summing respects both dimensions independently:
+The current implementation validates ESTO product subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year.
 
-- When validating along the **sector or flow dimension**: sum across all fuels or products for that sector or flow and its children.
-- When validating along the **fuel or product dimension**: sum across all sectors or flows for that fuel or product and its children.
+- Flow-axis validation, 9th Outlook value validation, LEAP value validation, and Common ESTO value validation are not yet implemented in this tree workflow.
 
-This is applied recursively at every level, not only the top level. For example in ESTO:
+For example, an ESTO product check compares a parent product against the sum of its direct child products:
 
 ```text
-Level 0: 09 Total transformation sector
-  Level 1: 09.06 Gas processing plants
-    Level 2: 09.06.01 Gas works plants                       ← leaf
-    Level 2: 09.06.02 Liquefaction/regasification plants     ← leaf
-    Level 2: 09.06.03 Natural gas blending plants            ← leaf
+Level 0: 07 Petroleum products
+  Level 1: 07.01 Motor gasoline
+  Level 1: 07.02 Aviation gasoline
 ```
 
 The validation checks:
 
 ```text
-09.06 = sum(09.06.01, 09.06.02, 09.06.03)  across all fuels
-09    = sum(09.01, 09.02, ..., 09.06, ...)  across all fuels
+07 Petroleum products = sum(07.xx child products) by economy, flow, and year
 ```
 
-For LEAP the same logic applies using slash-separated paths.
+The tree files still record flow, 9th, LEAP, and Common ESTO hierarchy, but value validation is currently limited to ESTO products.
 
 ### Current implementation status
 
@@ -711,7 +713,7 @@ Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `i
 
 The mapping sheets are category-level, not scenario-level. Adding a new LEAP scenario does not require any changes to `outlook_mappings_master.xlsx`.
 
-However, the 9th Outlook source data only contains two scenarios — `reference` and `target` — and these are the only scenarios loaded for comparison by `codebase/leap_mapping_refresh_workflow.py` (`PROJECTION_SCENARIOS`). A new LEAP scenario such as EED has no 9th Outlook counterpart, so it can only participate in LEAP vs ESTO comparisons. LEAP vs 9th and three-way comparisons will not be available for it.
+However, the current 9th-to-ESTO conversion path in `codebase/run_mapping_pipeline.py` calls `prepare_ninth_long_format()` with its default `scenario_filter="reference"`. A new LEAP scenario such as EED has no automatic 9th Outlook counterpart, so it can only participate in LEAP vs ESTO comparisons unless the conversion and dashboard scenario pairing are explicitly extended. LEAP vs 9th and three-way comparisons will not be available for it by default.
 
 To include a new LEAP scenario in comparisons:
 
@@ -781,7 +783,7 @@ Since LEAP and ninth do not align with ESTO at detailed public/autoproducer/tech
 - `CHP plants`
 - `Heat plants`
 
-Interim power branches should be handled as placeholders or fallback rows, not additive detail alongside completed branches. Use `rollup_type = interim_placeholder_handling` where that is the purpose of the rule.
+Interim power branches should be handled as placeholders or fallback rows, not additive detail alongside completed branches. Note that purpose clearly in the rollup rule `Note` column.
 
 ### Final consumption
 
@@ -874,11 +876,10 @@ The comparison categories use an `(including own use)` suffix to make this expli
 | `10_01_11_oil_refineries` | `09_07_oil_refineries_incl_own_use` |
 | `10_01_17_nonspecified_own_uses` | `09_12_nonspecified_transformation_incl_own_use` |
 
-These rules should have:
+These rules should be documented in the rollup rule `Note` column with:
 
 ```text
-rollup_type = comparison_boundary_adjustment
-rollup_reason = own_use_absorbed_into_transformation_boundary
+comparison_boundary_adjustment: own_use_absorbed_into_transformation_boundary
 ```
 
 Do not describe these as ordinary mappings. They are explicit boundary adjustments that make the ESTO comparison boundary consistent with how LEAP and 9th Outlook define their transformation process scope.
@@ -957,17 +958,13 @@ The table below covers the stable conceptual columns. The authoritative full col
 
 | Column | Updated by | Meaning |
 | --- | --- | --- |
-| `pair_mapping_cardinality_raw` | Mapping maintenance workflow | Cardinality before rollup |
-| `pair_mapping_cardinality_after_rollup` | Mapping maintenance workflow | Effective cardinality after relevant rollup rules |
-| `pair_mapping_cardinality` | Mapping maintenance workflow | Effective cardinality if only one visible column is kept |
-| `sector_mapping_cardinality` | Mapping maintenance workflow | Cardinality at sector/flow level, ignoring fuel/product |
 | `leap_is_subtotal` | Mapping maintenance workflow | LEAP branch is a subtotal row |
 | `esto_pair_is_subtotal` / `ninth_pair_is_subtotal` | Mapping maintenance workflow | Target pair is a subtotal row |
-| `remove_row` | Human or mapping maintenance workflow | Whether the row is excluded |
-| `remove_row_reason` | Human or mapping maintenance workflow | Reason for exclusion |
+| `remove_row` | Human | Whether the row is excluded, when present |
+| `remove_row_reason` | Human | Reason for exclusion, when present |
 | `Note` | Human | Free text explanation |
 
-Computed cardinality and subtotal columns should not be manually edited. They are overwritten by the mapping maintenance workflow.
+Subtotal columns should not be manually edited. They are overwritten by the mapping maintenance workflow. Cardinality is currently written to `results/maintenance/cardinality_*.csv` rather than workbook columns.
 
 ### Rollup rule columns
 
@@ -995,6 +992,6 @@ Computed cardinality and subtotal columns should not be manually edited. They ar
 
 **Comparing dashboard totals against raw ESTO or 9th data.** The comparison outputs use common comparison rows, which may aggregate several ESTO pairs or apply rollup rules. Comparing them directly against individual raw rows may show apparent differences that are actually correct rollup results.
 
-**Editing `pair_mapping_cardinality` or subtotal columns manually.** These are computed by the mapping maintenance workflow. Manual edits will be overwritten on the next maintenance run.
+**Editing subtotal columns manually.** These are computed by the mapping maintenance workflow. Manual edits will be overwritten on the next maintenance run. Cardinality should be reviewed in the generated `results/maintenance/cardinality_*.csv` files.
 
 **Treating `ninth_pairs_to_esto_pairs` as complete.** This sheet can have known gaps. Use mapping coverage outputs to identify which 9th or ESTO rows are currently unmapped, removed-only, or intentionally excluded.

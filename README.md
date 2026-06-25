@@ -76,9 +76,9 @@ The generated QA outputs are as important as the final comparison table. They sh
 - rollup explanations;
 - unresolved partial coverage;
 - total preservation checks;
-- broad or intersecting aggregate groups that probably need mapping cleanup.
+- broad or intersecting aggregate groups for review.
 
-The system should usually resolve detail mismatches by rolling up. It should only flag true missing coverage when no exact row, broader aggregate, override, or use-case-specific exclusion can cover the chosen common row.
+The system should usually resolve detail mismatches by rolling up. Final comparison outputs use a mapped-universe policy: rows outside the common structure are written to diagnostics, while mapped rows must preserve totals. Broad rows and parent/detail overlaps are review signals rather than blockers when mapped-universe totals and subtotal/tree validation pass.
 
 ## Current Inputs
 
