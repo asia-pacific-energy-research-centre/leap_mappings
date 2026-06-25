@@ -941,12 +941,13 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 
 | File | Contents |
 | --- | --- |
+| `maintenance_summary.csv` | Compact row-count and status summary for the main Stage 0 maintenance and tree validation outputs |
 | `cardinality_leap_esto.csv` | (LEAP source, ESTO target) pair cardinality |
 | `cardinality_leap_ninth.csv` | (LEAP source, 9th target) pair cardinality |
 | `cardinality_ninth_esto.csv` | (9th source, ESTO target) pair cardinality |
 | `many_to_many_conflicts.csv` | Active mapping pairs whose cardinality remains many-to-many before downstream rollup/common-structure handling |
 | `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
-| `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source |
+| `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
 | `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
 | `subtotal_mismatches.csv` | Leaf source → aggregate target mismatches (see subtotal alignment above) |

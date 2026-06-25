@@ -504,6 +504,97 @@ def _leap_source_presence_conflicts(
     ]].sort_values(source_cols).reset_index(drop=True)
 
 
+def _leading_code_expression(label: object) -> str:
+    """Return the leading ESTO-style code/range expression from a label."""
+    text = _norm(label)
+    match = re.match(r"^([0-9][0-9.,-]*)\b", text)
+    return match.group(1) if match else ""
+
+
+def _code_tuple(code: str) -> tuple[int, ...] | None:
+    parts = str(code).split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def _single_code_covers(active_code: str, implied_code: str) -> bool:
+    """Return True if active_code exactly equals or is a parent of implied_code."""
+    active_tuple = _code_tuple(active_code)
+    implied_tuple = _code_tuple(implied_code)
+    if active_tuple is None or implied_tuple is None:
+        return False
+    return implied_tuple[: len(active_tuple)] == active_tuple
+
+
+def _range_code_covers(start_code: str, end_code: str, implied_code: str) -> bool:
+    start_tuple = _code_tuple(start_code)
+    end_tuple = _code_tuple(end_code)
+    implied_tuple = _code_tuple(implied_code)
+    if start_tuple is None or end_tuple is None or implied_tuple is None:
+        return False
+    if len(start_tuple) != len(end_tuple):
+        return False
+    if len(implied_tuple) < len(start_tuple):
+        return False
+    implied_prefix = implied_tuple[: len(start_tuple)]
+    return start_tuple <= implied_prefix <= end_tuple
+
+
+def _code_expression_covers(active_expression: str, implied_label: str) -> bool:
+    """Return True if a compressed active code expression covers an implied label."""
+    implied_code = _leading_code_expression(implied_label)
+    if not implied_code:
+        return False
+    for token in [part.strip() for part in str(active_expression).split(",") if part.strip()]:
+        if "-" in token:
+            start_code, end_code = [part.strip() for part in token.split("-", 1)]
+            if _range_code_covers(start_code, end_code, implied_code):
+                return True
+        elif _single_code_covers(token, implied_code):
+            return True
+    return False
+
+
+def _target_covers(active_target: str, implied_target: str) -> bool:
+    """Return True if an active ESTO target covers an implied ESTO target."""
+    if " || " not in active_target or " || " not in implied_target:
+        return False
+    active_flow, active_product = active_target.split(" || ", 1)
+    implied_flow, implied_product = implied_target.split(" || ", 1)
+    return (
+        _code_expression_covers(_leading_code_expression(active_flow), implied_flow)
+        and _code_expression_covers(_leading_code_expression(active_product), implied_product)
+    )
+
+
+def _classify_crosswalk_conflict(row: pd.Series) -> str:
+    """Classify whether a crosswalk conflict is likely expected aggregation or a real gap."""
+    if row.get("conflict_reason") == "ninth_pair_missing_from_crosswalk":
+        return "missing_crosswalk_mapping"
+    implied_targets = [
+        target.strip()
+        for target in str(row.get("implied_esto_targets", "")).split(" | ")
+        if target.strip()
+    ]
+    active_targets = [
+        target.strip()
+        for target in str(row.get("active_esto_targets", "")).split(" | ")
+        if target.strip()
+    ]
+    if not implied_targets:
+        return "missing_crosswalk_mapping"
+    covered_count = sum(
+        1 for implied_target in implied_targets
+        if any(_target_covers(active_target, implied_target) for active_target in active_targets)
+    )
+    if covered_count == len(implied_targets):
+        return "expected_combined_or_aggregate_target"
+    if covered_count > 0:
+        return "partial_combined_target_review"
+    return "target_mismatch_review"
+
+
 def _crosswalk_target_conflicts(
     leap_esto_df: pd.DataFrame,
     leap_ninth_df: pd.DataFrame,
@@ -549,6 +640,7 @@ def _crosswalk_target_conflicts(
             "implied_esto_targets",
             "active_esto_targets",
             "conflict_reason",
+            "conflict_classification",
         ])
 
     active_esto_pairs = set(
@@ -625,6 +717,7 @@ def _crosswalk_target_conflicts(
             "implied_esto_targets",
             "active_esto_targets",
             "conflict_reason",
+            "conflict_classification",
         ])
 
     conflicts["conflict_reason"] = conflicts.apply(
@@ -633,13 +726,62 @@ def _crosswalk_target_conflicts(
         else "implied_esto_target_not_active_for_leap_source",
         axis=1,
     )
+    conflicts["conflict_classification"] = conflicts.apply(_classify_crosswalk_conflict, axis=1)
     return conflicts[[
         *source_cols,
         *ninth_cols,
         "implied_esto_targets",
         "active_esto_targets",
         "conflict_reason",
+        "conflict_classification",
     ]].sort_values(source_cols + ninth_cols).reset_index(drop=True)
+
+
+def _write_maintenance_summary(
+    summary_path: Path,
+    qa_dir: Path = QA_DIR,
+    tree_dir: Path = REPO_ROOT / "results" / "tree_structure",
+) -> pd.DataFrame:
+    """Write a compact row-count summary for Stage 0 QA outputs."""
+    output_specs = [
+        ("maintenance", "cardinality_leap_esto.csv", "info"),
+        ("maintenance", "cardinality_leap_ninth.csv", "info"),
+        ("maintenance", "cardinality_ninth_esto.csv", "info"),
+        ("maintenance", "many_to_many_conflicts.csv", "review"),
+        ("maintenance", "leap_source_presence_conflicts.csv", "review"),
+        ("maintenance", "crosswalk_target_conflicts.csv", "review"),
+        ("maintenance", "unmapped_esto_pairs.csv", "review"),
+        ("maintenance", "unmapped_ninth_pairs.csv", "review"),
+        ("maintenance", "subtotal_mismatches.csv", "review"),
+        ("tree_structure", "esto_validation.csv", "validation"),
+        ("tree_structure", "common_esto_validation.csv", "validation"),
+        ("tree_structure", "common_esto_non_esto_parent_child_edges.csv", "review"),
+    ]
+    rows = []
+    for output_area, file_name, output_type in output_specs:
+        path = (qa_dir if output_area == "maintenance" else tree_dir) / file_name
+        if path.exists():
+            row_count = len(pd.read_csv(path))
+            if output_type == "validation":
+                status = "pass" if row_count == 0 else "fail"
+            elif output_type == "info":
+                status = "info"
+            else:
+                status = "review" if row_count else "empty"
+        else:
+            row_count = None
+            status = "missing"
+        rows.append({
+            "output_area": output_area,
+            "file_name": file_name,
+            "output_type": output_type,
+            "row_count": row_count,
+            "status": status,
+        })
+    summary = pd.DataFrame(rows)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary.to_csv(summary_path, index=False)
+    return summary
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -767,6 +909,9 @@ def run() -> None:
     print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
     print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
     print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")
+    if not crosswalk_conflicts.empty:
+        crosswalk_class_counts = crosswalk_conflicts["conflict_classification"].value_counts().to_dict()
+        print(f"    crosswalk classifications:       {crosswalk_class_counts}")
 
     # Unmapped pairs
     unmapped_esto = _unmapped_esto_pairs([df_lcesto, df_nesto], esto_lookup)
@@ -809,6 +954,9 @@ def run() -> None:
     print("\nBuilding dataset tree structures …")
     from codebase.mapping_tools.build_dataset_tree_structure import run_tree_structure_workflow
     run_tree_structure_workflow()
+
+    summary = _write_maintenance_summary(QA_DIR / "maintenance_summary.csv")
+    print(f"\nMaintenance summary: {len(summary):,} rows -> {(QA_DIR / 'maintenance_summary.csv').relative_to(REPO_ROOT)}")
 
 
 if __name__ == "__main__":
