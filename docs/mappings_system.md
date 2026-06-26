@@ -564,6 +564,8 @@ A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggr
 
 Run this after editing mapping rows or rollup rules.
 
+Each run first writes a timestamped workbook copy to `config/archive/`, using filenames like `outlook_mappings_master.maintenance_run_YYYYMMDD_HHMMSS.xlsx`.
+
 What it does:
 
 - Loads ESTO and 9th source tables and resolves code/name lookups.

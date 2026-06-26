@@ -265,13 +265,27 @@ def _compute_leap_subtotals_from_full_model_export(
 
 # ── workbook helpers ──────────────────────────────────────────────────────────
 
-def _archive_workbook(path: Path) -> Path:
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = path.stem
-    dest = ARCHIVE_DIR / f"{stem}.before_maintenance_{ts}{path.suffix}"
+def _archive_workbook(
+    path: Path,
+    archive_dir: Path = ARCHIVE_DIR,
+    timestamp: datetime | None = None,
+) -> Path:
+    """
+    Copy the workbook to the archive directory for this maintenance run.
+
+    The filename includes seconds for readability and gets a numeric suffix if
+    the workflow is run more than once in the same second.
+    """
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    ts = (timestamp or datetime.now()).strftime("%Y%m%d_%H%M%S")
+    base_name = f"{path.stem}.maintenance_run_{ts}"
+    dest = archive_dir / f"{base_name}{path.suffix}"
+    suffix = 2
+    while dest.exists():
+        dest = archive_dir / f"{base_name}_{suffix}{path.suffix}"
+        suffix += 1
     shutil.copy2(path, dest)
-    print(f"Archived: {dest}")
+    print(f"Archived workbook copy: {dest}")
     return dest
 
 
@@ -943,13 +957,13 @@ def _remove_stale_generated_exception_outputs() -> None:
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def run() -> None:
+    _archive_workbook(WORKBOOK_PATH)
+
     print("Loading subtotal lookups …")
     esto_lookup = _build_esto_subtotal_lookup()
     ninth_lookup = _build_ninth_subtotal_lookup()
     print(f"  ESTO lookup: {len(esto_lookup):,} (flow, product) pairs")
     print(f"  9th lookup:  {len(ninth_lookup):,} (sector, fuel) pairs")
-
-    _archive_workbook(WORKBOOK_PATH)
 
     print(f"\nOpening {WORKBOOK_PATH} …")
     wb = openpyxl.load_workbook(WORKBOOK_PATH)

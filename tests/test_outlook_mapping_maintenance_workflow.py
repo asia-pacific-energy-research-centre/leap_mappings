@@ -1,6 +1,9 @@
+from datetime import datetime
+
 import pandas as pd
 
 from codebase.outlook_mapping_maintenance_workflow import (
+    _archive_workbook,
     _compute_leap_subtotals,
     _mapping_style_sector_path_from_export_segments,
     _split_allowed_subtotal_mismatches,
@@ -11,6 +14,29 @@ from codebase.outlook_mapping_maintenance_workflow import (
 
 def _write_exception_workbook(path, sheet_name: str, rows: list[dict[str, object]]) -> None:
     pd.DataFrame(rows).to_excel(path, sheet_name=sheet_name, index=False)
+
+
+def test_archive_workbook_writes_unique_timestamped_copy(tmp_path) -> None:
+    workbook_path = tmp_path / "outlook_mappings_master.xlsx"
+    archive_dir = tmp_path / "archive"
+    workbook_path.write_bytes(b"workbook bytes")
+    timestamp = datetime(2026, 6, 26, 14, 5, 6)
+
+    first_archive = _archive_workbook(
+        workbook_path,
+        archive_dir=archive_dir,
+        timestamp=timestamp,
+    )
+    second_archive = _archive_workbook(
+        workbook_path,
+        archive_dir=archive_dir,
+        timestamp=timestamp,
+    )
+
+    assert first_archive.name == "outlook_mappings_master.maintenance_run_20260626_140506.xlsx"
+    assert second_archive.name == "outlook_mappings_master.maintenance_run_20260626_140506_2.xlsx"
+    assert first_archive.read_bytes() == b"workbook bytes"
+    assert second_archive.read_bytes() == b"workbook bytes"
 
 
 def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts(tmp_path) -> None:
