@@ -3,6 +3,7 @@ import pandas as pd
 from codebase.outlook_mapping_maintenance_workflow import (
     _compute_leap_subtotals,
     _mapping_style_sector_path_from_export_segments,
+    _mark_subtotal_mismatches_allowed,
     _split_allowed_crosswalk_conflicts,
     _split_allowed_many_to_many,
 )
@@ -206,6 +207,29 @@ def test_split_allowed_crosswalk_conflicts_ignores_rollup_categories() -> None:
     assert len(conflicts) == 1
     assert conflicts.loc[0, "leap_sector_name_full_path"].startswith("Other loss and own use")
     assert "crosswalk_review_status" not in conflicts.columns
+
+
+def test_mark_subtotal_mismatches_allowed_adds_review_metadata() -> None:
+    subtotal_mismatches = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "Total Transformation",
+                "raw_leap_fuel_name": "Coal products",
+                "esto_flow": "09 Total transformation sector",
+                "esto_product": "02 Coal products",
+                "leap_is_subtotal": "False",
+                "esto_pair_is_subtotal": "True",
+                "mismatch_reason": "leaf_source_maps_to_aggregate_target_and_more_specific_target_exists",
+                "sheet": "leap_combined_esto",
+            }
+        ]
+    )
+
+    allowed = _mark_subtotal_mismatches_allowed(subtotal_mismatches)
+
+    assert len(allowed) == 1
+    assert allowed.loc[0, "subtotal_mismatch_review_status"] == "allowed"
+    assert "acceptable" in allowed.loc[0, "subtotal_mismatch_review_reason"]
 
 
 def test_mapping_style_sector_path_from_export_segments_matches_workbook_paths() -> None:

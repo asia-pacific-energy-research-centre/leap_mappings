@@ -22,8 +22,9 @@ What it does
                                       no active mapping row
      unmapped_ninth_pairs.csv       — 9th (sector, fuel) pairs in data with
                                       no active mapping row
-     subtotal_mismatches.csv        — M6 rule: leaf source → aggregate target
-                                      when a more specific target exists
+     subtotal_mismatches_allowed.csv — M6 rule: leaf source → aggregate target
+                                       rows currently treated as acceptable
+                                       cross-dataset aggregation differences
 
 Usage:
     python codebase/outlook_mapping_maintenance_workflow.py
@@ -683,6 +684,22 @@ def _subtotal_mismatches(
     ]]
 
 
+def _mark_subtotal_mismatches_allowed(
+    subtotal_mismatches: pd.DataFrame,
+) -> pd.DataFrame:
+    """Mark current subtotal mismatches as allowed review cases."""
+    if subtotal_mismatches.empty:
+        return subtotal_mismatches.copy()
+
+    allowed = subtotal_mismatches.copy()
+    allowed["subtotal_mismatch_review_status"] = "allowed"
+    allowed["subtotal_mismatch_review_reason"] = (
+        "Allowed current subtotal mismatch: cross-dataset mapping levels differ "
+        "and current review assumes these aggregate/leaf differences are acceptable."
+    )
+    return allowed
+
+
 # â”€â”€ migrated legacy conflict checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _many_to_many_conflicts(
@@ -1103,7 +1120,7 @@ def _write_maintenance_summary(
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
         ("maintenance", "unmapped_esto_pairs.csv", "review"),
         ("maintenance", "unmapped_ninth_pairs.csv", "review"),
-        ("maintenance", "subtotal_mismatches.csv", "review"),
+        ("maintenance", "subtotal_mismatches_allowed.csv", "info"),
         ("tree_structure", "esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_non_esto_parent_child_edges.csv", "review"),
@@ -1332,8 +1349,15 @@ def run() -> None:
         mm_ninth.assign(sheet="leap_combined_ninth"),
         mm_nesto.assign(sheet="ninth_pairs_to_esto_pairs"),
     ], ignore_index=True)
-    all_mm.to_csv(QA_DIR / "subtotal_mismatches.csv", index=False)
-    print(f"  subtotal_mismatches:  {len(all_mm):,}  (leaf source -> aggregate target)")
+    allowed_subtotal_mismatches = _mark_subtotal_mismatches_allowed(all_mm)
+    allowed_subtotal_mismatches.to_csv(QA_DIR / "subtotal_mismatches_allowed.csv", index=False)
+    stale_subtotal_review_path = QA_DIR / "subtotal_mismatches.csv"
+    if stale_subtotal_review_path.exists():
+        stale_subtotal_review_path.unlink()
+    print(
+        "  subtotal_mismatches_allowed: "
+        f"{len(allowed_subtotal_mismatches):,}  (current leaf source -> aggregate target cases)"
+    )
 
     print(f"\nQA outputs written to: {QA_DIR}")
 

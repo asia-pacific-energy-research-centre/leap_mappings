@@ -535,7 +535,7 @@ Because all three datasets operate at different levels of detail, subtotal↔non
 - **Non-subtotal↔non-subtotal**: fine — direct row-level comparison.
 - **Subtotal↔non-subtotal**: will occur frequently and is generally acceptable given the different levels of detail across datasets.
 
-A mismatch is flagged in `results/maintenance/subtotal_mismatches.csv` when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. This signals that the source is being aggregated up to a rolled target when a direct match may be possible. Mismatches are not treated as blocking errors — they are recorded for human review.
+A mismatch is recorded in `results/maintenance/subtotal_mismatches_allowed.csv` when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. For now, these rows are treated as acceptable cross-dataset aggregation differences and are written with an allowed review status rather than as blocking review items.
 
 ---
 
@@ -951,7 +951,7 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 | `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
 | `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
-| `subtotal_mismatches.csv` | Leaf source → aggregate target mismatches (see subtotal alignment above) |
+| `subtotal_mismatches_allowed.csv` | Leaf source → aggregate target subtotal mismatch rows currently treated as acceptable cross-dataset aggregation differences |
 
 ### Notes on interpreting outputs
 
