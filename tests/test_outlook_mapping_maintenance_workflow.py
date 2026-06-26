@@ -3,6 +3,7 @@ import pandas as pd
 from codebase.outlook_mapping_maintenance_workflow import (
     _compute_leap_subtotals,
     _mapping_style_sector_path_from_export_segments,
+    _split_allowed_crosswalk_conflicts,
     _split_allowed_many_to_many,
 )
 
@@ -157,6 +158,54 @@ def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts() ->
     assert len(conflicts) == 1
     assert conflicts.loc[0, "sheet"] == "leap_combined_esto"
     assert "many_to_many_review_status" not in conflicts.columns
+
+
+def test_split_allowed_crosswalk_conflicts_ignores_rollup_categories() -> None:
+    crosswalk_conflicts = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "Transfers",
+                "raw_leap_fuel_name": "Petroleum coke",
+                "ninth_sector": "08_transfers",
+                "ninth_fuel": "07_x_other_petroleum_products",
+                "implied_esto_targets": (
+                    "08 Transfers || 07.12 White spirit SBP | "
+                    "08 Transfers || 07.17 Other products"
+                ),
+                "active_esto_targets": (
+                    "08 Transfers || 07.16 Petroleum coke | "
+                    "08 Transfers || 07_x_other_petroleum_products"
+                ),
+                "conflict_reason": "implied_esto_target_not_active_for_leap_source",
+                "conflict_classification": "target_mismatch_review",
+            },
+            {
+                "leap_sector_name_full_path": "Other loss and own use/Liquefaction and regasification plants",
+                "raw_leap_fuel_name": "Electricity",
+                "ninth_sector": "09_06_gas_processing_plants",
+                "ninth_fuel": "17_electricity",
+                "implied_esto_targets": (
+                    "09.06 Gas processing plants || 17 Electricity | "
+                    "09.06.02 Liquefaction/regasification plants || 17 Electricity"
+                ),
+                "active_esto_targets": (
+                    "10.01.03 Liquefaction/regasification plants || 17 Electricity"
+                ),
+                "conflict_reason": "implied_esto_target_not_active_for_leap_source",
+                "conflict_classification": "target_mismatch_review",
+            },
+        ]
+    )
+
+    conflicts, allowed = _split_allowed_crosswalk_conflicts(crosswalk_conflicts)
+
+    assert len(allowed) == 1
+    assert allowed.loc[0, "leap_sector_name_full_path"] == "Transfers"
+    assert allowed.loc[0, "crosswalk_review_status"] == "allowed"
+    assert "rollup category overlap" in allowed.loc[0, "crosswalk_review_reason"]
+    assert len(conflicts) == 1
+    assert conflicts.loc[0, "leap_sector_name_full_path"].startswith("Other loss and own use")
+    assert "crosswalk_review_status" not in conflicts.columns
 
 
 def test_mapping_style_sector_path_from_export_segments_matches_workbook_paths() -> None:

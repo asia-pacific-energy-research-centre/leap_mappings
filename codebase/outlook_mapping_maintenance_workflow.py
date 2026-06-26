@@ -854,6 +854,69 @@ def _target_covers(active_target: str, implied_target: str) -> bool:
     )
 
 
+def _is_rollup_category_text(value: object) -> bool:
+    """
+    Return True for category labels/codes that represent explicit rollup groups.
+
+    Stage 0 crosswalk checks compare base mapping sheets, so rollup categories can
+    look like conflicts even though they are deliberate comparison boundaries.
+    """
+    text = _norm(value)
+    if not text:
+        return False
+    if "_x_" in text or "_incl_own_use" in text or "(including own use)" in text:
+        return True
+
+    for target in [part.strip() for part in text.split(" | ") if part.strip()]:
+        flow_label, product_label = (target.split(" || ", 1) + [""])[:2]
+        for label in [flow_label, product_label]:
+            code_expression = _leading_code_expression(label)
+            if "," in code_expression or re.search(r"\d(?:\.\d+)?-\d", code_expression):
+                return True
+    return False
+
+
+def _crosswalk_conflict_allowed_reason(row: pd.Series) -> str:
+    """Return an allowlist reason for non-actionable crosswalk conflicts."""
+    fields_to_check = [
+        row.get("ninth_sector", ""),
+        row.get("ninth_fuel", ""),
+        row.get("implied_esto_targets", ""),
+        row.get("active_esto_targets", ""),
+    ]
+    if any(_is_rollup_category_text(value) for value in fields_to_check):
+        return (
+            "Allowed rollup category overlap: crosswalk uses a rolled or "
+            "aggregate comparison category, so exact active ESTO target matching "
+            "is not required at Stage 0."
+        )
+    return ""
+
+
+def _split_allowed_crosswalk_conflicts(
+    crosswalk_conflicts: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split crosswalk conflicts into actionable rows and explicitly allowed rows."""
+    allowed_columns = [
+        *list(crosswalk_conflicts.columns),
+        "crosswalk_review_status",
+        "crosswalk_review_reason",
+    ]
+    if crosswalk_conflicts.empty:
+        return crosswalk_conflicts.copy(), pd.DataFrame(columns=allowed_columns)
+
+    reviewed = crosswalk_conflicts.copy()
+    reviewed["crosswalk_review_reason"] = reviewed.apply(_crosswalk_conflict_allowed_reason, axis=1)
+    reviewed["crosswalk_review_status"] = reviewed["crosswalk_review_reason"].map(
+        lambda reason: "allowed" if reason else "needs_review"
+    )
+
+    allowed = reviewed[reviewed["crosswalk_review_status"].eq("allowed")].copy()
+    conflicts = reviewed[reviewed["crosswalk_review_status"].eq("needs_review")].copy()
+    conflicts = conflicts.drop(columns=["crosswalk_review_status", "crosswalk_review_reason"])
+    return conflicts.reset_index(drop=True), allowed[allowed_columns].reset_index(drop=True)
+
+
 def _classify_crosswalk_conflict(row: pd.Series) -> str:
     """Classify whether a crosswalk conflict is likely expected aggregation or a real gap."""
     if row.get("conflict_reason") == "ninth_pair_missing_from_crosswalk":
@@ -1036,6 +1099,7 @@ def _write_maintenance_summary(
         ("maintenance", "many_to_many_allowed.csv", "info"),
         ("maintenance", "many_to_many_conflicts.csv", "review"),
         ("maintenance", "leap_source_presence_conflicts.csv", "review"),
+        ("maintenance", "crosswalk_target_conflicts_allowed.csv", "info"),
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
         ("maintenance", "unmapped_esto_pairs.csv", "review"),
         ("maintenance", "unmapped_ninth_pairs.csv", "review"),
@@ -1218,14 +1282,19 @@ def run() -> None:
     ])
     many_to_many, allowed_many_to_many = _split_allowed_many_to_many(all_many_to_many)
     leap_source_presence = _leap_source_presence_conflicts(df_lcesto, df_lcninth)
-    crosswalk_conflicts = _crosswalk_target_conflicts(df_lcesto, df_lcninth, df_nesto)
+    all_crosswalk_conflicts = _crosswalk_target_conflicts(df_lcesto, df_lcninth, df_nesto)
+    crosswalk_conflicts, allowed_crosswalk_conflicts = _split_allowed_crosswalk_conflicts(
+        all_crosswalk_conflicts
+    )
     allowed_many_to_many.to_csv(QA_DIR / "many_to_many_allowed.csv", index=False)
     many_to_many.to_csv(QA_DIR / "many_to_many_conflicts.csv", index=False)
     leap_source_presence.to_csv(QA_DIR / "leap_source_presence_conflicts.csv", index=False)
+    allowed_crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts_allowed.csv", index=False)
     crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts.csv", index=False)
     print(f"  many_to_many_allowed:              {len(allowed_many_to_many):,}")
     print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
     print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
+    print(f"  crosswalk_target_conflicts_allowed:{len(allowed_crosswalk_conflicts):,}")
     print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")
     if not crosswalk_conflicts.empty:
         crosswalk_class_counts = crosswalk_conflicts["conflict_classification"].value_counts().to_dict()
