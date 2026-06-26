@@ -8,8 +8,15 @@ economy, scenario, year, ESTO flow/product, and value columns.
 
 #%%
 from pathlib import Path
+import sys
 
 import pandas as pd
+
+SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(SCRIPT_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_REPO_ROOT))
+
+from codebase.mapping_issue_exceptions import row_is_allowed
 
 #%%
 OUTPUT_COLUMNS = [
@@ -45,11 +52,6 @@ COMPARISON_SCOPE_SYSTEMS = {
     "leap_vs_esto_vs_ninth": {"LEAP", "NINTH", "ESTO"},
     "esto_only": {"ESTO"},
 }
-MISSING_COMMON_MAP_IGNORED_FLOW_PREFIXES = ("18.", "19.")
-MISSING_COMMON_MAP_IGNORED_FLOWS = {
-    "06 Stock changes",
-    "11 Statistical discrepancy",
-}
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
@@ -78,8 +80,10 @@ def normalise_label(value: object) -> str:
 
 def should_ignore_missing_common_map_flow(esto_flow: object) -> bool:
     """Return True for missing-map diagnostic flows that are intentionally ignored."""
-    flow = normalise_label(esto_flow)
-    return flow in MISSING_COMMON_MAP_IGNORED_FLOWS or flow.startswith(MISSING_COMMON_MAP_IGNORED_FLOW_PREFIXES)
+    return row_is_allowed(
+        pd.Series({"esto_flow": normalise_label(esto_flow)}),
+        sheet_name="missing_common_map_ignored",
+    )
 
 
 def filter_missing_common_map_diagnostics(missing_map_df: pd.DataFrame) -> pd.DataFrame:

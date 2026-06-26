@@ -99,6 +99,25 @@ It contains:
 | `ninth_rollup_rules` | 9th Outlook rows rolled to known comparison categories |
 | `rollup_label_overrides` | Reserved for display-name overrides for generated or rolled categories |
 
+### `config/mapping_issue_exception_sets.xlsx`
+
+This workbook is the manual source of truth for reviewed QA exceptions. Workflows read it, but they must not update it automatically.
+
+| Sheet | Purpose |
+| --- | --- |
+| `many_to_many_allowed` | Reviewed many-to-many mapping diagnostics that are acceptable |
+| `crosswalk_allowed` | Reviewed crosswalk target conflicts that are acceptable |
+| `subtotal_mismatch_allowed` | Reviewed subtotal mismatch diagnostics that are acceptable |
+| `missing_common_map_ignored` | ESTO flows intentionally excluded from missing common-map diagnostics |
+
+Each sheet uses only:
+
+- `enabled`
+- the relevant QA output match columns
+- `notes`
+
+Rows with `enabled` set to true are used for matching. Blank match cells are ignored, so a row can match narrowly or broadly. In `missing_common_map_ignored`, match values ending in `*` are treated as prefixes, for example `18.*`.
+
 Each base mapping sheet records source-to-target relationships. The aim is for each row to stay simple: one source row maps to one target row where this is possible. Extra comparison logic belongs in rollup or adjustment sheets.
 
 The direction of the mapping is important. For example LEAP>ESTO mappings mean that LEAP categories cant be mapped to multiple ESTO categories, otherwise an allocation rule would be required. However mapping multiple leap categories to only one ESTO category leaves just a simple sum to be done. This is a key design principle of the system: do not split source aggregates unless there is an explicit allocation method (which for now seems unlikely to be developed). If a single LEAP branch corresponds to multiple ESTO rows, the system should use the roll up funcitonality to aggregtes the esto categories to a common comparison category rather than pretending to know how to split the LEAP branch across the ESTO rows. 
@@ -169,7 +188,7 @@ The processing order matters:
 
 The current maintenance workflow writes cardinality to QA CSVs in `results/maintenance/`; it does not write cardinality columns back into the workbook. Conceptually, `pair_mapping_cardinality_raw` means cardinality before rollup and `pair_mapping_cardinality_after_rollup` means cardinality after applying relevant rollup rules. If a future workflow writes a single visible `pair_mapping_cardinality` column, it should represent the effective after-rollup cardinality.
 
-**Many-to-many before rollup is a signal. Many-to-many after rollup usually needs review.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. Some many-to-many rows are deliberate placeholder overlaps, such as completed LEAP power branches coexisting with interim fallback branches while the 9th Outlook has unallocated fuel categories. These known cases are allowlisted in `codebase/outlook_mapping_maintenance_workflow.py`, written to `results/maintenance/many_to_many_allowed.csv`, and removed from `results/maintenance/many_to_many_conflicts.csv` so the conflict file stays actionable.
+**Many-to-many before rollup is a signal. Many-to-many after rollup usually needs review.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. Some many-to-many rows are deliberate placeholder overlaps, such as completed LEAP power branches coexisting with interim fallback branches while the 9th Outlook has unallocated fuel categories. Reviewed exceptions are maintained in `config/mapping_issue_exception_sets.xlsx`, written to `results/maintenance/many_to_many_allowed_matched.csv` when matched, and removed from `results/maintenance/many_to_many_conflicts.csv` so the conflict file stays actionable.
 
 Subtotal columns are updated by the mapping maintenance workflow, not maintained manually. Cardinality is currently reviewed through generated QA outputs.
 
@@ -535,7 +554,7 @@ Because all three datasets operate at different levels of detail, subtotal↔non
 - **Non-subtotal↔non-subtotal**: fine — direct row-level comparison.
 - **Subtotal↔non-subtotal**: will occur frequently and is generally acceptable given the different levels of detail across datasets.
 
-A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. Reviewed acceptable cases live in the manual exception file `results/maintenance/subtotal_mismatches_allowed.csv`. The maintenance workflow reads that file but does not update it automatically. Current mismatches that are not present in the manual allowlist are written to `results/maintenance/subtotal_mismatches.csv` for review.
+A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. Reviewed acceptable cases live in `config/mapping_issue_exception_sets.xlsx` on the `subtotal_mismatch_allowed` sheet. The maintenance workflow reads that sheet but does not update it automatically. Current mismatches that are not present in the manual allowlist are written to `results/maintenance/subtotal_mismatches.csv` for review.
 
 ---
 
@@ -624,7 +643,9 @@ Stage 3 uses a mapped-universe policy: final comparison outputs and total
 preservation checks are based on rows that map to the common structure. Unmapped
 ESTO rows are retained in
 `results/common_esto/common_esto_source_rows_missing_common_map.csv` for review,
-but they do not by themselves make the final comparison output invalid. If
+but they do not by themselves make the final comparison output invalid. Flows
+listed in the `missing_common_map_ignored` sheet of
+`config/mapping_issue_exception_sets.xlsx` are excluded from this diagnostic. If
 mapped-universe preservation fails, the latest outputs are written with a
 `_needs_mapping_review` suffix. Check
 `results/common_esto/common_esto_output_status.csv` to see which files belong to
@@ -945,14 +966,15 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 | `cardinality_leap_esto.csv` | (LEAP source, ESTO target) pair cardinality |
 | `cardinality_leap_ninth.csv` | (LEAP source, 9th target) pair cardinality |
 | `cardinality_ninth_esto.csv` | (9th source, ESTO target) pair cardinality |
-| `many_to_many_allowed.csv` | Known acceptable many-to-many rows, usually placeholder overlaps, with review reasons |
+| `many_to_many_allowed_matched.csv` | Current many-to-many rows matched by the manual `many_to_many_allowed` exception sheet |
 | `many_to_many_conflicts.csv` | Active many-to-many mapping pairs that are not allowlisted and still need review |
 | `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
+| `crosswalk_target_conflicts_allowed_matched.csv` | Current crosswalk rows matched by the manual `crosswalk_allowed` exception sheet |
 | `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
 | `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
-| `subtotal_mismatches_allowed.csv` | Manual exception set for reviewed leaf source → aggregate target subtotal mismatch rows |
-| `subtotal_mismatches.csv` | Current leaf source → aggregate target subtotal mismatch rows not present in `subtotal_mismatches_allowed.csv` |
+| `subtotal_mismatches_allowed_matched.csv` | Current subtotal mismatch rows matched by the manual `subtotal_mismatch_allowed` exception sheet |
+| `subtotal_mismatches.csv` | Current leaf source → aggregate target subtotal mismatch rows not present in the manual exception workbook |
 
 ### Notes on interpreting outputs
 

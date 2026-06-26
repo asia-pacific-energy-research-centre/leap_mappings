@@ -9,7 +9,11 @@ from codebase.outlook_mapping_maintenance_workflow import (
 )
 
 
-def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts() -> None:
+def _write_exception_workbook(path, sheet_name: str, rows: list[dict[str, object]]) -> None:
+    pd.DataFrame(rows).to_excel(path, sheet_name=sheet_name, index=False)
+
+
+def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts(tmp_path) -> None:
     many_to_many = pd.DataFrame(
         [
             {
@@ -151,17 +155,30 @@ def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts() ->
         ]
     ).fillna("")
 
-    conflicts, allowed = _split_allowed_many_to_many(many_to_many)
+    exception_path = tmp_path / "mapping_issue_exception_sets.xlsx"
+    exception_rows = many_to_many.iloc[:16].copy()
+    exception_rows.insert(0, "enabled", True)
+    exception_rows["notes"] = "Reviewed manually"
+    _write_exception_workbook(
+        exception_path,
+        "many_to_many_allowed",
+        exception_rows.to_dict("records"),
+    )
+
+    conflicts, allowed = _split_allowed_many_to_many(
+        many_to_many,
+        exception_workbook_path=exception_path,
+    )
 
     assert len(allowed) == 16
     assert set(allowed["many_to_many_review_status"]) == {"allowed"}
-    assert allowed["many_to_many_review_reason"].str.contains("placeholder overlap").all()
+    assert set(allowed["many_to_many_review_reason"]) == {"Reviewed manually"}
     assert len(conflicts) == 1
     assert conflicts.loc[0, "sheet"] == "leap_combined_esto"
     assert "many_to_many_review_status" not in conflicts.columns
 
 
-def test_split_allowed_crosswalk_conflicts_ignores_rollup_categories() -> None:
+def test_split_allowed_crosswalk_conflicts_uses_manual_workbook(tmp_path) -> None:
     crosswalk_conflicts = pd.DataFrame(
         [
             {
@@ -198,12 +215,25 @@ def test_split_allowed_crosswalk_conflicts_ignores_rollup_categories() -> None:
         ]
     )
 
-    conflicts, allowed = _split_allowed_crosswalk_conflicts(crosswalk_conflicts)
+    exception_path = tmp_path / "mapping_issue_exception_sets.xlsx"
+    exception_row = crosswalk_conflicts.iloc[[0]].copy()
+    exception_row.insert(0, "enabled", True)
+    exception_row["notes"] = "Reviewed rollup category overlap"
+    _write_exception_workbook(
+        exception_path,
+        "crosswalk_allowed",
+        exception_row.to_dict("records"),
+    )
+
+    conflicts, allowed = _split_allowed_crosswalk_conflicts(
+        crosswalk_conflicts,
+        exception_workbook_path=exception_path,
+    )
 
     assert len(allowed) == 1
     assert allowed.loc[0, "leap_sector_name_full_path"] == "Transfers"
     assert allowed.loc[0, "crosswalk_review_status"] == "allowed"
-    assert "rollup category overlap" in allowed.loc[0, "crosswalk_review_reason"]
+    assert allowed.loc[0, "crosswalk_review_reason"] == "Reviewed rollup category overlap"
     assert len(conflicts) == 1
     assert conflicts.loc[0, "leap_sector_name_full_path"].startswith("Other loss and own use")
     assert "crosswalk_review_status" not in conflicts.columns
@@ -234,15 +264,19 @@ def test_split_allowed_subtotal_mismatches_uses_manual_allowlist(tmp_path) -> No
             },
         ]
     )
-    allowlist_path = tmp_path / "subtotal_mismatches_allowed.csv"
+    exception_path = tmp_path / "mapping_issue_exception_sets.xlsx"
     allowed_row = subtotal_mismatches.iloc[[0]].copy()
-    allowed_row["subtotal_mismatch_review_status"] = "allowed"
-    allowed_row["subtotal_mismatch_review_reason"] = "Reviewed manually"
-    allowed_row.to_csv(allowlist_path, index=False)
+    allowed_row.insert(0, "enabled", True)
+    allowed_row["notes"] = "Reviewed manually"
+    _write_exception_workbook(
+        exception_path,
+        "subtotal_mismatch_allowed",
+        allowed_row.to_dict("records"),
+    )
 
     needs_review, allowed = _split_allowed_subtotal_mismatches(
         subtotal_mismatches,
-        allowlist_path=allowlist_path,
+        exception_workbook_path=exception_path,
     )
 
     assert len(allowed) == 1

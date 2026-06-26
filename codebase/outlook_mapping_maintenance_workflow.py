@@ -45,10 +45,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from codebase.mapping_issue_exceptions import EXCEPTION_WORKBOOK_PATH, split_allowed_rows
+
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ARCHIVE_DIR = REPO_ROOT / "config" / "archive"
 QA_DIR = REPO_ROOT / "results" / "maintenance"
-SUBTOTAL_MISMATCH_ALLOWLIST_PATH = QA_DIR / "subtotal_mismatches_allowed.csv"
 
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
@@ -57,155 +58,6 @@ FULL_MODEL_EXPORT_PATHS = [
     REPO_ROOT.parent / "leap_initialisation" / "data" / "full model export.xlsx",
 ]
 FULL_MODEL_EXPORT_SHEET = "Export"
-
-POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON = (
-    "Allowed placeholder overlap: 9th power-sector biomass and other-source "
-    "placeholder fuels intentionally overlap ESTO electricity/CHP/heat and MAP "
-    "plant categories before downstream common-structure rollup."
-)
-
-ALLOWED_MANY_TO_MANY_MAPPINGS = [
-    {
-        "sheet": "leap_combined_ninth",
-        "leap_sector_name_full_path": "Electricity Generation",
-        "raw_leap_fuel_name": "Solar nonspecified",
-        "ninth_sector": "09_01_electricity_plants",
-        "ninth_fuel": "12_solar_unallocated",
-        "many_to_many_review_reason": (
-            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
-            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
-        ),
-    },
-    {
-        "sheet": "leap_combined_ninth",
-        "leap_sector_name_full_path": "Electricity Generation",
-        "raw_leap_fuel_name": "Solar nonspecified",
-        "ninth_sector": "09_01_electricity_plants",
-        "ninth_fuel": "12_x_other_solar",
-        "many_to_many_review_reason": (
-            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
-            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
-        ),
-    },
-    {
-        "sheet": "leap_combined_ninth",
-        "leap_sector_name_full_path": "Electricity interim/Electricity interim",
-        "raw_leap_fuel_name": "Solar nonspecified",
-        "ninth_sector": "09_01_electricity_plants",
-        "ninth_fuel": "12_solar_unallocated",
-        "many_to_many_review_reason": (
-            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
-            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
-        ),
-    },
-    {
-        "sheet": "leap_combined_ninth",
-        "leap_sector_name_full_path": "Electricity interim/Electricity interim",
-        "raw_leap_fuel_name": "Solar nonspecified",
-        "ninth_sector": "09_01_electricity_plants",
-        "ninth_fuel": "12_x_other_solar",
-        "many_to_many_review_reason": (
-            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
-            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
-        ),
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.01 Electricity plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_01_electricity_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.02 CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_02_chp_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.02.02 CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_02_chp_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.02 CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_02_chp_plants",
-        "9th_fuel": "15_solid_biomass_unallocated",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.02.02 CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_02_chp_plants",
-        "9th_fuel": "15_solid_biomass_unallocated",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.02 CHP plants",
-        "esto_product": "16.09 Other sources",
-        "9th_sector": "09_02_chp_plants",
-        "9th_fuel": "16_others_unallocated",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.03 Heat plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "09_x_heat_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "09.01.03 Heat plants",
-        "esto_product": "16.09 Other sources",
-        "9th_sector": "09_x_heat_plants",
-        "9th_fuel": "16_09_other_sources",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "18.01 MAP electricity plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "18_01_electricity_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "18.02 MAP CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "18_01_electricity_plants",
-        "9th_fuel": "15_05_other_biomass",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "18.01 MAP electricity plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "18_01_electricity_plants",
-        "9th_fuel": "15_solid_biomass_unallocated",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-    {
-        "sheet": "ninth_pairs_to_esto_pairs",
-        "esto_flow": "18.02 MAP CHP plants",
-        "esto_product": "15.05 Other biomass",
-        "9th_sector": "18_01_electricity_plants",
-        "9th_fuel": "15_solid_biomass_unallocated",
-        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
-    },
-]
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -684,72 +536,18 @@ def _subtotal_mismatches(
     ]]
 
 
-SUBTOTAL_MISMATCH_REVIEW_COLUMNS = [
-    "subtotal_mismatch_review_status",
-    "subtotal_mismatch_review_reason",
-]
-
-
-def _row_key(frame: pd.DataFrame, key_columns: list[str]) -> pd.Series:
-    """Build a stable normalized row key for exception-file matching."""
-    if frame.empty:
-        return pd.Series(dtype=str)
-
-    parts = []
-    for col in key_columns:
-        if col in frame.columns:
-            values = frame[col]
-        else:
-            values = pd.Series("", index=frame.index)
-        parts.append(values.fillna("").astype(str).map(_norm))
-    return pd.concat(parts, axis=1).agg("\x1f".join, axis=1)
-
-
 def _split_allowed_subtotal_mismatches(
     subtotal_mismatches: pd.DataFrame,
-    allowlist_path: Path = SUBTOTAL_MISMATCH_ALLOWLIST_PATH,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Split current subtotal mismatches using the manual allowlist CSV.
-
-    The allowlist is semi-permanent human-reviewed data. This function reads it
-    but never creates, updates, or deletes it.
-    """
-    if subtotal_mismatches.empty:
-        return subtotal_mismatches.copy(), subtotal_mismatches.copy()
-
-    metadata_cols = set(SUBTOTAL_MISMATCH_REVIEW_COLUMNS)
-    key_columns = [col for col in subtotal_mismatches.columns if col not in metadata_cols]
-
-    if not allowlist_path.exists():
-        return subtotal_mismatches.copy(), pd.DataFrame(columns=[
-            *list(subtotal_mismatches.columns),
-            *SUBTOTAL_MISMATCH_REVIEW_COLUMNS,
-        ])
-
-    allowlist = pd.read_csv(allowlist_path, dtype=str).fillna("")
-    current = subtotal_mismatches.copy()
-    current["_subtotal_mismatch_key"] = _row_key(current, key_columns)
-    allowlist["_subtotal_mismatch_key"] = _row_key(allowlist, key_columns)
-    allowed_keys = set(allowlist["_subtotal_mismatch_key"])
-
-    allowed_current = current[current["_subtotal_mismatch_key"].isin(allowed_keys)].copy()
-    needs_review = current[~current["_subtotal_mismatch_key"].isin(allowed_keys)].copy()
-
-    allowed_review_cols = [
-        "_subtotal_mismatch_key",
-        *[col for col in SUBTOTAL_MISMATCH_REVIEW_COLUMNS if col in allowlist.columns],
-    ]
-    if len(allowed_review_cols) > 1 and not allowed_current.empty:
-        allowed_current = allowed_current.merge(
-            allowlist[allowed_review_cols].drop_duplicates("_subtotal_mismatch_key"),
-            on="_subtotal_mismatch_key",
-            how="left",
-        )
-
-    allowed_current = allowed_current.drop(columns=["_subtotal_mismatch_key"], errors="ignore")
-    needs_review = needs_review.drop(columns=["_subtotal_mismatch_key"], errors="ignore")
-    return needs_review.reset_index(drop=True), allowed_current.reset_index(drop=True)
+    """Split subtotal mismatches using the manual exception workbook."""
+    return split_allowed_rows(
+        subtotal_mismatches,
+        sheet_name="subtotal_mismatch_allowed",
+        status_column="subtotal_mismatch_review_status",
+        reason_column="subtotal_mismatch_review_reason",
+        workbook_path=exception_workbook_path,
+    )
 
 
 # â”€â”€ migrated legacy conflict checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -770,44 +568,18 @@ def _many_to_many_conflicts(
     return pd.concat(records, ignore_index=True).fillna("")
 
 
-def _allowed_many_to_many_reason(row: pd.Series) -> str:
-    """Return the allowlist reason for a known acceptable many-to-many row."""
-    for allowed in ALLOWED_MANY_TO_MANY_MAPPINGS:
-        reason = allowed.get("many_to_many_review_reason", "")
-        match_items = [
-            (key, value)
-            for key, value in allowed.items()
-            if key != "many_to_many_review_reason"
-        ]
-        if all(_norm(row.get(key, "")) == _norm(value) for key, value in match_items):
-            return reason
-    return ""
-
-
 def _split_allowed_many_to_many(
     many_to_many: pd.DataFrame,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split all many-to-many rows into unresolved review rows and allowlisted rows."""
-    if many_to_many.empty:
-        allowed_columns = [
-            *list(many_to_many.columns),
-            "many_to_many_review_status",
-            "many_to_many_review_reason",
-        ]
-        return many_to_many.copy(), pd.DataFrame(columns=allowed_columns)
-
-    reviewed = many_to_many.copy()
-    reviewed["many_to_many_review_reason"] = reviewed.apply(_allowed_many_to_many_reason, axis=1)
-    reviewed["many_to_many_review_status"] = reviewed["many_to_many_review_reason"].map(
-        lambda reason: "allowed" if reason else "needs_review"
+    """Split all many-to-many rows using the manual exception workbook."""
+    return split_allowed_rows(
+        many_to_many,
+        sheet_name="many_to_many_allowed",
+        status_column="many_to_many_review_status",
+        reason_column="many_to_many_review_reason",
+        workbook_path=exception_workbook_path,
     )
-
-    allowed = reviewed[reviewed["many_to_many_review_status"].eq("allowed")].copy()
-    unresolved = reviewed[reviewed["many_to_many_review_status"].eq("needs_review")].copy()
-    unresolved = unresolved.drop(
-        columns=["many_to_many_review_status", "many_to_many_review_reason"]
-    )
-    return unresolved.reset_index(drop=True), allowed.reset_index(drop=True)
 
 
 def _leap_source_presence_conflicts(
@@ -923,67 +695,18 @@ def _target_covers(active_target: str, implied_target: str) -> bool:
     )
 
 
-def _is_rollup_category_text(value: object) -> bool:
-    """
-    Return True for category labels/codes that represent explicit rollup groups.
-
-    Stage 0 crosswalk checks compare base mapping sheets, so rollup categories can
-    look like conflicts even though they are deliberate comparison boundaries.
-    """
-    text = _norm(value)
-    if not text:
-        return False
-    if "_x_" in text or "_incl_own_use" in text or "(including own use)" in text:
-        return True
-
-    for target in [part.strip() for part in text.split(" | ") if part.strip()]:
-        flow_label, product_label = (target.split(" || ", 1) + [""])[:2]
-        for label in [flow_label, product_label]:
-            code_expression = _leading_code_expression(label)
-            if "," in code_expression or re.search(r"\d(?:\.\d+)?-\d", code_expression):
-                return True
-    return False
-
-
-def _crosswalk_conflict_allowed_reason(row: pd.Series) -> str:
-    """Return an allowlist reason for non-actionable crosswalk conflicts."""
-    fields_to_check = [
-        row.get("ninth_sector", ""),
-        row.get("ninth_fuel", ""),
-        row.get("implied_esto_targets", ""),
-        row.get("active_esto_targets", ""),
-    ]
-    if any(_is_rollup_category_text(value) for value in fields_to_check):
-        return (
-            "Allowed rollup category overlap: crosswalk uses a rolled or "
-            "aggregate comparison category, so exact active ESTO target matching "
-            "is not required at Stage 0."
-        )
-    return ""
-
-
 def _split_allowed_crosswalk_conflicts(
     crosswalk_conflicts: pd.DataFrame,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split crosswalk conflicts into actionable rows and explicitly allowed rows."""
-    allowed_columns = [
-        *list(crosswalk_conflicts.columns),
-        "crosswalk_review_status",
-        "crosswalk_review_reason",
-    ]
-    if crosswalk_conflicts.empty:
-        return crosswalk_conflicts.copy(), pd.DataFrame(columns=allowed_columns)
-
-    reviewed = crosswalk_conflicts.copy()
-    reviewed["crosswalk_review_reason"] = reviewed.apply(_crosswalk_conflict_allowed_reason, axis=1)
-    reviewed["crosswalk_review_status"] = reviewed["crosswalk_review_reason"].map(
-        lambda reason: "allowed" if reason else "needs_review"
+    """Split crosswalk conflicts using the manual exception workbook."""
+    return split_allowed_rows(
+        crosswalk_conflicts,
+        sheet_name="crosswalk_allowed",
+        status_column="crosswalk_review_status",
+        reason_column="crosswalk_review_reason",
+        workbook_path=exception_workbook_path,
     )
-
-    allowed = reviewed[reviewed["crosswalk_review_status"].eq("allowed")].copy()
-    conflicts = reviewed[reviewed["crosswalk_review_status"].eq("needs_review")].copy()
-    conflicts = conflicts.drop(columns=["crosswalk_review_status", "crosswalk_review_reason"])
-    return conflicts.reset_index(drop=True), allowed[allowed_columns].reset_index(drop=True)
 
 
 def _classify_crosswalk_conflict(row: pd.Series) -> str:
@@ -1165,15 +888,15 @@ def _write_maintenance_summary(
         ("maintenance", "cardinality_leap_esto.csv", "info"),
         ("maintenance", "cardinality_leap_ninth.csv", "info"),
         ("maintenance", "cardinality_ninth_esto.csv", "info"),
-        ("maintenance", "many_to_many_allowed.csv", "info"),
+        ("maintenance", "many_to_many_allowed_matched.csv", "info"),
         ("maintenance", "many_to_many_conflicts.csv", "review"),
         ("maintenance", "leap_source_presence_conflicts.csv", "review"),
-        ("maintenance", "crosswalk_target_conflicts_allowed.csv", "info"),
+        ("maintenance", "crosswalk_target_conflicts_allowed_matched.csv", "info"),
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
         ("maintenance", "unmapped_esto_pairs.csv", "review"),
         ("maintenance", "unmapped_ninth_pairs.csv", "review"),
         ("maintenance", "subtotal_mismatches.csv", "review"),
-        ("maintenance", "subtotal_mismatches_allowed.csv", "info"),
+        ("maintenance", "subtotal_mismatches_allowed_matched.csv", "info"),
         ("tree_structure", "esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_non_esto_parent_child_edges.csv", "review"),
@@ -1203,6 +926,18 @@ def _write_maintenance_summary(
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(summary_path, index=False)
     return summary
+
+
+def _remove_stale_generated_exception_outputs() -> None:
+    """Remove old generated allowed-output filenames that predate matched suffixes."""
+    for file_name in [
+        "many_to_many_allowed.csv",
+        "crosswalk_target_conflicts_allowed.csv",
+        "subtotal_mismatches_allowed.csv",
+    ]:
+        path = QA_DIR / file_name
+        if path.exists():
+            path.unlink()
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -1356,15 +1091,15 @@ def run() -> None:
     crosswalk_conflicts, allowed_crosswalk_conflicts = _split_allowed_crosswalk_conflicts(
         all_crosswalk_conflicts
     )
-    allowed_many_to_many.to_csv(QA_DIR / "many_to_many_allowed.csv", index=False)
+    allowed_many_to_many.to_csv(QA_DIR / "many_to_many_allowed_matched.csv", index=False)
     many_to_many.to_csv(QA_DIR / "many_to_many_conflicts.csv", index=False)
     leap_source_presence.to_csv(QA_DIR / "leap_source_presence_conflicts.csv", index=False)
-    allowed_crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts_allowed.csv", index=False)
+    allowed_crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts_allowed_matched.csv", index=False)
     crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts.csv", index=False)
-    print(f"  many_to_many_allowed:              {len(allowed_many_to_many):,}")
+    print(f"  many_to_many_allowed_matched:      {len(allowed_many_to_many):,}")
     print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
     print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
-    print(f"  crosswalk_target_conflicts_allowed:{len(allowed_crosswalk_conflicts):,}")
+    print(f"  crosswalk_target_conflicts_allowed_matched:{len(allowed_crosswalk_conflicts):,}")
     print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")
     if not crosswalk_conflicts.empty:
         crosswalk_class_counts = crosswalk_conflicts["conflict_classification"].value_counts().to_dict()
@@ -1404,8 +1139,10 @@ def run() -> None:
     ], ignore_index=True)
     subtotal_mismatches, allowed_subtotal_mismatches = _split_allowed_subtotal_mismatches(all_mm)
     subtotal_mismatches.to_csv(QA_DIR / "subtotal_mismatches.csv", index=False)
+    allowed_subtotal_mismatches.to_csv(QA_DIR / "subtotal_mismatches_allowed_matched.csv", index=False)
+    _remove_stale_generated_exception_outputs()
     print(
-        "  subtotal_mismatches_allowed_current: "
+        "  subtotal_mismatches_allowed_matched: "
         f"{len(allowed_subtotal_mismatches):,}  (matched manual allowlist)"
     )
     print(
