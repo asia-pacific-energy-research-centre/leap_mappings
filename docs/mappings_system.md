@@ -519,7 +519,7 @@ Each source dataset flags subtotals differently:
 
 - **ESTO** (`data/00APEC_2025_low_with_subtotals.csv`): a single `is_subtotal` column.
 - **9th Outlook** (`data/merged_file_energy_ALL_20251106.csv`): two columns — `subtotal_layout` for historical years (pre-2022) and `subtotal_results` for projection years. The maintenance workflow takes the logical OR of both to determine whether a 9th row is a subtotal.
-- **LEAP**: subtotal status is derived from the branch structure — any branch that has children is a subtotal.
+- **LEAP**: subtotal status is derived from the branch structure — any branch that has children is a subtotal. The maintenance workflow reads `full model export.xlsx` first, normalizes LEAP `Branch Path` values to the mapping-sheet path style, and uses that hierarchy where the mapped path exists in the export. If the export does not contain a mapped path, the workflow falls back to the mapping-sheet path hierarchy for that path so incomplete exports do not erase known demand-side parent/child relationships.
 
 The mapping sheets (`leap_combined_esto`, `leap_combined_ninth`, `ninth_pairs_to_esto_pairs`) each include computed columns recording subtotal status:
 

@@ -1,6 +1,10 @@
 import pandas as pd
 
-from codebase.outlook_mapping_maintenance_workflow import _split_allowed_many_to_many
+from codebase.outlook_mapping_maintenance_workflow import (
+    _compute_leap_subtotals,
+    _mapping_style_sector_path_from_export_segments,
+    _split_allowed_many_to_many,
+)
 
 
 def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts() -> None:
@@ -153,3 +157,49 @@ def test_split_allowed_many_to_many_keeps_placeholder_rows_out_of_conflicts() ->
     assert len(conflicts) == 1
     assert conflicts.loc[0, "sheet"] == "leap_combined_esto"
     assert "many_to_many_review_status" not in conflicts.columns
+
+
+def test_mapping_style_sector_path_from_export_segments_matches_workbook_paths() -> None:
+    fuel_names = {"Electricity", "Natural gas", "Other bituminous coal"}
+
+    assert (
+        _mapping_style_sector_path_from_export_segments(
+            ["Transformation", "Oil Refining", "Processes", "Oil Refining", "Feedstock Fuels", "Natural gas"],
+            fuel_names,
+        )
+        == "Oil Refining/Oil Refining"
+    )
+    assert (
+        _mapping_style_sector_path_from_export_segments(
+            ["Transformation", "Electricity Generation", "Output Fuels", "Electricity"],
+            fuel_names,
+        )
+        == "Electricity Generation"
+    )
+    assert (
+        _mapping_style_sector_path_from_export_segments(
+            ["Demand", "Industry", "Manufacturing", "Iron and steel", "Other bituminous coal"],
+            fuel_names,
+        )
+        == "Industry/Manufacturing/Iron and steel"
+    )
+    assert _mapping_style_sector_path_from_export_segments(["Key", "Macro", "GDP"], fuel_names) == ""
+
+
+def test_full_export_paths_make_power_parent_branches_subtotals() -> None:
+    fuel_names = {"Electricity", "Natural gas", "Wind"}
+    export_branch_segments = [
+        ["Transformation", "Electricity Generation"],
+        ["Transformation", "Electricity Generation", "Output Fuels", "Electricity"],
+        ["Transformation", "Electricity Generation", "Processes", "Gas"],
+        ["Transformation", "Electricity Generation", "Processes", "Gas", "Feedstock Fuels", "Natural gas"],
+        ["Transformation", "Electricity Generation", "Processes", "Wind"],
+        ["Transformation", "Electricity Generation", "Processes", "Wind", "Feedstock Fuels", "Wind"],
+    ]
+    export_paths = {
+        _mapping_style_sector_path_from_export_segments(segments, fuel_names)
+        for segments in export_branch_segments
+    }
+    export_paths.discard("")
+
+    assert "Electricity Generation" in _compute_leap_subtotals(export_paths)

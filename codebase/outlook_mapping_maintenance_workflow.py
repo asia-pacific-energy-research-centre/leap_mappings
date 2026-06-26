@@ -51,6 +51,11 @@ QA_DIR = REPO_ROOT / "results" / "maintenance"
 
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+FULL_MODEL_EXPORT_PATHS = [
+    REPO_ROOT / "data" / "full model export.xlsx",
+    REPO_ROOT.parent / "leap_initialisation" / "data" / "full model export.xlsx",
+]
+FULL_MODEL_EXPORT_SHEET = "Export"
 
 POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON = (
     "Allowed placeholder overlap: 9th power-sector biomass and other-source "
@@ -311,6 +316,98 @@ def _compute_leap_subtotals(paths: set[str]) -> set[str]:
                 subtotals.add(path)
                 break
     return subtotals
+
+
+def _find_full_model_export_path(
+    candidate_paths: list[Path] | None = None,
+) -> Path | None:
+    """Return the first available full model export workbook path."""
+    for path in candidate_paths or FULL_MODEL_EXPORT_PATHS:
+        if path.exists():
+            return path
+    return None
+
+
+def _normalize_export_branch_path(branch_path: object) -> list[str]:
+    """Normalize a LEAP export Branch Path into clean path segments."""
+    text = _norm(branch_path).replace("\\", "/")
+    return [segment.strip() for segment in text.split("/") if segment.strip()]
+
+
+def _mapping_style_sector_path_from_export_segments(
+    segments: list[str],
+    fuel_names: set[str],
+) -> str:
+    """
+    Convert full-model Branch Path segments to mapping-style LEAP sector paths.
+
+    Mapping sheets omit the LEAP root branch (Demand/Transformation) and omit
+    technical transformation grouping nodes such as Processes, Output Fuels,
+    Feedstock Fuels, and Auxiliary Fuels.
+    """
+    if not segments:
+        return ""
+
+    root = segments[0]
+    if root not in {"Demand", "Transformation"}:
+        return ""
+
+    clean_segments = segments[1:]
+    if not clean_segments:
+        return ""
+
+    technical_nodes = {"Processes", "Output Fuels", "Feedstock Fuels", "Auxiliary Fuels"}
+    clean_segments = [segment for segment in clean_segments if segment not in technical_nodes]
+    if clean_segments and clean_segments[-1] in fuel_names:
+        clean_segments = clean_segments[:-1]
+
+    return "/".join(clean_segments)
+
+
+def _load_leap_paths_from_full_model_export(
+    export_path: Path,
+    fuel_names: set[str],
+    sheet_name: str = FULL_MODEL_EXPORT_SHEET,
+) -> set[str]:
+    """Load mapping-style LEAP sector paths from the full model export workbook."""
+    export_df = pd.read_excel(
+        export_path,
+        sheet_name=sheet_name,
+        header=2,
+        usecols=["Branch Path"],
+        dtype=object,
+    )
+    paths: set[str] = set()
+    for raw_path in export_df["Branch Path"].dropna().unique():
+        segments = _normalize_export_branch_path(raw_path)
+        path = _mapping_style_sector_path_from_export_segments(segments, fuel_names)
+        if path:
+            paths.add(path)
+    return paths
+
+
+def _compute_leap_subtotals_from_full_model_export(
+    active_mapping_paths: set[str],
+    fuel_names: set[str],
+    export_path: Path | None = None,
+) -> tuple[set[str], set[str], Path | None]:
+    """
+    Return subtotal paths from the full model export, limited to mapped paths.
+
+    Returns (subtotal_paths, export_paths, used_export_path). If no export is
+    available, all three values are suitable for falling back to mapping-only
+    inference.
+    """
+    used_export_path = export_path or _find_full_model_export_path()
+    if used_export_path is None:
+        return set(), set(), None
+
+    export_paths = _load_leap_paths_from_full_model_export(
+        export_path=used_export_path,
+        fuel_names=fuel_names,
+    )
+    export_subtotal_paths = _compute_leap_subtotals(export_paths)
+    return export_subtotal_paths & active_mapping_paths, export_paths, used_export_path
 
 
 # ── workbook helpers ──────────────────────────────────────────────────────────
@@ -1001,7 +1098,35 @@ def run() -> None:
         .loc[lambda s: s.ne("")]
     )
     all_leap_paths = active_esto_paths | active_ninth_paths
-    subtotal_paths = _compute_leap_subtotals(all_leap_paths)
+    fuel_names = set(
+        pd.concat([
+            _active_rows(df_lcesto)["raw_leap_fuel_name"],
+            _active_rows(df_lcninth)["raw_leap_fuel_name"],
+        ], ignore_index=True)
+        .map(_norm)
+        .loc[lambda s: s.ne("")]
+    )
+    subtotal_paths, full_export_paths, full_export_path = _compute_leap_subtotals_from_full_model_export(
+        active_mapping_paths=all_leap_paths,
+        fuel_names=fuel_names,
+    )
+    mapping_inferred_subtotal_paths = _compute_leap_subtotals(all_leap_paths)
+    if full_export_path is None:
+        subtotal_paths = mapping_inferred_subtotal_paths
+        print("  Full model export not found; using active mapping paths as fallback.")
+    else:
+        missing_from_export = all_leap_paths - full_export_paths
+        fallback_subtotal_paths = mapping_inferred_subtotal_paths & missing_from_export
+        subtotal_paths = subtotal_paths | fallback_subtotal_paths
+        print(f"  Full model export: {full_export_path}")
+        print(f"  Export-derived LEAP paths: {len(full_export_paths):,}")
+        if missing_from_export:
+            print(
+                "  WARNING: "
+                f"{len(missing_from_export):,} active mapping path(s) were not found in the "
+                "full model export-derived path set; using mapping-sheet fallback for those paths."
+            )
+            print(f"  Fallback subtotal paths from mapping sheets: {len(fallback_subtotal_paths):,}")
     print(f"  Active LEAP paths: {len(all_leap_paths):,}  Subtotal paths: {len(subtotal_paths):,}")
 
     # ── leap_combined_esto ───────────────────────────────────────────────────
