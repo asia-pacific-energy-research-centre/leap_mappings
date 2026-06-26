@@ -52,6 +52,53 @@ QA_DIR = REPO_ROOT / "results" / "maintenance"
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 
+ALLOWED_MANY_TO_MANY_MAPPINGS = [
+    {
+        "sheet": "leap_combined_ninth",
+        "leap_sector_name_full_path": "Electricity Generation",
+        "raw_leap_fuel_name": "Solar nonspecified",
+        "ninth_sector": "09_01_electricity_plants",
+        "ninth_fuel": "12_solar_unallocated",
+        "many_to_many_review_reason": (
+            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
+            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
+        ),
+    },
+    {
+        "sheet": "leap_combined_ninth",
+        "leap_sector_name_full_path": "Electricity Generation",
+        "raw_leap_fuel_name": "Solar nonspecified",
+        "ninth_sector": "09_01_electricity_plants",
+        "ninth_fuel": "12_x_other_solar",
+        "many_to_many_review_reason": (
+            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
+            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
+        ),
+    },
+    {
+        "sheet": "leap_combined_ninth",
+        "leap_sector_name_full_path": "Electricity interim/Electricity interim",
+        "raw_leap_fuel_name": "Solar nonspecified",
+        "ninth_sector": "09_01_electricity_plants",
+        "ninth_fuel": "12_solar_unallocated",
+        "many_to_many_review_reason": (
+            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
+            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
+        ),
+    },
+    {
+        "sheet": "leap_combined_ninth",
+        "leap_sector_name_full_path": "Electricity interim/Electricity interim",
+        "raw_leap_fuel_name": "Solar nonspecified",
+        "ninth_sector": "09_01_electricity_plants",
+        "ninth_fuel": "12_x_other_solar",
+        "many_to_many_review_reason": (
+            "Allowed placeholder overlap: LEAP has both a completed electricity branch "
+            "and interim fallback branch while 9th solar uses unallocated/other solar categories."
+        ),
+    },
+]
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _norm(value: object) -> str:
@@ -455,6 +502,46 @@ def _many_to_many_conflicts(
     return pd.concat(records, ignore_index=True).fillna("")
 
 
+def _allowed_many_to_many_reason(row: pd.Series) -> str:
+    """Return the allowlist reason for a known acceptable many-to-many row."""
+    for allowed in ALLOWED_MANY_TO_MANY_MAPPINGS:
+        reason = allowed.get("many_to_many_review_reason", "")
+        match_items = [
+            (key, value)
+            for key, value in allowed.items()
+            if key != "many_to_many_review_reason"
+        ]
+        if all(_norm(row.get(key, "")) == _norm(value) for key, value in match_items):
+            return reason
+    return ""
+
+
+def _split_allowed_many_to_many(
+    many_to_many: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split all many-to-many rows into unresolved review rows and allowlisted rows."""
+    if many_to_many.empty:
+        allowed_columns = [
+            *list(many_to_many.columns),
+            "many_to_many_review_status",
+            "many_to_many_review_reason",
+        ]
+        return many_to_many.copy(), pd.DataFrame(columns=allowed_columns)
+
+    reviewed = many_to_many.copy()
+    reviewed["many_to_many_review_reason"] = reviewed.apply(_allowed_many_to_many_reason, axis=1)
+    reviewed["many_to_many_review_status"] = reviewed["many_to_many_review_reason"].map(
+        lambda reason: "allowed" if reason else "needs_review"
+    )
+
+    allowed = reviewed[reviewed["many_to_many_review_status"].eq("allowed")].copy()
+    unresolved = reviewed[reviewed["many_to_many_review_status"].eq("needs_review")].copy()
+    unresolved = unresolved.drop(
+        columns=["many_to_many_review_status", "many_to_many_review_reason"]
+    )
+    return unresolved.reset_index(drop=True), allowed.reset_index(drop=True)
+
+
 def _leap_source_presence_conflicts(
     leap_esto_df: pd.DataFrame,
     leap_ninth_df: pd.DataFrame,
@@ -747,6 +834,7 @@ def _write_maintenance_summary(
         ("maintenance", "cardinality_leap_esto.csv", "info"),
         ("maintenance", "cardinality_leap_ninth.csv", "info"),
         ("maintenance", "cardinality_ninth_esto.csv", "info"),
+        ("maintenance", "many_to_many_allowed.csv", "info"),
         ("maintenance", "many_to_many_conflicts.csv", "review"),
         ("maintenance", "leap_source_presence_conflicts.csv", "review"),
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
@@ -896,16 +984,19 @@ def run() -> None:
           f"({(card_nesto['cardinality'] == 'one_to_one').sum():,} one-to-one)")
 
     # Migrated legacy conflict checks
-    many_to_many = _many_to_many_conflicts([
+    all_many_to_many = _many_to_many_conflicts([
         ("leap_combined_esto", card_lcesto),
         ("leap_combined_ninth", card_lcninth),
         ("ninth_pairs_to_esto_pairs", card_nesto),
     ])
+    many_to_many, allowed_many_to_many = _split_allowed_many_to_many(all_many_to_many)
     leap_source_presence = _leap_source_presence_conflicts(df_lcesto, df_lcninth)
     crosswalk_conflicts = _crosswalk_target_conflicts(df_lcesto, df_lcninth, df_nesto)
+    allowed_many_to_many.to_csv(QA_DIR / "many_to_many_allowed.csv", index=False)
     many_to_many.to_csv(QA_DIR / "many_to_many_conflicts.csv", index=False)
     leap_source_presence.to_csv(QA_DIR / "leap_source_presence_conflicts.csv", index=False)
     crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts.csv", index=False)
+    print(f"  many_to_many_allowed:              {len(allowed_many_to_many):,}")
     print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
     print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
     print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")

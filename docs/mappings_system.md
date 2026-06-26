@@ -169,7 +169,7 @@ The processing order matters:
 
 The current maintenance workflow writes cardinality to QA CSVs in `results/maintenance/`; it does not write cardinality columns back into the workbook. Conceptually, `pair_mapping_cardinality_raw` means cardinality before rollup and `pair_mapping_cardinality_after_rollup` means cardinality after applying relevant rollup rules. If a future workflow writes a single visible `pair_mapping_cardinality` column, it should represent the effective after-rollup cardinality.
 
-**Many-to-many before rollup is a signal. Many-to-many after rollup is a problem.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. A many-to-many relationship that remains after rollup usually needs mapping or rollup review.
+**Many-to-many before rollup is a signal. Many-to-many after rollup usually needs review.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. Some many-to-many rows are deliberate placeholder overlaps, such as completed LEAP power branches coexisting with interim fallback branches while the 9th Outlook has unallocated fuel categories. These known cases are allowlisted in `codebase/outlook_mapping_maintenance_workflow.py`, written to `results/maintenance/many_to_many_allowed.csv`, and removed from `results/maintenance/many_to_many_conflicts.csv` so the conflict file stays actionable.
 
 Subtotal columns are updated by the mapping maintenance workflow, not maintained manually. Cardinality is currently reviewed through generated QA outputs.
 
@@ -945,7 +945,8 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 | `cardinality_leap_esto.csv` | (LEAP source, ESTO target) pair cardinality |
 | `cardinality_leap_ninth.csv` | (LEAP source, 9th target) pair cardinality |
 | `cardinality_ninth_esto.csv` | (9th source, ESTO target) pair cardinality |
-| `many_to_many_conflicts.csv` | Active mapping pairs whose cardinality remains many-to-many before downstream rollup/common-structure handling |
+| `many_to_many_allowed.csv` | Known acceptable many-to-many rows, usually placeholder overlaps, with review reasons |
+| `many_to_many_conflicts.csv` | Active many-to-many mapping pairs that are not allowlisted and still need review |
 | `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
 | `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
