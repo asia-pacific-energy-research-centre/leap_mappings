@@ -45,6 +45,11 @@ COMPARISON_SCOPE_SYSTEMS = {
     "leap_vs_esto_vs_ninth": {"LEAP", "NINTH", "ESTO"},
     "esto_only": {"ESTO"},
 }
+MISSING_COMMON_MAP_IGNORED_FLOW_PREFIXES = ("18.", "19.")
+MISSING_COMMON_MAP_IGNORED_FLOWS = {
+    "06 Stock changes",
+    "11 Statistical discrepancy",
+}
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
@@ -69,6 +74,20 @@ def normalise_label(value: object) -> str:
     if pd.isna(value):
         return ""
     return " ".join(str(value).strip().split())
+
+
+def should_ignore_missing_common_map_flow(esto_flow: object) -> bool:
+    """Return True for missing-map diagnostic flows that are intentionally ignored."""
+    flow = normalise_label(esto_flow)
+    return flow in MISSING_COMMON_MAP_IGNORED_FLOWS or flow.startswith(MISSING_COMMON_MAP_IGNORED_FLOW_PREFIXES)
+
+
+def filter_missing_common_map_diagnostics(missing_map_df: pd.DataFrame) -> pd.DataFrame:
+    """Remove intentionally ignored ESTO flows from the missing common-map diagnostic."""
+    if missing_map_df.empty or "esto_flow" not in missing_map_df.columns:
+        return missing_map_df.copy()
+    ignored_mask = missing_map_df["esto_flow"].map(should_ignore_missing_common_map_flow)
+    return missing_map_df[~ignored_mask].copy()
 
 
 def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str, default_economy: str) -> pd.DataFrame:
@@ -713,6 +732,7 @@ def run_apply_common_esto_structure(
     )
     save_component_pruning_diagnostics(pruned_components_df, output_dir)
     unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     subtotal_kept_df, subtotal_filtered_df = split_subtotal_rows(unfiltered_comparison_df, exclude_subtotal_rows=exclude_subtotal_rows)
     broad_diagnostics = build_broad_common_row_diagnostics(
         common_rows_df=adjusted_common_rows_df,
