@@ -535,7 +535,7 @@ Because all three datasets operate at different levels of detail, subtotal↔non
 - **Non-subtotal↔non-subtotal**: fine — direct row-level comparison.
 - **Subtotal↔non-subtotal**: will occur frequently and is generally acceptable given the different levels of detail across datasets.
 
-A mismatch is recorded in `results/maintenance/subtotal_mismatches_allowed.csv` when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. For now, these rows are treated as acceptable cross-dataset aggregation differences and are written with an allowed review status rather than as blocking review items.
+A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. Reviewed acceptable cases live in the manual exception file `results/maintenance/subtotal_mismatches_allowed.csv`. The maintenance workflow reads that file but does not update it automatically. Current mismatches that are not present in the manual allowlist are written to `results/maintenance/subtotal_mismatches.csv` for review.
 
 ---
 
@@ -951,7 +951,8 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 | `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
 | `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
 | `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
-| `subtotal_mismatches_allowed.csv` | Leaf source → aggregate target subtotal mismatch rows currently treated as acceptable cross-dataset aggregation differences |
+| `subtotal_mismatches_allowed.csv` | Manual exception set for reviewed leaf source → aggregate target subtotal mismatch rows |
+| `subtotal_mismatches.csv` | Current leaf source → aggregate target subtotal mismatch rows not present in `subtotal_mismatches_allowed.csv` |
 
 ### Notes on interpreting outputs
 

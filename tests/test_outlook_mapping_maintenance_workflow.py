@@ -3,7 +3,7 @@ import pandas as pd
 from codebase.outlook_mapping_maintenance_workflow import (
     _compute_leap_subtotals,
     _mapping_style_sector_path_from_export_segments,
-    _mark_subtotal_mismatches_allowed,
+    _split_allowed_subtotal_mismatches,
     _split_allowed_crosswalk_conflicts,
     _split_allowed_many_to_many,
 )
@@ -209,7 +209,7 @@ def test_split_allowed_crosswalk_conflicts_ignores_rollup_categories() -> None:
     assert "crosswalk_review_status" not in conflicts.columns
 
 
-def test_mark_subtotal_mismatches_allowed_adds_review_metadata() -> None:
+def test_split_allowed_subtotal_mismatches_uses_manual_allowlist(tmp_path) -> None:
     subtotal_mismatches = pd.DataFrame(
         [
             {
@@ -221,15 +221,35 @@ def test_mark_subtotal_mismatches_allowed_adds_review_metadata() -> None:
                 "esto_pair_is_subtotal": "True",
                 "mismatch_reason": "leaf_source_maps_to_aggregate_target_and_more_specific_target_exists",
                 "sheet": "leap_combined_esto",
-            }
+            },
+            {
+                "leap_sector_name_full_path": "Transfers",
+                "raw_leap_fuel_name": "Petroleum coke",
+                "esto_flow": "08 Transfers",
+                "esto_product": "07.16 Petroleum coke",
+                "leap_is_subtotal": "False",
+                "esto_pair_is_subtotal": "True",
+                "mismatch_reason": "leaf_source_maps_to_aggregate_target_and_more_specific_target_exists",
+                "sheet": "leap_combined_esto",
+            },
         ]
     )
+    allowlist_path = tmp_path / "subtotal_mismatches_allowed.csv"
+    allowed_row = subtotal_mismatches.iloc[[0]].copy()
+    allowed_row["subtotal_mismatch_review_status"] = "allowed"
+    allowed_row["subtotal_mismatch_review_reason"] = "Reviewed manually"
+    allowed_row.to_csv(allowlist_path, index=False)
 
-    allowed = _mark_subtotal_mismatches_allowed(subtotal_mismatches)
+    needs_review, allowed = _split_allowed_subtotal_mismatches(
+        subtotal_mismatches,
+        allowlist_path=allowlist_path,
+    )
 
     assert len(allowed) == 1
     assert allowed.loc[0, "subtotal_mismatch_review_status"] == "allowed"
-    assert "acceptable" in allowed.loc[0, "subtotal_mismatch_review_reason"]
+    assert allowed.loc[0, "subtotal_mismatch_review_reason"] == "Reviewed manually"
+    assert len(needs_review) == 1
+    assert needs_review.loc[0, "leap_sector_name_full_path"] == "Transfers"
 
 
 def test_mapping_style_sector_path_from_export_segments_matches_workbook_paths() -> None:

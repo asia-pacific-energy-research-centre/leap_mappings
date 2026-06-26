@@ -22,9 +22,8 @@ What it does
                                       no active mapping row
      unmapped_ninth_pairs.csv       — 9th (sector, fuel) pairs in data with
                                       no active mapping row
-     subtotal_mismatches_allowed.csv — M6 rule: leaf source → aggregate target
-                                       rows currently treated as acceptable
-                                       cross-dataset aggregation differences
+     subtotal_mismatches.csv        — M6 rule: leaf source → aggregate target
+                                      rows not present in the manual allowlist
 
 Usage:
     python codebase/outlook_mapping_maintenance_workflow.py
@@ -49,6 +48,7 @@ if str(REPO_ROOT) not in sys.path:
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ARCHIVE_DIR = REPO_ROOT / "config" / "archive"
 QA_DIR = REPO_ROOT / "results" / "maintenance"
+SUBTOTAL_MISMATCH_ALLOWLIST_PATH = QA_DIR / "subtotal_mismatches_allowed.csv"
 
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
@@ -684,20 +684,72 @@ def _subtotal_mismatches(
     ]]
 
 
-def _mark_subtotal_mismatches_allowed(
-    subtotal_mismatches: pd.DataFrame,
-) -> pd.DataFrame:
-    """Mark current subtotal mismatches as allowed review cases."""
-    if subtotal_mismatches.empty:
-        return subtotal_mismatches.copy()
+SUBTOTAL_MISMATCH_REVIEW_COLUMNS = [
+    "subtotal_mismatch_review_status",
+    "subtotal_mismatch_review_reason",
+]
 
-    allowed = subtotal_mismatches.copy()
-    allowed["subtotal_mismatch_review_status"] = "allowed"
-    allowed["subtotal_mismatch_review_reason"] = (
-        "Allowed current subtotal mismatch: cross-dataset mapping levels differ "
-        "and current review assumes these aggregate/leaf differences are acceptable."
-    )
-    return allowed
+
+def _row_key(frame: pd.DataFrame, key_columns: list[str]) -> pd.Series:
+    """Build a stable normalized row key for exception-file matching."""
+    if frame.empty:
+        return pd.Series(dtype=str)
+
+    parts = []
+    for col in key_columns:
+        if col in frame.columns:
+            values = frame[col]
+        else:
+            values = pd.Series("", index=frame.index)
+        parts.append(values.fillna("").astype(str).map(_norm))
+    return pd.concat(parts, axis=1).agg("\x1f".join, axis=1)
+
+
+def _split_allowed_subtotal_mismatches(
+    subtotal_mismatches: pd.DataFrame,
+    allowlist_path: Path = SUBTOTAL_MISMATCH_ALLOWLIST_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split current subtotal mismatches using the manual allowlist CSV.
+
+    The allowlist is semi-permanent human-reviewed data. This function reads it
+    but never creates, updates, or deletes it.
+    """
+    if subtotal_mismatches.empty:
+        return subtotal_mismatches.copy(), subtotal_mismatches.copy()
+
+    metadata_cols = set(SUBTOTAL_MISMATCH_REVIEW_COLUMNS)
+    key_columns = [col for col in subtotal_mismatches.columns if col not in metadata_cols]
+
+    if not allowlist_path.exists():
+        return subtotal_mismatches.copy(), pd.DataFrame(columns=[
+            *list(subtotal_mismatches.columns),
+            *SUBTOTAL_MISMATCH_REVIEW_COLUMNS,
+        ])
+
+    allowlist = pd.read_csv(allowlist_path, dtype=str).fillna("")
+    current = subtotal_mismatches.copy()
+    current["_subtotal_mismatch_key"] = _row_key(current, key_columns)
+    allowlist["_subtotal_mismatch_key"] = _row_key(allowlist, key_columns)
+    allowed_keys = set(allowlist["_subtotal_mismatch_key"])
+
+    allowed_current = current[current["_subtotal_mismatch_key"].isin(allowed_keys)].copy()
+    needs_review = current[~current["_subtotal_mismatch_key"].isin(allowed_keys)].copy()
+
+    allowed_review_cols = [
+        "_subtotal_mismatch_key",
+        *[col for col in SUBTOTAL_MISMATCH_REVIEW_COLUMNS if col in allowlist.columns],
+    ]
+    if len(allowed_review_cols) > 1 and not allowed_current.empty:
+        allowed_current = allowed_current.merge(
+            allowlist[allowed_review_cols].drop_duplicates("_subtotal_mismatch_key"),
+            on="_subtotal_mismatch_key",
+            how="left",
+        )
+
+    allowed_current = allowed_current.drop(columns=["_subtotal_mismatch_key"], errors="ignore")
+    needs_review = needs_review.drop(columns=["_subtotal_mismatch_key"], errors="ignore")
+    return needs_review.reset_index(drop=True), allowed_current.reset_index(drop=True)
 
 
 # â”€â”€ migrated legacy conflict checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1120,6 +1172,7 @@ def _write_maintenance_summary(
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
         ("maintenance", "unmapped_esto_pairs.csv", "review"),
         ("maintenance", "unmapped_ninth_pairs.csv", "review"),
+        ("maintenance", "subtotal_mismatches.csv", "review"),
         ("maintenance", "subtotal_mismatches_allowed.csv", "info"),
         ("tree_structure", "esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_validation.csv", "validation"),
@@ -1349,14 +1402,15 @@ def run() -> None:
         mm_ninth.assign(sheet="leap_combined_ninth"),
         mm_nesto.assign(sheet="ninth_pairs_to_esto_pairs"),
     ], ignore_index=True)
-    allowed_subtotal_mismatches = _mark_subtotal_mismatches_allowed(all_mm)
-    allowed_subtotal_mismatches.to_csv(QA_DIR / "subtotal_mismatches_allowed.csv", index=False)
-    stale_subtotal_review_path = QA_DIR / "subtotal_mismatches.csv"
-    if stale_subtotal_review_path.exists():
-        stale_subtotal_review_path.unlink()
+    subtotal_mismatches, allowed_subtotal_mismatches = _split_allowed_subtotal_mismatches(all_mm)
+    subtotal_mismatches.to_csv(QA_DIR / "subtotal_mismatches.csv", index=False)
     print(
-        "  subtotal_mismatches_allowed: "
-        f"{len(allowed_subtotal_mismatches):,}  (current leaf source -> aggregate target cases)"
+        "  subtotal_mismatches_allowed_current: "
+        f"{len(allowed_subtotal_mismatches):,}  (matched manual allowlist)"
+    )
+    print(
+        "  subtotal_mismatches:  "
+        f"{len(subtotal_mismatches):,}  (not in manual allowlist)"
     )
 
     print(f"\nQA outputs written to: {QA_DIR}")
