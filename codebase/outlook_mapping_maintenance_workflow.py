@@ -52,6 +52,12 @@ QA_DIR = REPO_ROOT / "results" / "maintenance"
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 
+POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON = (
+    "Allowed placeholder overlap: 9th power-sector biomass and other-source "
+    "placeholder fuels intentionally overlap ESTO electricity/CHP/heat and MAP "
+    "plant categories before downstream common-structure rollup."
+)
+
 ALLOWED_MANY_TO_MANY_MAPPINGS = [
     {
         "sheet": "leap_combined_ninth",
@@ -96,6 +102,102 @@ ALLOWED_MANY_TO_MANY_MAPPINGS = [
             "Allowed placeholder overlap: LEAP has both a completed electricity branch "
             "and interim fallback branch while 9th solar uses unallocated/other solar categories."
         ),
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.01 Electricity plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_01_electricity_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.02 CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_02_chp_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.02.02 CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_02_chp_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.02 CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_02_chp_plants",
+        "9th_fuel": "15_solid_biomass_unallocated",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.02.02 CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_02_chp_plants",
+        "9th_fuel": "15_solid_biomass_unallocated",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.02 CHP plants",
+        "esto_product": "16.09 Other sources",
+        "9th_sector": "09_02_chp_plants",
+        "9th_fuel": "16_others_unallocated",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.03 Heat plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "09_x_heat_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "09.01.03 Heat plants",
+        "esto_product": "16.09 Other sources",
+        "9th_sector": "09_x_heat_plants",
+        "9th_fuel": "16_09_other_sources",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "18.01 MAP electricity plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "18_01_electricity_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "18.02 MAP CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "18_01_electricity_plants",
+        "9th_fuel": "15_05_other_biomass",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "18.01 MAP electricity plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "18_01_electricity_plants",
+        "9th_fuel": "15_solid_biomass_unallocated",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
+    },
+    {
+        "sheet": "ninth_pairs_to_esto_pairs",
+        "esto_flow": "18.02 MAP CHP plants",
+        "esto_product": "15.05 Other biomass",
+        "9th_sector": "18_01_electricity_plants",
+        "9th_fuel": "15_solid_biomass_unallocated",
+        "many_to_many_review_reason": POWER_BIOMASS_PLACEHOLDER_MANY_TO_MANY_REASON,
     },
 ]
 
