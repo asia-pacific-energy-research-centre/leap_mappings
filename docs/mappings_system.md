@@ -992,7 +992,11 @@ Stage 2 reads the expanded, rollup-augmented relationship rows from Stage 1 and 
 | --- | --- |
 | `qa_common_esto_rollup_explanations.csv` | Which source aggregates drove each graph edge |
 | `qa_common_esto_source_aggregates_split.csv` | Source aggregates that were split rather than rolled — high-severity if non-empty |
-| `qa_common_esto_unresolved_partial_coverage.csv` | Common rows where not all comparison systems have coverage |
+| `qa_common_esto_structural_partial_coverage.csv` | Full Stage 2 structural candidates where a comparison system covers only part of a Common ESTO row |
+| `qa_common_esto_unresolved_partial_coverage.csv` | Stage 3 actionable subset; missing pairs have non-zero ESTO base-year, 9th projection, or LEAP balance evidence |
+| `qa_common_esto_partial_coverage_components_without_relevance.csv` | Structurally missing components without qualifying current-data evidence |
+| `qa_common_esto_existing_components_without_relevance.csv` | Existing components not required by current comparison data; informational only |
+| `qa_nonzero_unmapped_leap_branches.csv` | Non-zero LEAP branches without direct ESTO mappings and any auditable indirect ESTO pair |
 | `qa_common_esto_flow_axis_partitions.csv` | How ESTO flow codes were grouped into common flow axes |
 | `qa_common_esto_product_axis_partitions.csv` | How ESTO product codes were grouped into common product axes |
 

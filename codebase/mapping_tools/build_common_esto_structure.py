@@ -1006,6 +1006,7 @@ def build_common_esto_for_scope(
             "qa_common_esto_source_aggregates_split": pd.DataFrame(),
             "qa_common_esto_rollup_explanations": pd.DataFrame(),
             "qa_common_esto_unresolved_partial_coverage": pd.DataFrame(),
+            "qa_common_esto_structural_partial_coverage": pd.DataFrame(),
         }
         return common_rows_df, map_df, qa_outputs
 
@@ -1051,6 +1052,7 @@ def build_common_esto_for_scope(
         "qa_common_esto_source_aggregates_split": split_df,
         "qa_common_esto_rollup_explanations": rollup_df,
         "qa_common_esto_unresolved_partial_coverage": unresolved_df,
+        "qa_common_esto_structural_partial_coverage": unresolved_df,
         "qa_common_esto_product_axis_partitions": product_partition_lookup_df.assign(comparison_scope=comparison_scope),
         "qa_common_esto_flow_axis_partitions": flow_partition_lookup_df.assign(comparison_scope=comparison_scope),
         "qa_common_esto_product_intersections_resolved": product_intersections_df.assign(comparison_scope=comparison_scope),

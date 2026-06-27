@@ -62,6 +62,38 @@ Compare raw and rollup-aware cardinality before and after a proposed change. Che
 
 - 2026-06-27: Recorded the existing guardrail from repository guidance.
 
+## MAP-003: Partial coverage is actionable only for data-relevant components
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Comparison
+**Affected areas:** `codebase/mapping_tools/build_common_esto_structure.py`; `codebase/mapping_tools/apply_common_esto_structure.py`; `results/common_esto/qa_common_esto_unresolved_partial_coverage.csv`; component-relevance and unused-component diagnostics
+
+### Situation
+
+The structural Common ESTO graph can contain component pairs that have no current comparison data. Reporting every uncovered structural component as high-severity partial coverage creates large numbers of findings that cannot affect current totals and obscures gaps with real data behind them.
+
+### Options
+
+- Treat every structural component as required, regardless of observed values.
+- Remove inactive components and their mappings entirely.
+- Keep the complete structural view, but make partial coverage actionable only when a component has qualifying non-zero evidence; retain inactive components in informational audits.
+
+### Current rule
+
+Use the third option. A component is relevant when it has a non-zero value in the latest available ESTO base year, a non-zero 9th Outlook projection value from 2023 onward, or a non-zero LEAP balance value. A non-zero LEAP branch without a direct ESTO mapping can activate a component only when LEAP-to-9th and 9th-to-ESTO mappings provide an auditable indirect ESTO pair. Otherwise it remains a branch-level mapping review item.
+
+Stage 2 retains the full structural partial-coverage candidates. Stage 3 writes the actionable subset and separate informational outputs for inactive missing components, existing components without relevance evidence, and non-zero unmapped LEAP branches. Inactive mappings are not deleted automatically because they may be needed for other economies or future data.
+
+### Validation
+
+Confirm the ESTO base year recorded by the run is the latest available ESTO year and that 9th evidence uses projection years only. For each actionable missing pair, confirm at least one evidence flag is true. Confirm excluded structural pairs appear in the inactive-component audit and existing but unused pairs appear in the unused-component audit. Identity and zero-value test fixtures should demonstrate that historical-only ESTO values and pre-projection 9th values do not create actionable findings.
+
+### History
+
+- 2026-06-27: Confirmed the data-relevance rule and retained inactive mappings as informational findings rather than deleting them.
+- 2026-06-27: Stage 2/3 verification reduced 268 structural partial-coverage rows to 80 actionable rows, with 370 inactive missing components retained for audit. Mapped-source versus Common ESTO totals remained equal within `9.31e-10` PJ.
+
 ## Cross-repository references
 
 - **`CROSS-001: Full-model export and LEAP import ID integrity`** is owned by

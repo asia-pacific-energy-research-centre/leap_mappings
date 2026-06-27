@@ -4,13 +4,17 @@ This backlog covers improvements outside the deferred regression and verificatio
 
 ## 1. Resolve current semantic mapping issues
 
-**Status:** Ready for investigation
+**Status:** In progress — data-relevance filtering implemented; semantic findings still require review
 
 Rerun mapping maintenance and Stages 1-3 with the intended workbook state before treating the current row counts as authoritative. Then group findings by recurring semantic cause rather than reviewing thousands of rows independently.
 
 Primary review outputs:
 
-- `results/common_esto/qa_common_esto_unresolved_partial_coverage.csv` — high-severity common rows for which LEAP or the 9th Outlook covers only part of the expected ESTO component set. Start with `source_system`, `use_case`, `common_row_id`, and `missing_component_pairs`.
+- `results/common_esto/qa_common_esto_unresolved_partial_coverage.csv` — actionable high-severity rows after filtering `missing_component_pairs` to components with non-zero ESTO base-year, 9th projection, or LEAP balance evidence.
+- `results/common_esto/qa_common_esto_structural_partial_coverage.csv` — full Stage 2 structural candidates before applying value relevance.
+- `results/common_esto/qa_common_esto_partial_coverage_components_without_relevance.csv` — structurally missing pairs excluded from the actionable file because they lack qualifying non-zero evidence.
+- `results/common_esto/qa_common_esto_existing_components_without_relevance.csv` — existing Common ESTO components that are not needed for the current comparison data; informational only.
+- `results/common_esto/qa_nonzero_unmapped_leap_branches.csv` — non-zero LEAP balance branches without direct ESTO mappings, including whether an indirect ESTO pair can be inferred through the 9th crosswalk.
 - `results/maintenance/leap_source_presence_conflicts.csv` — LEAP sector/fuel pairs active on only one of `leap_combined_esto` and `leap_combined_ninth`. Use `presence_status` to separate the two directions. Do not assume every asymmetry is an error; determine whether the comparison scope requires both mappings.
 - `results/tree_structure/common_esto_non_esto_parent_child_edges.csv` — Common ESTO hierarchy edges not present in the source ESTO tree. Decide whether each is an intentional extension, a display hierarchy only, or an invalid additive parent-child relationship.
 
@@ -84,11 +88,11 @@ Generate a compact review workbook containing actionable findings rather than ra
 
 The workbook should support review, not automatically approve or rewrite mappings.
 
-## 6. Add a notebook-safe orchestration workflow
+## 6. Make the existing orchestration workflow notebook-safe
 
 **Status:** Proposed
 
-Create one slim Jupyter-friendly workflow with toggles for:
+Refactor `codebase/run_mapping_pipeline.py` into a slim Jupyter-friendly workflow with top-level toggles for:
 
 1. Mapping maintenance.
 2. Relationship generation.
@@ -96,7 +100,7 @@ Create one slim Jupyter-friendly workflow with toggles for:
 4. Application of the common structure.
 5. Tree generation and validation.
 
-Reuse the existing stage functions. Do not duplicate their processing logic. Make the selected input workbook and result directories explicit at the top of the workflow.
+Reuse the existing stage functions. Do not duplicate their processing logic. Replace the command-line-only `argparse` entry path with notebook-safe run blocks, and make the selected input workbook and result directories explicit near the top of the workflow.
 
 ## 7. Improve explanatory documentation
 
@@ -108,4 +112,3 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Mak
 - Define each `comparison_scope` and its included systems.
 - Clearly separate blocking validation failures from review diagnostics.
 - Keep `README.md`, `docs/mappings_system.md`, and the implemented pipeline behaviour synchronized.
-

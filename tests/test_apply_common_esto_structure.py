@@ -1,7 +1,10 @@
 import pandas as pd
 
 from codebase.mapping_tools.apply_common_esto_structure import (
+    build_component_relevance,
+    build_unmapped_leap_branch_evidence,
     filter_missing_common_map_diagnostics,
+    filter_partial_coverage_by_relevance,
     should_ignore_missing_common_map_flow,
 )
 
@@ -42,4 +45,125 @@ def test_filter_missing_common_map_diagnostics_drops_ignored_flows_only() -> Non
     assert filtered_df["esto_flow"].tolist() == [
         "09.01.01 Electricity plants",
         "16.09 Other sources",
+    ]
+
+
+def test_component_relevance_uses_esto_base_year_ninth_projections_and_leap_balances() -> None:
+    source_df = pd.DataFrame(
+        [
+            {"source_system": "ESTO", "year": 2022, "esto_flow": "F1", "esto_product": "P1", "value": 5},
+            {"source_system": "ESTO", "year": 2023, "esto_flow": "F1", "esto_product": "P1", "value": 0},
+            {"source_system": "ESTO", "year": 2023, "esto_flow": "F2", "esto_product": "P2", "value": 2},
+            {"source_system": "NINTH", "year": 2022, "esto_flow": "F3", "esto_product": "P3", "value": 3},
+            {"source_system": "NINTH", "year": 2024, "esto_flow": "F4", "esto_product": "P4", "value": -4},
+            {"source_system": "LEAP", "year": 2060, "esto_flow": "F5", "esto_product": "P5", "value": 1},
+        ]
+    )
+
+    relevance_df, base_year = build_component_relevance(
+        source_df=source_df,
+        active_component_abs_tolerance=0,
+        ninth_projection_start_year=2023,
+    )
+
+    assert base_year == 2023
+    assert set(zip(relevance_df["component_esto_flow"], relevance_df["component_esto_product"])) == {
+        ("F2", "P2"),
+        ("F4", "P4"),
+        ("F5", "P5"),
+    }
+    reasons = relevance_df.set_index("component_esto_flow")["relevance_reasons"].to_dict()
+    assert reasons == {
+        "F2": "esto_base_year_nonzero",
+        "F4": "ninth_projection_nonzero",
+        "F5": "mapped_leap_balance_nonzero",
+    }
+
+
+def test_partial_coverage_keeps_only_missing_pairs_with_relevance_evidence() -> None:
+    structural_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "leap_vs_ninth",
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "common_row_id": "common_1",
+                "missing_component_pairs": "F1 :: P1|F2 :: P2",
+                "qa_status": "unresolved_partial_component_coverage",
+                "qa_severity": "high",
+            }
+        ]
+    )
+    relevance_df = pd.DataFrame(
+        [
+            {
+                "component_esto_flow": "F2",
+                "component_esto_product": "P2",
+                "relevance_reasons": "ninth_projection_nonzero",
+            }
+        ]
+    )
+
+    actionable_df, inactive_df = filter_partial_coverage_by_relevance(structural_df, relevance_df)
+
+    assert actionable_df.loc[0, "missing_component_pairs"] == "F2 :: P2"
+    assert actionable_df.loc[0, "structural_missing_component_pairs"] == "F1 :: P1|F2 :: P2"
+    assert actionable_df.loc[0, "relevant_missing_component_count"] == 1
+    assert inactive_df.loc[0, "inactive_component_esto_flow"] == "F1"
+    assert inactive_df.loc[0, "inactive_component_esto_product"] == "P1"
+    assert inactive_df.loc[0, "qa_status"] == "partial_coverage_component_without_relevance"
+    assert inactive_df.loc[0, "qa_severity"] == "info"
+
+
+def test_nonzero_unmapped_leap_branch_can_infer_relevance_through_ninth_crosswalk() -> None:
+    raw_leap_df = pd.DataFrame(
+        [
+            {"leap_flow": "Branch", "leap_product": "Fuel", "value": 4},
+            {"leap_flow": "Unresolved", "leap_product": "Fuel", "value": 2},
+            {"leap_flow": "Zero", "leap_product": "Fuel", "value": 0},
+        ]
+    )
+    leap_esto_df = pd.DataFrame(
+        columns=["leap_sector_name_full_path", "raw_leap_fuel_name"]
+    )
+    leap_ninth_df = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "Branch",
+                "raw_leap_fuel_name": "Fuel",
+                "ninth_sector": "N1",
+                "ninth_fuel": "NF1",
+            }
+        ]
+    )
+    ninth_esto_df = pd.DataFrame(
+        [
+            {
+                "9th_sector": "N1",
+                "9th_fuel": "NF1",
+                "esto_flow": "F1",
+                "esto_product": "P1",
+            }
+        ]
+    )
+
+    audit_df, relevance_df = build_unmapped_leap_branch_evidence(
+        raw_leap_df=raw_leap_df,
+        leap_esto_df=leap_esto_df,
+        leap_ninth_df=leap_ninth_df,
+        ninth_esto_df=ninth_esto_df,
+        active_component_abs_tolerance=0,
+    )
+
+    statuses = audit_df.set_index("leap_flow")["qa_status"].to_dict()
+    assert statuses == {
+        "Branch": "nonzero_unmapped_leap_branch_with_indirect_esto_pair",
+        "Unresolved": "nonzero_unmapped_leap_branch_without_esto_pair",
+    }
+    assert relevance_df.to_dict("records") == [
+        {
+            "component_esto_flow": "F1",
+            "component_esto_product": "P1",
+            "unmapped_leap_balance_nonzero": True,
+        }
     ]

@@ -284,6 +284,10 @@ def run_stage_3() -> None:
         exclude_subtotal_rows=True,
         broad_common_row_component_limit=50,
         active_component_abs_tolerance=0.0,
+        raw_leap_results_path=RAW_LEAP_PATH,
+        outlook_mappings_path=WORKBOOK_PATH,
+        structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
+        ninth_projection_start_year=2023,
     )
 
 
