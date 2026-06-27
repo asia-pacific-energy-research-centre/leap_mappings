@@ -32,6 +32,7 @@ This repo is the canonical mapping source for the APERC project. Other repos sho
 Active documentation being developed:
 
 - `docs/mappings_system.md` — the canonical reference for the mappings system design, pipeline stages, rollup rules, graph partitioning, and naming conventions.
+- `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
 
 ## When editing draw.io diagrams
 
