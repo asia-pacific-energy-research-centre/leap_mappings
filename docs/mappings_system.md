@@ -993,10 +993,12 @@ Stage 2 reads the expanded, rollup-augmented relationship rows from Stage 1 and 
 | `qa_common_esto_rollup_explanations.csv` | Which source aggregates drove each graph edge |
 | `qa_common_esto_source_aggregates_split.csv` | Source aggregates that were split rather than rolled — high-severity if non-empty |
 | `qa_common_esto_structural_partial_coverage.csv` | Full Stage 2 structural candidates where a comparison system covers only part of a Common ESTO row |
-| `qa_common_esto_unresolved_partial_coverage.csv` | Stage 3 actionable subset; missing pairs have non-zero ESTO base-year, 9th projection, or LEAP balance evidence |
+| `qa_common_esto_unresolved_partial_coverage.csv` | Stage 3 actionable subset with one missing ESTO pair per row, explicit evidence columns, and the mapping sheet/system that needs review |
 | `qa_common_esto_partial_coverage_components_without_relevance.csv` | Structurally missing components without qualifying current-data evidence |
 | `qa_common_esto_existing_components_without_relevance.csv` | Existing components not required by current comparison data; informational only |
 | `qa_nonzero_unmapped_leap_branches.csv` | Non-zero LEAP branches without direct ESTO mappings and any auditable indirect ESTO pair |
+| `qa_common_esto_partial_coverage_mapping_candidates.csv` | Review-only, copy-friendly LEAP/9th mapping candidates for actionable missing ESTO pairs |
+| `qa_nonzero_unmapped_leap_branch_mapping_candidates.csv` | Review-only ESTO candidates for non-zero unmapped LEAP branch/fuel pairs |
 | `qa_common_esto_flow_axis_partitions.csv` | How ESTO flow codes were grouped into common flow axes |
 | `qa_common_esto_product_axis_partitions.csv` | How ESTO product codes were grouped into common product axes |
 
@@ -1047,6 +1049,42 @@ The table below covers the stable conceptual columns. The authoritative full col
 | `Note` | Human | Free text explanation |
 
 Subtotal columns should not be manually edited. They are overwritten by the mapping maintenance workflow. Cardinality is currently written to `results/maintenance/cardinality_*.csv` rather than workbook columns.
+
+## Review-only computer-generated mapping candidates
+
+Mapping candidates use a repeatable axis-first inference method:
+
+1. Learn branch/sector-to-flow evidence from reviewed mappings already in the canonical workbook.
+2. Learn fuel-to-product evidence separately.
+3. Restrict candidate source pairs to combinations that occur with non-zero relevant source data.
+4. Combine the two independently inferred axes into a proposed mapping row.
+5. Rank candidates using support counts, axis consistency, and source-data presence.
+6. Present candidates for human review; never update the workbook automatically.
+
+For partial coverage, `source_system` identifies the mapping sheet that lacks coverage. A `LEAP` finding belongs in `leap_combined_esto`; a `NINTH` finding belongs in `ninth_pairs_to_esto_pairs`. Evidence such as `esto_base_year_nonzero` explains why the missing ESTO component matters, but does not mean the ESTO data or workbook should be edited.
+
+Relevance does not prove that a direct mapping should exist. Aggregate-looking target flows or products, especially `Total` rows, are flagged for subtotal/hierarchy review first because adding direct parent mappings alongside detail can double count.
+
+The actionable partial-coverage output contains one missing pair per row. Its evidence columns include the selected ESTO base year, non-zero row/economy counts and magnitudes, the 9th projection year range and magnitudes, mapped LEAP balance evidence, and indirectly inferred evidence from non-zero unmapped LEAP branches.
+
+Candidate rows deliberately include the canonical copy columns:
+
+- `leap_combined_esto`: `leap_sector_name_full_path`, `raw_leap_fuel_name`, `esto_flow`, `esto_product`.
+- `ninth_pairs_to_esto_pairs`: `9th_sector`, `9th_fuel`, `esto_flow`, `esto_product`.
+
+Independent-axis inference is often strong because branch/sector labels generally determine the balance flow while fuel labels determine the product. It is not universally valid. A source pair may be context-specific, aggregate, subtotal, or legitimately one-to-many. Low support, conflicting axis targets, an existing target for the proposed source pair, compound categories, and hierarchy-level differences are mandatory review warnings.
+
+For non-zero LEAP branches without direct ESTO mappings, the workflow first uses an auditable LEAP-to-9th-to-ESTO chain when available. Otherwise it tries exact branch-path evidence, a collapsed repeated-path form, then the branch leaf name; fuel evidence remains separate. If both axes cannot be inferred, the output retains an unresolved row instead of inventing a target.
+
+Before copying a candidate into the workbook:
+
+1. Confirm the proposed source pair exists and is non-zero in the relevant source data.
+2. Check definitions, inclusions, exclusions, and common mistakes in `config/esto_external_definition_authority_working_set.xlsx`.
+3. Check whether the source pair already maps to another target.
+4. Check source and target subtotal levels.
+5. Check whether the new row creates one-to-many or many-to-many coverage before and after rollup.
+6. Add a note or decision-log reference for any non-obvious choice.
+7. Rerun maintenance and Stages 1-3; review totals, partial coverage, and cardinality again.
 
 ### Rollup rule columns
 

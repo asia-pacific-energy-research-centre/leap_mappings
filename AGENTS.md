@@ -94,6 +94,14 @@ Requirements (one-time install):
 - When checking mapping gaps, treat `counterpart_presence_state == removed_only` as unavailable rather than as a missing row to restore.
 - Before reactivating or adding rows, check whether the change would create a many-to-many relationship and prefer the narrowest mapping needed for the workflow.
 
+## Computer-generated mapping candidates
+
+- Generate mapping suggestions by inferring the two axes independently: LEAP branch or 9th sector to ESTO flow, and LEAP fuel or 9th fuel to ESTO product. Combine the axes only for source pairs observed with non-zero relevant data.
+- Treat every generated candidate as review-only. Never write candidates into `outlook_mappings_master.xlsx` automatically.
+- Candidate outputs must include the destination mapping sheet, copy-ready source and target columns, support counts, axis confidence, ambiguity/cardinality warnings, and the source-data evidence that made the pair relevant.
+- Do not invent an ESTO pair for an unmapped LEAP branch when only one axis can be inferred. Leave it as an unresolved review row.
+- Before accepting a candidate, check hierarchy/subtotal scope, `esto_external_definition_authority_working_set.xlsx`, existing targets for the source pair, and raw/after-rollup cardinality. Rerun the mapping pipeline after reviewed rows are added.
+
 ## LEAP Export File Structure
 
 - See `C:\\Users\\Work\\.codex\\AGENTS_LEAP_EXPORT.md` for LEAP export structure requirements.

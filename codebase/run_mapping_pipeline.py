@@ -287,6 +287,7 @@ def run_stage_3() -> None:
         raw_leap_results_path=RAW_LEAP_PATH,
         outlook_mappings_path=WORKBOOK_PATH,
         structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
+        ninth_source_data_path=NINTH_CSV_PATH,
         ninth_projection_start_year=2023,
     )
 

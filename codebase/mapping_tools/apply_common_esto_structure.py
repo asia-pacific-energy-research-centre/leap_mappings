@@ -17,6 +17,11 @@ if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
 from codebase.mapping_issue_exceptions import row_is_allowed
+from codebase.mapping_tools.mapping_candidate_generation import (
+    generate_partial_coverage_mapping_candidates,
+    generate_unmapped_leap_branch_candidates,
+    summarise_nonzero_ninth_projection_pairs,
+)
 
 #%%
 OUTPUT_COLUMNS = [
@@ -47,6 +52,33 @@ SUBTOTAL_KEYWORDS = ["total", "subtotal"]
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0
 NINTH_PROJECTION_START_YEAR = 2023
+COMPONENT_RELEVANCE_COLUMNS = [
+    "component_esto_flow",
+    "component_esto_product",
+    "esto_base_year_nonzero",
+    "esto_base_year",
+    "esto_base_year_nonzero_row_count",
+    "esto_base_year_nonzero_economy_count",
+    "esto_base_year_abs_sum",
+    "esto_base_year_max_abs_value",
+    "ninth_projection_nonzero",
+    "ninth_projection_nonzero_row_count",
+    "ninth_projection_nonzero_economy_count",
+    "ninth_projection_first_nonzero_year",
+    "ninth_projection_last_nonzero_year",
+    "ninth_projection_abs_sum",
+    "ninth_projection_max_abs_value",
+    "mapped_leap_balance_nonzero",
+    "mapped_leap_balance_nonzero_row_count",
+    "mapped_leap_balance_nonzero_economy_count",
+    "mapped_leap_balance_first_nonzero_year",
+    "mapped_leap_balance_last_nonzero_year",
+    "mapped_leap_balance_abs_sum",
+    "mapped_leap_balance_max_abs_value",
+    "unmapped_leap_balance_nonzero",
+    "unmapped_leap_branch_count",
+    "relevance_reasons",
+]
 COMPARISON_SCOPE_SYSTEMS = {
     "leap_vs_esto": {"LEAP", "ESTO"},
     "leap_vs_ninth": {"LEAP", "NINTH"},
@@ -227,22 +259,15 @@ def build_component_relevance(
     rows contribute every exported balance year because LEAP exports are
     already selected model results rather than a full historical time series.
     """
-    columns = [
-        "component_esto_flow",
-        "component_esto_product",
-        "esto_base_year_nonzero",
-        "ninth_projection_nonzero",
-        "mapped_leap_balance_nonzero",
-        "unmapped_leap_balance_nonzero",
-        "relevance_reasons",
-    ]
     if source_df.empty:
-        return pd.DataFrame(columns=columns), esto_base_year
+        return pd.DataFrame(columns=COMPONENT_RELEVANCE_COLUMNS), esto_base_year
 
     working_df = source_df.copy()
     working_df["year"] = pd.to_numeric(working_df["year"], errors="coerce")
     working_df["value"] = pd.to_numeric(working_df["value"], errors="coerce").fillna(0)
     working_df["source_system"] = working_df["source_system"].astype(str).str.upper().str.strip()
+    if "economy" not in working_df.columns:
+        working_df["economy"] = ""
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
     esto_years = working_df.loc[
@@ -280,7 +305,7 @@ def build_component_relevance(
         evidence_frames.append(evidence_df)
 
     if not evidence_frames:
-        return pd.DataFrame(columns=columns), resolved_esto_base_year
+        return pd.DataFrame(columns=COMPONENT_RELEVANCE_COLUMNS), resolved_esto_base_year
 
     relevance_df = evidence_frames[0]
     for evidence_df in evidence_frames[1:]:
@@ -300,6 +325,49 @@ def build_component_relevance(
             relevance_df[evidence_column] = False
         relevance_df[evidence_column] = relevance_df[evidence_column].fillna(False).astype(bool)
     relevance_df["unmapped_leap_balance_nonzero"] = False
+    relevance_df["unmapped_leap_branch_count"] = 0
+
+    stats_specs = {
+        "esto_base_year_nonzero": {
+            "esto_base_year_nonzero_row_count": ("value", "size"),
+            "esto_base_year_nonzero_economy_count": ("economy", "nunique"),
+            "esto_base_year_abs_sum": ("_abs_value", "sum"),
+            "esto_base_year_max_abs_value": ("_abs_value", "max"),
+        },
+        "ninth_projection_nonzero": {
+            "ninth_projection_nonzero_row_count": ("value", "size"),
+            "ninth_projection_nonzero_economy_count": ("economy", "nunique"),
+            "ninth_projection_first_nonzero_year": ("year", "min"),
+            "ninth_projection_last_nonzero_year": ("year", "max"),
+            "ninth_projection_abs_sum": ("_abs_value", "sum"),
+            "ninth_projection_max_abs_value": ("_abs_value", "max"),
+        },
+        "mapped_leap_balance_nonzero": {
+            "mapped_leap_balance_nonzero_row_count": ("value", "size"),
+            "mapped_leap_balance_nonzero_economy_count": ("economy", "nunique"),
+            "mapped_leap_balance_first_nonzero_year": ("year", "min"),
+            "mapped_leap_balance_last_nonzero_year": ("year", "max"),
+            "mapped_leap_balance_abs_sum": ("_abs_value", "sum"),
+            "mapped_leap_balance_max_abs_value": ("_abs_value", "max"),
+        },
+    }
+    working_df["_abs_value"] = working_df["value"].abs()
+    for evidence_column, aggregation_spec in stats_specs.items():
+        evidence_df = working_df.loc[evidence_masks[evidence_column]].copy()
+        if evidence_df.empty:
+            continue
+        stats_df = evidence_df.groupby(pair_columns, as_index=False).agg(**aggregation_spec).rename(
+            columns={
+                "esto_flow": "component_esto_flow",
+                "esto_product": "component_esto_product",
+            }
+        )
+        relevance_df = relevance_df.merge(
+            stats_df,
+            on=["component_esto_flow", "component_esto_product"],
+            how="left",
+        )
+    relevance_df["esto_base_year"] = resolved_esto_base_year
     reason_columns = [
         "esto_base_year_nonzero",
         "ninth_projection_nonzero",
@@ -310,7 +378,10 @@ def build_component_relevance(
         lambda row: "|".join(column for column in reason_columns if bool(row[column])),
         axis=1,
     )
-    return relevance_df[columns], resolved_esto_base_year
+    for column in COMPONENT_RELEVANCE_COLUMNS:
+        if column not in relevance_df.columns:
+            relevance_df[column] = False if column.endswith("_nonzero") else 0
+    return relevance_df[COMPONENT_RELEVANCE_COLUMNS], resolved_esto_base_year
 
 
 def build_unmapped_leap_branch_evidence(
@@ -338,6 +409,7 @@ def build_unmapped_leap_branch_evidence(
         "component_esto_flow",
         "component_esto_product",
         "unmapped_leap_balance_nonzero",
+        "unmapped_leap_branch_count",
     ]
     if raw_leap_df.empty:
         return pd.DataFrame(columns=audit_columns), pd.DataFrame(columns=relevance_columns)
@@ -397,12 +469,16 @@ def build_unmapped_leap_branch_evidence(
     relevance_df = audit_df.loc[
         audit_df["indirect_esto_flow"].ne("") & audit_df["indirect_esto_product"].ne(""),
         ["indirect_esto_flow", "indirect_esto_product"],
-    ].drop_duplicates().rename(
+    ].rename(
         columns={
             "indirect_esto_flow": "component_esto_flow",
             "indirect_esto_product": "component_esto_product",
         }
     )
+    relevance_df = relevance_df.groupby(
+        ["component_esto_flow", "component_esto_product"],
+        as_index=False,
+    ).size().rename(columns={"size": "unmapped_leap_branch_count"})
     relevance_df["unmapped_leap_balance_nonzero"] = True
     return audit_df, relevance_df[relevance_columns]
 
@@ -438,7 +514,19 @@ def merge_component_relevance(
         lambda row: "|".join(column for column in reason_columns if bool(row[column])),
         axis=1,
     )
-    return combined_df[pair_columns + reason_columns + ["relevance_reasons"]].drop_duplicates()
+    direct_branch_count = combined_df.get("unmapped_leap_branch_count", 0)
+    indirect_branch_count = combined_df.get("unmapped_leap_branch_count_indirect", 0)
+    combined_df["unmapped_leap_branch_count"] = pd.to_numeric(direct_branch_count, errors="coerce").fillna(0) + pd.to_numeric(
+        indirect_branch_count, errors="coerce"
+    ).fillna(0)
+    if "esto_base_year" in combined_df.columns:
+        known_base_years = pd.to_numeric(combined_df["esto_base_year"], errors="coerce").dropna().unique()
+        if len(known_base_years) == 1:
+            combined_df["esto_base_year"] = int(known_base_years[0])
+    for column in COMPONENT_RELEVANCE_COLUMNS:
+        if column not in combined_df.columns:
+            combined_df[column] = False if column.endswith("_nonzero") else 0
+    return combined_df[COMPONENT_RELEVANCE_COLUMNS].drop_duplicates()
 
 
 def filter_partial_coverage_by_relevance(
@@ -449,7 +537,7 @@ def filter_partial_coverage_by_relevance(
     if structural_partial_df.empty:
         return structural_partial_df.copy(), pd.DataFrame()
     relevance_lookup = {
-        (str(row["component_esto_flow"]).strip(), str(row["component_esto_product"]).strip()): str(row["relevance_reasons"])
+        (str(row["component_esto_flow"]).strip(), str(row["component_esto_product"]).strip()): row.to_dict()
         for _, row in relevance_df.iterrows()
     }
     actionable_rows: list[dict[str, object]] = []
@@ -463,14 +551,37 @@ def filter_partial_coverage_by_relevance(
             structural_pairs.append((flow.strip(), product.strip()))
         relevant_pairs = [pair for pair in structural_pairs if pair in relevance_lookup]
         inactive_pairs = [pair for pair in structural_pairs if pair not in relevance_lookup]
-        if relevant_pairs:
+        for flow, product in relevant_pairs:
             output_row = row.to_dict()
             output_row["structural_missing_component_pairs"] = row.get("missing_component_pairs", "")
-            output_row["missing_component_pairs"] = "|".join(f"{flow} :: {product}" for flow, product in relevant_pairs)
-            output_row["relevant_missing_component_count"] = len(relevant_pairs)
-            output_row["relevance_evidence"] = "|".join(
-                f"{flow} :: {product} [{relevance_lookup[(flow, product)]}]" for flow, product in relevant_pairs
-            )
+            output_row["missing_component_pairs"] = f"{flow} :: {product}"
+            output_row["missing_component_esto_flow"] = flow
+            output_row["missing_component_esto_product"] = product
+            output_row["relevant_missing_component_count"] = 1
+            evidence = relevance_lookup[(flow, product)]
+            output_row["relevance_evidence"] = evidence.get("relevance_reasons", "")
+            for evidence_column in COMPONENT_RELEVANCE_COLUMNS[2:]:
+                output_row[evidence_column] = evidence.get(evidence_column, "")
+            source_system = str(row.get("source_system", "")).upper().strip()
+            if source_system == "LEAP":
+                output_row["mapping_action"] = "review_or_add_leap_to_esto_mapping"
+                output_row["mapping_sheet_to_review"] = "leap_combined_esto"
+                output_row["mapping_source_columns"] = "leap_sector_name_full_path|raw_leap_fuel_name"
+            elif source_system == "NINTH":
+                output_row["mapping_action"] = "review_or_add_ninth_to_esto_mapping"
+                output_row["mapping_sheet_to_review"] = "ninth_pairs_to_esto_pairs"
+                output_row["mapping_source_columns"] = "9th_sector|9th_fuel"
+            else:
+                output_row["mapping_action"] = "review_common_structure_or_coverage_configuration"
+                output_row["mapping_sheet_to_review"] = ""
+                output_row["mapping_source_columns"] = ""
+            output_row["mapping_target_columns"] = "esto_flow|esto_product"
+            output_row["target_flow_looks_aggregate"] = is_subtotal_label(flow)
+            output_row["target_product_looks_aggregate"] = is_subtotal_label(product)
+            if output_row["target_flow_looks_aggregate"] or output_row["target_product_looks_aggregate"]:
+                output_row["mapping_review_priority"] = "confirm_aggregate_should_be_directly_mapped_before_adding_row"
+            else:
+                output_row["mapping_review_priority"] = "review_mapping_candidate"
             actionable_rows.append(output_row)
         for flow, product in inactive_pairs:
             inactive_row = row.to_dict()
@@ -526,6 +637,8 @@ def save_relevance_diagnostics(
     leap_branch_audit_df: pd.DataFrame,
     actionable_partial_df: pd.DataFrame,
     inactive_partial_df: pd.DataFrame,
+    partial_mapping_candidates_df: pd.DataFrame,
+    unmapped_leap_mapping_candidates_df: pd.DataFrame,
     output_dir: Path,
 ) -> None:
     """Write data-relevance evidence and the resulting QA classifications."""
@@ -536,6 +649,8 @@ def save_relevance_diagnostics(
     leap_branch_audit_df.to_csv(output_dir / "qa_nonzero_unmapped_leap_branches.csv", index=False)
     actionable_partial_df.to_csv(output_dir / "qa_common_esto_unresolved_partial_coverage.csv", index=False)
     inactive_partial_df.to_csv(output_dir / "qa_common_esto_partial_coverage_components_without_relevance.csv", index=False)
+    partial_mapping_candidates_df.to_csv(output_dir / "qa_common_esto_partial_coverage_mapping_candidates.csv", index=False)
+    unmapped_leap_mapping_candidates_df.to_csv(output_dir / "qa_nonzero_unmapped_leap_branch_mapping_candidates.csv", index=False)
 
 
 def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1005,6 +1120,7 @@ def run_apply_common_esto_structure(
     raw_leap_results_path: Path | None = None,
     outlook_mappings_path: Path | None = None,
     structural_partial_coverage_path: Path | None = None,
+    ninth_source_data_path: Path | None = None,
     ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
     esto_base_year: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1021,6 +1137,9 @@ def run_apply_common_esto_structure(
         esto_base_year=esto_base_year,
     )
     leap_branch_audit_df = pd.DataFrame()
+    raw_leap_df = pd.DataFrame()
+    leap_esto_df = pd.DataFrame()
+    ninth_esto_df = pd.DataFrame()
     if (
         raw_leap_results_path is not None
         and raw_leap_results_path.exists()
@@ -1066,12 +1185,36 @@ def run_apply_common_esto_structure(
         structural_partial_df=structural_partial_df,
         relevance_df=relevance_df,
     )
+    active_ninth_pairs_df = pd.DataFrame()
+    if ninth_source_data_path is not None and ninth_source_data_path.exists():
+        active_ninth_pairs_df = summarise_nonzero_ninth_projection_pairs(
+            ninth_csv_path=ninth_source_data_path,
+            projection_start_year=ninth_projection_start_year,
+            value_tolerance=active_component_abs_tolerance,
+        )
+    partial_mapping_candidates_df = pd.DataFrame()
+    unmapped_leap_mapping_candidates_df = pd.DataFrame()
+    if not leap_esto_df.empty and not ninth_esto_df.empty:
+        partial_mapping_candidates_df = generate_partial_coverage_mapping_candidates(
+            issues_df=actionable_partial_df,
+            raw_leap_df=raw_leap_df,
+            active_ninth_pairs_df=active_ninth_pairs_df,
+            leap_esto_df=leap_esto_df,
+            ninth_esto_df=ninth_esto_df,
+            value_tolerance=active_component_abs_tolerance,
+        )
+        unmapped_leap_mapping_candidates_df = generate_unmapped_leap_branch_candidates(
+            leap_branch_audit_df=leap_branch_audit_df,
+            leap_esto_df=leap_esto_df,
+        )
     save_relevance_diagnostics(
         relevance_df=relevance_df,
         pruned_components_df=pruned_components_df,
         leap_branch_audit_df=leap_branch_audit_df,
         actionable_partial_df=actionable_partial_df,
         inactive_partial_df=inactive_partial_df,
+        partial_mapping_candidates_df=partial_mapping_candidates_df,
+        unmapped_leap_mapping_candidates_df=unmapped_leap_mapping_candidates_df,
         output_dir=output_dir,
     )
     unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
@@ -1114,6 +1257,8 @@ def run_apply_common_esto_structure(
     print(f"Actionable partial-coverage rows: {len(actionable_partial_df):,}")
     print(f"Inactive partial-coverage component findings: {len(inactive_partial_df):,}")
     print(f"Nonzero LEAP branches without direct ESTO mappings: {len(leap_branch_audit_df):,}")
+    print(f"Partial-coverage mapping candidate rows: {len(partial_mapping_candidates_df):,}")
+    print(f"Unmapped LEAP branch mapping candidate rows: {len(unmapped_leap_mapping_candidates_df):,}")
     print(f"Nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
     print(f"Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
     print(f"Common comparison rows before subtotal filtering: {len(unfiltered_comparison_df):,}")
@@ -1137,6 +1282,7 @@ COMMON_ROWS_PATH = COMMON_STRUCTURE_DIR / "common_esto_rows.csv"
 STRUCTURAL_PARTIAL_COVERAGE_PATH = COMMON_STRUCTURE_DIR / "qa_common_esto_structural_partial_coverage.csv"
 RAW_LEAP_RESULTS_PATH = RELATIONSHIP_DIR / "raw_leap_results.csv"
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+NINTH_SOURCE_DATA_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 
 SOURCE_PATHS = {
@@ -1166,6 +1312,7 @@ if __name__ == "__main__":
                 raw_leap_results_path=RAW_LEAP_RESULTS_PATH,
                 outlook_mappings_path=OUTLOOK_MAPPINGS_PATH,
                 structural_partial_coverage_path=STRUCTURAL_PARTIAL_COVERAGE_PATH,
+                ninth_source_data_path=NINTH_SOURCE_DATA_PATH,
                 ninth_projection_start_year=NINTH_PROJECTION_START_YEAR,
             )
         else:

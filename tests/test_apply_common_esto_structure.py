@@ -78,6 +78,12 @@ def test_component_relevance_uses_esto_base_year_ninth_projections_and_leap_bala
         "F4": "ninth_projection_nonzero",
         "F5": "mapped_leap_balance_nonzero",
     }
+    evidence = relevance_df.set_index("component_esto_flow")
+    assert evidence.loc["F2", "esto_base_year"] == 2023
+    assert evidence.loc["F2", "esto_base_year_nonzero_row_count"] == 1
+    assert evidence.loc["F2", "esto_base_year_abs_sum"] == 2
+    assert evidence.loc["F4", "ninth_projection_first_nonzero_year"] == 2024
+    assert evidence.loc["F4", "ninth_projection_max_abs_value"] == 4
 
 
 def test_partial_coverage_keeps_only_missing_pairs_with_relevance_evidence() -> None:
@@ -109,6 +115,11 @@ def test_partial_coverage_keeps_only_missing_pairs_with_relevance_evidence() -> 
     assert actionable_df.loc[0, "missing_component_pairs"] == "F2 :: P2"
     assert actionable_df.loc[0, "structural_missing_component_pairs"] == "F1 :: P1|F2 :: P2"
     assert actionable_df.loc[0, "relevant_missing_component_count"] == 1
+    assert actionable_df.loc[0, "missing_component_esto_flow"] == "F2"
+    assert actionable_df.loc[0, "missing_component_esto_product"] == "P2"
+    assert actionable_df.loc[0, "mapping_sheet_to_review"] == "leap_combined_esto"
+    assert not actionable_df.loc[0, "target_flow_looks_aggregate"]
+    assert actionable_df.loc[0, "mapping_review_priority"] == "review_mapping_candidate"
     assert inactive_df.loc[0, "inactive_component_esto_flow"] == "F1"
     assert inactive_df.loc[0, "inactive_component_esto_product"] == "P1"
     assert inactive_df.loc[0, "qa_status"] == "partial_coverage_component_without_relevance"
@@ -165,5 +176,6 @@ def test_nonzero_unmapped_leap_branch_can_infer_relevance_through_ninth_crosswal
             "component_esto_flow": "F1",
             "component_esto_product": "P1",
             "unmapped_leap_balance_nonzero": True,
+            "unmapped_leap_branch_count": 1,
         }
     ]

@@ -93,6 +93,37 @@ Confirm the ESTO base year recorded by the run is the latest available ESTO year
 
 - 2026-06-27: Confirmed the data-relevance rule and retained inactive mappings as informational findings rather than deleting them.
 - 2026-06-27: Stage 2/3 verification reduced 268 structural partial-coverage rows to 80 actionable rows, with 370 inactive missing components retained for audit. Mapped-source versus Common ESTO totals remained equal within `9.31e-10` PJ.
+- 2026-06-27: The 80 grouped actionable findings were expanded to 324 one-pair rows so evidence and mapping ownership are unambiguous.
+
+## MAP-004: Mapping candidates use independent axes and require human approval
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Mapping
+**Affected areas:** `codebase/mapping_tools/mapping_candidate_generation.py`; partial-coverage and unmapped-LEAP candidate CSVs; `config/outlook_mappings_master.xlsx`
+
+### Situation
+
+Many missing pair mappings can be inferred from repeated patterns: branches or sectors usually determine the ESTO flow, while fuels usually determine the ESTO product. Combining those axes can reduce manual work, but a technically plausible combination can still be wrong because of hierarchy, context, aggregation, or cardinality.
+
+### Options
+
+- Require every missing pair to be mapped manually without suggestions.
+- Generate candidates and insert them automatically.
+- Generate copy-friendly candidates from independent axis evidence and observed non-zero source pairs, with explicit confidence and warnings, but require human approval before workbook changes.
+
+### Current rule
+
+Use the third option. Candidates are generated only when both axes have evidence. Exact source-axis patterns are preferred; LEAP branch inference may fall back to collapsed repeated paths or leaf names. An auditable LEAP-to-9th-to-ESTO chain may also support a candidate. One-axis-only evidence remains unresolved. Candidates never update the canonical workbook automatically.
+
+### Validation
+
+Every proposed row must identify its destination sheet, contain the sheet's copy columns, reference a non-zero observed source pair, and expose flow/product support and confidence separately. Flag candidates whose source pair already has a target. Before approval, check semantic definitions, subtotal level, hierarchy, and raw/after-rollup cardinality; then rerun the complete affected pipeline.
+
+### History
+
+- 2026-06-27: Confirmed independent-axis, review-only candidate generation for partial coverage and non-zero unmapped LEAP branches.
+- 2026-06-27: Initial generation produced one unique high-confidence partial-coverage proposal and 57 unmapped-LEAP proposals. Of 322 unresolved partial pairs, 282 lacked flow-axis evidence and 40 had both axes separately but no observed non-zero pair combining them; no forced candidates were created.
 
 ## Cross-repository references
 
