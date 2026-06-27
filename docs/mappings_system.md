@@ -31,6 +31,7 @@ This document explains how the APERC Outlook mappings system works, why it is st
 
 ### Operations and reference
 
+- [LEAP structure export and mapping maintenance](#leap-structure-export-and-mapping-maintenance)
 - [Hierarchical tree validation](#hierarchical-tree-validation)
 - [Adding new scenarios](#adding-new-scenarios)
 - [Special-case examples](#special-case-examples)
@@ -133,6 +134,47 @@ Three source data files feed the mapping and comparison pipeline:
 - **`data/merged_file_energy_00_APEC_20251106.csv`** — A subset of the above containing only the APEC aggregate economy (`00_APEC`) in the reference scenario. Useful for aggregate-level checks without the full dataset volume.
 
 The date suffix in the 9th Outlook filenames (e.g. `20251106`) records when the file was produced. When a new 9th Outlook vintage is released both files should be updated together and the suffix updated to match.
+
+## LEAP structure export and mapping maintenance
+
+The mapping system identifies LEAP categories by normalized branch/category and
+fuel labels, not by LEAP's numeric import IDs. It nevertheless depends on a
+current full-model Analysis export to determine the real LEAP hierarchy,
+parent/child status, branch existence, and available transformation and
+Resources leaves.
+
+The maintenance workflow checks, in order:
+
+1. `leap_mappings/data/full model export.xlsx`, when present; then
+2. `leap_initialisation/data/full model export.xlsx` as the shared canonical
+   fallback.
+
+Operational ownership of the canonical export and its ID rules belongs to
+`leap_initialisation`. See `CROSS-001` in
+[`leap_initialisation/docs/special_rules_and_design_decisions.md`](../../leap_initialisation/docs/special_rules_and_design_decisions.md#cross-001-full-model-export-and-leap-import-id-integrity)
+and the detailed lifecycle in
+[`leap_initialisation/data/README.md`](../../leap_initialisation/data/README.md#maintaining-full-model-exportxlsx).
+
+Refresh the export after a LEAP structural change, including adding, deleting,
+renaming, moving, or recreating a branch; changing a process or transformation
+fuel leaf; moving a Resources fuel between `Primary` and `Secondary`; or
+changing variables or scenarios. Numerical result changes alone do not require
+a hierarchy refresh.
+
+After a refresh, mapping maintenance must review:
+
+- mapped LEAP paths no longer present in the export;
+- new LEAP leaves with no active mapping;
+- paths whose parent/leaf (`leap_is_subtotal`) status changed;
+- rollups and cardinality affected by a changed hierarchy boundary; and
+- old mapping rows retained only as deliberate removed-row guardrails.
+
+LEAP import-workbook duplicates and `-1` IDs are not mapping relationships and
+must not be added to `outlook_mappings_master.xlsx` as fixes. A mapping row
+answers which semantic categories correspond; ID enrichment and duplicate
+logical-key resolution belong to `leap_initialisation`. Conversely, a branch
+that is genuinely new in LEAP may require both a refreshed structure export
+and a new or revised mapping row.
 
 ---
 

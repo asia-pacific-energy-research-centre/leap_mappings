@@ -62,6 +62,16 @@ Compare raw and rollup-aware cardinality before and after a proposed change. Che
 
 - 2026-06-27: Recorded the existing guardrail from repository guidance.
 
+## Cross-repository references
+
+- **`CROSS-001: Full-model export and LEAP import ID integrity`** is owned by
+  `leap_initialisation`. It defines when the canonical LEAP structure export
+  must be refreshed, how unresolved `-1` IDs and duplicate logical import keys
+  are treated, and which post-refresh checks are required. Mapping maintenance
+  consumes that export for hierarchy and subtotal status but does not own LEAP
+  import IDs. See
+  [`leap_initialisation/docs/special_rules_and_design_decisions.md`](../../leap_initialisation/docs/special_rules_and_design_decisions.md#cross-001-full-model-export-and-leap-import-id-integrity).
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:
