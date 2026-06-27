@@ -17,6 +17,7 @@ Primary review outputs:
 - `results/common_esto/qa_nonzero_unmapped_leap_branches.csv` — non-zero LEAP balance branches without direct ESTO mappings, including whether an indirect ESTO pair can be inferred through the 9th crosswalk.
 - `results/common_esto/qa_common_esto_partial_coverage_mapping_candidates.csv` — review-only, copy-friendly proposals for the mapping sheet identified by each actionable partial-coverage row.
 - `results/common_esto/qa_nonzero_unmapped_leap_branch_mapping_candidates.csv` — review-only ESTO target proposals inferred independently from LEAP branch and fuel evidence.
+- `results/common_esto/highly_recommended_mapping_candidates.csv` — combined copy-ready mapping rows; excludes every incomplete, ambiguous, zero-only, or already-targeted source pair.
 - `results/maintenance/leap_source_presence_conflicts.csv` — LEAP sector/fuel pairs active on only one of `leap_combined_esto` and `leap_combined_ninth`. Use `presence_status` to separate the two directions. Do not assume every asymmetry is an error; determine whether the comparison scope requires both mappings.
 - `results/tree_structure/common_esto_non_esto_parent_child_edges.csv` — Common ESTO hierarchy edges not present in the source ESTO tree. Decide whether each is an intentional extension, a display hierarchy only, or an invalid additive parent-child relationship.
 
@@ -60,6 +61,8 @@ Do not prioritize the raw counts in `unmapped_esto_pairs.csv`, `unmapped_ninth_p
 - Preserve the distinction between source-defined hierarchy and Common ESTO-only extensions.
 - Report parent/detail overlaps that could cause double counting.
 - Document any hierarchy edges whose additive meaning requires human confirmation.
+- Add an explicit mapped-ESTO-subtotal coverage check: for every raw ESTO parent subtotal, compare its value with the sum of mapped leaf descendants and report mapped, unmapped, excluded, and zero-only child components.
+- Make subtotal validation summaries report the number of eligible parents and checks performed, not only mismatch rows, so an empty CSV cannot be mistaken for proof that coverage was tested.
 
 ## 4. Resolve the ESTO definition-authority working set
 

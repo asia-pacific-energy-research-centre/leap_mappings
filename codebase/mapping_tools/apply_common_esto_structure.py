@@ -20,6 +20,7 @@ from codebase.mapping_issue_exceptions import row_is_allowed
 from codebase.mapping_tools.mapping_candidate_generation import (
     generate_partial_coverage_mapping_candidates,
     generate_unmapped_leap_branch_candidates,
+    select_highly_recommended_candidates,
     summarise_nonzero_ninth_projection_pairs,
 )
 
@@ -639,8 +640,9 @@ def save_relevance_diagnostics(
     inactive_partial_df: pd.DataFrame,
     partial_mapping_candidates_df: pd.DataFrame,
     unmapped_leap_mapping_candidates_df: pd.DataFrame,
+    highly_recommended_mapping_candidates_df: pd.DataFrame,
     output_dir: Path,
-) -> None:
+) -> dict[str, Path]:
     """Write data-relevance evidence and the resulting QA classifications."""
     diagnostics_dir = output_dir / "diagnostics"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
@@ -649,8 +651,21 @@ def save_relevance_diagnostics(
     leap_branch_audit_df.to_csv(output_dir / "qa_nonzero_unmapped_leap_branches.csv", index=False)
     actionable_partial_df.to_csv(output_dir / "qa_common_esto_unresolved_partial_coverage.csv", index=False)
     inactive_partial_df.to_csv(output_dir / "qa_common_esto_partial_coverage_components_without_relevance.csv", index=False)
-    partial_mapping_candidates_df.to_csv(output_dir / "qa_common_esto_partial_coverage_mapping_candidates.csv", index=False)
-    unmapped_leap_mapping_candidates_df.to_csv(output_dir / "qa_nonzero_unmapped_leap_branch_mapping_candidates.csv", index=False)
+    written_paths = {
+        "partial_candidates": write_csv_with_locked_fallback(
+            partial_mapping_candidates_df,
+            output_dir / "qa_common_esto_partial_coverage_mapping_candidates.csv",
+        ),
+        "unmapped_leap_candidates": write_csv_with_locked_fallback(
+            unmapped_leap_mapping_candidates_df,
+            output_dir / "qa_nonzero_unmapped_leap_branch_mapping_candidates.csv",
+        ),
+        "highly_recommended": write_csv_with_locked_fallback(
+            highly_recommended_mapping_candidates_df,
+            output_dir / "highly_recommended_mapping_candidates.csv",
+        ),
+    }
+    return written_paths
 
 
 def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1194,8 +1209,9 @@ def run_apply_common_esto_structure(
         )
     partial_mapping_candidates_df = pd.DataFrame()
     unmapped_leap_mapping_candidates_df = pd.DataFrame()
+    highly_recommended_mapping_candidates_df = pd.DataFrame()
     if not leap_esto_df.empty and not ninth_esto_df.empty:
-        partial_mapping_candidates_df = generate_partial_coverage_mapping_candidates(
+        all_partial_candidates_df = generate_partial_coverage_mapping_candidates(
             issues_df=actionable_partial_df,
             raw_leap_df=raw_leap_df,
             active_ninth_pairs_df=active_ninth_pairs_df,
@@ -1203,11 +1219,17 @@ def run_apply_common_esto_structure(
             ninth_esto_df=ninth_esto_df,
             value_tolerance=active_component_abs_tolerance,
         )
-        unmapped_leap_mapping_candidates_df = generate_unmapped_leap_branch_candidates(
+        all_unmapped_leap_candidates_df = generate_unmapped_leap_branch_candidates(
             leap_branch_audit_df=leap_branch_audit_df,
             leap_esto_df=leap_esto_df,
         )
-    save_relevance_diagnostics(
+        partial_mapping_candidates_df = select_highly_recommended_candidates(all_partial_candidates_df)
+        unmapped_leap_mapping_candidates_df = select_highly_recommended_candidates(all_unmapped_leap_candidates_df)
+        highly_recommended_mapping_candidates_df = pd.concat(
+            [partial_mapping_candidates_df, unmapped_leap_mapping_candidates_df],
+            ignore_index=True,
+        )
+    relevance_output_paths = save_relevance_diagnostics(
         relevance_df=relevance_df,
         pruned_components_df=pruned_components_df,
         leap_branch_audit_df=leap_branch_audit_df,
@@ -1215,6 +1237,7 @@ def run_apply_common_esto_structure(
         inactive_partial_df=inactive_partial_df,
         partial_mapping_candidates_df=partial_mapping_candidates_df,
         unmapped_leap_mapping_candidates_df=unmapped_leap_mapping_candidates_df,
+        highly_recommended_mapping_candidates_df=highly_recommended_mapping_candidates_df,
         output_dir=output_dir,
     )
     unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
@@ -1257,8 +1280,12 @@ def run_apply_common_esto_structure(
     print(f"Actionable partial-coverage rows: {len(actionable_partial_df):,}")
     print(f"Inactive partial-coverage component findings: {len(inactive_partial_df):,}")
     print(f"Nonzero LEAP branches without direct ESTO mappings: {len(leap_branch_audit_df):,}")
-    print(f"Partial-coverage mapping candidate rows: {len(partial_mapping_candidates_df):,}")
-    print(f"Unmapped LEAP branch mapping candidate rows: {len(unmapped_leap_mapping_candidates_df):,}")
+    print(f"Highly recommended partial-coverage mapping rows: {len(partial_mapping_candidates_df):,}")
+    print(f"Highly recommended unmapped LEAP mapping rows: {len(unmapped_leap_mapping_candidates_df):,}")
+    print(
+        "HIGHLY RECOMMENDED COPY-READY MAPPINGS: "
+        f"{relevance_output_paths['highly_recommended'].resolve()}"
+    )
     print(f"Nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
     print(f"Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
     print(f"Common comparison rows before subtotal filtering: {len(unfiltered_comparison_df):,}")

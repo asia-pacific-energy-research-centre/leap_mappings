@@ -742,6 +742,8 @@ The current implementation validates ESTO product and flow subtotals. For each n
 
 Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
+These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. In addition, Stage 3 filters total/subtotal-labelled Common ESTO rows from the final comparison output, so an empty `common_esto_validation.csv` can mean either no mismatches or no eligible parent rows. A future mapped-subtotal coverage output must report both checks performed and mismatches.
+
 - 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 
 For example, an ESTO product check compares a parent product against the sum of its direct child products:
@@ -771,7 +773,7 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 | `leap_tree.csv` | LEAP sector (slash-paths, depth 1–3) and fuel (flat) from mapping sheets |
 | `common_esto_tree.csv` | Same dot-notation logic as ESTO, filtered to common structure rows |
 | `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products and flows |
-| `common_esto_validation.csv` | Recursive sum check results for Common ESTO products and flows when comparison data exists |
+| `common_esto_validation.csv` | Recursive sum mismatches for eligible Common ESTO parent rows; an empty file does not currently report how many checks were performed |
 | `common_esto_non_esto_parent_child_edges.csv` | Common ESTO parent-child edges that are not present in the source ESTO tree; review these as dashboard/additive-total risks, not subtotal validation failures |
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.
@@ -997,8 +999,9 @@ Stage 2 reads the expanded, rollup-augmented relationship rows from Stage 1 and 
 | `qa_common_esto_partial_coverage_components_without_relevance.csv` | Structurally missing components without qualifying current-data evidence |
 | `qa_common_esto_existing_components_without_relevance.csv` | Existing components not required by current comparison data; informational only |
 | `qa_nonzero_unmapped_leap_branches.csv` | Non-zero LEAP branches without direct ESTO mappings and any auditable indirect ESTO pair |
-| `qa_common_esto_partial_coverage_mapping_candidates.csv` | Review-only, copy-friendly LEAP/9th mapping candidates for actionable missing ESTO pairs |
-| `qa_nonzero_unmapped_leap_branch_mapping_candidates.csv` | Review-only ESTO candidates for non-zero unmapped LEAP branch/fuel pairs |
+| `qa_common_esto_partial_coverage_mapping_candidates.csv` | Only complete, high-confidence, non-zero, copy-ready candidates for actionable partial coverage |
+| `qa_nonzero_unmapped_leap_branch_mapping_candidates.csv` | Only complete, high-confidence, non-zero, copy-ready candidates for unmapped LEAP branch/fuel pairs |
+| `highly_recommended_mapping_candidates.csv` | Combined copy-ready rows from both candidate files; its path is printed prominently by Stage 3 |
 | `qa_common_esto_flow_axis_partitions.csv` | How ESTO flow codes were grouped into common flow axes |
 | `qa_common_esto_product_axis_partitions.csv` | How ESTO product codes were grouped into common product axes |
 
@@ -1059,7 +1062,8 @@ Mapping candidates use a repeatable axis-first inference method:
 3. Restrict candidate source pairs to combinations that occur with non-zero relevant source data.
 4. Combine the two independently inferred axes into a proposed mapping row.
 5. Rank candidates using support counts, axis consistency, and source-data presence.
-6. Present candidates for human review; never update the workbook automatically.
+6. Put only complete, high-confidence, non-zero candidates that do not add another target into the copy-ready outputs.
+7. Leave every incomplete or ambiguous finding in its original QA file; never update the workbook automatically.
 
 For partial coverage, `source_system` identifies the mapping sheet that lacks coverage. A `LEAP` finding belongs in `leap_combined_esto`; a `NINTH` finding belongs in `ninth_pairs_to_esto_pairs`. Evidence such as `esto_base_year_nonzero` explains why the missing ESTO component matters, but does not mean the ESTO data or workbook should be edited.
 
@@ -1071,6 +1075,8 @@ Candidate rows deliberately include the canonical copy columns:
 
 - `leap_combined_esto`: `leap_sector_name_full_path`, `raw_leap_fuel_name`, `esto_flow`, `esto_product`.
 - `ninth_pairs_to_esto_pairs`: `9th_sector`, `9th_fuel`, `esto_flow`, `esto_product`.
+
+Rows in `highly_recommended_mapping_candidates.csv` have `paste_ready = True` and a sheet-specific `paste_instruction`. They may be copied into the named mapping sheet because the source pair is non-zero and both axes reproduce patterns already present in reviewed mappings. The required pipeline rerun remains part of applying the row. Medium-confidence, zero-only, incomplete, or source-pair-already-mapped suggestions are excluded from all candidate files rather than mixed with recommended rows.
 
 Independent-axis inference is often strong because branch/sector labels generally determine the balance flow while fuel labels determine the product. It is not universally valid. A source pair may be context-specific, aggregate, subtotal, or legitimately one-to-many. Low support, conflicting axis targets, an existing target for the proposed source pair, compound categories, and hierarchy-level differences are mandatory review warnings.
 

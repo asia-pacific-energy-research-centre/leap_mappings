@@ -98,6 +98,8 @@ Requirements (one-time install):
 
 - Generate mapping suggestions by inferring the two axes independently: LEAP branch or 9th sector to ESTO flow, and LEAP fuel or 9th fuel to ESTO product. Combine the axes only for source pairs observed with non-zero relevant data.
 - Treat every generated candidate as review-only. Never write candidates into `outlook_mappings_master.xlsx` automatically.
+- Only complete, non-zero, high-confidence candidates with no existing source-pair target belong in `highly_recommended_mapping_candidates.csv` and the two candidate QA files. These rows are copy-ready because both axes are derived consistently from existing mappings; paste them into the named sheet and rerun maintenance and Stages 1-3.
+- Keep incomplete, zero-only, ambiguous, or one-axis-only findings in their original QA files. Do not pad the candidate files with unresolved rows.
 - Candidate outputs must include the destination mapping sheet, copy-ready source and target columns, support counts, axis confidence, ambiguity/cardinality warnings, and the source-data evidence that made the pair relevant.
 - Do not invent an ESTO pair for an unmapped LEAP branch when only one axis can be inferred. Leave it as an unresolved review row.
 - Before accepting a candidate, check hierarchy/subtotal scope, `esto_external_definition_authority_working_set.xlsx`, existing targets for the source pair, and raw/after-rollup cardinality. Rerun the mapping pipeline after reviewed rows are added.

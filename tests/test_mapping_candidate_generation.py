@@ -3,6 +3,7 @@ import pandas as pd
 from codebase.mapping_tools.mapping_candidate_generation import (
     generate_partial_coverage_candidates_for_system,
     generate_unmapped_leap_branch_candidates,
+    select_highly_recommended_candidates,
 )
 
 
@@ -168,3 +169,51 @@ def test_partial_candidate_explains_when_axes_exist_but_no_observed_pair_combine
     assert candidate["missing_axis_evidence"] == "no_nonzero_source_pair_combines_the_two_axes"
     assert "Target branch" in candidate["flow_axis_alternatives"]
     assert "Target fuel" in candidate["product_axis_alternatives"]
+
+
+def test_highly_recommended_output_excludes_incomplete_and_medium_candidates() -> None:
+    candidate_df = pd.DataFrame(
+        [
+            {
+                "candidate_status": "proposed",
+                "candidate_confidence": "high",
+                "mapping_sheet": "leap_combined_esto",
+                "leap_sector_name_full_path": "Branch",
+                "raw_leap_fuel_name": "Fuel",
+                "esto_flow": "Flow",
+                "esto_product": "Product",
+                "source_pair_nonzero": True,
+                "candidate_would_add_another_target": False,
+            },
+            {
+                "candidate_status": "proposed",
+                "candidate_confidence": "medium",
+                "mapping_sheet": "leap_combined_esto",
+                "leap_sector_name_full_path": "Ambiguous branch",
+                "raw_leap_fuel_name": "Fuel",
+                "esto_flow": "Flow",
+                "esto_product": "Product",
+                "source_pair_nonzero": True,
+                "candidate_would_add_another_target": False,
+            },
+            {
+                "candidate_status": "insufficient_axis_evidence",
+                "candidate_confidence": "none",
+                "mapping_sheet": "leap_combined_esto",
+                "leap_sector_name_full_path": "Incomplete branch",
+                "raw_leap_fuel_name": "Fuel",
+                "esto_flow": "",
+                "esto_product": "Product",
+                "source_pair_nonzero": True,
+                "candidate_would_add_another_target": False,
+            },
+        ]
+    )
+
+    recommended_df = select_highly_recommended_candidates(candidate_df)
+
+    assert len(recommended_df) == 1
+    assert recommended_df.loc[0, "candidate_status"] == "highly_recommended_copy_ready"
+    assert recommended_df.loc[0, "paste_ready"]
+    assert recommended_df.loc[0, "derived_from_existing_axis_mappings"]
+    assert "leap_combined_esto" in recommended_df.loc[0, "paste_instruction"]

@@ -114,7 +114,7 @@ Many missing pair mappings can be inferred from repeated patterns: branches or s
 
 ### Current rule
 
-Use the third option. Candidates are generated only when both axes have evidence. Exact source-axis patterns are preferred; LEAP branch inference may fall back to collapsed repeated paths or leaf names. An auditable LEAP-to-9th-to-ESTO chain may also support a candidate. One-axis-only evidence remains unresolved. Candidates never update the canonical workbook automatically.
+Use the third option. Copy-ready candidates are generated only when both axes have evidence, the combined source pair is non-zero, axis confidence is high, and the source pair does not already have a target. Exact source-axis patterns are preferred; LEAP branch inference may fall back to collapsed repeated paths or leaf names. One-axis-only, zero-only, medium/low-confidence, and already-targeted cases remain only in their original QA files. Candidates never update the canonical workbook automatically.
 
 ### Validation
 
@@ -124,6 +124,8 @@ Every proposed row must identify its destination sheet, contain the sheet's copy
 
 - 2026-06-27: Confirmed independent-axis, review-only candidate generation for partial coverage and non-zero unmapped LEAP branches.
 - 2026-06-27: Initial generation produced one unique high-confidence partial-coverage proposal and 57 unmapped-LEAP proposals. Of 322 unresolved partial pairs, 282 lacked flow-axis evidence and 40 had both axes separately but no observed non-zero pair combining them; no forced candidates were created.
+- 2026-06-27: Restricted candidate CSVs to high-confidence, non-zero, complete, not-already-targeted rows and added a combined `highly_recommended_mapping_candidates.csv`; unresolved findings remain only in their original QA outputs.
+- 2026-06-27: The restricted output contains 45 copy-ready rows: one partial-coverage mapping and 44 unmapped-LEAP mappings. Medium-confidence and incomplete rows were removed from candidate CSVs.
 
 ## Cross-repository references
 

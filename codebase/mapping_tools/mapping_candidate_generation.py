@@ -50,6 +50,9 @@ CANDIDATE_OUTPUT_COLUMNS = [
     "candidate_rationale",
     "review_warning",
     "computer_generated_review_only",
+    "derived_from_existing_axis_mappings",
+    "paste_ready",
+    "paste_instruction",
 ]
 
 
@@ -589,5 +592,54 @@ def generate_unmapped_leap_branch_candidates(
                 }
             )
     return pd.DataFrame(rows).reindex(columns=CANDIDATE_OUTPUT_COLUMNS)
+
+
+def select_highly_recommended_candidates(candidate_df: pd.DataFrame) -> pd.DataFrame:
+    """Keep complete, non-zero, unambiguous candidates that are ready to paste.
+
+    Lower-confidence and incomplete inferences stay in their original QA files
+    and are deliberately excluded from the copy-ready candidate outputs.
+    """
+    if candidate_df.empty:
+        return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
+    working_df = candidate_df.copy()
+    source_nonzero = working_df["source_pair_nonzero"].fillna(False).astype(bool)
+    adds_target = working_df["candidate_would_add_another_target"].fillna(False).astype(bool)
+    recommended_df = working_df[
+        working_df["candidate_status"].eq("proposed")
+        & working_df["candidate_confidence"].eq("high")
+        & source_nonzero
+        & ~adds_target
+        & working_df["esto_flow"].fillna("").astype(str).str.strip().ne("")
+        & working_df["esto_product"].fillna("").astype(str).str.strip().ne("")
+    ].copy()
+    if recommended_df.empty:
+        return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
+    recommended_df["candidate_status"] = "highly_recommended_copy_ready"
+    recommended_df["derived_from_existing_axis_mappings"] = True
+    recommended_df["paste_ready"] = True
+    recommended_df["paste_instruction"] = recommended_df["mapping_sheet"].map(
+        {
+            "leap_combined_esto": (
+                "Paste leap_sector_name_full_path, raw_leap_fuel_name, esto_flow, and esto_product "
+                "into leap_combined_esto; then rerun maintenance and Stages 1-3."
+            ),
+            "ninth_pairs_to_esto_pairs": (
+                "Paste 9th_sector, 9th_fuel, esto_flow, and esto_product into "
+                "ninth_pairs_to_esto_pairs; then rerun maintenance and Stages 1-3."
+            ),
+        }
+    ).fillna("Paste the populated source and ESTO target columns into the named mapping sheet, then rerun the pipeline.")
+    key_columns = [
+        "mapping_sheet",
+        "leap_sector_name_full_path",
+        "raw_leap_fuel_name",
+        "9th_sector",
+        "9th_fuel",
+        "esto_flow",
+        "esto_product",
+    ]
+    recommended_df = recommended_df.reindex(columns=CANDIDATE_OUTPUT_COLUMNS)
+    return recommended_df.fillna("").drop_duplicates(key_columns)
 
 #%%
