@@ -695,6 +695,16 @@ mapped-universe preservation fails, the latest outputs are written with a
 `results/common_esto/common_esto_output_status.csv` to see which files belong to
 the latest run.
 
+Stage 3 retains every mapped Common ESTO row, including exact parent rows and
+generated rollups whose display labels contain words such as `Total` or
+`Subtotal`. Display labels are presentation metadata and are not valid evidence
+that a row should be removed. Consequently,
+`common_esto_comparison_data.csv` is a canonical all-rows dataset, not an
+automatically additive hierarchy frontier. Consumers must not sum arbitrary
+parent, child, and rolled rows together. The former
+`common_esto_subtotal_rows_filtered.csv` label-filter audit was retired because
+it removed valid generated comparison categories.
+
 This stage is separate from Stage 2 because Stage 2 defines which comparison rows to use and can be run independently to check the structure without needing data. Stage 3 can then be re-run with new source data without rebuilding the structure.
 ### Stage 4 - Dashboard / comparison tools
 
@@ -742,7 +752,7 @@ The current implementation validates ESTO product and flow subtotals. For each n
 
 Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
-These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. In addition, Stage 3 filters total/subtotal-labelled Common ESTO rows from the final comparison output, so an empty `common_esto_validation.csv` can mean either no mismatches or no eligible parent rows. A future mapped-subtotal coverage output must report both checks performed and mismatches.
+These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. Stage 3 now retains total/subtotal-labelled Common ESTO rows, but an empty `common_esto_validation.csv` still does not report how many parent checks were eligible. A future mapped-subtotal coverage output must report both checks performed and mismatches.
 
 - 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 

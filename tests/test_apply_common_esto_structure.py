@@ -1,12 +1,54 @@
 import pandas as pd
 
 from codebase.mapping_tools.apply_common_esto_structure import (
+    apply_common_structure,
     build_component_relevance,
     build_unmapped_leap_branch_evidence,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     should_ignore_missing_common_map_flow,
 )
+
+
+def test_apply_common_structure_retains_generated_total_label() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "LEAP",
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "year": 2060,
+                "esto_flow": "14 Industry sector",
+                "esto_product": "08.01 Natural gas",
+                "value": 10.0,
+            }
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "leap_vs_esto",
+                "component_esto_flow": "14 Industry sector",
+                "component_esto_product": "08.01 Natural gas",
+                "common_row_id": "common_total_final_consumption",
+                "common_flow_code": "12,13,14,16.01-16.02",
+                "common_flow_name": "Total final consumption",
+                "common_flow_label": "12,13,14,16.01-16.02 Total final consumption",
+                "common_product_code": "08.01",
+                "common_product_name": "Natural gas",
+                "common_product_label": "08.01 Natural gas",
+                "component_sign": 1,
+            }
+        ]
+    )
+
+    comparison_df, missing_map_df, _ = apply_common_structure(source_df, common_rows_df)
+
+    assert missing_map_df.empty
+    assert comparison_df["common_flow_label"].tolist() == [
+        "12,13,14,16.01-16.02 Total final consumption"
+    ]
+    assert comparison_df["value"].tolist() == [10.0]
 
 
 def test_should_ignore_missing_common_map_flow_for_known_ignored_flows() -> None:

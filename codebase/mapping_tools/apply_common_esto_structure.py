@@ -49,7 +49,7 @@ WIDE_OUTPUT_ID_COLUMNS = ["economy", "scenario", "product", "flow"]
 SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "value"]
 SOURCE_VALUE_SCOPE_COLUMNS = ["comparison_scope"] + SOURCE_VALUE_COLUMNS
 TOTAL_GROUP_COLUMNS = ["comparison_scope", "source_system", "economy", "scenario", "year"]
-SUBTOTAL_KEYWORDS = ["total", "subtotal"]
+AGGREGATE_LABEL_KEYWORDS = ["total", "subtotal"]
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0
 NINTH_PROJECTION_START_YEAR = 2023
@@ -530,6 +530,12 @@ def merge_component_relevance(
     return combined_df[COMPONENT_RELEVANCE_COLUMNS].drop_duplicates()
 
 
+def label_looks_aggregate(value: object) -> bool:
+    """Flag aggregate-looking labels for mapping review, never row exclusion."""
+    text = "" if pd.isna(value) else str(value).strip().lower()
+    return any(keyword in text for keyword in AGGREGATE_LABEL_KEYWORDS)
+
+
 def filter_partial_coverage_by_relevance(
     structural_partial_df: pd.DataFrame,
     relevance_df: pd.DataFrame,
@@ -577,8 +583,8 @@ def filter_partial_coverage_by_relevance(
                 output_row["mapping_sheet_to_review"] = ""
                 output_row["mapping_source_columns"] = ""
             output_row["mapping_target_columns"] = "esto_flow|esto_product"
-            output_row["target_flow_looks_aggregate"] = is_subtotal_label(flow)
-            output_row["target_product_looks_aggregate"] = is_subtotal_label(product)
+            output_row["target_flow_looks_aggregate"] = label_looks_aggregate(flow)
+            output_row["target_product_looks_aggregate"] = label_looks_aggregate(product)
             if output_row["target_flow_looks_aggregate"] or output_row["target_product_looks_aggregate"]:
                 output_row["mapping_review_priority"] = "confirm_aggregate_should_be_directly_mapped_before_adding_row"
             else:
@@ -737,32 +743,6 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
         .reset_index(drop=True)
     )
     return comparison_df, missing_map_df, mapped_source_df
-
-
-def is_subtotal_label(value: object) -> bool:
-    """Return True for labels that should be filtered from final outputs."""
-    text = "" if pd.isna(value) else str(value).strip().lower()
-    return any(keyword in text for keyword in SUBTOTAL_KEYWORDS)
-
-
-def split_subtotal_rows(comparison_df: pd.DataFrame, exclude_subtotal_rows: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split final comparison rows into kept rows and subtotal/total audit rows."""
-    if comparison_df.empty or not exclude_subtotal_rows:
-        return comparison_df.copy(), pd.DataFrame(columns=list(comparison_df.columns) + ["subtotal_filter_reason"])
-
-    flow_mask = comparison_df["common_flow_label"].map(is_subtotal_label)
-    product_mask = comparison_df["common_product_label"].map(is_subtotal_label)
-    subtotal_mask = flow_mask | product_mask
-    subtotal_df = comparison_df[subtotal_mask].copy()
-    kept_df = comparison_df[~subtotal_mask].copy()
-    if not subtotal_df.empty:
-        subtotal_df["subtotal_filter_reason"] = ""
-        subtotal_df.loc[flow_mask[subtotal_mask].values, "subtotal_filter_reason"] = "common_flow_label_contains_total_or_subtotal"
-        both_mask = flow_mask & product_mask
-        subtotal_df.loc[both_mask[subtotal_mask].values, "subtotal_filter_reason"] = "common_flow_and_product_labels_contain_total_or_subtotal"
-        product_only_mask = product_mask & ~flow_mask
-        subtotal_df.loc[product_only_mask[subtotal_mask].values, "subtotal_filter_reason"] = "common_product_label_contains_total_or_subtotal"
-    return kept_df, subtotal_df
 
 
 def build_broad_common_row_diagnostics(
@@ -1081,7 +1061,6 @@ def save_outputs(
     wide_year_df: pd.DataFrame,
     total_check_df: pd.DataFrame,
     missing_map_df: pd.DataFrame,
-    subtotal_filtered_df: pd.DataFrame,
     output_dir: Path,
     error_occurred: bool,
 ) -> None:
@@ -1108,10 +1087,17 @@ def save_outputs(
         missing_map_df,
         error_tagged_path(output_dir / "common_esto_source_rows_missing_common_map.csv", error_occurred),
     ))
-    written_paths.append(write_csv_with_locked_fallback(
-        subtotal_filtered_df,
-        error_tagged_path(output_dir / "common_esto_subtotal_rows_filtered.csv", error_occurred),
-    ))
+    # This legacy output was produced by an unreliable label-based subtotal
+    # filter. Remove it so a stale file cannot be mistaken for current QA.
+    legacy_filtered_path = output_dir / "common_esto_subtotal_rows_filtered.csv"
+    if legacy_filtered_path.exists():
+        try:
+            legacy_filtered_path.unlink()
+        except PermissionError:
+            print(
+                "WARNING: Retired label-filter output is open and could not be removed. "
+                f"It is not listed in the current output status: {legacy_filtered_path}"
+            )
     status_df = pd.DataFrame(
         [
             {
@@ -1129,7 +1115,6 @@ def run_apply_common_esto_structure(
     common_rows_path: Path,
     output_dir: Path,
     default_economy: str,
-    exclude_subtotal_rows: bool,
     broad_common_row_component_limit: int,
     active_component_abs_tolerance: float,
     raw_leap_results_path: Path | None = None,
@@ -1242,16 +1227,16 @@ def run_apply_common_esto_structure(
     )
     unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
-    subtotal_kept_df, subtotal_filtered_df = split_subtotal_rows(unfiltered_comparison_df, exclude_subtotal_rows=exclude_subtotal_rows)
+    comparison_df = unfiltered_comparison_df.copy()
     broad_diagnostics = build_broad_common_row_diagnostics(
         common_rows_df=adjusted_common_rows_df,
-        comparison_df=subtotal_kept_df,
+        comparison_df=comparison_df,
         broad_component_limit=broad_common_row_component_limit,
     )
     broad_warning_message = broad_common_row_error_message(broad_diagnostics, output_dir)
     intersecting_axis_warning_message = intersecting_axis_group_error_message(
         adjusted_common_rows_df=adjusted_common_rows_df,
-        comparison_df=subtotal_kept_df,
+        comparison_df=comparison_df,
         output_dir=output_dir,
     )
     error_occurred = False
@@ -1259,7 +1244,6 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {broad_warning_message}")
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
-    comparison_df = subtotal_kept_df.copy()
     wide_year_df = build_wide_year_output(comparison_df)
     total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
     save_outputs(
@@ -1267,7 +1251,6 @@ def run_apply_common_esto_structure(
         wide_year_df,
         total_check_df,
         missing_map_df,
-        subtotal_filtered_df,
         output_dir,
         error_occurred=error_occurred,
     )
@@ -1288,9 +1271,7 @@ def run_apply_common_esto_structure(
     )
     print(f"Nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
     print(f"Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
-    print(f"Common comparison rows before subtotal filtering: {len(unfiltered_comparison_df):,}")
-    print(f"Subtotal/total rows filtered from final outputs: {len(subtotal_filtered_df):,}")
-    print(f"Common comparison rows written: {len(comparison_df):,}")
+    print(f"Common comparison rows written without label-based subtotal filtering: {len(comparison_df):,}")
     print(f"Wide year rows written: {len(wide_year_df):,}")
     print(f"Source rows missing common map: {len(missing_map_df):,}")
     print(f"before/after total differences max abs: {max_abs_difference}")
@@ -1318,7 +1299,6 @@ SOURCE_PATHS = {
     "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv",
 }
 DEFAULT_ECONOMY = "20_USA"
-EXCLUDE_SUBTOTAL_ROWS = True
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0
 
@@ -1333,7 +1313,6 @@ if __name__ == "__main__":
                 common_rows_path=COMMON_ROWS_PATH,
                 output_dir=OUTPUT_DIR,
                 default_economy=DEFAULT_ECONOMY,
-                exclude_subtotal_rows=EXCLUDE_SUBTOTAL_ROWS,
                 broad_common_row_component_limit=BROAD_COMMON_ROW_COMPONENT_LIMIT,
                 active_component_abs_tolerance=ACTIVE_COMPONENT_ABS_TOLERANCE,
                 raw_leap_results_path=RAW_LEAP_RESULTS_PATH,

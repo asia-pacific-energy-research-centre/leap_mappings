@@ -63,6 +63,9 @@ Do not prioritize the raw counts in `unmapped_esto_pairs.csv`, `unmapped_ninth_p
 - Document any hierarchy edges whose additive meaning requires human confirmation.
 - Add an explicit mapped-ESTO-subtotal coverage check: for every raw ESTO parent subtotal, compare its value with the sum of mapped leaf descendants and report mapped, unmapped, excluded, and zero-only child components.
 - Make subtotal validation summaries report the number of eligible parents and checks performed, not only mismatch rows, so an empty CSV cannot be mistaken for proof that coverage was tested.
+- Define a non-overlapping comparison frontier for each comparison scope. The canonical all-rows dataset must retain parent, child, and generated rollup rows; a separate validated additive view or explicit frontier metadata should identify which rows may be summed together.
+- Preserve `common_row_id`, rollup basis, hierarchy status, and component lineage in a machine-readable output so dashboards do not infer subtotal meaning from display labels.
+- Decide whether one centrally validated additive dataset is sufficient or whether several named frontiers are required for detail, summary, and rollup contexts.
 
 ## 4. Resolve the ESTO definition-authority working set
 

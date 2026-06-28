@@ -127,6 +127,68 @@ Every proposed row must identify its destination sheet, contain the sheet's copy
 - 2026-06-27: Restricted candidate CSVs to high-confidence, non-zero, complete, not-already-targeted rows and added a combined `highly_recommended_mapping_candidates.csv`; unresolved findings remain only in their original QA outputs.
 - 2026-06-27: The restricted output contains 45 copy-ready rows: one partial-coverage mapping and 44 unmapped-LEAP mappings. Medium-confidence and incomplete rows were removed from candidate CSVs.
 
+## MAP-005: Display labels do not determine subtotal exclusion
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Presentation
+**Affected areas:** `codebase/mapping_tools/apply_common_esto_structure.py`; `codebase/run_mapping_pipeline.py`; `results/common_esto/common_esto_comparison_data.csv`; retired `results/common_esto/common_esto_subtotal_rows_filtered.csv`
+
+### Situation
+
+Stage 3 previously removed every Common ESTO row whose flow or product display label contained `Total` or `Subtotal`. This was intended to reduce parent/detail double-counting, but labels do not encode hierarchy reliably. The rule removed valid graph-generated rollups, including the comparison row containing the mapped `14 Industry sector` component.
+
+### Options
+
+- Continue using label text as a subtotal proxy, which suppresses valid rollups and can still miss parents without those words.
+- Remove all parent rows using source hierarchy flags, which would also prevent direct parent-level comparisons.
+- Retain every mapped Common row and use explicit hierarchy/frontier metadata for any future additive view.
+
+### Current rule
+
+Use the third option. Stage 3 does not exclude a row because its display label contains `Total` or `Subtotal`. `common_esto_comparison_data.csv` retains exact and generated Common rows. It is not safe to sum the complete file without selecting a non-overlapping comparison frontier.
+
+### Validation
+
+Confirm that generated rollups with `Total` in their labels appear in `common_esto_comparison_data.csv`, mapped-universe total preservation remains within tolerance, and the retired label-filter output is not produced. Unit coverage verifies that a generated total label survives Common structure application.
+
+### History
+
+- 2026-06-28: Removed the label-based Stage 3 filter after confirming it suppressed valid generated rollups.
+
+## CROSS-002: Ownership of additive comparison frontiers
+
+**Status:** Open
+**Owner:** Cross-repository
+**Type:** Comparison
+**Affected areas:** `leap_mappings` Stage 2/3 Common ESTO outputs; `leap_dashboard` grouping and totals; Common ESTO hierarchy and rollup validation
+
+### Situation
+
+The canonical Common ESTO output can legitimately contain exact parents, descendants, and generated rollups for different comparison purposes. Retaining them preserves information, but summing them indiscriminately can double count. The current output does not identify a validated, non-overlapping set of rows for each presentation context.
+
+### Options
+
+- Make each dashboard infer and remove subtotals. This allows presentation-specific choices but duplicates semantic logic and risks inconsistent totals.
+- Make Stage 3 publish only one additive frontier. This is simple for consumers but discards valid alternative detail and summary views.
+- Make Stage 3 publish all rows plus centrally validated frontier metadata or separate named additive views. Dashboards select an appropriate declared view but do not infer hierarchy from labels.
+
+### Current rule
+
+No additive frontier rule selected. Stage 3 publishes all mapped Common rows. Until a frontier is implemented, consumers must not treat the complete dataset as one additive table and must not infer subtotal status from display names.
+
+### Decision needed
+
+Should the mapping pipeline publish one additive frontier or several named frontiers for different detail and rollup contexts, and which views are required by the dashboard?
+
+### Validation
+
+For each proposed frontier and each economy/scenario/year/product grouping, confirm that no selected row is an ancestor, descendant, or overlapping rollup of another selected row. Reconcile the frontier total to its declared parent total and report selected, excluded, and unavailable rows.
+
+### History
+
+- 2026-06-28: Opened after retiring the label-based subtotal filter; recommended central frontier metadata with dashboard view selection.
+
 ## Cross-repository references
 
 - **`CROSS-001: Full-model export and LEAP import ID integrity`** is owned by
@@ -149,3 +211,16 @@ Append a dated subsection after each end-to-end run. Report:
 - the next decisions requiring human guidance.
 
 Also report coverage, dropped rows, source-versus-output totals, hierarchy consistency, mapping cardinality, and semantic review. A successful process exit is not evidence that the comparison is correct.
+
+### 2026-06-28: Stage 3 after retiring label-based subtotal filtering
+
+- **Newly discovered decisions:** `CROSS-002` was opened because the canonical all-rows dataset needs centrally defined, non-overlapping frontier metadata or named additive views before dashboards can calculate totals safely.
+- **Unresolved decisions blocking correct additive output:** decide which detail, summary, and rollup frontiers are required and whether generated aggregate values should be compared alongside, rather than added to, their components.
+- **Provisional assumptions used to continue:** Stage 3 now preserves every mapped Common row. The output is treated as canonical comparison data, not as one additive table.
+- **Rules that should become configuration:** named comparison-frontier contexts, once agreed, should be explicit configuration rather than inferred from codes or display labels.
+- **Rules that should become automated validation:** each frontier must reject ancestor/descendant and overlapping-rollup selections, reconcile to its declared parent, and report eligible checks as well as mismatches.
+- **Next decisions requiring human guidance:** approve one central additive frontier or several named frontiers and identify the dashboard views that require them.
+- **Coverage and dropped rows:** Stage 3 read 5,490,424 ESTO-shaped rows, used 629,921 non-zero rows, wrote 990,684 Common comparison rows, and reported 39,306 source rows missing a Common map after configured exclusions. It retained 324 actionable partial-coverage rows and 370 inactive findings.
+- **Totals:** mapped-universe preservation passed with maximum absolute difference `9.313225746154785e-10` PJ.
+- **Hierarchy consistency:** rerunning Common recursive validation after restoring total-labelled rows exposed 4,677 mismatches: 4,672 Ninth product checks (`15 Solid biomass` and `16 Others`) and 5 LEAP flow checks (`09 Total transformation sector`). Industry produced no mismatches; the USA Reference 2060 natural-gas Manufacturing parent differed from its 11 direct children by only `1.82e-12` PJ. The validation still does not report its total eligible-check count.
+- **Mapping cardinality and semantics:** Stage 3 warned of 22 product-axis and 27 flow-axis overlapping Common groups. These remain review findings; total preservation alone does not establish that the overlaps are semantically correct or additive-safe.

@@ -281,7 +281,6 @@ def run_stage_3() -> None:
         common_rows_path=COMMON_ROWS_PATH,
         output_dir=COMMON_ESTO_DIR,
         default_economy="20USA",
-        exclude_subtotal_rows=True,
         broad_common_row_component_limit=50,
         active_component_abs_tolerance=0.0,
         raw_leap_results_path=RAW_LEAP_PATH,
