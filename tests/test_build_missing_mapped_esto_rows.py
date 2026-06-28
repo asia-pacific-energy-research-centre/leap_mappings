@@ -141,3 +141,26 @@ def test_writer_creates_one_source_shaped_csv_and_summary(tmp_path: Path) -> Non
     assert (output_dir / "missing_mapped_esto_rows_summary.csv").exists()
     assert summary.loc[0, "missing_pair_count"] == 3
     assert summary.loc[0, "paste_ready_row_count"] == 5
+
+
+def test_build_missing_rows_supports_source_without_subtotal_column(tmp_path: Path) -> None:
+    workbook_path = tmp_path / "mappings.xlsx"
+    source_path = tmp_path / "esto_without_subtotals.csv"
+    _write_mapping_workbook(workbook_path)
+    source = pd.DataFrame(
+        [
+            {
+                "economy": "01AAA",
+                "flows": "01 Production",
+                "products": "06.04 Additives and oxygenates",
+                "2022": 1.0,
+            }
+        ]
+    )
+    source.to_csv(source_path, index=False)
+
+    rows, _audit = build_missing_mapped_esto_rows(source_path, workbook_path)
+
+    assert list(rows.columns) == ["economy", "flows", "products", "2022"]
+    assert "is_subtotal" not in rows.columns
+    assert (rows["2022"] == 0).all()

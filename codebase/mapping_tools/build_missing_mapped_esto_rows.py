@@ -17,7 +17,7 @@ import pandas as pd
 
 #%%
 MAPPING_SHEETS = ("leap_combined_esto", "ninth_pairs_to_esto_pairs")
-REQUIRED_ESTO_COLUMNS = ("economy", "flows", "products", "is_subtotal")
+REQUIRED_ESTO_COLUMNS = ("economy", "flows", "products")
 SIMPLE_ESTO_CODE_PATTERN = re.compile(r"\d+(?:\.\d+)*")
 
 
@@ -133,6 +133,7 @@ def _parent_codes(codes: set[str]) -> set[str]:
 def build_missing_mapped_esto_rows(
     esto_csv_path: Path,
     mapping_workbook_path: Path,
+    expected_pairs: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return paste-ready zero rows and a compact missing-pair audit.
 
@@ -147,7 +148,10 @@ def build_missing_mapped_esto_rows(
     if missing_columns:
         raise ValueError(f"ESTO file {esto_csv_path} is missing columns: {missing_columns}")
 
-    expected = load_expected_mapped_esto_pairs(mapping_workbook_path)
+    if expected_pairs is None:
+        expected = load_expected_mapped_esto_pairs(mapping_workbook_path)
+    else:
+        expected = expected_pairs.copy()
     esto["_flow_code"] = esto["flows"].map(extract_simple_esto_code)
     esto["_product_code"] = esto["products"].map(extract_simple_esto_code)
 
@@ -196,7 +200,8 @@ def build_missing_mapped_esto_rows(
     paste_ready["economy"] = missing["economy"].values
     paste_ready["flows"] = missing["output_flow"].values
     paste_ready["products"] = missing["output_product"].values
-    paste_ready["is_subtotal"] = missing["inferred_is_subtotal"].astype(bool).values
+    if "is_subtotal" in paste_ready.columns:
+        paste_ready["is_subtotal"] = missing["inferred_is_subtotal"].astype(bool).values
     for column in paste_ready.columns:
         if str(column).isdigit():
             paste_ready[column] = 0.0
@@ -235,6 +240,7 @@ def write_missing_mapped_esto_rows(
 ) -> pd.DataFrame:
     """Write one paste-ready CSV per ESTO source and return a run summary."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    expected_pairs = load_expected_mapped_esto_pairs(mapping_workbook_path)
     summary_rows: list[dict[str, object]] = []
     for esto_csv_path in esto_csv_paths:
         if not esto_csv_path.exists():
@@ -250,6 +256,7 @@ def write_missing_mapped_esto_rows(
         paste_ready, audit = build_missing_mapped_esto_rows(
             esto_csv_path=esto_csv_path,
             mapping_workbook_path=mapping_workbook_path,
+            expected_pairs=expected_pairs,
         )
         output_path = output_dir / f"{esto_csv_path.stem}_missing_mapped_rows.csv"
         paste_ready.to_csv(output_path, index=False)
