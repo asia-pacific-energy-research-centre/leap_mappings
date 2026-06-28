@@ -619,6 +619,47 @@ What it does:
 - Checks active row presence across the three base mapping sheets.
 - Detects crosswalk target conflicts, such as the same source implying inconsistent ESTO or 9th targets.
 - Produces researcher-facing QA outputs.
+- Writes paste-ready zero rows for mapped ESTO pairs missing from the maintained ESTO source vintages.
+
+### Adding mapped rows missing from ESTO source files
+
+The standard Stage 0 run checks both maintained ESTO vintages:
+
+```text
+data/00APEC_2025_low_with_subtotals.csv
+data/00APEC_2024_low_with_subtotals.csv
+```
+
+against the active ESTO targets in `leap_combined_esto` and
+`ninth_pairs_to_esto_pairs`. For each simple ESTO `(flow, product)` pair needed
+by the mappings, it confirms that the pair exists for every economy in the
+source file. Missing rows are written to:
+
+```text
+results/maintenance/missing_mapped_esto_rows/
+```
+
+There is one `*_missing_mapped_rows.csv` per source vintage. Each file has the
+same columns and column order as its source CSV, contains zero in every year,
+and includes only missing economy/flow/product keys. Generated comparison codes
+containing lists or ranges are excluded because they are not physical ESTO
+source rows. Existing labels are matched by their numeric ESTO codes, so a
+punctuation-only label difference does not create a duplicate row.
+
+Review the generated file, then manually copy its rows to the bottom of the
+corresponding ESTO source CSV. The workflow never edits an ESTO source file
+automatically. Rerun Stage 0 after pasting; the output for that vintage should
+then contain no rows.
+
+The check is controlled near the top of the maintenance workflow:
+
+```python
+GENERATE_MISSING_MAPPED_ESTO_ROWS = True
+```
+
+Set it to `False` to skip the output. Keep it enabled after mapping or ESTO
+vintage updates so newly mapped products such as `16.10 Ammonia`, `16.11
+E-fuel`, and `16.12 Hydrogen` are visible before downstream validation.
 
 The maintenance workflow is upstream QA and workbook maintenance. It does not write to LEAP, and it does not create the final dashboard comparison dataset.
 

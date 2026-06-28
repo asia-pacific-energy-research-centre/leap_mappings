@@ -25,6 +25,10 @@ What it does
      subtotal_mismatches.csv        — M6 rule: leaf source → aggregate target
                                       rows not present in the manual allowlist
 
+3. Optionally writes paste-ready zero rows for mapped ESTO pairs that are
+   missing from the configured ESTO source vintages.  Source files are never
+   edited automatically.
+
 Usage:
     python codebase/outlook_mapping_maintenance_workflow.py
 """
@@ -52,12 +56,21 @@ ARCHIVE_DIR = REPO_ROOT / "config" / "archive"
 QA_DIR = REPO_ROOT / "results" / "maintenance"
 
 ESTO_CSV_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
+ESTO_SOURCE_DATA_PATHS = [
+    ESTO_CSV_PATH,
+    REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv",
+]
 NINTH_CSV_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 FULL_MODEL_EXPORT_PATHS = [
     REPO_ROOT / "data" / "full model export.xlsx",
     REPO_ROOT.parent / "leap_initialisation" / "data" / "full model export.xlsx",
 ]
 FULL_MODEL_EXPORT_SHEET = "Export"
+
+# User toggle.  This only writes review/copy files under results/maintenance;
+# it never modifies either ESTO source CSV.
+GENERATE_MISSING_MAPPED_ESTO_ROWS = True
+MISSING_MAPPED_ESTO_ROWS_DIR = QA_DIR / "missing_mapped_esto_rows"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -911,6 +924,7 @@ def _write_maintenance_summary(
         ("maintenance", "unmapped_ninth_pairs.csv", "review"),
         ("maintenance", "subtotal_mismatches.csv", "review"),
         ("maintenance", "subtotal_mismatches_allowed_matched.csv", "info"),
+        ("maintenance", "missing_mapped_esto_rows/missing_mapped_esto_rows_summary.csv", "review"),
         ("tree_structure", "esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_non_esto_parent_child_edges.csv", "review"),
@@ -958,6 +972,20 @@ def _remove_stale_generated_exception_outputs() -> None:
 
 def run() -> None:
     _archive_workbook(WORKBOOK_PATH)
+
+    if GENERATE_MISSING_MAPPED_ESTO_ROWS:
+        print("Building paste-ready rows for mapped ESTO pairs missing from source data …")
+        from codebase.mapping_tools.build_missing_mapped_esto_rows import (
+            write_missing_mapped_esto_rows,
+        )
+
+        write_missing_mapped_esto_rows(
+            esto_csv_paths=ESTO_SOURCE_DATA_PATHS,
+            mapping_workbook_path=WORKBOOK_PATH,
+            output_dir=MISSING_MAPPED_ESTO_ROWS_DIR,
+        )
+    else:
+        print("Skipping missing mapped ESTO row generation (toggle is False).")
 
     print("Loading subtotal lookups …")
     esto_lookup = _build_esto_subtotal_lookup()
