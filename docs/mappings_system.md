@@ -695,6 +695,31 @@ mapped-universe preservation fails, the latest outputs are written with a
 `results/common_esto/common_esto_output_status.csv` to see which files belong to
 the latest run.
 
+After the canonical `common_esto_comparison_data.csv` is written successfully,
+`run_mapping_pipeline.py` immediately runs the Common ESTO product- and
+flow-hierarchy validations. Stage 3 remains responsible only for applying the
+Common structure; the post-write orchestrator calls the existing hierarchy
+validation functions. A UTC `run_id` is generated before Stage 3 and is shared
+by the Stage 3 artifact manifest, validation summary, and mismatch detail.
+
+The status contract is:
+
+| Status | Meaning |
+| --- | --- |
+| `passed` | One or more parent checks were eligible and every completed check matched. |
+| `failed` | Checks completed and one or more parent/child comparisons mismatched. |
+| `skipped` | The input was missing or not proven current, or zero parent checks were eligible. |
+| `error` | Validation raised an exception; the status row contains the exception type and message. |
+
+`results/tree_structure/common_esto_validation_summary.csv` contains one compact
+row per validation axis and source system. It records checks performed,
+eligible parent count, mismatch count, reason, input and output paths, the exact
+Stage 3 input modification time in nanoseconds and UTC, file size, run ID, and
+run timestamp. `common_esto_output_status.csv` includes the same validation rows
+beside the Stage 3 artifact rows, so consumers can require matching run IDs and
+input provenance. `common_esto_validation.csv` remains mismatch detail, now
+tagged with the run ID.
+
 Stage 3 retains every mapped Common ESTO row, including exact parent rows and
 generated rollups whose display labels contain words such as `Total` or
 `Subtotal`. Display labels are presentation metadata and are not valid evidence
@@ -752,7 +777,7 @@ The current implementation validates ESTO product and flow subtotals. For each n
 
 Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
-These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. Stage 3 now retains total/subtotal-labelled Common ESTO rows, but an empty `common_esto_validation.csv` still does not report how many parent checks were eligible. A future mapped-subtotal coverage output must report both checks performed and mismatches.
+These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. Stage 3 now retains total/subtotal-labelled Common ESTO rows. The validation summary reports eligible checks and mismatches, so an empty mismatch file is only evidence of a pass when its current-run summary row is `passed`.
 
 - 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 
@@ -783,7 +808,8 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 | `leap_tree.csv` | LEAP sector (slash-paths, depth 1–3) and fuel (flat) from mapping sheets |
 | `common_esto_tree.csv` | Same dot-notation logic as ESTO, filtered to common structure rows |
 | `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products and flows |
-| `common_esto_validation.csv` | Recursive sum mismatches for eligible Common ESTO parent rows; an empty file does not currently report how many checks were performed |
+| `common_esto_validation.csv` | Current-run recursive sum mismatch detail, tagged with `run_id`; always replaced on pass, skip, or error |
+| `common_esto_validation_summary.csv` | Current-run status and provenance by validation axis and source system |
 | `common_esto_non_esto_parent_child_edges.csv` | Common ESTO parent-child edges that are not present in the source ESTO tree; review these as dashboard/additive-total risks, not subtotal validation failures |
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.

@@ -4,6 +4,38 @@ This is the decision log for `leap_mappings`. Record rules whose correct behavio
 
 Cross-repository decisions use a `CROSS-###` ID and have one authoritative entry in the repository that owns the implementation. Other affected repositories should link to that entry instead of copying it.
 
+## MAP-007: Empty validation detail is not pass evidence
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Validation orchestration
+**Affected areas:** Stage 3 Common ESTO output manifest; Common hierarchy validation outputs
+
+### Situation
+
+An empty mismatch CSV is ambiguous: checks may have passed, no checks may have
+been eligible, validation may have been skipped, or the file may belong to an
+older run.
+
+### Current rule
+
+Only a current-run summary row with `status=passed`, a positive eligible-parent
+count, and provenance matching the Stage 3 comparison file is evidence of a
+pass. Zero eligible checks is `skipped`; mismatches are `failed`; exceptions are
+`error`. The mismatch detail is replaced for every attempted run, including
+skip and error outcomes, and all Stage 3 and validation records share one run ID.
+
+### Validation
+
+Automated tests cover pass, fail, zero eligibility, missing input, exceptions,
+stale input provenance, stale detail replacement, and shared Stage 3/validation
+run identifiers.
+
+### History
+
+- 2026-06-28: Established the explicit status/provenance contract and automatic
+  post-Stage-3 hierarchy validation orchestration.
+
 ## MAP-001: Subtotal-to-non-subtotal mappings need a narrower-target test
 
 **Status:** Confirmed

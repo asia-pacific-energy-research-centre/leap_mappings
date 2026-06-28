@@ -9,6 +9,7 @@ economy, scenario, year, ESTO flow/product, and value columns.
 #%%
 from pathlib import Path
 import sys
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -1063,9 +1064,13 @@ def save_outputs(
     missing_map_df: pd.DataFrame,
     output_dir: Path,
     error_occurred: bool,
-) -> None:
+    run_id: str | None = None,
+    run_timestamp_utc: str | None = None,
+) -> pd.DataFrame:
     """Write common comparison data and QA outputs."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_timestamp = run_timestamp_utc or datetime.now(timezone.utc).isoformat()
+    resolved_run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     written_paths = []
     written_paths.append(write_csv_with_locked_fallback(
         drop_internal_common_columns(comparison_df),
@@ -1098,16 +1103,34 @@ def save_outputs(
                 "WARNING: Retired label-filter output is open and could not be removed. "
                 f"It is not listed in the current output status: {legacy_filtered_path}"
             )
-    status_df = pd.DataFrame(
-        [
-            {
-                "status": "needs_mapping_review" if error_occurred else "ok",
-                "current_output_file": path.name,
-            }
-            for path in written_paths
-        ]
-    )
-    write_csv_with_locked_fallback(status_df, output_dir / "common_esto_output_status.csv")
+    status_df = pd.DataFrame([
+        {
+            "run_id": resolved_run_id,
+            "run_timestamp_utc": resolved_timestamp,
+            "record_type": "stage3_output",
+            "artifact_name": path.stem,
+            "validation_name": "",
+            "validation_axis": "",
+            "source_system": "",
+            "status": "needs_mapping_review" if error_occurred else "passed",
+            "checks_performed": "",
+            "eligible_parent_count": "",
+            "mismatch_count": "",
+            "reason": "Stage 3 output written successfully.",
+            "current_output_file": path.name,
+            "output_path": str(path.resolve()),
+            "output_mtime_ns": path.stat().st_mtime_ns,
+            "input_path": "",
+            "input_mtime_ns": "",
+            "input_mtime_utc": "",
+            "input_size_bytes": "",
+        }
+        for path in written_paths
+    ])
+    # The manifest must never fall back to a second filename: leaving an older
+    # canonical manifest in place would make stale artifacts appear current.
+    status_df.to_csv(output_dir / "common_esto_output_status.csv", index=False)
+    return status_df
 
 
 def run_apply_common_esto_structure(
@@ -1123,6 +1146,8 @@ def run_apply_common_esto_structure(
     ninth_source_data_path: Path | None = None,
     ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
     esto_base_year: int | None = None,
+    run_id: str | None = None,
+    run_timestamp_utc: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(source_paths, default_economy=default_economy)
@@ -1253,6 +1278,8 @@ def run_apply_common_esto_structure(
         missing_map_df,
         output_dir,
         error_occurred=error_occurred,
+        run_id=run_id,
+        run_timestamp_utc=run_timestamp_utc,
     )
 
     max_abs_difference = total_check_df["difference"].abs().max() if "difference" in total_check_df.columns and not total_check_df.empty else 0

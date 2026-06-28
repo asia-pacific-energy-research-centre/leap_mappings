@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -270,6 +271,17 @@ def run_stage_3() -> None:
         return
 
     from codebase.mapping_tools.apply_common_esto_structure import run_apply_common_esto_structure
+    from codebase.mapping_tools.build_dataset_tree_structure import (
+        build_common_esto_tree,
+        build_esto_tree,
+    )
+    from codebase.mapping_tools.common_esto_validation_orchestration import (
+        run_common_esto_validation_workflow,
+    )
+
+    run_timestamp = datetime.now(timezone.utc)
+    run_timestamp_utc = run_timestamp.isoformat()
+    run_id = run_timestamp.strftime("common_esto_%Y%m%dT%H%M%S%fZ")
 
     source_paths = {
         "LEAP":  LEAP_ESTO_PATH,
@@ -288,7 +300,63 @@ def run_stage_3() -> None:
         structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
         ninth_source_data_path=NINTH_CSV_PATH,
         ninth_projection_start_year=2023,
+        run_id=run_id,
+        run_timestamp_utc=run_timestamp_utc,
     )
+
+    status_path = COMMON_ESTO_DIR / "common_esto_output_status.csv"
+    stage3_status = pd.read_csv(status_path, dtype=object).fillna("")
+    comparison_status = stage3_status[
+        stage3_status["artifact_name"] == "common_esto_comparison_data"
+    ]
+    comparison_path = COMMON_ESTO_DIR / "common_esto_comparison_data.csv"
+    skip_reason = ""
+    expected_mtime_ns: int | None = None
+    if comparison_status.empty:
+        skip_reason = "Current Stage 3 manifest does not contain the comparison output."
+    else:
+        comparison_record = comparison_status.iloc[0]
+        current_output_file = str(comparison_record["current_output_file"])
+        if current_output_file != comparison_path.name:
+            skip_reason = (
+                "Stage 3 did not write the canonical comparison output for this run; "
+                f"current output is {current_output_file}."
+            )
+        else:
+            expected_mtime_ns = int(comparison_record["output_mtime_ns"])
+
+    common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
+    esto_tree = build_esto_tree(ESTO_CSV_PATH)
+    validation_tree = pd.concat([esto_tree, common_tree], ignore_index=True)
+    detail_df, validation_summary = run_common_esto_validation_workflow(
+        tree_df=validation_tree,
+        comparison_data_path=comparison_path,
+        output_dir=REPO_ROOT / "results" / "tree_structure",
+        run_id=run_id,
+        run_timestamp_utc=run_timestamp_utc,
+        expected_input_mtime_ns=expected_mtime_ns,
+        skip_reason=skip_reason,
+    )
+
+    detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
+    summary_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation_summary.csv"
+    validation_status = validation_summary.copy()
+    validation_status["record_type"] = "validation"
+    validation_status["artifact_name"] = validation_status["validation_name"]
+    validation_status["current_output_file"] = detail_path.name
+    validation_status["output_mtime_ns"] = detail_path.stat().st_mtime_ns
+    validation_status["validation_summary_path"] = str(summary_path.resolve())
+    combined_status = pd.concat([stage3_status, validation_status], ignore_index=True, sort=False)
+    combined_status.to_csv(status_path, index=False)
+
+    print(f"  Validation detail rows: {len(detail_df):,}")
+    for _, row in validation_summary.iterrows():
+        print(
+            f"  {row['validation_axis']} / {row['source_system']}: {row['status']} "
+            f"({int(row['checks_performed']):,} checks, "
+            f"{int(row['eligible_parent_count']):,} eligible parents, "
+            f"{int(row['mismatch_count']):,} mismatches)"
+        )
 
 
 # ---------------------------------------------------------------------------
