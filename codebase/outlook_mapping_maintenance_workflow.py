@@ -25,9 +25,9 @@ What it does
      subtotal_mismatches.csv        — M6 rule: leaf source → aggregate target
                                       rows not present in the manual allowlist
 
-3. Optionally writes paste-ready zero rows for mapped ESTO pairs that are
-   missing from the configured ESTO source vintages.  Source files are never
-   edited automatically.
+3. Optionally writes paste-ready zero rows required by reviewed structural
+   rules and non-zero Ninth mappings.  Source files are never edited
+   automatically.
 
 Usage:
     python codebase/outlook_mapping_maintenance_workflow.py
@@ -982,6 +982,7 @@ def run() -> None:
         write_missing_mapped_esto_rows(
             esto_csv_paths=ESTO_SOURCE_DATA_PATHS,
             mapping_workbook_path=WORKBOOK_PATH,
+            ninth_csv_path=NINTH_CSV_PATH,
             output_dir=MISSING_MAPPED_ESTO_ROWS_DIR,
         )
     else:

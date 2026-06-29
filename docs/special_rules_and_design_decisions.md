@@ -188,6 +188,39 @@ Confirm that generated rollups with `Total` in their labels appear in `common_es
 
 - 2026-06-28: Removed the label-based Stage 3 filter after confirming it suppressed valid generated rollups.
 
+## MAP-008: Commercial services require an unallocated completion child
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Hierarchy
+**Affected areas:** Stage 0 missing ESTO row generation; ESTO flow `16.01`; Common ESTO hierarchy validation
+
+### Situation
+
+`16.01.01 Datacentres` represents only part of commercial/public services,
+while the existing `16.01 Commercial and public services` row contains the
+whole parent. Treating Datacentres as the parent's only child makes recursive
+validation incomplete and makes parent/detail additive selection unsafe.
+
+### Current rule
+
+`16.01.99 Commercial and public services unallocated` is the structural
+completion child for every economy/product present under `16.01`. Stage 0 may
+generate zero-valued, manual-paste placeholders for missing `16.01.99` rows,
+but it does not calculate the residual values. A later allocation step must
+populate the child so `16.01.01` plus `16.01.99` reconciles to `16.01`.
+
+### Validation
+
+Confirm Stage 0 requires one `16.01.99` row for every existing `16.01`
+economy/product key, does not require Ninth non-zero evidence, and produces no
+rows after simulated paste-back. Do not treat a zero placeholder as evidence
+that the completed child hierarchy already reconciles.
+
+### History
+
+- 2026-06-29: Confirmed `16.01.99` as the required structural completion child.
+
 ## CROSS-002: Ownership of additive comparison frontiers
 
 **Status:** Open

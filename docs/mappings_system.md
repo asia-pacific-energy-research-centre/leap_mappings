@@ -619,9 +619,9 @@ What it does:
 - Checks active row presence across the three base mapping sheets.
 - Detects crosswalk target conflicts, such as the same source implying inconsistent ESTO or 9th targets.
 - Produces researcher-facing QA outputs.
-- Writes paste-ready zero rows for mapped ESTO pairs missing from the maintained ESTO source vintages.
+- Writes paste-ready zero rows for reviewed ESTO balance changes missing from the maintained ESTO source vintages.
 
-### Adding mapped rows missing from ESTO source files
+### Adding reviewed balance rows missing from ESTO source files
 
 The standard Stage 0 run checks both maintained ESTO vintages:
 
@@ -630,26 +630,50 @@ data/00APEC_2025_low_with_subtotals.csv
 data/00APEC_2024_low_with_subtotals.csv
 ```
 
-against the active ESTO targets in `leap_combined_esto` and
-`ninth_pairs_to_esto_pairs`. For each simple ESTO `(flow, product)` pair needed
-by the mappings, it confirms that the pair exists for every economy in the
-source file. Missing rows are written to:
+against the reviewed ESTO balance-change plan and the non-zero Ninth data.
+This is deliberately narrower than copying every target found in the mapping
+workbook: projection-only or comparison-only mappings are not automatically
+asserted to be physical ESTO source rows.
+
+Required rows have three sources:
+
+1. **Always-required rows.** Liquefaction and regasification split rows are
+   required for every ESTO economy. They include Natural gas and LNG, plus
+   every additional product with non-zero data under `09.06` in either the
+   ESTO data or a mapped Ninth row.
+2. **Ninth-driven rows.** An active Ninth-to-ESTO mapping is eligible only when
+   its target uses a reviewed new flow or product, the exact Ninth source pair
+   has non-zero data in at least one year, and the economy/flow/product row is
+   absent from the ESTO source file. Reviewed products currently include
+   `16.10 Ammonia`, `16.11 E-fuel`, and `16.12 Hydrogen`.
+3. **Structural completion rows.** For every economy/product present under
+   `16.01 Commercial and public services`, the generator requires
+   `16.01.99 Commercial and public services unallocated`. This rule is driven
+   by existing ESTO parent coverage and does not require non-zero Ninth data.
+
+Missing rows are written to:
 
 ```text
 results/maintenance/missing_mapped_esto_rows/
 ```
 
-There is one `*_missing_mapped_rows.csv` per source vintage. Each file has the
-same columns and column order as its source CSV, contains zero in every year,
-and includes only missing economy/flow/product keys. Generated comparison codes
-containing lists or ranges are excluded because they are not physical ESTO
-source rows. Existing labels are matched by their numeric ESTO codes, so a
-punctuation-only label difference does not create a duplicate row.
+There is one clean `*_missing_mapped_rows.csv` per source vintage and one
+matching `*_missing_mapped_rows_audit.csv`. The paste-ready file has the same
+columns and column order as its source CSV, contains zero in every year, and
+includes only missing economy/flow/product keys. The audit explains the
+requirement source, reason, and any Ninth source pair. Generated comparison
+codes containing lists or ranges are excluded because they are not physical
+ESTO source rows. Existing rows are matched by normalized economy and numeric
+ESTO flow/product codes, so whitespace or harmless label punctuation does not
+create a duplicate.
 
 Review the generated file, then manually copy its rows to the bottom of the
 corresponding ESTO source CSV. The workflow never edits an ESTO source file
 automatically. Rerun Stage 0 after pasting; the output for that vintage should
-then contain no rows.
+then contain no rows. The workflow does not calculate real values for
+`16.01.99`; its initial output is a zero placeholder only. A later allocation
+step must populate the unallocated child so that the `16.01` children add to
+the parent.
 
 The check is controlled near the top of the maintenance workflow:
 
@@ -657,9 +681,10 @@ The check is controlled near the top of the maintenance workflow:
 GENERATE_MISSING_MAPPED_ESTO_ROWS = True
 ```
 
-Set it to `False` to skip the output. Keep it enabled after mapping or ESTO
-vintage updates so newly mapped products such as `16.10 Ammonia`, `16.11
-E-fuel`, and `16.12 Hydrogen` are visible before downstream validation.
+Set it to `False` to skip the output. Add future ESTO vintages to
+`ESTO_SOURCE_DATA_PATHS`; year columns are discovered from each file rather
+than hard-coded. Keep the generator enabled after mapping, Ninth, or ESTO
+vintage updates so reviewed changes are visible before downstream validation.
 
 The maintenance workflow is upstream QA and workbook maintenance. It does not write to LEAP, and it does not create the final dashboard comparison dataset.
 
