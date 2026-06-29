@@ -205,21 +205,26 @@ validation incomplete and makes parent/detail additive selection unsafe.
 ### Current rule
 
 `16.01.99 Commercial and public services unallocated` is the structural
-completion child for every economy/product present under `16.01`. Stage 0 may
-generate zero-valued, manual-paste placeholders for missing `16.01.99` rows,
-but it does not calculate the residual values. A later allocation step must
-populate the child so `16.01.01` plus `16.01.99` reconciles to `16.01`.
+completion child for eligible products present under `16.01`. Product
+eligibility is established by mapping the ESTO product to its best-supported
+Ninth fuel and requiring non-zero data for the exact Ninth sector
+`16_01_01_commercial_and_public_services`. Stage 0 calculates every year as
+`16.01` minus `16.01.01 Datacentres`; a missing Datacentres row is zero. New
+keys go to the insert output. Existing `16.01.99` keys that differ go to a
+separate update output and are never silently replaced.
 
 ### Validation
 
-Confirm Stage 0 requires one `16.01.99` row for every existing `16.01`
-economy/product key, does not require Ninth non-zero evidence, and produces no
-rows after simulated paste-back. Do not treat a zero placeholder as evidence
-that the completed child hierarchy already reconciles.
+Confirm each retained product has exact Ninth sector/fuel evidence. For every
+economy/product/year, confirm `16.01.01 + 16.01.99 = 16.01` within tolerance.
+Report negative remainders, duplicates, and unresolved keys, and confirm no
+rows remain after simulated paste-back.
 
 ### History
 
 - 2026-06-29: Confirmed `16.01.99` as the required structural completion child.
+- 2026-06-29: Added exact Ninth sector/fuel eligibility, calculated remainder
+  values, and separate handling for existing rows requiring replacement.
 
 ## CROSS-002: Ownership of additive comparison frontiers
 

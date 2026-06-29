@@ -619,7 +619,7 @@ What it does:
 - Checks active row presence across the three base mapping sheets.
 - Detects crosswalk target conflicts, such as the same source implying inconsistent ESTO or 9th targets.
 - Produces researcher-facing QA outputs.
-- Writes paste-ready zero rows for reviewed ESTO balance changes missing from the maintained ESTO source vintages.
+- Writes paste-ready rows for reviewed ESTO balance changes missing from the maintained ESTO source vintages.
 
 ### Adding reviewed balance rows missing from ESTO source files
 
@@ -637,19 +637,23 @@ asserted to be physical ESTO source rows.
 
 Required rows have three sources:
 
-1. **Always-required rows.** Liquefaction and regasification split rows are
-   required for every ESTO economy. They include Natural gas and LNG, plus
-   every additional product with non-zero data under `09.06` in either the
-   ESTO data or a mapped Ninth row.
+1. **Reviewed LNG split rows.** Liquefaction and regasification candidates use
+   the fixed Ninth sector `09_06_02_liquefaction_regasification_plants`. Each
+   ESTO product is mapped back to its best-supported Ninth fuel using the
+   active `ninth_pairs_to_esto_pairs` crosswalk. A flow/product pair is kept
+   only when that exact Ninth sector/fuel combination is non-zero in at least
+   one year. Retained pairs are then required for every ESTO economy.
 2. **Ninth-driven rows.** An active Ninth-to-ESTO mapping is eligible only when
    its target uses a reviewed new flow or product, the exact Ninth source pair
    has non-zero data in at least one year, and the economy/flow/product row is
    absent from the ESTO source file. Reviewed products currently include
    `16.10 Ammonia`, `16.11 E-fuel`, and `16.12 Hydrogen`.
-3. **Structural completion rows.** For every economy/product present under
-   `16.01 Commercial and public services`, the generator requires
-   `16.01.99 Commercial and public services unallocated`. This rule is driven
-   by existing ESTO parent coverage and does not require non-zero Ninth data.
+3. **Structural completion rows.** Products proposed under
+   `16.01.99 Commercial and public services unallocated` use the fixed Ninth
+   sector `16_01_01_commercial_and_public_services` and the same exact
+   sector/fuel non-zero test. For each retained economy/product key, the year
+   values are calculated as `16.01` minus `16.01.01 Datacentres`. A missing
+   Datacentres row is treated as zero, so the full parent remains unallocated.
 
 Missing rows are written to:
 
@@ -659,21 +663,32 @@ results/maintenance/missing_mapped_esto_rows/
 
 There is one clean `*_missing_mapped_rows.csv` per source vintage and one
 matching `*_missing_mapped_rows_audit.csv`. The paste-ready file has the same
-columns and column order as its source CSV, contains zero in every year, and
-includes only missing economy/flow/product keys. The audit explains the
-requirement source, reason, and any Ninth source pair. Generated comparison
-codes containing lists or ranges are excluded because they are not physical
-ESTO source rows. Existing rows are matched by normalized economy and numeric
-ESTO flow/product codes, so whitespace or harmless label punctuation does not
-create a duplicate.
+columns and column order as its source CSV and includes only missing
+economy/flow/product keys. Ordinary mapping-driven placeholders remain zero.
+Eligible LNG rows contain the calculated `09.06.02` split where source data
+exists, and `16.01.99` rows contain the calculated remainder. Generated
+comparison codes containing lists or ranges are excluded because they are not
+physical ESTO source rows. Existing rows are matched by normalized economy and
+numeric ESTO flow/product codes, so harmless label differences do not create a
+duplicate.
 
-Review the generated file, then manually copy its rows to the bottom of the
-corresponding ESTO source CSV. The workflow never edits an ESTO source file
-automatically. Rerun Stage 0 after pasting; the output for that vintage should
-then contain no rows. The workflow does not calculate real values for
-`16.01.99`; its initial output is a zero placeholder only. A later allocation
-step must populate the unallocated child so that the `16.01` children add to
-the parent.
+Supporting files make each decision inspectable:
+
+| File suffix | Purpose |
+| --- | --- |
+| `*_ninth_nonzero_filter_audit.csv` | Shows the fixed Ninth sector, fuel candidates, retained/removed status, and mapping ambiguity for every proposed LNG or `16.01.99` pair |
+| `*_lng_split_rows.csv` | Shows the eligible calculated LNG rows used to populate the main paste file |
+| `*_lng_split_rows_audit.csv` | Records direction and year assignment for the LNG calculation |
+| `*_commercial_services_unallocated_updates.csv` | Keeps calculated replacements separate when `16.01.99` already exists |
+| `*_commercial_services_unallocated_validation.csv` | Reports reconciliation error, negative remainders, duplicates, and unresolved keys |
+
+Review the filter and validation audits, then manually copy the main missing
+rows file to the corresponding ESTO source CSV. Do not also paste the LNG
+support file: those keys already occur in the main file. Existing `16.01.99`
+rows are never silently replaced; review and apply the separate updates file
+deliberately. The generator never edits an ESTO source file automatically.
+After inserting the main file, rerunning Stage 0 should produce no remaining
+missing rows under the same rules.
 
 The check is controlled near the top of the maintenance workflow:
 
@@ -685,6 +700,113 @@ Set it to `False` to skip the output. Add future ESTO vintages to
 `ESTO_SOURCE_DATA_PATHS`; year columns are discovered from each file rather
 than hard-coded. Keep the generator enabled after mapping, Ninth, or ESTO
 vintage updates so reviewed changes are visible before downstream validation.
+
+### Splitting 09.06.02 into liquefaction and regasification sub-flows
+
+`codebase/mapping_tools/build_missing_mapped_esto_rows.py` — `build_lng_split_esto_rows`
+
+This function supplies calculated values to the main missing-row generator.
+It creates split values for economies that have `09.06.02` source data; the
+main paste file retains zero values for eligible economies with no source
+activity.
+
+#### Why the split is needed
+
+The ESTO balance currently records liquefaction and regasification activity combined in a single parent flow, `09.06.02 Liquefaction/regasification plants`. These are physically distinct processes in opposite directions:
+
+- **09.06.02.01 Liquefaction** — natural gas is converted into LNG: natural gas is the feedstock input (negative value) and LNG is the output (positive value).
+- **09.06.02.02 Regasification** — LNG is converted back into natural gas: LNG is the feedstock input (negative value) and natural gas is the output (positive value).
+
+Because the inputs and outputs have opposite signs depending on which process is active, a combined parent row cannot be unambiguously read as either direction. The split rows allow LEAP and 9th Outlook mappings to target the correct sub-process for each economy.
+
+#### How the direction is determined
+
+For each economy the function inspects the `08.01 Natural gas` and `08.02 LNG` rows under `09.06.02` year by year:
+
+| Natural gas sign | LNG sign | Classified as |
+| --- | --- | --- |
+| Negative (input) | Positive (output) | Liquefaction year |
+| Positive (output) | Negative (input) | Regasification year |
+| Both zero | — | Inactive year — zero in both sub-flows |
+| Ambiguous (mixed signs) | — | Pro-rated by magnitude (see below) |
+
+This is the same classification used by `transformation_sector_analysis.py` in `leap_initialisation` when estimating liquefaction and regasification efficiencies from historical ESTO data.
+
+In the 2025 ESTO vintage, all economies with non-zero `09.06.02` data are
+cleanly one direction in every year: Bangladesh, Indonesia, Malaysia, and
+Papua New Guinea are pure liquefaction; China, Chinese Taipei, the Philippines,
+and Thailand are pure regasification. The 2024 vintage has the same four
+liquefaction economies and only China and Chinese Taipei on the regasification
+side. No ambiguous years exist in either current vintage.
+
+#### Ambiguous-year pro-rating
+
+If an economy-year is ambiguous — both processes are occurring simultaneously, which is possible for a future USA vintage where large liquefaction export capacity coexists with legacy regasification terminals — the function estimates each direction's share from the signed LNG values:
+
+- The positive portion of LNG in that year is attributed to liquefaction (LNG is the output of liquefaction).
+- The negative portion of LNG is attributed to regasification (LNG is the input to regasification).
+- Each product's value in that year is multiplied by the corresponding share before being assigned to each sub-flow.
+
+If both portions are zero for a given year, the share defaults to 50/50.
+
+#### Sign preservation
+
+All product values are assigned to the appropriate sub-flow while preserving their original sign from the source `09.06.02` row. For a liquefaction economy:
+
+- `08.01 Natural gas` carries a negative value (input) in `09.06.02.01 Liquefaction`.
+- `08.02 LNG` carries a positive value (output) in `09.06.02.01 Liquefaction`.
+- Auxiliary products such as `07.09 LPG` or `17 Electricity` carry their original sign from the source row.
+- The companion `09.06.02.02 Regasification` rows for the same economy are all zero, since that economy only liquefies.
+
+No sign inversion or value rescaling is performed: the function masks inactive years to zero and passes through active years unchanged.
+
+#### Economies with no source data
+
+Economies with no non-zero values under `09.06.02` in the source ESTO file (currently Australia, Canada, Chile, Hong Kong, Japan, Korea, Mexico, New Zealand, Peru, Russia, Singapore, USA, and Vietnam) produce no split rows from this function. Their zero-value placeholder rows are handled by the zero-row generator described above. When source data is eventually added for those economies, the split function will detect the direction automatically and populate the sub-flow rows on the next run.
+
+#### Outputs
+
+Each run of `write_missing_mapped_esto_rows` produces two additional files per ESTO vintage alongside the zero-row outputs:
+
+| File | Contents |
+| --- | --- |
+| `*_lng_split_rows.csv` | Paste-ready split rows in the same column format as the source ESTO CSV; year values derived from source data, not zero |
+| `*_lng_split_rows_audit.csv` | One row per (economy, sub-flow, product) with the liquefaction year count, regasification year count, ambiguous year count, and non-zero years assigned |
+
+The split rows file is a supporting calculation output. Review it, but paste
+only the main `*_missing_mapped_rows.csv`, which already contains these values.
+
+#### Relationship to zero-row output
+
+The two outputs are complementary and cover different populations:
+
+| Output file | Economies covered | Year values |
+| --- | --- | --- |
+| `*_missing_mapped_rows.csv` | All 21 economies for exact Ninth-eligible pairs | Calculated where source activity exists; zero otherwise |
+| `*_lng_split_rows.csv` | Only economies with non-zero 09.06.02 source data | Derived from source data |
+
+The second file is the traceable source of the LNG values overlaid into the
+first file; it is not a second append operation.
+
+### Propagating an approved row set across repositories
+
+`codebase/propagate_esto_rows_workflow.py` can append a chosen CSV or workbook
+row set to every immediate `data/00APEC_*_low_with_subtotals.csv` file in
+`leap_mappings`, `leap_initialisation`, `leap_dashboard`, and
+`leap_utilities`. It is notebook-style and dry-run by default:
+
+1. Set `CHOSEN_ROWS_PATH` and, for Excel input, `CHOSEN_ROWS_SHEET`.
+2. Optionally set `SELECTED_FLOWS` or `SELECTED_PRODUCTS`.
+3. Set `RUN_PROPAGATION = True` and run the file to inspect the summary.
+4. Only after review, set `WRITE_TO_SOURCE_FILES = True` and rerun.
+
+The workflow preserves each target's schema and column order, fills target
+year columns absent from the chosen input with zero, appends only missing
+economy/flow/product keys, and never replaces an existing row. Existing-row
+replacements such as a changed `16.01.99` remainder must be handled from the
+separate update output after human review.
+
+---
 
 The maintenance workflow is upstream QA and workbook maintenance. It does not write to LEAP, and it does not create the final dashboard comparison dataset.
 
