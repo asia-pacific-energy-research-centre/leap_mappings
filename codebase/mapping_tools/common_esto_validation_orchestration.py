@@ -9,6 +9,7 @@ import pandas as pd
 
 from codebase.mapping_tools.build_dataset_tree_structure import (
     COMMON_ESTO_VALIDATION_COLS,
+    LEAP_VAR_BASE_YEAR,
     _common_esto_validation_children_map,
     _validate_common_esto_axis_recursive_sums,
 )
@@ -54,9 +55,12 @@ def _count_eligible_checks(
     tree_df: pd.DataFrame,
     comparison_data_path: Path,
     axis: str,
+    leap_var_base_year: int,
 ) -> pd.DataFrame:
     """Count data groups eligible for the existing hierarchy validator."""
     data = pd.read_csv(comparison_data_path, dtype=object)
+    data["year"] = pd.to_numeric(data["year"], errors="coerce")
+    data = data[data["year"] > int(leap_var_base_year)].copy()
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
     group_cols = [
@@ -101,6 +105,10 @@ def run_common_esto_validation_workflow(
     expected_input_mtime_ns: int | None = None,
     skip_reason: str = "",
     tolerance: float = 0.01,
+    source_inconsistencies: dict[
+        tuple[str, str, str, str, str, str, str], dict[str, str]
+    ] | None = None,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run Common ESTO validations and always replace current-run outputs."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -173,8 +181,15 @@ def run_common_esto_validation_workflow(
                 comparison_data_path=comparison_data_path,
                 axis=axis,
                 tolerance=tolerance,
+                source_inconsistencies=source_inconsistencies,
+                leap_var_base_year=leap_var_base_year,
             )
-            metrics = _count_eligible_checks(tree_df, comparison_data_path, axis)
+            metrics = _count_eligible_checks(
+                tree_df,
+                comparison_data_path,
+                axis,
+                leap_var_base_year,
+            )
             detail_frames.append(axis_detail)
             mismatch_counts = (
                 axis_detail.groupby("source_system").size().to_dict()

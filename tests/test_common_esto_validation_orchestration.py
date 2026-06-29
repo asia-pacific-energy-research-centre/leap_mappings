@@ -38,7 +38,12 @@ def _tree() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _write_comparison(path: Path, parent_value: float, include_children: bool = True) -> None:
+def _write_comparison(
+    path: Path,
+    parent_value: float,
+    include_children: bool = True,
+    year: int = 2023,
+) -> None:
     products = [("01 Parent product", parent_value)]
     if include_children:
         products.extend([("01.01 Child A", 4.0), ("01.02 Child B", 6.0)])
@@ -48,7 +53,7 @@ def _write_comparison(path: Path, parent_value: float, include_children: bool = 
             "source_system": "ESTO",
             "economy": "20_USA",
             "scenario": "historical",
-            "year": 2022,
+            "year": year,
             "common_flow_label": "14 Industry",
             "common_product_label": product,
             "value": value,
@@ -104,6 +109,17 @@ def test_no_eligible_checks_are_skipped(tmp_path: Path) -> None:
     assert detail.empty
     assert set(summary["status"]) == {"skipped"}
     assert set(summary["eligible_parent_count"]) == {0}
+
+
+def test_base_year_checks_are_excluded(tmp_path: Path) -> None:
+    comparison_path = tmp_path / "comparison.csv"
+    _write_comparison(comparison_path, parent_value=11.0, year=2022)
+
+    detail, summary = _run(tmp_path, comparison_path)
+
+    assert detail.empty
+    assert set(summary["status"]) == {"skipped"}
+    assert set(summary["checks_performed"]) == {0}
 
 
 def test_missing_input_is_skipped_and_replaces_old_detail(tmp_path: Path) -> None:

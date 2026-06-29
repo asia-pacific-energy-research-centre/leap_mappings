@@ -6,11 +6,24 @@ datasets. Outputs tree CSVs to results/tree_structure/ and runs recursive sum
 validation against the ESTO balance data.
 
 Outputs (results/tree_structure/):
-    esto_tree.csv           — ESTO flow and product node hierarchy
-    ninth_tree.csv          — 9th Edition sector and fuel node hierarchy
-    leap_tree.csv           — LEAP sector and fuel node hierarchy
-    common_esto_tree.csv    — Common ESTO flow and product node hierarchy
-    esto_validation.csv     — Recursive sum validation (parent vs sum-of-children)
+    esto_tree.csv                         — ESTO flow and product node hierarchy
+    ninth_tree.csv                        — 9th Edition sector and fuel node hierarchy
+    leap_tree.csv                         — LEAP sector and fuel node hierarchy
+    common_esto_tree.csv                  — Common ESTO flow and product node hierarchy
+    esto_validation.csv                   — Stage A: ESTO recursive sum validation
+    ninth_validation.csv                  — Stage A: Ninth fuel parent/child consistency
+    leap_validation.csv                   — Stage A: LEAP sector parent/child consistency
+    common_esto_validation.csv            — Stage B: Common ESTO recursive sum validation
+                                            with inherited_source_inconsistency flag
+    common_esto_non_esto_parent_child_edges.csv
+
+Stage A / Stage B design
+------------------------
+Stage A validates each raw source dataset independently before any cross-dataset
+comparison is performed.  Mismatches found in Stage A are recorded as
+``inherited_source_inconsistency`` in the Stage B Common ESTO validation output,
+distinguishing gaps that already existed in the source from gaps introduced by
+the mapping.
 
 Tree CSV columns:
     dataset, axis, code, label, level, parent_code, is_leaf, is_subtotal
@@ -42,10 +55,13 @@ if str(REPO_ROOT) not in sys.path:
 
 ESTO_DATA_PATH        = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_DATA_PATH       = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+LEAP_DATA_PATH        = REPO_ROOT / "results" / "mapping_relationships" / "raw_leap_results.csv"
+LEGACY_LEAP_DATA_PATH = REPO_ROOT / "data" / "usa_leap_balance_long.csv"
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 COMMON_ESTO_ROWS_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
 COMMON_ESTO_COMPARISON_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv"
 TREE_OUTPUT_DIR       = REPO_ROOT / "results" / "tree_structure"
+LEAP_VAR_BASE_YEAR    = 2022
 
 TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_leaf", "is_subtotal"]
 
@@ -458,6 +474,57 @@ ESTO_VALIDATION_COLS = [
     "abs_error",
 ]
 
+NINTH_VALIDATION_COLS = [
+    "source_issue_id",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "ninth_sector",
+    "parent_ninth_fuel_code",
+    "child_ninth_fuel_codes",
+    "esto_parent_flow",
+    "esto_parent_product",
+    "child_esto_products",
+    "source_issue_class",
+    "mapping_status",
+    "child_coverage_status",
+    "inheritance_eligible",
+    "subtotal_results",
+    "child_count",
+    "mapped_child_count",
+    "parent_value",
+    "children_sum",
+    "difference",
+    "abs_error",
+]
+
+LEAP_VALIDATION_COLS = [
+    "source_issue_id",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "parent_leap_sector_path",
+    "parent_leap_sector",
+    "leap_product",
+    "child_leap_sector_paths",
+    "esto_parent_flow",
+    "esto_parent_product",
+    "child_esto_flows",
+    "source_context_status",
+    "source_issue_class",
+    "mapping_status",
+    "child_coverage_status",
+    "inheritance_eligible",
+    "child_count",
+    "mapped_child_count",
+    "parent_value",
+    "children_sum",
+    "difference",
+    "abs_error",
+]
+
 COMMON_ESTO_VALIDATION_COLS = [
     "validation_axis",
     "comparison_scope",
@@ -471,6 +538,9 @@ COMMON_ESTO_VALIDATION_COLS = [
     "parent_value",
     "children_sum",
     "abs_error",
+    "source_inconsistency_status",
+    "source_issue_ids",
+    "inherited_source_inconsistency",
 ]
 
 COMMON_ESTO_NON_ESTO_EDGE_COLS = [
@@ -538,6 +608,526 @@ def common_esto_non_esto_parent_child_edges(tree_df: pd.DataFrame) -> pd.DataFra
     return pd.DataFrame(rows, columns=COMMON_ESTO_NON_ESTO_EDGE_COLS).sort_values(
         ["axis", "parent_code", "child_code"]
     ).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Stage A: source-data consistency pre-checks
+# ---------------------------------------------------------------------------
+
+def _truthy(value: Any) -> bool:
+    """Return a strict boolean value for source metadata fields."""
+    if value is None or pd.isna(value):
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def _join_sorted(values: list[str] | set[str] | tuple[str, ...]) -> str:
+    """Join unique non-empty values in deterministic order."""
+    return "|".join(sorted({_str(value) for value in values if _str(value)}))
+
+
+def _source_issue_id(*parts: Any) -> str:
+    """Build a readable, stable identifier for one exact source context."""
+    return "source_issue::" + "::".join(_str(part) for part in parts)
+
+
+def _direct_child_labels(parent_label: str, labels: set[str]) -> set[str]:
+    """Return direct dot-hierarchy children of one ESTO code label."""
+    parent_prefix = _extract_esto_prefix(parent_label)
+    if not parent_prefix:
+        return set()
+    parent_depth = len(parent_prefix.split("."))
+    return {
+        label
+        for label in labels
+        if (prefix := _extract_esto_prefix(label))
+        and prefix.startswith(parent_prefix + ".")
+        and len(prefix.split(".")) == parent_depth + 1
+    }
+
+
+def _mapping_targets(
+    mapping_df: pd.DataFrame,
+    source_flow_column: str,
+    source_product_column: str,
+    target_flow_column: str,
+    target_product_column: str,
+) -> dict[tuple[str, str], set[tuple[str, str]]]:
+    """Return every reviewed target pair for each source pair without first-win loss."""
+    targets: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for _, row in mapping_df.iterrows():
+        source_pair = (
+            _str(row.get(source_flow_column, "")),
+            _str(row.get(source_product_column, "")),
+        )
+        target_pair = (
+            _str(row.get(target_flow_column, "")),
+            _str(row.get(target_product_column, "")),
+        )
+        if all(source_pair) and all(target_pair):
+            targets.setdefault(source_pair, set()).add(target_pair)
+    return targets
+
+def validate_ninth_recursive_sums(
+    data_csv_path: Path = NINTH_DATA_PATH,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+    tolerance: float = 0.01,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+    scenario_filter: str = "reference",
+) -> pd.DataFrame:
+    """
+    Validate projected Ninth fuel parents against children in exact source context.
+
+    The Common conversion uses top-sector rows and the reference scenario. This
+    validation mirrors that boundary, checks only years strictly after
+    ``leap_var_base_year``, and uses ``subtotal_results`` because those years are
+    projected results. Findings retain scenario and source-sector context. A
+    finding is eligible for confirmed Stage B inheritance only when the parent
+    and all non-zero children have one unambiguous ESTO mapping and the child
+    coverage is complete.
+    """
+    df = pd.read_csv(data_csv_path, dtype=object)
+    year_cols = [
+        column
+        for column in df.columns
+        if str(column).isdigit() and int(column) > int(leap_var_base_year)
+    ]
+    if not year_cols:
+        return pd.DataFrame(columns=NINTH_VALIDATION_COLS)
+    df[year_cols] = df[year_cols].apply(pd.to_numeric, errors="coerce")
+    if scenario_filter:
+        df = df[df["scenarios"].astype(str).str.casefold() == scenario_filter.casefold()].copy()
+    # Match the production Ninth conversion boundary.
+    df = df[df["sub1sectors"].astype(str).str.strip() == "x"].copy()
+
+    pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
+    source_targets = _mapping_targets(
+        pairs,
+        "9th_sector",
+        "9th_fuel",
+        "esto_flow",
+        "esto_product",
+    )
+
+    parent_rows = df[
+        (df["subfuels"] == "x")
+        & df["subtotal_results"].map(_truthy)
+    ].copy()
+    child_rows = df[df["subfuels"] != "x"].copy()
+
+    group_cols = [
+        "economy",
+        "scenarios",
+        "sectors",
+        "sub1sectors",
+        "sub2sectors",
+        "sub3sectors",
+        "sub4sectors",
+        "fuels",
+    ]
+    child_groups: dict[tuple, pd.DataFrame] = {
+        key: group for key, group in child_rows.groupby(group_cols, dropna=False)
+    }
+
+    mismatches: list[dict] = []
+    for group_key, parent_group in parent_rows.groupby(group_cols, dropna=False):
+        children = child_groups.get(group_key)
+        if children is None or children.empty:
+            continue
+
+        economy = _str(group_key[0])
+        scenario = _str(group_key[1])
+        ninth_sector = _str(group_key[2])
+        fuel_code = _str(group_key[-1])
+        parent_targets = source_targets.get((ninth_sector, fuel_code), set())
+        # Unmapped source parents cannot contribute to a Stage B Common row.
+        # Mapping coverage QA owns those rows; including them here would create
+        # thousands of source findings that cannot support inheritance.
+        if not parent_targets:
+            continue
+        parent_mapping_status = (
+            "exact" if len(parent_targets) == 1
+            else "ambiguous_parent_mapping"
+        )
+        esto_parent_flow = ""
+        esto_parent_product = ""
+        if len(parent_targets) == 1:
+            esto_parent_flow, esto_parent_product = next(iter(parent_targets))
+
+        for yr in year_cols:
+            pv = pd.to_numeric(parent_group[yr], errors="coerce").sum()
+            cv = pd.to_numeric(children[yr], errors="coerce").sum()
+            if pd.isna(pv) or pd.isna(cv):
+                continue
+            difference = float(pv - cv)
+            err = abs(difference)
+            if err <= tolerance * max(abs(pv), 1):
+                continue
+
+            child_codes = [_str(value) for value in children["subfuels"].tolist()]
+            nonzero_child_codes = [
+                _str(row["subfuels"])
+                for _, row in children.iterrows()
+                if abs(float(pd.to_numeric(row[yr], errors="coerce") or 0.0)) > tolerance
+            ]
+            child_target_pairs: set[tuple[str, str]] = set()
+            missing_children: list[str] = []
+            ambiguous_children: list[str] = []
+            for child_code in nonzero_child_codes:
+                targets = source_targets.get((ninth_sector, child_code), set())
+                if not targets:
+                    missing_children.append(child_code)
+                elif len(targets) > 1:
+                    ambiguous_children.append(child_code)
+                else:
+                    child_target_pairs.update(targets)
+
+            if parent_mapping_status != "exact":
+                mapping_status = parent_mapping_status
+            elif ambiguous_children:
+                mapping_status = "ambiguous_child_mapping"
+            elif missing_children:
+                mapping_status = "missing_child_mapping"
+            elif any(flow != esto_parent_flow for flow, _ in child_target_pairs):
+                mapping_status = "child_flow_mismatch"
+            else:
+                mapping_status = "exact"
+
+            if abs(float(pv)) > tolerance and abs(float(cv)) <= tolerance:
+                source_issue_class = "children_incomplete"
+                child_coverage_status = "no_nonzero_children"
+            elif ambiguous_children:
+                source_issue_class = "mapping_ambiguous"
+                child_coverage_status = "ambiguous_child_mapping"
+            elif missing_children:
+                source_issue_class = "children_incomplete"
+                child_coverage_status = "unmapped_nonzero_children"
+            else:
+                source_issue_class = "sum_mismatch"
+                child_coverage_status = "complete"
+
+            inheritance_eligible = (
+                source_issue_class == "sum_mismatch"
+                and mapping_status == "exact"
+                and child_coverage_status == "complete"
+            )
+            mismatches.append({
+                "source_issue_id": _source_issue_id(
+                    "NINTH", economy, scenario, yr, ninth_sector, fuel_code
+                ),
+                "source_system": "NINTH",
+                "economy": economy,
+                "scenario": scenario,
+                "year": yr,
+                "ninth_sector": ninth_sector,
+                "parent_ninth_fuel_code": fuel_code,
+                "child_ninth_fuel_codes": _join_sorted(child_codes),
+                "esto_parent_flow": esto_parent_flow,
+                "esto_parent_product": esto_parent_product,
+                "child_esto_products": _join_sorted(
+                    {product for _, product in child_target_pairs}
+                ),
+                "source_issue_class": source_issue_class,
+                "mapping_status": mapping_status,
+                "child_coverage_status": child_coverage_status,
+                "inheritance_eligible": inheritance_eligible,
+                "subtotal_results": True,
+                "child_count": len(set(child_codes)),
+                "mapped_child_count": len(child_target_pairs),
+                "parent_value": float(pv),
+                "children_sum": float(cv),
+                "difference": difference,
+                "abs_error": err,
+            })
+
+    if not mismatches:
+        return pd.DataFrame(columns=NINTH_VALIDATION_COLS)
+    return (
+        pd.DataFrame(mismatches)
+        .sort_values(["economy", "year", "parent_ninth_fuel_code"])
+        .reset_index(drop=True)
+    )
+
+
+def validate_leap_recursive_sums(
+    leap_data_paths: list[Path] | None = None,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+    esto_data_path: Path = ESTO_DATA_PATH,
+    tolerance: float = 0.01,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+) -> pd.DataFrame:
+    """
+    Validate projected LEAP parent sectors against mapped direct ESTO children.
+
+    Years at or before ``leap_var_base_year`` are excluded. Full LEAP paths are
+    used when present in the source file. Legacy leaf-only inputs remain
+    reviewable, but they are eligible for confirmed inheritance only when every
+    participating leaf/product maps to one unique full path and target pair.
+    """
+    if leap_data_paths is None:
+        if LEAP_DATA_PATH.exists():
+            leap_data_paths = [LEAP_DATA_PATH]
+        elif LEGACY_LEAP_DATA_PATH.exists():
+            leap_data_paths = [LEGACY_LEAP_DATA_PATH]
+        else:
+            leap_data_paths = []
+
+    available = [p for p in leap_data_paths if p.exists()]
+    if not available:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+
+    leap_df = pd.concat(
+        [pd.read_csv(p, dtype=object) for p in available], ignore_index=True
+    )
+    leap_df["value"] = pd.to_numeric(leap_df["value"], errors="coerce").fillna(0.0)
+    leap_df["year"] = pd.to_numeric(leap_df["year"], errors="coerce")
+    leap_df = leap_df[leap_df["year"] > int(leap_var_base_year)].copy()
+    leap_df["year"] = leap_df["year"].astype(int).astype(str)
+    if leap_df.empty:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+
+    esto_map = pd.read_excel(workbook_path, sheet_name="leap_combined_esto", dtype=object)
+    esto_map = esto_map[
+        esto_map["leap_sector_name_full_path"].notna()
+        & esto_map["esto_flow"].notna()
+        & esto_map["raw_leap_fuel_name"].notna()
+        & esto_map["esto_product"].notna()
+    ].copy()
+    esto_map["parent_path"] = esto_map["leap_sector_name_full_path"].map(_str)
+    esto_map["parent_leaf"] = esto_map["parent_path"].str.split("/").str[-1]
+    esto_map["source_product"] = esto_map["raw_leap_fuel_name"].map(_str)
+    esto_map["target_flow"] = esto_map["esto_flow"].map(_str)
+    esto_map["target_product"] = esto_map["esto_product"].map(_str)
+
+    esto_flows = set(
+        pd.read_csv(esto_data_path, usecols=["flows"], dtype=object)["flows"]
+        .dropna()
+        .map(_str)
+    )
+    source_pair_targets = (
+        esto_map.groupby(["parent_path", "source_product"], dropna=False)
+        .apply(
+            lambda group: {
+                (_str(row["target_flow"]), _str(row["target_product"]))
+                for _, row in group.iterrows()
+            },
+            include_groups=False,
+        )
+        .to_dict()
+    )
+    leaf_product_paths = (
+        esto_map.groupby(["parent_leaf", "source_product"])["parent_path"]
+        .agg(lambda values: set(map(_str, values)))
+        .to_dict()
+    )
+
+    source_path_column = (
+        "leap_sector_path" if "leap_sector_path" in leap_df.columns
+        else "leap_flow_path" if "leap_flow_path" in leap_df.columns
+        else "leap_flow" if leap_df["leap_flow"].astype(str).str.contains("/", regex=False).any()
+        else ""
+    )
+
+    mismatches: list[dict] = []
+    parent_rows = esto_map.drop_duplicates(
+        ["parent_path", "source_product", "target_flow", "target_product"]
+    )
+    for _, parent_mapping in parent_rows.iterrows():
+        parent_path = _str(parent_mapping["parent_path"])
+        parent_leaf = _str(parent_mapping["parent_leaf"])
+        leap_product = _str(parent_mapping["source_product"])
+        esto_parent_flow = _str(parent_mapping["target_flow"])
+        esto_parent_product = _str(parent_mapping["target_product"])
+        expected_child_flows = _direct_child_labels(esto_parent_flow, esto_flows)
+        if not expected_child_flows:
+            continue
+
+        child_mappings = esto_map[
+            esto_map["target_flow"].isin(expected_child_flows)
+            & (esto_map["target_product"] == esto_parent_product)
+        ].drop_duplicates(["parent_path", "source_product", "target_flow", "target_product"])
+        if child_mappings.empty:
+            continue
+
+        mapped_child_flows = set(child_mappings["target_flow"].map(_str))
+        missing_child_flows = expected_child_flows.difference(mapped_child_flows)
+        parent_targets = source_pair_targets.get((parent_path, leap_product), set())
+        parent_mapping_status = (
+            "exact" if parent_targets == {(esto_parent_flow, esto_parent_product)}
+            else "ambiguous_parent_mapping"
+        )
+
+        parent_mask = leap_df["leap_product"].map(_str) == leap_product
+        if source_path_column:
+            parent_mask &= leap_df[source_path_column].map(_str) == parent_path
+            source_context_status = "full_path"
+        else:
+            parent_mask &= leap_df["leap_flow"].map(_str) == parent_leaf
+            parent_paths = leaf_product_paths.get((parent_leaf, leap_product), set())
+            source_context_status = (
+                "leaf_only_unambiguous" if parent_paths == {parent_path}
+                else "leaf_only_ambiguous"
+            )
+        parent_data = leap_df[parent_mask]
+        if parent_data.empty:
+            continue
+
+        child_masks: list[pd.Series] = []
+        child_paths: set[str] = set()
+        child_mapping_ambiguous = False
+        for _, child_mapping in child_mappings.iterrows():
+            child_path = _str(child_mapping["parent_path"])
+            child_leaf = _str(child_mapping["parent_leaf"])
+            child_product = _str(child_mapping["source_product"])
+            child_paths.add(child_path)
+            mask = leap_df["leap_product"].map(_str) == child_product
+            if source_path_column:
+                mask &= leap_df[source_path_column].map(_str) == child_path
+            else:
+                mask &= leap_df["leap_flow"].map(_str) == child_leaf
+                if leaf_product_paths.get((child_leaf, child_product), set()) != {child_path}:
+                    child_mapping_ambiguous = True
+            child_masks.append(mask)
+        child_mask = pd.Series(False, index=leap_df.index)
+        for mask in child_masks:
+            child_mask |= mask
+        children_data = leap_df[child_mask]
+
+        group_cols = ["economy", "scenario", "year"]
+        parent_sum = parent_data.groupby(group_cols, dropna=False)["value"].sum()
+        children_sum = children_data.groupby(group_cols, dropna=False)["value"].sum()
+        for idx in parent_sum.index:
+            pv = float(parent_sum.loc[idx])
+            cv = float(children_sum.get(idx, 0.0))
+            difference = pv - cv
+            err = abs(difference)
+            if err <= tolerance * max(abs(pv), 1):
+                continue
+            economy, scenario, year = map(_str, idx)
+            if source_context_status == "leaf_only_ambiguous" or child_mapping_ambiguous:
+                mapping_status = "ambiguous_leaf_context"
+                source_issue_class = "mapping_ambiguous"
+                child_coverage_status = "ambiguous_source_paths"
+            elif parent_mapping_status != "exact":
+                mapping_status = parent_mapping_status
+                source_issue_class = "mapping_ambiguous"
+                child_coverage_status = "ambiguous_parent_mapping"
+            elif missing_child_flows:
+                mapping_status = "exact"
+                source_issue_class = "children_incomplete"
+                child_coverage_status = "unmapped_expected_children"
+            elif abs(pv) > tolerance and abs(cv) <= tolerance:
+                mapping_status = "exact"
+                source_issue_class = "children_incomplete"
+                child_coverage_status = "no_nonzero_children"
+            else:
+                mapping_status = "exact"
+                source_issue_class = "sum_mismatch"
+                child_coverage_status = "complete"
+
+            inheritance_eligible = (
+                source_issue_class == "sum_mismatch"
+                and mapping_status == "exact"
+                and child_coverage_status == "complete"
+                and source_context_status in {"full_path", "leaf_only_unambiguous"}
+            )
+            mismatches.append({
+                "source_issue_id": _source_issue_id(
+                    "LEAP", economy, scenario, year, parent_path, leap_product,
+                    esto_parent_flow, esto_parent_product
+                ),
+                "source_system": "LEAP",
+                "economy": economy,
+                "scenario": scenario,
+                "year": year,
+                "parent_leap_sector_path": parent_path,
+                "parent_leap_sector": parent_leaf,
+                "leap_product": leap_product,
+                "child_leap_sector_paths": _join_sorted(child_paths),
+                "esto_parent_flow": esto_parent_flow,
+                "esto_parent_product": esto_parent_product,
+                "child_esto_flows": _join_sorted(mapped_child_flows),
+                "source_context_status": source_context_status,
+                "source_issue_class": source_issue_class,
+                "mapping_status": mapping_status,
+                "child_coverage_status": child_coverage_status,
+                "inheritance_eligible": inheritance_eligible,
+                "child_count": len(expected_child_flows),
+                "mapped_child_count": len(mapped_child_flows),
+                "parent_value": pv,
+                "children_sum": cv,
+                "difference": difference,
+                "abs_error": err,
+            })
+
+    if not mismatches:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+    return (
+        pd.DataFrame(mismatches)
+        .sort_values(["economy", "year", "parent_leap_sector"])
+        .reset_index(drop=True)
+    )
+
+
+def _build_source_inconsistency_lookup(
+    ninth_validation: pd.DataFrame,
+    leap_validation: pd.DataFrame,
+) -> dict[tuple[str, str, str, str, str, str, str], dict[str, str]]:
+    """
+    Build an exact-context lookup for conservative Stage B source attribution.
+
+    Keys retain source, economy, scenario, year, validation axis, parent code,
+    and opposite-axis value. Multiple source findings for one exact key are
+    retained through joined issue IDs. Only eligible findings produce
+    ``confirmed_inherited``.
+    """
+    lookup: dict[tuple[str, str, str, str, str, str, str], dict[str, str]] = {}
+    frames = [
+        (ninth_validation, "product", "esto_parent_product", "esto_parent_flow"),
+        (leap_validation, "flow", "esto_parent_flow", "esto_parent_product"),
+    ]
+    for frame, axis, parent_column, other_axis_column in frames:
+        for _, row in frame.iterrows():
+            parent_code = _str(row.get(parent_column, ""))
+            other_axis_value = _str(row.get(other_axis_column, ""))
+            if not parent_code or not other_axis_value:
+                continue
+            key = (
+                _str(row.get("source_system", "")).casefold(),
+                _str(row.get("economy", "")),
+                _str(row.get("scenario", "")).casefold(),
+                _str(row.get("year", "")),
+                axis,
+                parent_code,
+                other_axis_value,
+            )
+            eligible = _truthy(row.get("inheritance_eligible", False))
+            issue_class = _str(row.get("source_issue_class", "source_issue"))
+            status = "confirmed_inherited" if eligible else issue_class
+            issue_id = _str(row.get("source_issue_id", ""))
+            existing = lookup.get(key)
+            if existing is None:
+                lookup[key] = {"status": status, "source_issue_ids": issue_id}
+                continue
+            statuses = {existing["status"], status}
+            existing["status"] = (
+                "confirmed_inherited" if statuses == {"confirmed_inherited"}
+                else "multiple_source_issue_classes"
+            )
+            existing["source_issue_ids"] = _join_sorted(
+                [existing["source_issue_ids"], issue_id]
+            )
+    return lookup
+
+
+def _build_source_inconsistency_set(
+    ninth_validation: pd.DataFrame,
+    leap_validation: pd.DataFrame,
+) -> dict[tuple[str, str, str, str, str, str, str], dict[str, str]]:
+    """Backward-compatible name for the exact-context source lookup."""
+    return _build_source_inconsistency_lookup(ninth_validation, leap_validation)
 
 
 def _empty_esto_validation() -> pd.DataFrame:
@@ -639,12 +1229,20 @@ def _validate_common_esto_axis_recursive_sums(
     comparison_data_path: Path,
     axis: str,
     tolerance: float = 0.01,
+    source_inconsistencies: dict[
+        tuple[str, str, str, str, str, str, str], dict[str, str]
+    ] | None = None,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
 
     Graph-generated aggregate labels are treated as leaves because they do not
     have a natural recursive hierarchy.
+
+    ``source_inconsistencies`` uses the exact Stage B key: source system,
+    economy, scenario, year, axis, parent code, and opposite-axis value. Only a
+    Stage A record marked ``confirmed_inherited`` sets the convenience boolean.
     """
     if axis not in {"product", "flow"}:
         raise ValueError(f"Unsupported Common ESTO validation axis: {axis}")
@@ -669,11 +1267,16 @@ def _validate_common_esto_axis_recursive_sums(
         )
 
     data["value"] = pd.to_numeric(data["value"], errors="coerce").fillna(0.0)
-    data["year"] = data["year"].astype(str)
+    data["year"] = pd.to_numeric(data["year"], errors="coerce")
+    data = data[data["year"] > int(leap_var_base_year)].copy()
+    data["year"] = data["year"].astype(int).astype(str)
+    if data.empty:
+        return _empty_common_esto_validation()
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
     group_cols = ["comparison_scope", "source_system", "economy", "scenario", other_axis_col, "year"]
     children_map = _common_esto_validation_children_map(tree_df, axis)
+    source_inconsistencies = source_inconsistencies or {}
     mismatches = []
 
     for parent_code, children in children_map.items():
@@ -695,6 +1298,17 @@ def _validate_common_esto_axis_recursive_sums(
             if err <= tolerance * max(abs(pv), 1):
                 continue
             scope, source_system, economy, scenario, other_axis_value, year = idx
+            lookup_key = (
+                _str(source_system).casefold(),
+                _str(economy),
+                _str(scenario).casefold(),
+                _str(year),
+                axis,
+                _str(parent_code),
+                _str(other_axis_value),
+            )
+            source_record = source_inconsistencies.get(lookup_key, {})
+            source_status = source_record.get("status", "not_attributed")
             mismatches.append({
                 "validation_axis": axis,
                 "comparison_scope": scope,
@@ -708,6 +1322,9 @@ def _validate_common_esto_axis_recursive_sums(
                 "parent_value": pv,
                 "children_sum": cv,
                 "abs_error": err,
+                "source_inconsistency_status": source_status,
+                "source_issue_ids": source_record.get("source_issue_ids", ""),
+                "inherited_source_inconsistency": source_status == "confirmed_inherited",
             })
 
     result = pd.DataFrame(mismatches)
@@ -729,12 +1346,34 @@ def validate_common_esto_recursive_sums(
     tree_df: pd.DataFrame,
     comparison_data_path: Path = COMMON_ESTO_COMPARISON_PATH,
     tolerance: float = 0.01,
+    source_inconsistencies: dict[
+        tuple[str, str, str, str, str, str, str], dict[str, str]
+    ] | None = None,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
 ) -> pd.DataFrame:
-    """Validate Common ESTO product and flow subtotals when comparison data exists."""
+    """
+    Validate Common ESTO product and flow subtotals when comparison data exists.
+
+    ``source_inconsistencies`` is passed through to the per-axis validator.
+    """
     result = pd.concat(
         [
-            _validate_common_esto_axis_recursive_sums(tree_df, comparison_data_path, "product", tolerance),
-            _validate_common_esto_axis_recursive_sums(tree_df, comparison_data_path, "flow", tolerance),
+            _validate_common_esto_axis_recursive_sums(
+                tree_df,
+                comparison_data_path,
+                "product",
+                tolerance,
+                source_inconsistencies,
+                leap_var_base_year,
+            ),
+            _validate_common_esto_axis_recursive_sums(
+                tree_df,
+                comparison_data_path,
+                "flow",
+                tolerance,
+                source_inconsistencies,
+                leap_var_base_year,
+            ),
         ],
         ignore_index=True,
     )
@@ -759,13 +1398,27 @@ def validate_common_esto_recursive_sums(
 def run_tree_structure_workflow(
     esto_data_path: Path = ESTO_DATA_PATH,
     ninth_data_path: Path = NINTH_DATA_PATH,
+    leap_data_paths: list[Path] | None = None,
     outlook_mappings_path: Path = OUTLOOK_MAPPINGS_PATH,
     common_rows_path: Path = COMMON_ESTO_ROWS_PATH,
     common_comparison_path: Path = COMMON_ESTO_COMPARISON_PATH,
     output_dir: Path = TREE_OUTPUT_DIR,
+    validate_esto: bool = True,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
 ) -> Path:
     """
     Build all four tree CSVs and run recursive sum validation.
+
+    Stage A runs first, validating each source dataset independently:
+    * ESTO (if ``validate_esto=True``) — expected to pass; re-check after data
+      refreshes.
+    * Ninth Edition fuel hierarchy — flags parent/child gaps in the raw Ninth CSV.
+    * LEAP sector hierarchy — flags LEAP aggregate vs sub-sector gaps using
+      available LEAP balance CSVs (defaults to the USA long-format file).
+
+    Source validation is projection-only: years at or before
+    ``leap_var_base_year`` are excluded. Stage A findings are translated into
+    exact-context lookup records for Stage B.
 
     Returns the output directory path.
     """
@@ -791,40 +1444,90 @@ def run_tree_structure_workflow(
         print(f"  Skipping Common ESTO tree (not found: {common_rows_path.name})")
         common_tree = pd.DataFrame(columns=TREE_COLS)
 
-    # Recursive validation uses the ESTO tree
-    print("Running ESTO recursive sum validation …")
     all_trees = pd.concat(
         [t for t in [esto_tree, ninth_tree, leap_tree, common_tree] if not t.empty],
         ignore_index=True,
     )
-    validation = validate_esto_recursive_sums(all_trees, esto_data_path)
-    val_path = output_dir / "esto_validation.csv"
-    validation.to_csv(val_path, index=False)
-    if validation.empty:
-        print("  All ESTO recursive sum checks passed.")
-    else:
-        print(f"  {len(validation):,} mismatch rows -> {val_path.relative_to(REPO_ROOT)}")
 
+    # ------------------------------------------------------------------
+    # Stage A: source-data consistency pre-checks
+    # ------------------------------------------------------------------
+    if validate_esto:
+        print("Stage A — ESTO recursive sum validation …")
+        esto_validation = validate_esto_recursive_sums(all_trees, esto_data_path)
+        esto_val_path = output_dir / "esto_validation.csv"
+        esto_validation.to_csv(esto_val_path, index=False)
+        if esto_validation.empty:
+            print("  All ESTO recursive sum checks passed.")
+        else:
+            print(f"  {len(esto_validation):,} mismatch rows -> {esto_val_path.relative_to(REPO_ROOT)}")
+    else:
+        esto_validation = _empty_esto_validation()
+        print("Stage A — ESTO recursive sum validation skipped (validate_esto=False).")
+
+    print("Stage A — Ninth Edition fuel hierarchy validation …")
+    ninth_validation = validate_ninth_recursive_sums(
+        ninth_data_path,
+        outlook_mappings_path,
+        leap_var_base_year=leap_var_base_year,
+    )
+    ninth_val_path = output_dir / "ninth_validation.csv"
+    ninth_validation.to_csv(ninth_val_path, index=False)
+    if ninth_validation.empty:
+        print("  All Ninth fuel hierarchy checks passed.")
+    else:
+        print(f"  {len(ninth_validation):,} mismatch rows -> {ninth_val_path.relative_to(REPO_ROOT)}")
+
+    print("Stage A — LEAP sector hierarchy validation …")
+    leap_validation = validate_leap_recursive_sums(
+        leap_data_paths,
+        outlook_mappings_path,
+        esto_data_path=esto_data_path,
+        leap_var_base_year=leap_var_base_year,
+    )
+    leap_val_path = output_dir / "leap_validation.csv"
+    leap_validation.to_csv(leap_val_path, index=False)
+    if leap_validation.empty:
+        print("  All LEAP sector hierarchy checks passed (or no LEAP balance data available).")
+    else:
+        print(f"  {len(leap_validation):,} mismatch rows -> {leap_val_path.relative_to(REPO_ROOT)}")
+
+    source_inconsistencies = _build_source_inconsistency_lookup(
+        ninth_validation,
+        leap_validation,
+    )
+
+    # ------------------------------------------------------------------
+    # Stage B: Common ESTO recursive sum validation
+    # ------------------------------------------------------------------
     common_val_path = output_dir / "common_esto_validation.csv"
     if common_tree.empty:
         common_validation = _empty_common_esto_validation()
         common_validation.to_csv(common_val_path, index=False)
-        print("  Skipping Common ESTO validation (common tree not available).")
+        print("Stage B — Skipping Common ESTO validation (common tree not available).")
     elif not common_comparison_path.exists():
         common_validation = _empty_common_esto_validation()
         common_validation.to_csv(common_val_path, index=False)
-        print(f"  Skipping Common ESTO validation (not found: {common_comparison_path.name})")
+        print(f"Stage B — Skipping Common ESTO validation (not found: {common_comparison_path.name})")
     else:
-        print("Running Common ESTO recursive sum validation ...")
+        print("Stage B — Common ESTO recursive sum validation …")
         common_validation = validate_common_esto_recursive_sums(
             all_trees,
             common_comparison_path,
+            source_inconsistencies=source_inconsistencies,
+            leap_var_base_year=leap_var_base_year,
         )
         common_validation.to_csv(common_val_path, index=False)
         if common_validation.empty:
             print("  All Common ESTO recursive sum checks passed.")
         else:
-            print(f"  {len(common_validation):,} mismatch rows -> {common_val_path.relative_to(REPO_ROOT)}")
+            inherited = int(common_validation["inherited_source_inconsistency"].sum()) if "inherited_source_inconsistency" in common_validation.columns else 0
+            genuine = len(common_validation) - inherited
+            print(
+                f"  {len(common_validation):,} mismatch rows "
+                f"({inherited:,} inherited from source, {genuine:,} potential mapping issues) "
+                f"-> {common_val_path.relative_to(REPO_ROOT)}"
+            )
 
     non_esto_edges = common_esto_non_esto_parent_child_edges(all_trees)
     non_esto_edges_path = output_dir / "common_esto_non_esto_parent_child_edges.csv"

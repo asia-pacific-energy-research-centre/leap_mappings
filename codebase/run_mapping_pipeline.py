@@ -272,8 +272,12 @@ def run_stage_3() -> None:
 
     from codebase.mapping_tools.apply_common_esto_structure import run_apply_common_esto_structure
     from codebase.mapping_tools.build_dataset_tree_structure import (
+        LEAP_VAR_BASE_YEAR,
+        _build_source_inconsistency_lookup,
         build_common_esto_tree,
         build_esto_tree,
+        validate_leap_recursive_sums,
+        validate_ninth_recursive_sums,
     )
     from codebase.mapping_tools.common_esto_validation_orchestration import (
         run_common_esto_validation_workflow,
@@ -328,14 +332,38 @@ def run_stage_3() -> None:
     common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
     esto_tree = build_esto_tree(ESTO_CSV_PATH)
     validation_tree = pd.concat([esto_tree, common_tree], ignore_index=True)
+    tree_output_dir = REPO_ROOT / "results" / "tree_structure"
+    tree_output_dir.mkdir(parents=True, exist_ok=True)
+
+    print("  Running projection-only source hierarchy validation ...")
+    ninth_validation = validate_ninth_recursive_sums(
+        data_csv_path=NINTH_CSV_PATH,
+        workbook_path=WORKBOOK_PATH,
+        leap_var_base_year=LEAP_VAR_BASE_YEAR,
+    )
+    leap_validation = validate_leap_recursive_sums(
+        leap_data_paths=[RAW_LEAP_PATH],
+        workbook_path=WORKBOOK_PATH,
+        esto_data_path=ESTO_CSV_PATH,
+        leap_var_base_year=LEAP_VAR_BASE_YEAR,
+    )
+    ninth_validation.to_csv(tree_output_dir / "ninth_validation.csv", index=False)
+    leap_validation.to_csv(tree_output_dir / "leap_validation.csv", index=False)
+    source_inconsistencies = _build_source_inconsistency_lookup(
+        ninth_validation,
+        leap_validation,
+    )
+
     detail_df, validation_summary = run_common_esto_validation_workflow(
         tree_df=validation_tree,
         comparison_data_path=comparison_path,
-        output_dir=REPO_ROOT / "results" / "tree_structure",
+        output_dir=tree_output_dir,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
         expected_input_mtime_ns=expected_mtime_ns,
         skip_reason=skip_reason,
+        source_inconsistencies=source_inconsistencies,
+        leap_var_base_year=LEAP_VAR_BASE_YEAR,
     )
 
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
