@@ -39,7 +39,7 @@ def prepare_ninth_long_format(
     Reshape the 9th Outlook wide-format CSV to long format with ninth_sector
     and ninth_fuel columns suitable for the conversion join.
 
-    ninth_sector = sectors value (top-level; rows where sub1sectors == 'x')
+    ninth_sector = the most specific available sector hierarchy level
     ninth_fuel   = subfuels value, or fuels where subfuels == 'x'
     """
     df = pd.read_csv(ninth_csv_path, dtype=object)
@@ -48,16 +48,19 @@ def prepare_ninth_long_format(
     if "scenarios" in df.columns and scenario_filter:
         df = df[df["scenarios"].str.lower() == scenario_filter.lower()]
 
-    # Keep only top-sector rows (sub1sectors == 'x') to avoid double-counting
-    df = df[df["sub1sectors"].astype(str).str.strip() == "x"]
+    df = df.copy()
+    # Resolve ninth_sector to the most specific hierarchy level present.
+    sub2 = df["sub2sectors"].astype(str).str.strip()
+    sub1 = df["sub1sectors"].astype(str).str.strip()
+    sectors = df["sectors"].astype(str).str.strip()
+    df["ninth_sector"] = sectors
+    df.loc[sub1 != "x", "ninth_sector"] = sub1[sub1 != "x"]
+    df.loc[sub2 != "x", "ninth_sector"] = sub2[sub2 != "x"]
 
     # Resolve fuel: subfuels if not 'x', else fuels
-    df = df.copy()
     df["ninth_fuel"] = df["subfuels"].astype(str).str.strip()
     mask_x = df["ninth_fuel"] == "x"
     df.loc[mask_x, "ninth_fuel"] = df.loc[mask_x, "fuels"].astype(str).str.strip()
-
-    df["ninth_sector"] = df["sectors"].astype(str).str.strip()
     df["source_system"] = "NINTH"
 
     # Identify year columns
