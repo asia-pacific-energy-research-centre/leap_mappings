@@ -117,6 +117,7 @@ def propagate_chosen_esto_rows(
     chosen_rows_path: Path,
     repository_roots: list[Path],
     write_to_source_files: bool = False,
+    target_vintage: str | None = None,
     sheet_name: str | None = None,
     selected_flows: set[str] | None = None,
     selected_products: set[str] | None = None,
@@ -130,7 +131,12 @@ def propagate_chosen_esto_rows(
         chosen = chosen[chosen["products"].map(_normalise_text).isin(selected_products)].copy()
 
     summary_rows: list[dict[str, object]] = []
-    for target_path in find_target_esto_files(repository_roots):
+    file_pattern = (
+        f"00APEC_{target_vintage}_low_with_subtotals.csv"
+        if target_vintage is not None
+        else ESTO_FILE_PATTERN
+    )
+    for target_path in find_target_esto_files(repository_roots, file_pattern=file_pattern):
         target = pd.read_csv(target_path, dtype=object, low_memory=False)
         missing_columns = [column for column in KEY_COLUMNS if column not in target.columns]
         if missing_columns:
@@ -173,6 +179,32 @@ def propagate_chosen_esto_rows(
     return summary
 
 
+def propagate_chosen_esto_rows_by_vintage(
+    chosen_rows_by_vintage: dict[str, Path],
+    repository_roots: list[Path],
+    write_to_source_files: bool = False,
+    summary_output_path: Path | None = None,
+) -> pd.DataFrame:
+    """Apply each reviewed row set only to files from its matching vintage."""
+    summaries: list[pd.DataFrame] = []
+    for vintage, chosen_rows_path in sorted(chosen_rows_by_vintage.items()):
+        vintage_summary = propagate_chosen_esto_rows(
+            chosen_rows_path=chosen_rows_path,
+            repository_roots=repository_roots,
+            write_to_source_files=write_to_source_files,
+            target_vintage=str(vintage),
+        )
+        vintage_summary.insert(0, "chosen_vintage", str(vintage))
+        vintage_summary.insert(1, "chosen_rows_file", str(chosen_rows_path))
+        summaries.append(vintage_summary)
+
+    summary = pd.concat(summaries, ignore_index=True) if summaries else pd.DataFrame()
+    if summary_output_path is not None:
+        summary_output_path.parent.mkdir(parents=True, exist_ok=True)
+        summary.to_csv(summary_output_path, index=False)
+    return summary
+
+
 #%%
 # Frequently changed settings. Review the dry-run summary before enabling writes.
 CHOSEN_ROWS_PATH = (
@@ -182,22 +214,26 @@ CHOSEN_ROWS_PATH = (
     / "missing_mapped_esto_rows"
     / "00APEC_2025_low_with_subtotals_missing_mapped_rows.csv"
 )
-CHOSEN_ROWS_SHEET = None
-SELECTED_FLOWS = None
-SELECTED_PRODUCTS = None
+CHOSEN_ROWS_BY_VINTAGE = {
+    "2024": (
+        REPO_ROOT
+        / "results"
+        / "maintenance"
+        / "missing_mapped_esto_rows"
+        / "00APEC_2024_low_with_subtotals_missing_mapped_rows.csv"
+    ),
+    "2025": CHOSEN_ROWS_PATH,
+}
 WRITE_TO_SOURCE_FILES = False
 RUN_PROPAGATION = False
 
 
 #%%
 if RUN_PROPAGATION:
-    result = propagate_chosen_esto_rows(
-        chosen_rows_path=CHOSEN_ROWS_PATH,
+    result = propagate_chosen_esto_rows_by_vintage(
+        chosen_rows_by_vintage=CHOSEN_ROWS_BY_VINTAGE,
         repository_roots=DEFAULT_REPOSITORY_ROOTS,
         write_to_source_files=WRITE_TO_SOURCE_FILES,
-        sheet_name=CHOSEN_ROWS_SHEET,
-        selected_flows=SELECTED_FLOWS,
-        selected_products=SELECTED_PRODUCTS,
         summary_output_path=(
             REPO_ROOT
             / "results"

@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.propagate_esto_rows_workflow import propagate_chosen_esto_rows
+from codebase.propagate_esto_rows_workflow import (
+    propagate_chosen_esto_rows,
+    propagate_chosen_esto_rows_by_vintage,
+)
 
 
 def _write_target(path: Path, include_2023: bool) -> None:
@@ -86,3 +89,37 @@ def test_repeated_propagation_skips_existing_keys_without_replacement(tmp_path: 
     result = pd.read_csv(target)
     assert len(result) == 2
     assert float(result.iloc[-1]["2022"]) == 8.0
+
+
+def test_vintage_sets_are_written_only_to_matching_target_files(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    data_dir = repository / "data"
+    data_dir.mkdir(parents=True)
+    columns = ["economy", "flows", "products", "is_subtotal", "2022"]
+    for vintage in ("2024", "2025"):
+        pd.DataFrame(columns=columns).to_csv(
+            data_dir / f"00APEC_{vintage}_low_with_subtotals.csv",
+            index=False,
+        )
+    rows_2024 = tmp_path / "rows_2024.csv"
+    rows_2025 = tmp_path / "rows_2025.csv"
+    pd.DataFrame([{
+        "economy": "01AAA", "flows": "16.01.99 Unallocated",
+        "products": "17 Electricity", "is_subtotal": "FALSE", "2022": 24,
+    }]).to_csv(rows_2024, index=False)
+    pd.DataFrame([{
+        "economy": "01AAA", "flows": "16.01.99 Unallocated",
+        "products": "17 Electricity", "is_subtotal": "FALSE", "2022": 25,
+    }]).to_csv(rows_2025, index=False)
+
+    summary = propagate_chosen_esto_rows_by_vintage(
+        chosen_rows_by_vintage={"2024": rows_2024, "2025": rows_2025},
+        repository_roots=[repository],
+        write_to_source_files=True,
+    )
+
+    written_2024 = pd.read_csv(data_dir / "00APEC_2024_low_with_subtotals.csv")
+    written_2025 = pd.read_csv(data_dir / "00APEC_2025_low_with_subtotals.csv")
+    assert written_2024.loc[0, "2022"] == 24
+    assert written_2025.loc[0, "2022"] == 25
+    assert set(summary["chosen_vintage"]) == {"2024", "2025"}

@@ -795,10 +795,13 @@ row set to every immediate `data/00APEC_*_low_with_subtotals.csv` file in
 `leap_mappings`, `leap_initialisation`, `leap_dashboard`, and
 `leap_utilities`. It is notebook-style and dry-run by default:
 
-1. Set `CHOSEN_ROWS_PATH` and, for Excel input, `CHOSEN_ROWS_SHEET`.
-2. Optionally set `SELECTED_FLOWS` or `SELECTED_PRODUCTS`.
-3. Set `RUN_PROPAGATION = True` and run the file to inspect the summary.
-4. Only after review, set `WRITE_TO_SOURCE_FILES = True` and rerun.
+1. Set each entry in `CHOSEN_ROWS_BY_VINTAGE` to its reviewed row file.
+2. Set `RUN_PROPAGATION = True` and run the file to inspect the summary.
+3. Only after review, set `WRITE_TO_SOURCE_FILES = True` and rerun.
+
+Each chosen set is applied only to the matching year in the target filename, so
+calculated 2024 values cannot be copied into a 2025 file or vice versa. The
+single-file function also accepts `target_vintage` for one-off use.
 
 The workflow preserves each target's schema and column order, fills target
 year columns absent from the chosen input with zero, appends only missing
