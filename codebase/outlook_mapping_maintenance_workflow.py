@@ -460,7 +460,8 @@ def _build_subtotal_proposed_rows_preview(
     """Return only rows whose subtotal values would change, with proposed values applied."""
     rows: list[dict[str, object]] = []
     for _, row in df.iterrows():
-        proposed_row = row.copy()
+        # String-backed pandas rows reject bool assignments on newer pandas.
+        proposed_row = row.astype(object).copy()
         changed = False
         for change_column, proposed_getter in change_specs:
             proposed_value = _subtotal_preview_value(proposed_getter(row))
