@@ -4,11 +4,45 @@ import pytest
 from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
     build_component_relevance,
+    build_source_coverage_check,
     build_unmapped_leap_branch_evidence,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     should_ignore_missing_common_map_flow,
 )
+
+
+def test_source_coverage_check_expands_preaggregated_source_totals_by_scope() -> None:
+    source_totals_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "economy": "20_USA",
+                "scenario": "historical",
+                "year": 2022,
+                "value": 10.0,
+            }
+        ]
+    )
+    comparison_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "leap_vs_esto",
+                "source_system": "ESTO",
+                "economy": "20_USA",
+                "scenario": "historical",
+                "year": 2022,
+                "value": 8.0,
+            }
+        ]
+    )
+
+    check_df = build_source_coverage_check(source_totals_df, comparison_df)
+
+    assert check_df.loc[0, "comparison_scope"] == "leap_vs_esto"
+    assert check_df.loc[0, "source_total"] == 10.0
+    assert check_df.loc[0, "common_total"] == 8.0
+    assert check_df.loc[0, "difference"] == -2.0
 
 
 def test_apply_common_structure_retains_generated_total_label() -> None:

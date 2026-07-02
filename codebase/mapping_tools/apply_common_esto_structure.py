@@ -1072,6 +1072,9 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
 SOURCE_COVERAGE_GROUP_COLUMNS = [
     "comparison_scope", "source_system", "economy", "scenario", "year"
 ]
+SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS = [
+    "source_system", "economy", "scenario", "year"
+]
 
 
 def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
@@ -1316,7 +1319,7 @@ def run_apply_common_esto_structure(
     active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
     source_row_count = len(source_df)
     source_totals_df = (
-        source_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+        source_df.groupby(SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
         .sum()
     )
     del source_df
