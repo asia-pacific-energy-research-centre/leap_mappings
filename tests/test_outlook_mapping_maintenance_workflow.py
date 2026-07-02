@@ -1,9 +1,12 @@
 from datetime import datetime
 
 import pandas as pd
+from openpyxl import Workbook
 
 from codebase.outlook_mapping_maintenance_workflow import (
+    _apply_subtotal_overrides_to_sheet,
     _archive_workbook,
+    _build_stale_subtotal_override_rows,
     _compute_leap_subtotals,
     _mapping_style_sector_path_from_export_segments,
     _split_allowed_subtotal_mismatches,
@@ -480,4 +483,84 @@ def test_full_export_paths_make_power_parent_branches_subtotals() -> None:
     export_paths.discard("")
 
     assert "Electricity Generation" in _compute_leap_subtotals(export_paths)
+
+
+def test_reviewed_subtotal_overrides_are_idempotent() -> None:
+    workbook = Workbook()
+    ws = workbook.active
+    ws.title = "leap_combined_esto"
+    ws.append([
+        "leap_sector_name_full_path",
+        "raw_leap_fuel_name",
+        "esto_flow",
+        "esto_product",
+        "leap_is_subtotal",
+        "esto_pair_is_subtotal",
+    ])
+    ws.append(["Industry", "Electricity", "14 Industry", "17 Electricity", False, False])
+    overrides = {
+        (
+            "leap_combined_esto",
+            ("Industry", "Electricity", "14 Industry", "17 Electricity"),
+            "leap_is_subtotal",
+        ): True,
+        (
+            "leap_combined_esto",
+            ("Industry", "Electricity", "14 Industry", "17 Electricity"),
+            "esto_pair_is_subtotal",
+        ): True,
+    }
+
+    assert _apply_subtotal_overrides_to_sheet(ws, overrides) == 2
+    first_values = (ws["E2"].value, ws["F2"].value)
+    assert _apply_subtotal_overrides_to_sheet(ws, overrides) == 2
+    second_values = (ws["E2"].value, ws["F2"].value)
+
+    assert first_values == (True, True)
+    assert second_values == first_values
+
+
+def test_stale_subtotal_overrides_are_reported() -> None:
+    mapping_frames = {
+        "leap_combined_esto": pd.DataFrame([{
+            "leap_sector_name_full_path": "Industry",
+            "raw_leap_fuel_name": "Electricity",
+            "esto_flow": "14 Industry",
+            "esto_product": "17 Electricity",
+        }]),
+        "leap_combined_ninth": pd.DataFrame(columns=[
+            "leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"
+        ]),
+        "ninth_pairs_to_esto_pairs": pd.DataFrame(columns=[
+            "9th_sector", "9th_fuel", "esto_flow", "esto_product"
+        ]),
+    }
+    override_df = pd.DataFrame([
+        {
+            "enabled": True,
+            "sheet": "leap_combined_esto",
+            "leap_sector_name_full_path": "Industry",
+            "raw_leap_fuel_name": "Electricity",
+            "esto_flow": "14 Industry",
+            "esto_product": "17 Electricity",
+            "leap_is_subtotal": True,
+            "esto_pair_is_subtotal": True,
+        },
+        {
+            "enabled": True,
+            "sheet": "leap_combined_esto",
+            "leap_sector_name_full_path": "Deleted branch",
+            "raw_leap_fuel_name": "Electricity",
+            "esto_flow": "14 Industry",
+            "esto_product": "17 Electricity",
+            "leap_is_subtotal": True,
+            "esto_pair_is_subtotal": True,
+        },
+    ])
+
+    stale = _build_stale_subtotal_override_rows(override_df, mapping_frames)
+
+    assert len(stale) == 1
+    assert stale.loc[0, "leap_sector_name_full_path"] == "Deleted branch"
+    assert stale.loc[0, "stale_reason"] == "mapping_key_not_found"
 

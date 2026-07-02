@@ -16,6 +16,9 @@ Stages
 Run all stages:
     python codebase/run_mapping_pipeline.py
 
+Apply Stage 0 subtotal changes before continuing (reviewed overrides win):
+    python codebase/run_mapping_pipeline.py --apply-maintenance
+
 Run specific stages (comma-separated):
     python codebase/run_mapping_pipeline.py --stages 1,2,3
 
@@ -124,12 +127,12 @@ def _log_to_file(log_path):
 # Stage 0 — Maintenance
 # ---------------------------------------------------------------------------
 
-def run_stage_0() -> None:
+def run_stage_0(apply_subtotal_changes: bool = False) -> None:
     print("\n" + "=" * 60)
     print("STAGE 0  Maintenance")
     print("=" * 60)
     from codebase.outlook_mapping_maintenance_workflow import run as maintenance_run
-    maintenance_run()
+    maintenance_run(apply_subtotal_changes_to_workbook=apply_subtotal_changes)
 
 
 # ---------------------------------------------------------------------------
@@ -613,6 +616,15 @@ def main() -> None:
         default="",
         help="Comma-separated list of stages to skip.",
     )
+    parser.add_argument(
+        "--apply-maintenance",
+        action="store_true",
+        help=(
+            "Allow Stage 0 to write computed subtotal values to the mapping workbook. "
+            "Reviewed subtotal_label_overrides are applied last. Without this flag, "
+            "Stage 0 writes preview and stale-override QA files only."
+        ),
+    )
     args = parser.parse_args()
 
     requested = [s.strip() for s in args.stages.split(",") if s.strip()]
@@ -630,7 +642,10 @@ def main() -> None:
         print(f"[LOG] Writing output to: {log_path}")
         print("Running pipeline stages:", stages_to_run)
         for stage in stages_to_run:
-            _STAGE_RUNNERS[stage]()
+            if stage == "0":
+                run_stage_0(apply_subtotal_changes=args.apply_maintenance)
+            else:
+                _STAGE_RUNNERS[stage]()
 
         print("\n" + "=" * 60)
         print("Pipeline complete.")

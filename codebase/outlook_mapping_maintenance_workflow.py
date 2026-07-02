@@ -72,9 +72,26 @@ FULL_MODEL_EXPORT_SHEET = "Export"
 GENERATE_MISSING_MAPPED_ESTO_ROWS = True
 MISSING_MAPPED_ESTO_ROWS_DIR = QA_DIR / "missing_mapped_esto_rows"
 SUBTOTAL_CHANGE_PREVIEW_PATH = QA_DIR / "subtotal_change_preview.xlsx"
-APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK = True
+SUBTOTAL_OVERRIDE_SHEET = "subtotal_label_overrides"
+SUBTOTAL_OVERRIDE_STALE_PATH = QA_DIR / "subtotal_label_overrides_stale.csv"
+APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK = False
 UNMAPPED_NONZERO_ESTO_ALLOWED_SHEET = "unmapped_esto_nonzero_allowed"
 UNMAPPED_NONZERO_NINTH_ALLOWED_SHEET = "unmapped_ninth_nonzero_allowed"
+
+SUBTOTAL_OVERRIDE_CONFIGS = {
+    "leap_combined_esto": {
+        "keys": ("leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"),
+        "subtotal_columns": ("leap_is_subtotal", "esto_pair_is_subtotal"),
+    },
+    "leap_combined_ninth": {
+        "keys": ("leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"),
+        "subtotal_columns": ("leap_is_subtotal", "ninth_pair_is_subtotal"),
+    },
+    "ninth_pairs_to_esto_pairs": {
+        "keys": ("9th_sector", "9th_fuel", "esto_flow", "esto_product"),
+        "subtotal_columns": ("ninth_pair_is_subtotal", "esto_pair_is_subtotal"),
+    },
+}
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +108,22 @@ def _is_x(value: object) -> bool:
 
 def _truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _subtotal_bool(value: object) -> bool | None:
+    """Parse a subtotal value without treating the boolean False as blank."""
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise ValueError(f"Unexpected subtotal override value: {value!r}")
 
 
 def _active_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -472,6 +505,123 @@ def _build_subtotal_proposed_rows_preview(
         if changed:
             rows.append(proposed_row.to_dict())
     return pd.DataFrame(rows, columns=list(df.columns))
+
+
+def _load_subtotal_label_overrides(
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> tuple[dict[tuple[str, tuple[str, ...], str], bool], pd.DataFrame]:
+    """Load reviewed subtotal values keyed by sheet, mapping keys, and column."""
+    try:
+        override_df = pd.read_excel(
+            exception_workbook_path,
+            sheet_name=SUBTOTAL_OVERRIDE_SHEET,
+            dtype=object,
+        )
+    except (FileNotFoundError, ValueError):
+        return {}, pd.DataFrame()
+
+    if "enabled" in override_df.columns:
+        override_df = override_df[override_df["enabled"].map(_truthy)].copy()
+
+    overrides: dict[tuple[str, tuple[str, ...], str], bool] = {}
+    for row_number, (_, row) in enumerate(override_df.iterrows(), start=2):
+        sheet_name = _norm(row.get("sheet", ""))
+        config = SUBTOTAL_OVERRIDE_CONFIGS.get(sheet_name)
+        if config is None:
+            continue
+        key = tuple(_norm(row.get(column, "")) for column in config["keys"])
+        if all(not value for value in key):
+            continue
+        for subtotal_column in config["subtotal_columns"]:
+            value = _subtotal_bool(row.get(subtotal_column))
+            if value is None:
+                continue
+            override_key = (sheet_name, key, subtotal_column)
+            previous = overrides.get(override_key)
+            if previous is not None and previous != value:
+                raise ValueError(
+                    f"Conflicting {SUBTOTAL_OVERRIDE_SHEET} rows for {sheet_name} "
+                    f"{key} {subtotal_column}; conflict at Excel row {row_number}."
+                )
+            overrides[override_key] = value
+    return overrides, override_df
+
+
+def _resolved_subtotal_value(
+    sheet_name: str,
+    row: pd.Series,
+    subtotal_column: str,
+    computed_value: object,
+    overrides: dict[tuple[str, tuple[str, ...], str], bool],
+) -> object:
+    """Return a reviewed override when present, otherwise the computed value."""
+    config = SUBTOTAL_OVERRIDE_CONFIGS[sheet_name]
+    key = tuple(_norm(row.get(column, "")) for column in config["keys"])
+    return overrides.get((sheet_name, key, subtotal_column), computed_value)
+
+
+def _apply_subtotal_overrides_to_sheet(
+    ws,
+    overrides: dict[tuple[str, tuple[str, ...], str], bool],
+) -> int:
+    """Apply reviewed overrides after computed subtotal values are written."""
+    config = SUBTOTAL_OVERRIDE_CONFIGS[ws.title]
+    key_indexes = [_col_index(ws, column) for column in config["keys"]]
+    subtotal_indexes = {
+        column: _col_index(ws, column)
+        for column in config["subtotal_columns"]
+    }
+    if any(index is None for index in key_indexes) or any(
+        index is None for index in subtotal_indexes.values()
+    ):
+        raise ValueError(f"Missing override key or subtotal column in sheet {ws.title}")
+
+    updated = 0
+    for row in ws.iter_rows(min_row=2):
+        key = tuple(_norm(row[index - 1].value) for index in key_indexes)
+        for subtotal_column, subtotal_index in subtotal_indexes.items():
+            override = overrides.get((ws.title, key, subtotal_column))
+            if override is not None:
+                row[subtotal_index - 1].value = override
+                updated += 1
+    return updated
+
+
+def _build_stale_subtotal_override_rows(
+    override_df: pd.DataFrame,
+    mapping_frames: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Return enabled overrides whose sheet/key no longer exists in the master."""
+    if override_df.empty:
+        return pd.DataFrame(columns=["override_excel_row", "sheet", "stale_reason"])
+
+    mapping_keys = {}
+    for sheet_name, config in SUBTOTAL_OVERRIDE_CONFIGS.items():
+        frame = mapping_frames[sheet_name]
+        mapping_keys[sheet_name] = {
+            tuple(_norm(row.get(column, "")) for column in config["keys"])
+            for _, row in frame.iterrows()
+        }
+
+    stale_rows: list[dict[str, object]] = []
+    for row_number, (_, row) in enumerate(override_df.iterrows(), start=2):
+        sheet_name = _norm(row.get("sheet", ""))
+        config = SUBTOTAL_OVERRIDE_CONFIGS.get(sheet_name)
+        reason = ""
+        if config is None:
+            reason = "unknown_mapping_sheet"
+        else:
+            key = tuple(_norm(row.get(column, "")) for column in config["keys"])
+            if all(not value for value in key):
+                reason = "blank_override_key"
+            elif key not in mapping_keys[sheet_name]:
+                reason = "mapping_key_not_found"
+        if reason:
+            stale_row = {"override_excel_row": row_number, "stale_reason": reason}
+            stale_row.update(row.to_dict())
+            stale_rows.append(stale_row)
+    output_columns = ["override_excel_row", "stale_reason", *list(override_df.columns)]
+    return pd.DataFrame(stale_rows, columns=output_columns)
 
 
 # ── cardinality helpers ───────────────────────────────────────────────────────
@@ -1069,8 +1219,9 @@ def _remove_stale_generated_exception_outputs() -> None:
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def run() -> None:
-    _archive_workbook(WORKBOOK_PATH)
+def run(
+    apply_subtotal_changes_to_workbook: bool = APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK,
+) -> None:
 
     if GENERATE_MISSING_MAPPED_ESTO_ROWS:
         print("Building paste-ready rows for mapped ESTO pairs missing from source data …")
@@ -1101,6 +1252,22 @@ def run() -> None:
     df_lcesto = _read_sheet_as_df(wb, "leap_combined_esto")
     df_lcninth = _read_sheet_as_df(wb, "leap_combined_ninth")
     df_nesto = _read_sheet_as_df(wb, "ninth_pairs_to_esto_pairs")
+    subtotal_overrides, subtotal_override_df = _load_subtotal_label_overrides()
+    mapping_frames = {
+        "leap_combined_esto": df_lcesto,
+        "leap_combined_ninth": df_lcninth,
+        "ninth_pairs_to_esto_pairs": df_nesto,
+    }
+    stale_subtotal_overrides = _build_stale_subtotal_override_rows(
+        subtotal_override_df,
+        mapping_frames,
+    )
+    QA_DIR.mkdir(parents=True, exist_ok=True)
+    stale_subtotal_overrides.to_csv(SUBTOTAL_OVERRIDE_STALE_PATH, index=False)
+    print(
+        f"  Reviewed subtotal overrides: {len(subtotal_override_df):,} rows; "
+        f"stale: {len(stale_subtotal_overrides):,} -> {SUBTOTAL_OVERRIDE_STALE_PATH}"
+    )
     active_esto_paths = set(
         _active_rows(df_lcesto)["leap_sector_name_full_path"].map(_norm)
         .loc[lambda s: s.ne("")]
@@ -1145,11 +1312,23 @@ def run() -> None:
         change_specs=[
             (
                 "leap_is_subtotal",
-                lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                lambda row: _resolved_subtotal_value(
+                    "leap_combined_esto",
+                    row,
+                    "leap_is_subtotal",
+                    True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                    subtotal_overrides,
+                ),
             ),
             (
                 "esto_pair_is_subtotal",
-                lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                lambda row: _resolved_subtotal_value(
+                    "leap_combined_esto",
+                    row,
+                    "esto_pair_is_subtotal",
+                    esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                    subtotal_overrides,
+                ),
             ),
         ],
     )
@@ -1158,11 +1337,23 @@ def run() -> None:
         change_specs=[
             (
                 "leap_is_subtotal",
-                lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                lambda row: _resolved_subtotal_value(
+                    "leap_combined_ninth",
+                    row,
+                    "leap_is_subtotal",
+                    True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                    subtotal_overrides,
+                ),
             ),
             (
                 "ninth_pair_is_subtotal",
-                lambda row: ninth_lookup.get((_norm(row.get("ninth_sector", "")), _norm(row.get("ninth_fuel", "")))),
+                lambda row: _resolved_subtotal_value(
+                    "leap_combined_ninth",
+                    row,
+                    "ninth_pair_is_subtotal",
+                    ninth_lookup.get((_norm(row.get("ninth_sector", "")), _norm(row.get("ninth_fuel", "")))),
+                    subtotal_overrides,
+                ),
             ),
         ],
     )
@@ -1171,11 +1362,23 @@ def run() -> None:
         change_specs=[
             (
                 "ninth_pair_is_subtotal",
-                lambda row: ninth_lookup.get((_norm(row.get("9th_sector", "")), _norm(row.get("9th_fuel", "")))),
+                lambda row: _resolved_subtotal_value(
+                    "ninth_pairs_to_esto_pairs",
+                    row,
+                    "ninth_pair_is_subtotal",
+                    ninth_lookup.get((_norm(row.get("9th_sector", "")), _norm(row.get("9th_fuel", "")))),
+                    subtotal_overrides,
+                ),
             ),
             (
                 "esto_pair_is_subtotal",
-                lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                lambda row: _resolved_subtotal_value(
+                    "ninth_pairs_to_esto_pairs",
+                    row,
+                    "esto_pair_is_subtotal",
+                    esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                    subtotal_overrides,
+                ),
             ),
         ],
     )
@@ -1193,9 +1396,11 @@ def run() -> None:
         proposed_lcninth.to_excel(writer, sheet_name="leap_combined_ninth_proposed", index=False)
         proposed_nesto.to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs_proposed", index=False)
     print(f"  subtotal proposed rows preview -> {SUBTOTAL_CHANGE_PREVIEW_PATH}")
-    if not APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK:
-        print("  subtotal preview only; workbook update skipped because APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK=False")
+    if not apply_subtotal_changes_to_workbook:
+        print("  subtotal preview only; workbook update skipped (explicit apply flag not set)")
         return
+
+    _archive_workbook(WORKBOOK_PATH)
 
     # ── leap_combined_esto ───────────────────────────────────────────────────
     sheet_name = "leap_combined_esto"
@@ -1210,6 +1415,7 @@ def run() -> None:
         lookup=esto_lookup,
     )
     print(f"  esto_pair_is_subtotal -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
+    print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     # ── leap_combined_ninth ──────────────────────────────────────────────────
     sheet_name = "leap_combined_ninth"
@@ -1224,6 +1430,7 @@ def run() -> None:
         lookup=ninth_lookup,
     )
     print(f"  ninth_pair_is_subtotal -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
+    print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     # ── ninth_pairs_to_esto_pairs ────────────────────────────────────────────
     sheet_name = "ninth_pairs_to_esto_pairs"
@@ -1243,6 +1450,7 @@ def run() -> None:
         lookup=esto_lookup,
     )
     print(f"  esto_pair_is_subtotal  -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
+    print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     wb.save(WORKBOOK_PATH)
     print(f"\nSaved -> {WORKBOOK_PATH}")
