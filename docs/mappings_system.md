@@ -1410,8 +1410,8 @@ Stage 2 outputs are structure outputs, not final result data. Review `common_est
 | `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
 | `crosswalk_target_conflicts_allowed_matched.csv` | Current crosswalk rows matched by the manual `crosswalk_allowed` exception sheet |
 | `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
-| `unmapped_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
-| `unmapped_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
+| `unmapped_nonzero_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
+| `unmapped_nonzero_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
 | `subtotal_mismatches_allowed_matched.csv` | Current subtotal mismatch rows matched by the manual `subtotal_mismatch_allowed` exception sheet |
 | `subtotal_mismatches.csv` | Current leaf source → aggregate target subtotal mismatch rows not present in the manual exception workbook |
 
@@ -1521,3 +1521,4 @@ It runs Stage 0 through Stage 3 against the real workbook and source files,
 including LEAP parsing and data conversion. The test is intentionally
 expensive, so it is skipped by default and should be treated as an
 integration-level check rather than a routine unit test.
+

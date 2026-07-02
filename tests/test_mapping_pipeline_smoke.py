@@ -67,8 +67,8 @@ def test_real_pipeline_smoke_run() -> None:
         Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\cardinality_leap_ninth.csv"),
         Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\cardinality_ninth_esto.csv"),
         Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\subtotal_mismatches.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_esto_pairs.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_ninth_pairs.csv"),
+        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_nonzero_esto_pairs.csv"),
+        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_nonzero_ninth_pairs.csv"),
     ]
     for path in stage0_outputs:
         _assert_exists(path)
@@ -101,3 +101,4 @@ def test_real_pipeline_smoke_run() -> None:
     assert "status" in validation_summary_df.columns
     assert "artifact_name" in status_df.columns
     assert "common_esto_comparison_data" in set(status_df["artifact_name"].astype(str))
+

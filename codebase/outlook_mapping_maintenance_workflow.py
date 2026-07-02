@@ -18,9 +18,9 @@ What it does
      cardinality_leap_esto.csv      — (LEAP source, ESTO target) cardinality
      cardinality_leap_ninth.csv     — (LEAP source, 9th target) cardinality
      cardinality_ninth_esto.csv     — (9th source, ESTO target) cardinality
-     unmapped_esto_pairs.csv        — ESTO (flow, product) pairs in data with
+     unmapped_nonzero_esto_pairs.csv        — ESTO (flow, product) pairs in data with
                                       no active mapping row
-     unmapped_ninth_pairs.csv       — 9th (sector, fuel) pairs in data with
+     unmapped_nonzero_ninth_pairs.csv       — 9th (sector, fuel) pairs in data with
                                       no active mapping row
      subtotal_mismatches.csv        — M6 rule: leaf source → aggregate target
                                       rows not present in the manual allowlist
@@ -40,7 +40,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import pandas as pd
 import openpyxl
@@ -71,6 +71,8 @@ FULL_MODEL_EXPORT_SHEET = "Export"
 # it never modifies either ESTO source CSV.
 GENERATE_MISSING_MAPPED_ESTO_ROWS = True
 MISSING_MAPPED_ESTO_ROWS_DIR = QA_DIR / "missing_mapped_esto_rows"
+SUBTOTAL_CHANGE_PREVIEW_PATH = QA_DIR / "subtotal_change_preview.xlsx"
+APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK = True
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -96,6 +98,22 @@ def _active_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df[~(remove | duplicate)].copy()
 
 
+def _year_columns(df: pd.DataFrame) -> list[str]:
+    """Return columns that look like year/value columns in a balance table."""
+    return [col for col in df.columns if re.fullmatch(r"\d{4}", str(col).strip())]
+
+
+def _nonzero_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Return only rows with at least one non-zero value across year columns."""
+    year_cols = _year_columns(df)
+    if not year_cols:
+        return df.iloc[0:0].copy()
+
+    numeric_years = df[year_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    mask = numeric_years.abs().gt(0).any(axis=1)
+    return df[mask].copy()
+
+
 # ── subtotal lookups ─────────────────────────────────────────────────────────
 
 def _build_esto_subtotal_lookup() -> Dict[Tuple[str, str], bool]:
@@ -108,6 +126,7 @@ def _build_esto_subtotal_lookup() -> Dict[Tuple[str, str], bool]:
     if "is_subtotal" not in df.columns:
         raise ValueError(f"is_subtotal column not found in {ESTO_CSV_PATH}")
 
+    df = _nonzero_rows(df)
     df["_flow"] = df["flows"].fillna("").map(_norm)
     df["_product"] = df["products"].fillna("").map(_norm)
     df["_is_sub"] = df["is_subtotal"].fillna(False).map(_truthy)
@@ -130,6 +149,7 @@ def _build_ninth_subtotal_lookup() -> Dict[Tuple[str, str], bool]:
     True if subtotal_layout OR subtotal_results is True for that pair.
     """
     df = pd.read_csv(NINTH_CSV_PATH)
+    df = _nonzero_rows(df)
 
     sector_cols = ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", "sectors"]
     fuel_cols = ["subfuels", "fuels"]
@@ -388,6 +408,47 @@ def _read_sheet_as_df(wb, sheet_name: str) -> pd.DataFrame:
     for row in ws.iter_rows(min_row=2, values_only=True):
         rows.append([_norm(v) for v in row])
     return pd.DataFrame(rows, columns=headers)
+
+
+def _subtotal_preview_value(value: object) -> bool | None:
+    """Normalize stored subtotal values for preview comparisons."""
+    text = _norm(value)
+    if text == "":
+        return None
+    if _truthy(text):
+        return True
+    if text.lower() in {"false", "0", "no", "off"}:
+        return False
+    return None
+
+
+def _build_subtotal_change_preview(
+    df: pd.DataFrame,
+    sheet_name: str,
+    key_columns: list[str],
+    change_specs: list[tuple[str, Callable[[pd.Series], object], str]],
+) -> pd.DataFrame:
+    """Return one row per subtotal cell whose proposed value differs from current."""
+    rows: list[dict[str, object]] = []
+    for row_number, (_, row) in enumerate(df.iterrows(), start=2):
+        for change_column, proposed_getter, reason in change_specs:
+            current_value = _subtotal_preview_value(row.get(change_column, ""))
+            proposed_value = proposed_getter(row)
+            proposed_value = _subtotal_preview_value(proposed_value)
+            if current_value == proposed_value:
+                continue
+            preview_row: dict[str, object] = {
+                "sheet_name": sheet_name,
+                "excel_row_number": row_number,
+                "change_column": change_column,
+                "current_value": "" if current_value is None else current_value,
+                "proposed_value": "" if proposed_value is None else proposed_value,
+                "change_reason": reason,
+            }
+            for key_column in key_columns:
+                preview_row[key_column] = row.get(key_column, "")
+            rows.append(preview_row)
+    return pd.DataFrame(rows)
 
 
 # ── cardinality helpers ───────────────────────────────────────────────────────
@@ -934,8 +995,8 @@ def _write_maintenance_summary(
         ("maintenance", "leap_source_presence_conflicts.csv", "review"),
         ("maintenance", "crosswalk_target_conflicts_allowed_matched.csv", "info"),
         ("maintenance", "crosswalk_target_conflicts.csv", "review"),
-        ("maintenance", "unmapped_esto_pairs.csv", "review"),
-        ("maintenance", "unmapped_ninth_pairs.csv", "review"),
+        ("maintenance", "unmapped_nonzero_esto_pairs.csv", "review"),
+        ("maintenance", "unmapped_nonzero_ninth_pairs.csv", "review"),
         ("maintenance", "subtotal_mismatches.csv", "review"),
         ("maintenance", "subtotal_mismatches_allowed_matched.csv", "info"),
         ("maintenance", "missing_mapped_esto_rows/missing_mapped_esto_rows_summary.csv", "review"),
@@ -1055,6 +1116,74 @@ def run() -> None:
             )
             print(f"  Fallback subtotal paths from mapping sheets: {len(fallback_subtotal_paths):,}")
     print(f"  Active LEAP paths: {len(all_leap_paths):,}  Subtotal paths: {len(subtotal_paths):,}")
+    preview_lcesto = _build_subtotal_change_preview(
+        df_lcesto,
+        sheet_name="leap_combined_esto",
+        key_columns=["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"],
+        change_specs=[
+            (
+                "leap_is_subtotal",
+                lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                "LEAP path is a subtotal because it has active children",
+            ),
+            (
+                "esto_pair_is_subtotal",
+                lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                "ESTO pair subtotal flag comes from the source lookup",
+            ),
+        ],
+    )
+    preview_lcninth = _build_subtotal_change_preview(
+        df_lcninth,
+        sheet_name="leap_combined_ninth",
+        key_columns=["leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"],
+        change_specs=[
+            (
+                "leap_is_subtotal",
+                lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
+                "LEAP path is a subtotal because it has active children",
+            ),
+            (
+                "ninth_pair_is_subtotal",
+                lambda row: ninth_lookup.get((_norm(row.get("ninth_sector", "")), _norm(row.get("ninth_fuel", "")))),
+                "9th pair subtotal flag comes from the source lookup",
+            ),
+        ],
+    )
+    preview_nesto = _build_subtotal_change_preview(
+        df_nesto,
+        sheet_name="ninth_pairs_to_esto_pairs",
+        key_columns=["9th_sector", "9th_fuel", "esto_flow", "esto_product"],
+        change_specs=[
+            (
+                "ninth_pair_is_subtotal",
+                lambda row: ninth_lookup.get((_norm(row.get("9th_sector", "")), _norm(row.get("9th_fuel", "")))),
+                "9th pair subtotal flag comes from the source lookup",
+            ),
+            (
+                "esto_pair_is_subtotal",
+                lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
+                "ESTO pair subtotal flag comes from the source lookup",
+            ),
+        ],
+    )
+    preview_summary = pd.DataFrame(
+        [
+            {"sheet_name": "leap_combined_esto", "preview_change_rows": len(preview_lcesto)},
+            {"sheet_name": "leap_combined_ninth", "preview_change_rows": len(preview_lcninth)},
+            {"sheet_name": "ninth_pairs_to_esto_pairs", "preview_change_rows": len(preview_nesto)},
+        ]
+    )
+    QA_DIR.mkdir(parents=True, exist_ok=True)
+    with pd.ExcelWriter(SUBTOTAL_CHANGE_PREVIEW_PATH, engine="openpyxl") as writer:
+        preview_summary.to_excel(writer, sheet_name="summary", index=False)
+        preview_lcesto.to_excel(writer, sheet_name="leap_combined_esto", index=False)
+        preview_lcninth.to_excel(writer, sheet_name="leap_combined_ninth", index=False)
+        preview_nesto.to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs", index=False)
+    print(f"  subtotal change preview -> {SUBTOTAL_CHANGE_PREVIEW_PATH}")
+    if not APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK:
+        print("  subtotal preview only; workbook update skipped because APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK=False")
+        return
 
     # ── leap_combined_esto ───────────────────────────────────────────────────
     sheet_name = "leap_combined_esto"
@@ -1171,8 +1300,8 @@ def run() -> None:
     # Unmapped pairs
     unmapped_esto = _unmapped_esto_pairs([df_lcesto, df_nesto], esto_lookup)
     unmapped_ninth = _unmapped_ninth_pairs([df_lcninth, df_nesto], ninth_lookup)
-    unmapped_esto.to_csv(QA_DIR / "unmapped_esto_pairs.csv", index=False)
-    unmapped_ninth.to_csv(QA_DIR / "unmapped_ninth_pairs.csv", index=False)
+    unmapped_esto.to_csv(QA_DIR / "unmapped_nonzero_esto_pairs.csv", index=False)
+    unmapped_ninth.to_csv(QA_DIR / "unmapped_nonzero_ninth_pairs.csv", index=False)
     print(f"  unmapped_esto_pairs:  {len(unmapped_esto):,}")
     print(f"  unmapped_ninth_pairs: {len(unmapped_ninth):,}")
 
@@ -1247,3 +1376,5 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
+
+

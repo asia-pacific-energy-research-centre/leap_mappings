@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_issue_exceptions import EXCEPTION_WORKBOOK_PATH, split_allowed_rows
+
 #%%
 USE_CASES = [
     "leap_to_esto_balance_conversion",
@@ -187,7 +189,9 @@ QA_FILENAMES = {
     "missing_dataset_pairs_by_use_case": "missing_dataset_pairs_by_use_case.csv",
     "not_considered_esto_rows": "not_considered_esto_rows.csv",
     "leap_to_esto_duplicate_source_pairs": "leap_to_esto_duplicate_source_pairs.csv",
+    "leap_to_esto_duplicate_source_pairs_allowed_matched": "leap_to_esto_duplicate_source_pairs_allowed_matched.csv",
     "leap_to_esto_duplicate_target_pairs": "leap_to_esto_duplicate_target_pairs.csv",
+    "leap_to_esto_duplicate_target_pairs_allowed_matched": "leap_to_esto_duplicate_target_pairs_allowed_matched.csv",
     "one_to_many_mappings_without_allocation_or_combined_target": "one_to_many_mappings_without_allocation_or_combined_target.csv",
     "leap_to_esto_parent_child_risks": "leap_to_esto_parent_child_risks.csv",
     "leap_to_esto_coverage_summary": "leap_to_esto_coverage_summary.csv",
@@ -196,7 +200,12 @@ QA_FILENAMES = {
 
 QA_SHEET_NAMES = {
     "missing_dataset_pairs_by_use_case": "missing_pairs_by_use_case",
+    "leap_to_esto_duplicate_source_pairs_allowed_matched": "duplicate_source_allowed",
+    "leap_to_esto_duplicate_target_pairs_allowed_matched": "duplicate_target_allowed",
 }
+
+DUPLICATE_SOURCE_EXCEPTION_SHEET = "leap_dup_source_allowed"
+DUPLICATE_TARGET_EXCEPTION_SHEET = "leap_dup_target_allowed"
 
 CATALOGUE_COLUMNS = [
     "relationship_id",
@@ -690,6 +699,34 @@ def build_duplicate_target_pairs(relationship_df: pd.DataFrame, use_case: str) -
     )
 
 
+def _split_allowed_duplicate_source_pairs(
+    duplicate_source_df: pd.DataFrame,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split duplicate source rows into unresolved and manually allowed rows."""
+    return split_allowed_rows(
+        duplicate_source_df,
+        sheet_name=DUPLICATE_SOURCE_EXCEPTION_SHEET,
+        status_column="duplicate_source_review_status",
+        reason_column="duplicate_source_review_reason",
+        workbook_path=exception_workbook_path,
+    )
+
+
+def _split_allowed_duplicate_target_pairs(
+    duplicate_target_df: pd.DataFrame,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split duplicate target rows into unresolved and manually allowed rows."""
+    return split_allowed_rows(
+        duplicate_target_df,
+        sheet_name=DUPLICATE_TARGET_EXCEPTION_SHEET,
+        status_column="duplicate_target_review_status",
+        reason_column="duplicate_target_review_reason",
+        workbook_path=exception_workbook_path,
+    )
+
+
 def build_parent_child_risks(relationship_df: pd.DataFrame, use_case: str) -> pd.DataFrame:
     """Flag included parent/child LEAP paths that point to the same ESTO target."""
     included_df = relationship_df[
@@ -762,6 +799,8 @@ def build_conversion_qa_tables(
 
     duplicate_source_df = build_duplicate_source_pairs(relationship_df, use_case)
     duplicate_target_df = build_duplicate_target_pairs(relationship_df, use_case)
+    duplicate_source_df, allowed_duplicate_source_df = _split_allowed_duplicate_source_pairs(duplicate_source_df)
+    duplicate_target_df, allowed_duplicate_target_df = _split_allowed_duplicate_target_pairs(duplicate_target_df)
     parent_child_df = build_parent_child_risks(relationship_df, use_case)
     missing_dataset_pairs_df = build_missing_dataset_pairs_by_use_case(relationship_df)
 
@@ -777,7 +816,9 @@ def build_conversion_qa_tables(
         {"metric": "not_considered_esto_rows", "value": len(not_considered_df)},
         {"metric": "missing_dataset_pairs_by_use_case", "value": len(missing_dataset_pairs_df)},
         {"metric": "duplicate_source_groups", "value": len(duplicate_source_df)},
+        {"metric": "duplicate_source_groups_allowed_matched", "value": len(allowed_duplicate_source_df)},
         {"metric": "duplicate_target_groups", "value": len(duplicate_target_df)},
+        {"metric": "duplicate_target_groups_allowed_matched", "value": len(allowed_duplicate_target_df)},
         {"metric": "one_to_many_allocation_or_combined_target_issues", "value": len(one_to_many_issue_df)},
         {"metric": "parent_child_risk_rows", "value": len(parent_child_df)},
     ]
@@ -789,7 +830,9 @@ def build_conversion_qa_tables(
         "missing_dataset_pairs_by_use_case": missing_dataset_pairs_df,
         "not_considered_esto_rows": not_considered_df,
         "leap_to_esto_duplicate_source_pairs": duplicate_source_df,
+        "leap_to_esto_duplicate_source_pairs_allowed_matched": allowed_duplicate_source_df,
         "leap_to_esto_duplicate_target_pairs": duplicate_target_df,
+        "leap_to_esto_duplicate_target_pairs_allowed_matched": allowed_duplicate_target_df,
         "one_to_many_mappings_without_allocation_or_combined_target": one_to_many_issue_df,
         "leap_to_esto_parent_child_risks": parent_child_df,
         "leap_to_esto_coverage_summary": coverage_summary_df,
@@ -1639,3 +1682,4 @@ if __name__ == "__main__":
         raise
 
 #%%
+

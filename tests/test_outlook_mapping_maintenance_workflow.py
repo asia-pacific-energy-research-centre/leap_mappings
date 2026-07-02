@@ -10,6 +10,10 @@ from codebase.outlook_mapping_maintenance_workflow import (
     _split_allowed_crosswalk_conflicts,
     _split_allowed_many_to_many,
 )
+from codebase.mapping_tools.build_energy_balance_relationships import (
+    _split_allowed_duplicate_source_pairs,
+    _split_allowed_duplicate_target_pairs,
+)
 
 
 def _write_exception_workbook(path, sheet_name: str, rows: list[dict[str, object]]) -> None:
@@ -312,6 +316,126 @@ def test_split_allowed_subtotal_mismatches_uses_manual_allowlist(tmp_path) -> No
     assert needs_review.loc[0, "leap_sector_name_full_path"] == "Transfers"
 
 
+def test_split_allowed_duplicate_source_pairs_uses_manual_allowlist(tmp_path) -> None:
+    duplicate_source_pairs = pd.DataFrame(
+        [
+            {
+                "source_flow": "Total final consumption",
+                "source_product": "Anthracite",
+                "included_row_count": 3,
+                "target_pair_count": 3,
+                "target_pairs": "A | B | C",
+                "target_flows": "A | B | C",
+                "source_rows": "1|2|3",
+                "cardinality": "many_to_many",
+                "relationship_types": "direct_or_existing_mapping",
+                "relationship_levels": "total|parent",
+                "qa_status": "review_expected",
+                "qa_severity": "info",
+                "qa_reason": "source-to-target duplication is expected by cardinality or total/subtotal metadata.",
+                "expected_duplicate": True,
+            },
+            {
+                "source_flow": "Industry",
+                "source_product": "Bagasse",
+                "included_row_count": 2,
+                "target_pair_count": 2,
+                "target_pairs": "D | E",
+                "target_flows": "D | E",
+                "source_rows": "4|5",
+                "cardinality": "many_to_many",
+                "relationship_types": "direct_or_existing_mapping",
+                "relationship_levels": "parent",
+                "qa_status": "review_expected",
+                "qa_severity": "info",
+                "qa_reason": "source-to-target duplication is expected by cardinality or total/subtotal metadata.",
+                "expected_duplicate": True,
+            },
+        ]
+    )
+
+    exception_path = tmp_path / "mapping_issue_exception_sets.xlsx"
+    exception_row = duplicate_source_pairs.iloc[[0]].copy()
+    exception_row.insert(0, "enabled", True)
+    exception_row["notes"] = "Reviewed manually"
+    _write_exception_workbook(
+        exception_path,
+        "leap_dup_source_allowed",
+        exception_row[["enabled", "source_flow", "source_product", "notes"]].to_dict("records"),
+    )
+
+    conflicts, allowed = _split_allowed_duplicate_source_pairs(
+        duplicate_source_pairs,
+        exception_workbook_path=exception_path,
+    )
+
+    assert len(allowed) == 1
+    assert allowed.loc[0, "duplicate_source_review_status"] == "allowed"
+    assert allowed.loc[0, "duplicate_source_review_reason"] == "Reviewed manually"
+    assert len(conflicts) == 1
+    assert conflicts.loc[0, "source_flow"] == "Industry"
+
+
+def test_split_allowed_duplicate_target_pairs_uses_manual_allowlist(tmp_path) -> None:
+    duplicate_target_pairs = pd.DataFrame(
+        [
+            {
+                "target_flow": "09.06 Gas processing plants",
+                "target_product": "17 Electricity",
+                "included_row_count": 2,
+                "source_pair_count": 2,
+                "source_pairs": "A | B",
+                "source_rows": "1|2",
+                "cardinality": "many_to_many",
+                "relationship_types": "direct_or_existing_mapping",
+                "relationship_levels": "parent",
+                "target_flows": "09.06 Gas processing plants",
+                "qa_status": "review_expected",
+                "qa_severity": "info",
+                "qa_reason": "target-to-source duplication is expected by cardinality or total/subtotal metadata.",
+                "expected_duplicate": True,
+            },
+            {
+                "target_flow": "14 Industry sector",
+                "target_product": "15 Bagasse",
+                "included_row_count": 2,
+                "source_pair_count": 2,
+                "source_pairs": "C | D",
+                "source_rows": "3|4",
+                "cardinality": "many_to_many",
+                "relationship_types": "direct_or_existing_mapping",
+                "relationship_levels": "parent",
+                "target_flows": "14 Industry sector",
+                "qa_status": "review_expected",
+                "qa_severity": "info",
+                "qa_reason": "target-to-source duplication is expected by cardinality or total/subtotal metadata.",
+                "expected_duplicate": True,
+            },
+        ]
+    )
+
+    exception_path = tmp_path / "mapping_issue_exception_sets.xlsx"
+    exception_row = duplicate_target_pairs.iloc[[0]].copy()
+    exception_row.insert(0, "enabled", True)
+    exception_row["notes"] = "Reviewed manually"
+    _write_exception_workbook(
+        exception_path,
+        "leap_dup_target_allowed",
+        exception_row[["enabled", "target_flow", "target_product", "notes"]].to_dict("records"),
+    )
+
+    conflicts, allowed = _split_allowed_duplicate_target_pairs(
+        duplicate_target_pairs,
+        exception_workbook_path=exception_path,
+    )
+
+    assert len(allowed) == 1
+    assert allowed.loc[0, "duplicate_target_review_status"] == "allowed"
+    assert allowed.loc[0, "duplicate_target_review_reason"] == "Reviewed manually"
+    assert len(conflicts) == 1
+    assert conflicts.loc[0, "target_flow"] == "14 Industry sector"
+
+
 def test_mapping_style_sector_path_from_export_segments_matches_workbook_paths() -> None:
     fuel_names = {"Electricity", "Natural gas", "Other bituminous coal"}
 
@@ -356,3 +480,4 @@ def test_full_export_paths_make_power_parent_branches_subtotals() -> None:
     export_paths.discard("")
 
     assert "Electricity Generation" in _compute_leap_subtotals(export_paths)
+

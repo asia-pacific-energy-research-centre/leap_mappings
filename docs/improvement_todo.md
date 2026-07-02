@@ -40,7 +40,7 @@ Suggested review order:
 6. Record any required human rule in `docs/special_rules_and_design_decisions.md` before changing behaviour.
 7. Apply the narrowest mapping/configuration correction and rerun all affected stages.
 
-Do not prioritize the raw counts in `unmapped_esto_pairs.csv`, `unmapped_ninth_pairs.csv`, or `common_esto_source_rows_missing_common_map.csv` until they are separated into non-zero relevant rows, subtotals, intentionally excluded scope, and genuine mapping gaps.
+Do not prioritize the raw counts in `unmapped_nonzero_esto_pairs.csv`, `unmapped_nonzero_ninth_pairs.csv`, or `common_esto_source_rows_missing_common_map.csv` until they are separated into non-zero relevant rows, subtotals, intentionally excluded scope, and genuine mapping gaps.
 
 ## 2. Finish the canonical-workbook migration
 
@@ -120,3 +120,4 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Rep
 - Define each `comparison_scope` and its included systems.
 - Clearly separate blocking validation failures from review diagnostics.
 - Keep `README.md`, `docs/mappings_system.md`, and the implemented pipeline behaviour synchronized.
+

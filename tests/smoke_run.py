@@ -88,8 +88,8 @@ stage0_outputs = [
     REPO_ROOT / "results" / "maintenance" / "cardinality_leap_ninth.csv",
     REPO_ROOT / "results" / "maintenance" / "cardinality_ninth_esto.csv",
     REPO_ROOT / "results" / "maintenance" / "subtotal_mismatches.csv",
-    REPO_ROOT / "results" / "maintenance" / "unmapped_esto_pairs.csv",
-    REPO_ROOT / "results" / "maintenance" / "unmapped_ninth_pairs.csv",
+    REPO_ROOT / "results" / "maintenance" / "unmapped_nonzero_esto_pairs.csv",
+    REPO_ROOT / "results" / "maintenance" / "unmapped_nonzero_ninth_pairs.csv",
 ]
 assert_files_exist(stage0_outputs)
 show_csv_head(stage0_outputs[0])
@@ -152,3 +152,4 @@ summary_files = [
 for path in summary_files:
     status = "OK" if path.exists() else "MISSING"
     print(f"[{status}]  {path.relative_to(REPO_ROOT)}")
+
