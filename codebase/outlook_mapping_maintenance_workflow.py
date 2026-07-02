@@ -73,6 +73,8 @@ GENERATE_MISSING_MAPPED_ESTO_ROWS = True
 MISSING_MAPPED_ESTO_ROWS_DIR = QA_DIR / "missing_mapped_esto_rows"
 SUBTOTAL_CHANGE_PREVIEW_PATH = QA_DIR / "subtotal_change_preview.xlsx"
 APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK = True
+UNMAPPED_NONZERO_ESTO_ALLOWED_SHEET = "unmapped_esto_nonzero_allowed"
+UNMAPPED_NONZERO_NINTH_ALLOWED_SHEET = "unmapped_ninth_nonzero_allowed"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -1309,10 +1311,26 @@ def run() -> None:
     # Unmapped pairs
     unmapped_esto = _unmapped_esto_pairs([df_lcesto, df_nesto], esto_lookup)
     unmapped_ninth = _unmapped_ninth_pairs([df_lcninth, df_nesto], ninth_lookup)
+    unmapped_esto, allowed_unmapped_esto = split_allowed_rows(
+        unmapped_esto,
+        sheet_name=UNMAPPED_NONZERO_ESTO_ALLOWED_SHEET,
+        status_column="unmapped_nonzero_review_status",
+        reason_column="unmapped_nonzero_review_reason",
+        workbook_path=EXCEPTION_WORKBOOK_PATH,
+    )
+    unmapped_ninth, allowed_unmapped_ninth = split_allowed_rows(
+        unmapped_ninth,
+        sheet_name=UNMAPPED_NONZERO_NINTH_ALLOWED_SHEET,
+        status_column="unmapped_nonzero_review_status",
+        reason_column="unmapped_nonzero_review_reason",
+        workbook_path=EXCEPTION_WORKBOOK_PATH,
+    )
     unmapped_esto.to_csv(QA_DIR / "unmapped_nonzero_esto_pairs.csv", index=False)
+    allowed_unmapped_esto.to_csv(QA_DIR / "unmapped_nonzero_esto_pairs_allowed_matched.csv", index=False)
     unmapped_ninth.to_csv(QA_DIR / "unmapped_nonzero_ninth_pairs.csv", index=False)
-    print(f"  unmapped_esto_pairs:  {len(unmapped_esto):,}")
-    print(f"  unmapped_ninth_pairs: {len(unmapped_ninth):,}")
+    allowed_unmapped_ninth.to_csv(QA_DIR / "unmapped_nonzero_ninth_pairs_allowed_matched.csv", index=False)
+    print(f"  unmapped_nonzero_esto_pairs:  {len(unmapped_esto):,}  allowed={len(allowed_unmapped_esto):,}")
+    print(f"  unmapped_nonzero_ninth_pairs: {len(unmapped_ninth):,}  allowed={len(allowed_unmapped_ninth):,}")
 
     # Subtotal mismatches (M6)
     mm_esto = _subtotal_mismatches(
