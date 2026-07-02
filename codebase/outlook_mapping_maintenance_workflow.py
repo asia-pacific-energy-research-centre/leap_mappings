@@ -451,6 +451,26 @@ def _build_subtotal_change_preview(
     return pd.DataFrame(rows)
 
 
+def _build_subtotal_proposed_rows_preview(
+    df: pd.DataFrame,
+    change_specs: list[tuple[str, Callable[[pd.Series], object]]],
+) -> pd.DataFrame:
+    """Return only rows whose subtotal values would change, with proposed values applied."""
+    rows: list[dict[str, object]] = []
+    for _, row in df.iterrows():
+        proposed_row = row.copy()
+        changed = False
+        for change_column, proposed_getter in change_specs:
+            proposed_value = _subtotal_preview_value(proposed_getter(row))
+            current_value = _subtotal_preview_value(row.get(change_column, ""))
+            if current_value != proposed_value:
+                proposed_row[change_column] = "" if proposed_value is None else proposed_value
+                changed = True
+        if changed:
+            rows.append(proposed_row.to_dict())
+    return pd.DataFrame(rows, columns=list(df.columns))
+
+
 # ── cardinality helpers ───────────────────────────────────────────────────────
 
 def _mapping_cardinality(n_targets: int, n_sources: int) -> str:
@@ -1077,6 +1097,7 @@ def run() -> None:
     print("\nComputing LEAP subtotals …")
     df_lcesto = _read_sheet_as_df(wb, "leap_combined_esto")
     df_lcninth = _read_sheet_as_df(wb, "leap_combined_ninth")
+    df_nesto = _read_sheet_as_df(wb, "ninth_pairs_to_esto_pairs")
     active_esto_paths = set(
         _active_rows(df_lcesto)["leap_sector_name_full_path"].map(_norm)
         .loc[lambda s: s.ne("")]
@@ -1116,71 +1137,59 @@ def run() -> None:
             )
             print(f"  Fallback subtotal paths from mapping sheets: {len(fallback_subtotal_paths):,}")
     print(f"  Active LEAP paths: {len(all_leap_paths):,}  Subtotal paths: {len(subtotal_paths):,}")
-    preview_lcesto = _build_subtotal_change_preview(
+    proposed_lcesto = _build_subtotal_proposed_rows_preview(
         df_lcesto,
-        sheet_name="leap_combined_esto",
-        key_columns=["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"],
         change_specs=[
             (
                 "leap_is_subtotal",
                 lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
-                "LEAP path is a subtotal because it has active children",
             ),
             (
                 "esto_pair_is_subtotal",
                 lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
-                "ESTO pair subtotal flag comes from the source lookup",
             ),
         ],
     )
-    preview_lcninth = _build_subtotal_change_preview(
+    proposed_lcninth = _build_subtotal_proposed_rows_preview(
         df_lcninth,
-        sheet_name="leap_combined_ninth",
-        key_columns=["leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"],
         change_specs=[
             (
                 "leap_is_subtotal",
                 lambda row: True if _norm(row.get("leap_sector_name_full_path", "")) in subtotal_paths else False if _norm(row.get("leap_sector_name_full_path", "")) else None,
-                "LEAP path is a subtotal because it has active children",
             ),
             (
                 "ninth_pair_is_subtotal",
                 lambda row: ninth_lookup.get((_norm(row.get("ninth_sector", "")), _norm(row.get("ninth_fuel", "")))),
-                "9th pair subtotal flag comes from the source lookup",
             ),
         ],
     )
-    preview_nesto = _build_subtotal_change_preview(
+    proposed_nesto = _build_subtotal_proposed_rows_preview(
         df_nesto,
-        sheet_name="ninth_pairs_to_esto_pairs",
-        key_columns=["9th_sector", "9th_fuel", "esto_flow", "esto_product"],
         change_specs=[
             (
                 "ninth_pair_is_subtotal",
                 lambda row: ninth_lookup.get((_norm(row.get("9th_sector", "")), _norm(row.get("9th_fuel", "")))),
-                "9th pair subtotal flag comes from the source lookup",
             ),
             (
                 "esto_pair_is_subtotal",
                 lambda row: esto_lookup.get((_norm(row.get("esto_flow", "")), _norm(row.get("esto_product", "")))),
-                "ESTO pair subtotal flag comes from the source lookup",
             ),
         ],
     )
     preview_summary = pd.DataFrame(
         [
-            {"sheet_name": "leap_combined_esto", "preview_change_rows": len(preview_lcesto)},
-            {"sheet_name": "leap_combined_ninth", "preview_change_rows": len(preview_lcninth)},
-            {"sheet_name": "ninth_pairs_to_esto_pairs", "preview_change_rows": len(preview_nesto)},
+            {"sheet_name": "leap_combined_esto", "proposed_row_count": len(proposed_lcesto)},
+            {"sheet_name": "leap_combined_ninth", "proposed_row_count": len(proposed_lcninth)},
+            {"sheet_name": "ninth_pairs_to_esto_pairs", "proposed_row_count": len(proposed_nesto)},
         ]
     )
     QA_DIR.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(SUBTOTAL_CHANGE_PREVIEW_PATH, engine="openpyxl") as writer:
         preview_summary.to_excel(writer, sheet_name="summary", index=False)
-        preview_lcesto.to_excel(writer, sheet_name="leap_combined_esto", index=False)
-        preview_lcninth.to_excel(writer, sheet_name="leap_combined_ninth", index=False)
-        preview_nesto.to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs", index=False)
-    print(f"  subtotal change preview -> {SUBTOTAL_CHANGE_PREVIEW_PATH}")
+        proposed_lcesto.to_excel(writer, sheet_name="leap_combined_esto_proposed", index=False)
+        proposed_lcninth.to_excel(writer, sheet_name="leap_combined_ninth_proposed", index=False)
+        proposed_nesto.to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs_proposed", index=False)
+    print(f"  subtotal proposed rows preview -> {SUBTOTAL_CHANGE_PREVIEW_PATH}")
     if not APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK:
         print("  subtotal preview only; workbook update skipped because APPLY_SUBTOTAL_CHANGES_TO_WORKBOOK=False")
         return
