@@ -34,6 +34,33 @@ VALIDATION_SUMMARY_COLUMNS = [
 ]
 
 
+_AGGREGATION_ID_COLS = [
+    "validation_axis",
+    "comparison_scope",
+    "source_system",
+    "scenario",
+    "other_axis_value",
+    "parent_code",
+    "child_count",
+]
+
+
+def _aggregate_validation(detail_df: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
+    """Sum parent_value and children_sum over group_cols, then recompute derived columns."""
+    if detail_df.empty:
+        return pd.DataFrame()
+    grp = detail_df.groupby(group_cols, dropna=False)
+    agg = grp[["parent_value", "children_sum"]].sum().reset_index()
+    agg["economy_count"] = grp["economy"].nunique().values
+    agg["difference"] = agg["parent_value"] - agg["children_sum"]
+    agg["abs_error"] = agg["difference"].abs()
+    agg["proportional_error"] = agg.apply(
+        lambda r: r["difference"] / r["parent_value"] if abs(r["parent_value"]) > 0 else None,
+        axis=1,
+    )
+    return agg
+
+
 def _empty_validation_detail() -> pd.DataFrame:
     return pd.DataFrame(columns=COMMON_ESTO_VALIDATION_COLS)
 
@@ -245,6 +272,21 @@ def run_common_esto_validation_workflow(
     )
     detail_df.insert(0, "run_id", run_id)
     detail_df.to_csv(detail_path, index=False)
+
+    by_year_path = output_dir / "common_esto_validation_by_year.csv"
+    totals_path = output_dir / "common_esto_validation_totals.csv"
+    if not detail_df.empty:
+        by_year_cols = _AGGREGATION_ID_COLS + ["year"]
+        by_year_df = _aggregate_validation(detail_df, by_year_cols)
+        by_year_df.insert(0, "run_id", run_id)
+        by_year_df.to_csv(by_year_path, index=False)
+
+        totals_df = _aggregate_validation(detail_df, _AGGREGATION_ID_COLS)
+        totals_df.insert(0, "run_id", run_id)
+        totals_df.to_csv(totals_path, index=False)
+    else:
+        pd.DataFrame().to_csv(by_year_path, index=False)
+        pd.DataFrame().to_csv(totals_path, index=False)
 
     for row in summary_rows:
         row.update({

@@ -188,6 +188,56 @@ Confirm that generated rollups with `Total` in their labels appear in `common_es
 
 - 2026-06-28: Removed the label-based Stage 3 filter after confirming it suppressed valid generated rollups.
 
+## MAP-006: Aggregate ESTO flows are excluded from structural edge creation
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Comparison
+**Affected areas:** `codebase/mapping_tools/build_common_esto_structure.py` (`build_source_aggregate_edges`); `codebase/mapping_tools/build_energy_balance_relationships.py` (`RELATIONSHIP_COLUMNS`, `build_relationship_rows`); `config/outlook_mappings_master.xlsx` sheet `leap_combined_esto` column `esto_pair_is_subtotal`
+
+### Situation
+
+The Common ESTO graph connects ESTO (flow, product) pairs into a shared common row whenever a single source observation maps to more than one ESTO target.  This is the correct behaviour for source aggregates that genuinely span multiple ESTO components (for example, a Ninth fuel bucket that maps to several ESTO sub-fuels).
+
+However, some LEAP sectors are mapped simultaneously to their specific ESTO demand-sector flow *and* to a parent aggregate flow via the `tfc_comparison` rollup.  For example, LEAP `Industry` produces both `(14 Industry sector, product)` and `(12 Total final consumption, product)` as ESTO targets.  Without filtering, the graph draws an edge between flows 14 and 12, then transitively pulls in flows 13 and 16.01-16.02, collapsing all four into a single `12,13,14,16.01-16.02 Total final consumption` common row.  That row is inert in the dashboard (its combined flow code matches no page rule) but pollutes the output and obscures the correctly separate rows.
+
+### Options
+
+- Ignore the spurious row.  It causes no dashboard harm but creates noise and makes the Common structure harder to audit.
+- Exclude parent aggregate ESTO flows from the graph entirely.  They would lose their own standalone common rows.
+- Exclude parent aggregate targets only from *edge creation*, keeping them as standalone common rows.  Subtotal pairs are still recorded in the aggregate-group metadata for diagnostics.
+
+### Current rule
+
+Use the third option.  The `esto_pair_is_subtotal` column in the relationships pipeline carries a `True` flag for any ESTO target that is a known top-level aggregate.  `build_source_aggregate_edges` excludes rows where `esto_pair_is_subtotal = True` when collecting the pairs used to draw structural edges; those targets still appear as their own common rows.
+
+The following ESTO flows are marked `esto_pair_is_subtotal = True` in `leap_combined_esto`:
+
+| ESTO flow | Reason |
+| --- | --- |
+| `07 Total primary energy supply` | Top-level supply-side aggregate; not a structural detail row |
+| `08 Transfers` | Transfers parent aggregate; sub-flows (interproduct transfers, gas separation, etc.) are the structural detail |
+| `09 Total transformation sector` | Top-level transformation aggregate; corresponds to the LEAP-generated `Total transformation - no transfers` rollup (see MAP-010) |
+| `09.06 Gas processing plants` | Transformation sub-group aggregate |
+| `09.08 Coal transformation` | Transformation sub-group aggregate |
+| `09.13 Hydrogen transformation` | Transformation sub-group aggregate |
+| `12 Total final consumption` | Top-level demand aggregate; structurally equivalent to the sum of all demand-sector flows |
+| `13 Total final energy consumption` | Demand aggregate excluding non-energy use; same structural position as flow 12 |
+| `14 Industry sector` | Sector-level demand aggregate |
+| `14.03 Manufacturing` | Manufacturing sub-sector aggregate |
+| `15 Transport sector` | Sector-level demand aggregate |
+| `16.01 Commercial and public services` | Buildings sub-sector; parent of Datacentres and unallocated completion child |
+| `16.01-16.02 Buildings` | Combined buildings aggregate used by LEAP Buildings mapping |
+
+### Validation
+
+After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16.02 Total final consumption` no longer appears as a common flow code.  Confirm that standalone common rows for flows 07, 09, 12, 13, 14, and 15 are still generated.  Confirm that sector-level demand rows (14.xx, 15.xx, 16.01-16.02, etc.) remain correctly grouped by product aggregates from Ninth source data.  Confirm `subtotal_mismatches.csv` contains only unapproved cases after any change to this list.
+
+### History
+
+- 2026-06-28: Identified that the `tfc_comparison` rollup caused LEAP `Industry` and `Buildings` to produce cross-flow graph edges, generating the spurious `12,13,14,16.01-16.02` combined row.  Decided to use `esto_pair_is_subtotal` as the exclusion signal and marked flows 07, 12, and 13 as subtotals in `leap_combined_esto`.
+- 2026-06-30: Extended subtotal marking to the full set of parent/aggregate ESTO flows (08, 09, 09.06, 09.08, 09.13, 14.03, 15, 16.01, 16.01-16.02) so that edge exclusion and M6 subtotal-alignment checks apply consistently across supply, transformation, and demand sections.  Marking `09 Total transformation sector` as a subtotal is consistent with MAP-010: LEAP uses a generated frontier (`Total transformation - no transfers`) that sums non-transfer children, so mapping the LEAP total to the ESTO parent aggregate is semantically correct and should not trigger M6 mismatch warnings.
+
 ## MAP-008: Commercial services require an unallocated completion child
 
 **Status:** Confirmed
@@ -268,6 +318,46 @@ For each proposed frontier and each economy/scenario/year/product grouping, conf
   consumes that export for hierarchy and subtotal status but does not own LEAP
   import IDs. See
   [`leap_initialisation/docs/special_rules_and_design_decisions.md`](../../leap_initialisation/docs/special_rules_and_design_decisions.md#cross-001-full-model-export-and-leap-import-id-integrity).
+
+## MAP-010: Total transformation uses a generated LEAP frontier and exact reference parent
+
+**Status:** Confirmed
+**Owner:** leap_mappings
+**Type:** Comparison
+**Affected areas:** `leap_rollup_rules`; ESTO source-row preparation; Common ESTO source-aggregate metadata; dashboard aggregate overview
+
+### Current rule
+
+`Total transformation - no transfers` is a generated LEAP rollup. It is the
+sum of the configured non-transfer transformation branches and is not expected
+to exist in raw LEAP balance exports. For the aggregate comparison, LEAP uses
+that generated detail frontier while ESTO and Ninth use their exact
+`09 Total transformation sector` parent rows.
+
+Stage 3 preserves `common_row_id`, row-basis flags, and source-aggregate
+membership so consumers can pair those representations without matching a
+display label. ESTO source preparation retains the exact parent/product pairs
+explicitly mapped by this rollup in addition to the ordinary non-subtotal
+frontier. No other rollup parent receives this exception unless it is reviewed
+and added explicitly.
+
+The exact `09` parent remains useful for direct comparison even where the
+available child hierarchy is incomplete. It must not be added to its generated
+detail frontier in the same total.
+
+### Validation
+
+- Confirm LEAP rows selected for this comparison have `requires_rollup = True`.
+- Confirm ESTO and Ninth rows have `is_exact_row = True`.
+- Confirm all selected rows carry source-aggregate membership for
+  `Total transformation - no transfers`.
+- Treat parent-versus-incomplete-children validation differences as visible
+  hierarchy diagnostics, not permission to replace the direct parent value.
+
+### History
+
+- 2026-06-29: Confirmed the source rollup/reference-parent pairing and added
+  stable metadata so the dashboard no longer relies on the shared display label.
 
 ## End-to-end run report
 

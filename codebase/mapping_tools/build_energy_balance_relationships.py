@@ -74,6 +74,7 @@ RELATIONSHIP_COLUMNS = [
     "target_product",
     "target_sector_code",
     "target_product_code",
+    "esto_pair_is_subtotal",
     "cardinality",
     "relationship_type",
     "relationship_level",
@@ -87,7 +88,7 @@ RELATIONSHIP_COLUMNS = [
     "review_required",
     "review_flags",
     "remove_row",
-    "rollup_context",
+    "is_rollup_derived",
     "source_mapping_file",
     "source_sheet",
     "source_row_number",
@@ -161,6 +162,10 @@ COLUMN_CANDIDATES = {
         "remove",
         "inactive",
         "drop_row",
+    ],
+    "esto_pair_is_subtotal": [
+        "esto_pair_is_subtotal",
+        "ninth_pair_is_subtotal",
     ],
     "cardinality": [
         "cardinality",
@@ -290,6 +295,55 @@ def parse_remove_row(value: Any) -> bool:
     return text in {"true", "t", "yes", "y", "1", "remove", "removed", "drop", "inactive"}
 
 
+_SUBTOTAL_TRUE_VALUES: frozenset[str] = frozenset({"true", "yes", "1"})
+_SUBTOTAL_FALSE_VALUES: frozenset[str] = frozenset({"false", "no", "0", ""})
+
+
+def parse_esto_pair_is_subtotal(value: Any) -> bool:
+    """Strictly parse the esto_pair_is_subtotal flag from a workbook cell.
+
+    Accepted true values:   boolean True, integer/float 1, strings "1" / "true" / "yes"
+    Accepted false values:  boolean False, integer/float 0, strings "0" / "false" / "no",
+                            blank strings, None, pandas NA, and any NaN.
+
+    Any other non-empty value raises ValueError so that unexpected workbook
+    content is caught rather than silently coerced.
+
+    This function intentionally does NOT call bool() on the raw value directly
+    because bool(np.nan) is True, which would incorrectly mark blank Excel cells
+    as subtotals.
+    """
+    # NaN / NA / None -> False
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        raise ValueError(
+            f"Unexpected numeric value for esto_pair_is_subtotal: {value!r}. "
+            "Expected 0, 1, True, False, or blank."
+        )
+
+    text = str(value).strip().lower()
+    if text in _SUBTOTAL_TRUE_VALUES:
+        return True
+    if text in _SUBTOTAL_FALSE_VALUES:
+        return False
+    raise ValueError(
+        f"Unexpected string value for esto_pair_is_subtotal: {value!r}. "
+        f"Expected one of {sorted(_SUBTOTAL_TRUE_VALUES | _SUBTOTAL_FALSE_VALUES)!r}."
+    )
+
+
 def normalise_match_text(value: Any) -> str:
     """Normalise text used in relationship IDs and QA keys."""
     if pd.isna(value):
@@ -395,6 +449,7 @@ def normalise_mapping_columns(df: pd.DataFrame, sheet_config: dict[str, Any]) ->
         "source_product_code": "",
         "target_sector_code": "",
         "target_product_code": "",
+        "esto_pair_is_subtotal": False,
         "remove_row": pd.NA,
         "cardinality": "",
         "notes": "",
@@ -498,6 +553,7 @@ def build_relationship_rows(
                     "target_product": row["target_product"],
                     "target_sector_code": row["target_sector_code"],
                     "target_product_code": row["target_product_code"],
+                    "esto_pair_is_subtotal": parse_esto_pair_is_subtotal(row.get("esto_pair_is_subtotal", False)),
                     "cardinality": row["cardinality"],
                     "relationship_type": infer_relationship_type(row["target_flow"], target_system),
                     "relationship_level": infer_relationship_level(row["target_flow"], row["source_sector_path"], target_system),
@@ -511,7 +567,7 @@ def build_relationship_rows(
                     "review_required": False,
                     "review_flags": "",
                     "remove_row": row["remove_row"],
-                    "rollup_context": "base",
+                    "is_rollup_derived": False,
                     "source_mapping_file": str(source_mapping_path),
                     "source_sheet": source_sheet,
                     "source_row_number": row["source_row_number"],
@@ -1253,7 +1309,6 @@ def _apply_leap_rollup_rules(
 
     new_rows: list[dict[str, Any]] = []
     for _, rule in leap_rules.iterrows():
-        context = _str(rule.get("rollup_context"))
         input_flow = _str(rule.get("input_leap_sector_name_full_path"))
         input_fuel = _str(rule.get("input_raw_leap_fuel_name"))
         rolled_flow = _str(rule.get("rolled_leap_sector_name_full_path"))
@@ -1272,7 +1327,7 @@ def _apply_leap_rollup_rules(
             new_row["source_product"] = new_source_product
             new_row["source_sector_path"] = rolled_flow
             new_row["source_fuel"] = new_source_product
-            new_row["rollup_context"] = context
+            new_row["is_rollup_derived"] = True
             new_row["relationship_id"] = make_relationship_id(
                 _str(row["source_system"]),
                 rolled_flow,
@@ -1304,7 +1359,6 @@ def _apply_ninth_rollup_rules(
 
     new_rows: list[dict[str, Any]] = []
     for _, rule in ninth_rules.iterrows():
-        context = _str(rule.get("rollup_context"))
         input_sector = _str(rule.get("input_9th_sector"))
         input_fuel = _str(rule.get("input_9th_fuel"))
         rolled_sector = _str(rule.get("rolled_9th_sector"))
@@ -1323,7 +1377,7 @@ def _apply_ninth_rollup_rules(
             new_row["source_product"] = new_source_product
             new_row["source_sector_path"] = rolled_sector
             new_row["source_fuel"] = new_source_product
-            new_row["rollup_context"] = context
+            new_row["is_rollup_derived"] = True
             new_row["relationship_id"] = make_relationship_id(
                 _str(row["source_system"]),
                 rolled_sector,
@@ -1352,7 +1406,6 @@ def build_esto_overrides(esto_rules: pd.DataFrame) -> pd.DataFrame:
         rolled_product = _str(rule.get("rolled_esto_product"))
         input_flow = _str(rule.get("input_esto_flow"))
         input_product = _str(rule.get("input_esto_product"))
-        context = _str(rule.get("rollup_context"))
         if not rolled_flow or not input_flow:
             continue
 
@@ -1369,7 +1422,7 @@ def build_esto_overrides(esto_rules: pd.DataFrame) -> pd.DataFrame:
             "component_esto_product": input_product,
             "preferred_common_flow_label": rolled_flow,
             "preferred_common_product_label": rolled_product,
-            "override_reason": f"esto_rollup_rules:{context}",
+            "override_reason": "esto_rollup_rules",
             "notes": _str(rule.get("Note")),
         })
 

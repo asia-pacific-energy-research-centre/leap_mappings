@@ -11,6 +11,8 @@ from pathlib import Path
 import sys
 from datetime import datetime, timezone
 
+import gc
+
 import pandas as pd
 
 SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +21,7 @@ if str(SCRIPT_REPO_ROOT) not in sys.path:
 
 from codebase.mapping_issue_exceptions import row_is_allowed
 from codebase.mapping_tools.mapping_candidate_generation import (
+    collapsed_path,
     generate_partial_coverage_mapping_candidates,
     generate_unmapped_leap_branch_candidates,
     select_highly_recommended_candidates,
@@ -38,10 +41,15 @@ OUTPUT_COLUMNS = [
     "common_product_code",
     "common_product_name",
     "common_product_label",
+    "common_row_id",
+    "common_row_basis",
+    "is_exact_row",
+    "requires_rollup",
+    "source_aggregate_labels",
+    "source_aggregate_group_ids",
     "value",
 ]
 COMPARISON_INTERNAL_COLUMNS = [
-    "common_row_id",
     "common_component_count",
     "common_flow_component_count",
     "common_product_component_count",
@@ -369,6 +377,8 @@ def build_component_relevance(
             on=["component_esto_flow", "component_esto_product"],
             how="left",
         )
+        del evidence_df, stats_df
+    del working_df
     relevance_df["esto_base_year"] = resolved_esto_base_year
     reason_columns = [
         "esto_base_year_nonzero",
@@ -439,6 +449,31 @@ def build_unmapped_leap_branch_evidence(
         how="left",
     )
     unmapped_df = unmapped_df[unmapped_df["_direct_mapping"].isna()][["leap_flow", "leap_product"]]
+    if unmapped_df.empty:
+        return pd.DataFrame(columns=audit_columns), pd.DataFrame(columns=relevance_columns)
+
+    # Suppress branches whose collapsed path + fuel is already covered by a mapped child.
+    # E.g. "Coke ovens" is a duplicate-segment collapse of mapped "Coke ovens/Coke ovens",
+    # so flagging the parent as unmapped produces spurious candidates identical to the child's mapping.
+    collapsed_child_pairs = (
+        direct_df[["leap_sector_name_full_path", "raw_leap_fuel_name"]]
+        .drop_duplicates()
+        .assign(_collapsed=lambda df: df["leap_sector_name_full_path"].map(collapsed_path))
+        [["_collapsed", "raw_leap_fuel_name"]]
+        .rename(columns={"_collapsed": "_collapsed_path", "raw_leap_fuel_name": "_fuel"})
+        .assign(_covered_by_child=True)
+    )
+    unmapped_df = (
+        unmapped_df
+        .assign(_collapsed_flow=lambda df: df["leap_flow"].map(collapsed_path))
+        .merge(
+            collapsed_child_pairs,
+            left_on=["_collapsed_flow", "leap_product"],
+            right_on=["_collapsed_path", "_fuel"],
+            how="left",
+        )
+    )
+    unmapped_df = unmapped_df[unmapped_df["_covered_by_child"].isna()][["leap_flow", "leap_product"]]
     if unmapped_df.empty:
         return pd.DataFrame(columns=audit_columns), pd.DataFrame(columns=relevance_columns)
 
@@ -679,6 +714,18 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
     """Join ESTO-shaped source rows to common rows and aggregate values."""
     if source_df.empty:
         return pd.DataFrame(columns=OUTPUT_COLUMNS), pd.DataFrame(), pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
+    common_rows_df = common_rows_df.copy()
+    metadata_defaults: dict[str, object] = {
+        "common_row_basis": "",
+        "is_exact_row": False,
+        "requires_rollup": False,
+        "source_aggregate_labels": "",
+        "source_aggregate_group_ids": "",
+    }
+    for column, default_value in metadata_defaults.items():
+        if column not in common_rows_df.columns:
+            common_rows_df[column] = default_value
+
     map_columns = [
         "comparison_scope",
         "component_esto_flow",
@@ -690,6 +737,11 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
         "common_product_code",
         "common_product_name",
         "common_product_label",
+        "common_row_basis",
+        "is_exact_row",
+        "requires_rollup",
+        "source_aggregate_labels",
+        "source_aggregate_group_ids",
         "component_sign",
     ]
     map_df = common_rows_df[map_columns].drop_duplicates().copy()
@@ -718,6 +770,7 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
             scoped_source_df["comparison_scope"] = comparison_scope
             expanded_frames.append(scoped_source_df)
         source_df = pd.concat(expanded_frames, ignore_index=True) if expanded_frames else pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
+        del expanded_frames
     else:
         source_df = source_df.copy()
         valid_scope_mask = source_df.apply(
@@ -733,6 +786,7 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
     )
     missing_map_df = merged_df[merged_df["common_row_id"].isna()].copy()
     mapped_df = merged_df.dropna(subset=["common_row_id"]).copy()
+    del merged_df
     mapped_df["component_sign"] = pd.to_numeric(mapped_df["component_sign"], errors="coerce").fillna(1)
     mapped_df["value"] = mapped_df["value"] * mapped_df["component_sign"]
     mapped_source_df = mapped_df[SOURCE_VALUE_SCOPE_COLUMNS].copy()
@@ -978,6 +1032,7 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
                 scoped_source_df["comparison_scope"] = comparison_scope
                 expanded_frames.append(scoped_source_df)
             source_df = pd.concat(expanded_frames, ignore_index=True) if expanded_frames else pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
+            del expanded_frames
     else:
         valid_scope_mask = source_df.apply(
             lambda row: row["source_system"] in COMPARISON_SCOPE_SYSTEMS.get(str(row["comparison_scope"]), {row["source_system"]}),
@@ -994,6 +1049,39 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
     check_df["common_total"] = pd.to_numeric(check_df["common_total"], errors="coerce").fillna(0)
     check_df["difference"] = check_df["common_total"] - check_df["source_total"]
     return check_df.sort_values(TOTAL_GROUP_COLUMNS).reset_index(drop=True)
+
+
+SOURCE_COVERAGE_GROUP_COLUMNS = ["source_system", "economy", "scenario", "year"]
+
+
+def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
+    """Compare full source totals against common output totals by source/economy/scenario/year.
+
+    Unlike build_total_check (which only covers rows that found a common map), this uses
+    the complete unfiltered source so gaps from relevance filtering and missing mappings
+    are visible in the difference column.
+    """
+    empty_cols = SOURCE_COVERAGE_GROUP_COLUMNS + ["source_total", "common_total", "difference"]
+    if source_df.empty:
+        return pd.DataFrame(columns=empty_cols)
+    before_df = (
+        source_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+        .sum()
+        .rename(columns={"value": "source_total"})
+    )
+    if comparison_df.empty:
+        after_df = pd.DataFrame(columns=SOURCE_COVERAGE_GROUP_COLUMNS + ["common_total"])
+    else:
+        after_df = (
+            comparison_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+            .sum()
+            .rename(columns={"value": "common_total"})
+        )
+    check_df = before_df.merge(after_df, on=SOURCE_COVERAGE_GROUP_COLUMNS, how="outer")
+    check_df["source_total"] = pd.to_numeric(check_df["source_total"], errors="coerce").fillna(0)
+    check_df["common_total"] = pd.to_numeric(check_df["common_total"], errors="coerce").fillna(0)
+    check_df["difference"] = check_df["common_total"] - check_df["source_total"]
+    return check_df.sort_values(SOURCE_COVERAGE_GROUP_COLUMNS).reset_index(drop=True)
 
 
 def build_wide_year_output(comparison_df: pd.DataFrame) -> pd.DataFrame:
@@ -1061,6 +1149,7 @@ def save_outputs(
     comparison_df: pd.DataFrame,
     wide_year_df: pd.DataFrame,
     total_check_df: pd.DataFrame,
+    source_coverage_check_df: pd.DataFrame,
     missing_map_df: pd.DataFrame,
     output_dir: Path,
     error_occurred: bool,
@@ -1087,6 +1176,10 @@ def save_outputs(
     written_paths.append(write_csv_with_locked_fallback(
         total_check_df,
         error_tagged_path(output_dir / "qa_common_esto_total_check.csv", error_occurred),
+    ))
+    written_paths.append(write_csv_with_locked_fallback(
+        source_coverage_check_df,
+        error_tagged_path(output_dir / "common_esto_source_coverage_check.csv", error_occurred),
     ))
     written_paths.append(write_csv_with_locked_fallback(
         missing_map_df,
@@ -1183,8 +1276,16 @@ def run_apply_common_esto_structure(
             active_component_abs_tolerance=active_component_abs_tolerance,
         )
         relevance_df = merge_component_relevance(relevance_df, unmapped_leap_relevance_df)
+        del leap_ninth_df, unmapped_leap_relevance_df
+        gc.collect()
 
     active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
+    source_row_count = len(source_df)
+    source_totals_df = (
+        source_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+        .sum()
+    )
+    del source_df
     if not relevance_df.empty:
         relevant_pairs_df = relevance_df[["component_esto_flow", "component_esto_product"]].rename(
             columns={
@@ -1233,8 +1334,11 @@ def run_apply_common_esto_structure(
             leap_branch_audit_df=leap_branch_audit_df,
             leap_esto_df=leap_esto_df,
         )
+        del raw_leap_df, leap_esto_df, ninth_esto_df
         partial_mapping_candidates_df = select_highly_recommended_candidates(all_partial_candidates_df)
         unmapped_leap_mapping_candidates_df = select_highly_recommended_candidates(all_unmapped_leap_candidates_df)
+        del all_partial_candidates_df, all_unmapped_leap_candidates_df
+        gc.collect()
         highly_recommended_mapping_candidates_df = pd.concat(
             [partial_mapping_candidates_df, unmapped_leap_mapping_candidates_df],
             ignore_index=True,
@@ -1271,10 +1375,12 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {intersecting_axis_warning_message}")
     wide_year_df = build_wide_year_output(comparison_df)
     total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
+    source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
     save_outputs(
         comparison_df,
         wide_year_df,
         total_check_df,
+        source_coverage_check_df,
         missing_map_df,
         output_dir,
         error_occurred=error_occurred,
@@ -1283,7 +1389,7 @@ def run_apply_common_esto_structure(
     )
 
     max_abs_difference = total_check_df["difference"].abs().max() if "difference" in total_check_df.columns and not total_check_df.empty else 0
-    print(f"ESTO-shaped source rows read: {len(source_df):,}")
+    print(f"ESTO-shaped source rows read: {source_row_count:,}")
     print(f"ESTO base year used for component relevance: {resolved_esto_base_year}")
     print(f"NINTH projection start year used for component relevance: {ninth_projection_start_year}")
     print(f"Data-relevant ESTO component pairs: {len(relevance_df):,}")
@@ -1302,6 +1408,37 @@ def run_apply_common_esto_structure(
     print(f"Wide year rows written: {len(wide_year_df):,}")
     print(f"Source rows missing common map: {len(missing_map_df):,}")
     print(f"before/after total differences max abs: {max_abs_difference}")
+    for source_system, grp in source_coverage_check_df.groupby("source_system"):
+        n_groups = len(grp)
+        max_abs = grp["difference"].abs().max() if not grp.empty else 0
+        total_diff = grp["difference"].sum()
+        print(f"  source coverage / {source_system}: reported ({n_groups:,} groups, total diff: {total_diff:.4g}, max abs diff: {max_abs:.4g})")
+    if not total_check_df.empty and "source_total" in total_check_df.columns:
+        print(
+            "Total check: compares summed source values entering the common ESTO structure "
+            "against summed common ESTO output values, by comparison scope and source system "
+            "(differences reflect rows dropped due to relevance filtering or missing mappings)."
+        )
+        summary = (
+            total_check_df
+            .groupby(["comparison_scope", "source_system"], dropna=False)[["source_total", "common_total", "difference"]]
+            .sum()
+            .reset_index()
+        )
+        col_w = max(len(s) for s in summary["comparison_scope"].astype(str)) + 2
+        sys_w = max(len(s) for s in summary["source_system"].astype(str)) + 2
+        header = f"  {'comparison_scope':<{col_w}} {'source_system':<{sys_w}} {'source_total':>18} {'common_total':>18} {'difference':>18} {'coverage_%':>12}"
+        print(header)
+        print("  " + "-" * (len(header) - 2))
+        for _, row in summary.iterrows():
+            src = row["source_total"]
+            cmn = row["common_total"]
+            diff = row["difference"]
+            pct = (cmn / src * 100) if src != 0 else float("nan")
+            print(
+                f"  {str(row['comparison_scope']):<{col_w}} {str(row['source_system']):<{sys_w}} "
+                f"{src:>18,.0f} {cmn:>18,.0f} {diff:>18,.0f} {pct:>11.1f}%"
+            )
     print(f"Error tag applied to output filenames: {error_occurred}")
     print(f"Wrote common ESTO comparison output to: {output_dir}")
     return comparison_df, total_check_df, missing_map_df

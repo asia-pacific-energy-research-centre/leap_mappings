@@ -658,6 +658,20 @@ def _leap_source_presence_conflicts(
     ]].sort_values(source_cols).reset_index(drop=True)
 
 
+def _split_allowed_leap_source_presence(
+    conflicts: pd.DataFrame,
+    exception_workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split source-presence conflicts using the manual exception workbook."""
+    return split_allowed_rows(
+        conflicts,
+        sheet_name="leap_source_presence_allowed",
+        status_column="source_presence_review_status",
+        reason_column="source_presence_review_reason",
+        workbook_path=exception_workbook_path,
+    )
+
+
 def _leading_code_expression(label: object) -> str:
     """Return the leading ESTO-style code/range expression from a label."""
     text = _norm(label)
@@ -925,6 +939,7 @@ def _write_maintenance_summary(
         ("maintenance", "subtotal_mismatches.csv", "review"),
         ("maintenance", "subtotal_mismatches_allowed_matched.csv", "info"),
         ("maintenance", "missing_mapped_esto_rows/missing_mapped_esto_rows_summary.csv", "review"),
+        ("maintenance", "display_names_qa.csv", "review"),
         ("tree_structure", "esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_validation.csv", "validation"),
         ("tree_structure", "common_esto_non_esto_parent_child_edges.csv", "review"),
@@ -1134,13 +1149,18 @@ def run() -> None:
     crosswalk_conflicts, allowed_crosswalk_conflicts = _split_allowed_crosswalk_conflicts(
         all_crosswalk_conflicts
     )
+    leap_source_presence, allowed_leap_source_presence = _split_allowed_leap_source_presence(
+        leap_source_presence
+    )
     allowed_many_to_many.to_csv(QA_DIR / "many_to_many_allowed_matched.csv", index=False)
     many_to_many.to_csv(QA_DIR / "many_to_many_conflicts.csv", index=False)
+    allowed_leap_source_presence.to_csv(QA_DIR / "leap_source_presence_allowed_matched.csv", index=False)
     leap_source_presence.to_csv(QA_DIR / "leap_source_presence_conflicts.csv", index=False)
     allowed_crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts_allowed_matched.csv", index=False)
     crosswalk_conflicts.to_csv(QA_DIR / "crosswalk_target_conflicts.csv", index=False)
     print(f"  many_to_many_allowed_matched:      {len(allowed_many_to_many):,}")
     print(f"  many_to_many_conflicts:            {len(many_to_many):,}")
+    print(f"  leap_source_presence_allowed_matched:{len(allowed_leap_source_presence):,}")
     print(f"  leap_source_presence_conflicts:    {len(leap_source_presence):,}")
     print(f"  crosswalk_target_conflicts_allowed_matched:{len(allowed_crosswalk_conflicts):,}")
     print(f"  crosswalk_target_conflicts:        {len(crosswalk_conflicts):,}")
@@ -1194,6 +1214,27 @@ def run() -> None:
     )
 
     print(f"\nQA outputs written to: {QA_DIR}")
+
+    # --- Display name sync ---------------------------------------------------
+    print("\nUpdating leap_display_names …")
+    from codebase.mapping_tools.update_leap_display_names import (
+        EXCEPTION_WORKBOOK_PATH as _DN_EXCEPTION_PATH,
+        run_display_name_update,
+    )
+    dn_qa = run_display_name_update(
+        workbook_path=WORKBOOK_PATH,
+        qa_dir=QA_DIR,
+        exception_workbook_path=_DN_EXCEPTION_PATH,
+    )
+    _dn_orphans = int(
+        dn_qa["status"].isin(["potential_issue_orphan"]).sum()
+    ) if not dn_qa.empty else 0
+    _dn_dups = int(dn_qa.get("duplicate_display_name", False).sum()) if not dn_qa.empty else 0
+    if _dn_orphans or _dn_dups:
+        print(
+            f"  DISPLAY NAME ISSUES: {_dn_orphans} orphan(s), "
+            f"{_dn_dups} duplicate display name(s) — see display_names_qa.csv"
+        )
 
     # --- M3: tree structure ---------------------------------------------------
     print("\nBuilding dataset tree structures …")

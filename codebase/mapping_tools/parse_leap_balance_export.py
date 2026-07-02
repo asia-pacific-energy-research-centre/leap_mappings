@@ -191,38 +191,19 @@ def _reconstruct_demand_paths(
 # Core parser
 # ---------------------------------------------------------------------------
 
-def parse_leap_balance_xlsx(
-    xlsx_path: Path,
+def _parse_single_sheet(
+    raw: pd.DataFrame,
     economy_override: str | None = None,
 ) -> pd.DataFrame:
-    """
-    Parse a single LEAP balance export file into long-format rows.
-
-    Parameters
-    ----------
-    xlsx_path       : Path to the .xlsx file.
-    economy_override: If provided, use this as the economy code instead of
-                      extracting it from the file header (the header embeds a
-                      long model name; the directory name like '20_USA' is more
-                      useful).
-
-    Returns
-    -------
-    DataFrame with columns: economy, scenario, year, leap_flow, leap_product, value
-    """
-    raw = pd.read_excel(xlsx_path, header=None, dtype=object)
-
+    """Parse one sheet of a LEAP balance export into long-format rows."""
     economy_raw, scenario, year = _parse_header(raw)
     economy = economy_override or economy_raw
 
-    fuel_cols_raw = raw.iloc[2, 1:].values
     fuel_names_norm = _fuel_columns(raw)
 
-    # Sector column is col 0; data starts at row 3
     sector_col = raw.iloc[:, 0]
-    n_rows     = len(raw)
+    n_rows = len(raw)
 
-    # Find "Total Transformation" boundary
     tx_end = None
     for i in range(3, n_rows):
         v = str(sector_col.iloc[i]) if not pd.isna(sector_col.iloc[i]) else ""
@@ -231,21 +212,16 @@ def parse_leap_balance_xlsx(
             break
 
     if tx_end is None:
-        # Fall back: treat entire file as demand-style
         tx_end = 2
 
-    # Reconstruct sector paths for both sections
     paths_tx  = _reconstruct_transformation_paths(sector_col, 3, tx_end)
     paths_dem = _reconstruct_demand_paths(sector_col, tx_end + 1, n_rows - 1)
     all_paths = {**paths_tx, **paths_dem}
 
-    # Build long-format records
     records = []
     for row_i, full_path in all_paths.items():
         row_values = raw.iloc[row_i, 1:]
-        for col_j, (fuel_name, raw_v) in enumerate(
-            zip(fuel_names_norm, row_values)
-        ):
+        for fuel_name, raw_v in zip(fuel_names_norm, row_values):
             if fuel_name is None:
                 continue
             try:
@@ -262,6 +238,54 @@ def parse_leap_balance_xlsx(
             })
 
     return pd.DataFrame(records)
+
+
+def parse_leap_balance_xlsx(
+    xlsx_path: Path,
+    economy_override: str | None = None,
+) -> pd.DataFrame:
+    """
+    Parse a LEAP balance export file into long-format rows.
+
+    Supports both single-sheet files and multi-sheet workbooks where each
+    sheet represents one year (sheet names like 'EBal|2060', 'EBal|2059', …).
+    All matching year sheets are parsed and concatenated so the full
+    projection time series is captured rather than just the first sheet.
+
+    Parameters
+    ----------
+    xlsx_path       : Path to the .xlsx file.
+    economy_override: If provided, use this as the economy code instead of
+                      extracting it from the file header (the header embeds a
+                      long model name; the directory name like '20_USA' is more
+                      useful).
+
+    Returns
+    -------
+    DataFrame with columns: economy, scenario, year, leap_flow, leap_product, value
+    """
+    xl = pd.ExcelFile(xlsx_path)
+    sheet_names = xl.sheet_names
+
+    # Detect multi-year workbooks (sheets named like 'EBal|2060')
+    ebal_sheets = [s for s in sheet_names if re.match(r"^EBal\|\d{4}$", str(s))]
+
+    if ebal_sheets:
+        frames = []
+        for sheet in ebal_sheets:
+            raw = xl.parse(sheet, header=None, dtype=object)
+            df = _parse_single_sheet(raw, economy_override=economy_override)
+            if not df.empty:
+                frames.append(df)
+        if not frames:
+            return pd.DataFrame(
+                columns=["economy", "scenario", "year", "leap_flow", "leap_product", "value"]
+            )
+        return pd.concat(frames, ignore_index=True)
+
+    # Single-sheet workbook: read first (and only) sheet as before
+    raw = xl.parse(sheet_names[0], header=None, dtype=object)
+    return _parse_single_sheet(raw, economy_override=economy_override)
 
 
 # ---------------------------------------------------------------------------

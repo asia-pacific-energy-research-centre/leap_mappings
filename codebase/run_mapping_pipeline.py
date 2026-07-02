@@ -26,7 +26,9 @@ Skip stages:
 from __future__ import annotations
 
 import argparse
+import gc
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,6 +67,11 @@ ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
 
+# Aggregate comparisons that require the exact ESTO parent alongside the
+# ordinary non-subtotal frontier. Other dashboard totals are currently built
+# from their reviewed additive frontiers.
+ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
+
 # LEAP export directory — check both this repo and leap_initialisation
 def _default_leap_export_dir() -> Path:
     local = REPO_ROOT / "data" / "leap balances exports" / "20_USA"
@@ -76,6 +83,41 @@ def _default_leap_export_dir() -> Path:
     return local  # return local even if it doesn't exist; error will surface in stage
 
 LEAP_EXPORT_DIR = _default_leap_export_dir()
+
+# ---------------------------------------------------------------------------
+# Output logging
+# ---------------------------------------------------------------------------
+_PIPELINE_LOG_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline.log"
+
+
+class _TeeWriter:
+    def __init__(self, file_obj, stream):
+        self._file = file_obj
+        self._stream = stream
+
+    def write(self, data):
+        self._file.write(data)
+        self._stream.write(data)
+        return len(data)
+
+    def flush(self):
+        self._file.flush()
+        self._stream.flush()
+
+    def isatty(self):
+        return False
+
+
+@contextmanager
+def _log_to_file(log_path):
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    original = sys.stdout
+    with open(log_path, "w", encoding="utf-8") as f:
+        sys.stdout = _TeeWriter(f, original)
+        try:
+            yield log_path
+        finally:
+            sys.stdout = original
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +250,63 @@ def run_ninth_to_esto() -> None:
     print(f"  Wrote: {NINTH_ESTO_PATH.relative_to(REPO_ROOT)}")
 
 
+def configured_rollup_reference_pairs(
+    relationships_df: pd.DataFrame,
+    leap_rollup_rules_df: pd.DataFrame,
+    retained_rollup_labels: set[str],
+) -> set[tuple[str, str]]:
+    """Return exact ESTO pairs explicitly targeted by configured LEAP rollups."""
+    if relationships_df.empty or leap_rollup_rules_df.empty:
+        return set()
+    included_rules = leap_rollup_rules_df[
+        leap_rollup_rules_df["include"].astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
+    ]
+    rolled_flows = {
+        str(value).strip()
+        for value in included_rules["rolled_leap_sector_name_full_path"]
+        if str(value).strip() in retained_rollup_labels
+    }
+    if not rolled_flows:
+        return set()
+    include_mask = relationships_df["include_in_use_case"].astype(str).str.strip().str.lower().isin(
+        {"true", "1", "yes"}
+    )
+    reference_rows = relationships_df[
+        include_mask
+        & (relationships_df["source_system"].astype(str) == "LEAP")
+        & (relationships_df["target_system"].astype(str) == "ESTO")
+        & ~relationships_df["is_rollup_derived"].astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
+        & relationships_df["source_flow"].astype(str).isin(rolled_flows)
+    ]
+    return {
+        (str(flow).strip(), str(product).strip())
+        for flow, product in reference_rows[["target_flow", "target_product"]].itertuples(index=False, name=None)
+        if str(flow).strip() and str(product).strip()
+    }
+
+
+def select_esto_comparison_rows(
+    esto_df: pd.DataFrame,
+    rollup_reference_pairs: set[tuple[str, str]],
+) -> pd.DataFrame:
+    """Keep ESTO leaves plus exact parent pairs required by configured rollups.
+
+    rollup_reference_pairs: retain specific (flow, product) subtotal pairs
+        needed by LEAP rollup comparisons (e.g. 'Total transformation - no transfers').
+    """
+    leaf_mask = esto_df["is_subtotal"].astype(str).str.strip().str.lower() == "false"
+    if not rollup_reference_pairs:
+        return esto_df[leaf_mask].copy()
+    pair_mask = pd.Series(
+        [
+            (str(flow).strip(), str(product).strip()) in rollup_reference_pairs
+            for flow, product in esto_df[["flows", "products"]].itertuples(index=False, name=None)
+        ],
+        index=esto_df.index,
+    )
+    return esto_df[leaf_mask | pair_mask].copy()
+
+
 def run_esto_exact_rows() -> None:
     print("\n" + "-" * 40)
     print("  ESTO exact rows")
@@ -220,8 +319,23 @@ def run_esto_exact_rows() -> None:
     for col in year_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Non-subtotal rows only (leaf rows avoid double-counting)
-    df_leaf = df[df["is_subtotal"].astype(str).str.lower() == "false"].copy()
+    relationships_df = pd.read_csv(RELATIONSHIPS_PATH, dtype=object).fillna("")
+    if "is_rollup_derived" not in relationships_df.columns:
+        relationships_df["is_rollup_derived"] = "False"
+    leap_rollup_rules_df = pd.read_excel(
+        WORKBOOK_PATH,
+        sheet_name="leap_rollup_rules",
+        dtype=object,
+    ).fillna("")
+    reference_pairs = configured_rollup_reference_pairs(
+        relationships_df=relationships_df,
+        leap_rollup_rules_df=leap_rollup_rules_df,
+        retained_rollup_labels=ESTO_REFERENCE_ROLLUP_LABELS,
+    )
+    del relationships_df, leap_rollup_rules_df
+    df_leaf = select_esto_comparison_rows(df, reference_pairs)
+    del df
+    gc.collect()
 
     id_cols = ["economy", "flows", "products"]
     long_df = df_leaf[id_cols + year_cols].melt(
@@ -239,6 +353,7 @@ def run_esto_exact_rows() -> None:
     ESTO_ROWS_PATH.parent.mkdir(parents=True, exist_ok=True)
     long_df.to_csv(ESTO_ROWS_PATH, index=False)
     print(f"  ESTO exact rows: {len(long_df):,} -> {ESTO_ROWS_PATH.relative_to(REPO_ROOT)}")
+    print(f"  Configured rollup reference pairs retained: {len(reference_pairs):,}")
 
 
 def run_data_convert() -> None:
@@ -277,7 +392,9 @@ def run_stage_3() -> None:
         build_common_esto_tree,
         build_esto_tree,
         validate_leap_recursive_sums,
+        validate_ninth_fuel_recursive_sums,
         validate_ninth_recursive_sums,
+        validate_ninth_sector_recursive_sums,
     )
     from codebase.mapping_tools.common_esto_validation_orchestration import (
         run_common_esto_validation_workflow,
@@ -341,6 +458,18 @@ def run_stage_3() -> None:
         workbook_path=WORKBOOK_PATH,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
     )
+    ninth_sector_validation = validate_ninth_sector_recursive_sums(
+        data_csv_path=NINTH_CSV_PATH,
+        workbook_path=WORKBOOK_PATH,
+        common_rows_path=COMMON_ROWS_PATH,
+        leap_var_base_year=LEAP_VAR_BASE_YEAR,
+    )
+    ninth_fuel_validation = validate_ninth_fuel_recursive_sums(
+        data_csv_path=NINTH_CSV_PATH,
+        workbook_path=WORKBOOK_PATH,
+        common_rows_path=COMMON_ROWS_PATH,
+        leap_var_base_year=LEAP_VAR_BASE_YEAR,
+    )
     leap_validation = validate_leap_recursive_sums(
         leap_data_paths=[RAW_LEAP_PATH],
         workbook_path=WORKBOOK_PATH,
@@ -348,10 +477,16 @@ def run_stage_3() -> None:
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
     )
     ninth_validation.to_csv(tree_output_dir / "ninth_validation.csv", index=False)
+    ninth_sector_validation.to_csv(tree_output_dir / "ninth_sector_validation.csv", index=False)
+    ninth_fuel_validation.to_csv(tree_output_dir / "ninth_fuel_validation.csv", index=False)
     leap_validation.to_csv(tree_output_dir / "leap_validation.csv", index=False)
+    print(f"  Ninth sector validation findings: {len(ninth_sector_validation):,}")
+    print(f"  Ninth fuel validation findings: {len(ninth_fuel_validation):,}")
     source_inconsistencies = _build_source_inconsistency_lookup(
         ninth_validation,
         leap_validation,
+        ninth_sector_validation,
+        ninth_fuel_validation,
     )
 
     detail_df, validation_summary = run_common_esto_validation_workflow(
@@ -428,13 +563,27 @@ def main() -> None:
         print(f"Valid stages: {_ALL_STAGES}")
         sys.exit(1)
 
-    print("Running pipeline stages:", stages_to_run)
-    for stage in stages_to_run:
-        _STAGE_RUNNERS[stage]()
+    with _log_to_file(_PIPELINE_LOG_PATH) as log_path:
+        print(f"[LOG] Writing output to: {log_path}")
+        print("Running pipeline stages:", stages_to_run)
+        for stage in stages_to_run:
+            _STAGE_RUNNERS[stage]()
 
-    print("\n" + "=" * 60)
-    print("Pipeline complete.")
-    print("=" * 60)
+        print("\n" + "=" * 60)
+        print("Pipeline complete.")
+        print("=" * 60)
+        _chime()
+
+
+def _chime() -> None:
+    try:
+        import time
+        import winsound  # type: ignore
+        for freq, dur in [(659, 90), (784, 90), (988, 140)]:
+            winsound.Beep(freq, dur)
+            time.sleep(0.04)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

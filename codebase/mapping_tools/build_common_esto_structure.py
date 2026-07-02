@@ -66,6 +66,8 @@ COMMON_ROW_COLUMNS = [
     "common_row_basis",
     "aggregate_group_source",
     "aggregate_group_source_id",
+    "source_aggregate_labels",
+    "source_aggregate_group_ids",
     "aggregation_reason",
     "notes",
 ]
@@ -354,19 +356,48 @@ def build_source_aggregate_edges(
     comparison_scope: str,
     aggregate_source_systems: list[str],
 ) -> tuple[list[tuple[tuple[str, str], tuple[str, str]]], pd.DataFrame]:
-    """Build graph edges from source rows that map to multiple ESTO components."""
+    """Build graph edges from source rows that map to multiple ESTO components.
+
+    When a single source row (identified by use_case + source_system +
+    source_flow + source_product) maps to more than one ESTO (flow, product)
+    pair, the algorithm draws an undirected edge between each pair.  Those edges
+    are later fed into a union-find structure so that all reachable pairs end up
+    in the same connected component — and therefore the same common ESTO row.
+
+    Subtotal exclusion
+    ------------------
+    Rows where ``esto_pair_is_subtotal`` is True are excluded from edge
+    creation.  They remain in the output as standalone common rows but are not
+    used to structurally connect other flows.  This prevents parent-level ESTO
+    aggregate flows — such as ``07 Total primary energy supply``,
+    ``12 Total final consumption``, and ``13 Total final energy consumption`` —
+    from inadvertently forcing their descendant sector flows into a single
+    combined common row.  For example, without this exclusion a LEAP sector such
+    as ``Industry`` that maps to both ``14 Industry sector`` (direct) and
+    ``12 Total final consumption`` (via the tfc_comparison rollup) would
+    otherwise cause the graph to merge flows 12, 13, 14, and 16.01-16.02 into
+    one ``12,13,14,16.01-16.02 Total final consumption`` row.
+
+    The full set of component pairs (including subtotals) is still recorded in
+    the aggregate-group metadata for diagnostic purposes.
+    """
     edges: list[tuple[tuple[str, str], tuple[str, str]]] = []
     aggregate_rows: list[dict[str, Any]] = []
     if not aggregate_source_systems:
         return edges, pd.DataFrame()
     relationships_df = relationships_df[relationships_df["source_system"].isin(aggregate_source_systems)].copy()
+    # Relationships with no source_flow are unspecified-sector catch-alls that must not
+    # create connected-component edges — doing so would merge unrelated ESTO flows.
+    relationships_df = relationships_df[relationships_df["source_flow"].notna() & (relationships_df["source_flow"].astype(str).str.strip() != "")]
+    subtotal_mask = relationships_df.get("esto_pair_is_subtotal", pd.Series(False, index=relationships_df.index)).fillna(False).astype(bool)
     group_columns = ["use_case", "source_system", "source_flow", "source_product"]
     for group_values, group_df in relationships_df.groupby(group_columns, dropna=False):
-        component_pairs = sorted({component_pair(row) for _, row in group_df.iterrows()})
-        if len(component_pairs) <= 1 or allocation_allows_split(group_df):
+        all_pairs = sorted({component_pair(row) for _, row in group_df.iterrows()})
+        edge_pairs = sorted({component_pair(row) for _, row in group_df[~subtotal_mask.reindex(group_df.index, fill_value=False)].iterrows()})
+        if len(edge_pairs) <= 1 or allocation_allows_split(group_df):
             continue
-        for pair in component_pairs[1:]:
-            edges.append((component_pairs[0], pair))
+        for pair in edge_pairs[1:]:
+            edges.append((edge_pairs[0], pair))
         aggregate_rows.append(
             {
                 "comparison_scope": comparison_scope,
@@ -376,8 +407,8 @@ def build_source_aggregate_edges(
                 "source_system": group_values[1],
                 "source_flow": group_values[2],
                 "source_product": group_values[3],
-                "component_count": len(component_pairs),
-                "component_pairs": "|".join(f"{flow} :: {product}" for flow, product in component_pairs),
+                "component_count": len(all_pairs),
+                "component_pairs": "|".join(f"{flow} :: {product}" for flow, product in all_pairs),
                 "aggregation_reason": f"{str(group_values[1]).lower()}_defined_aggregate",
             }
         )
@@ -474,6 +505,38 @@ def aggregate_metadata_for_component(
     return reason, source, source_id
 
 
+def source_aggregate_membership_for_component(
+    component_pairs: list[tuple[str, str]],
+    aggregate_groups_df: pd.DataFrame,
+) -> tuple[str, str]:
+    """Return source aggregate labels whose definitions touch a common row.
+
+    A deliberate source rollup can be split across more than one Common ESTO
+    row when an exact parent is kept separate from its detail frontier.  This
+    membership metadata preserves the shared rollup identity without joining
+    the parent and detail rows into one additive component.
+    """
+    component_set = set(component_pairs)
+    matched_labels: set[str] = set()
+    matched_ids: set[str] = set()
+    for _, row in aggregate_groups_df.iterrows():
+        row_pairs: set[tuple[str, str]] = set()
+        for text_pair in str(row.get("component_pairs", "")).split("|"):
+            if " :: " not in text_pair:
+                continue
+            flow, product = text_pair.split(" :: ", 1)
+            row_pairs.add((flow, product))
+        if not component_set.intersection(row_pairs):
+            continue
+        source_flow = normalise_text(row.get("source_flow", ""))
+        source_id = normalise_text(row.get("aggregate_group_source_id", ""))
+        if source_flow:
+            matched_labels.add(source_flow)
+        if source_id:
+            matched_ids.add(source_id)
+    return "; ".join(sorted(matched_labels)), "; ".join(sorted(matched_ids))
+
+
 def build_common_rows(
     components_by_root: dict[tuple[str, str], list[tuple[str, str]]],
     aggregate_groups_df: pd.DataFrame,
@@ -526,6 +589,10 @@ def build_common_rows(
         common_flow_label = common_flow_label or auto_flow_label
         common_product_label = common_product_label or auto_product_label
         aggregation_reason, aggregate_source, aggregate_source_id = aggregate_metadata_for_component(component_pairs, aggregate_groups_df)
+        source_aggregate_labels, source_aggregate_group_ids = source_aggregate_membership_for_component(
+            component_pairs,
+            aggregate_groups_df,
+        )
 
         for flow, product in component_pairs:
             component_flow_code, component_flow_name = split_code_name(flow)
@@ -553,6 +620,8 @@ def build_common_rows(
                     "common_row_basis": "exact_esto_row" if is_exact_row else "connected_component_rollup",
                     "aggregate_group_source": aggregate_source,
                     "aggregate_group_source_id": aggregate_source_id,
+                    "source_aggregate_labels": source_aggregate_labels,
+                    "source_aggregate_group_ids": source_aggregate_group_ids,
                     "aggregation_reason": "" if is_exact_row else aggregation_reason,
                     "notes": "",
                 }
@@ -860,10 +929,39 @@ def build_source_aggregate_split_check(source_aggregates_df: pd.DataFrame, map_d
     return pd.DataFrame(rows)
 
 
-def build_unresolved_partial_coverage(relationships_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> pd.DataFrame:
-    """Flag source coverage that touches but does not cover a common row."""
+def build_unresolved_partial_coverage(
+    relationships_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    source_aggregates_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Flag source coverage that touches but does not cover a common row.
+
+    A missing pair (flow_m, product) is suppressed when the source already
+    covers another component (flow_c, product) in the same common row for the
+    same product.  This handles cases where two flows coexist in the same common
+    row only because a third source bridges them — for example NINTH maps via the
+    rollup 16.03-16.04 Agriculture and fishing while ESTO/LEAP map individual
+    16.03 Agriculture and 16.04 Fishing flows.  If NINTH covers the rollup for a
+    given product, flagging the individual flows as missing is a false positive:
+    both flows are in the same common row only because another source links them,
+    and NINTH's rollup already accounts for that product.  The symmetric case also
+    applies: if NINTH maps individual plant flows (09.01.01, etc.) and the rollup
+    09.01-09.02 is in the same common row, the rollup is suppressed as covered.
+
+    Two different flows appear in the same common row for the same product only
+    when the graph algorithm structurally linked them via another source's
+    aggregate.  Covering either side of that link implies coverage of the other.
+
+    If all missing pairs are aggregate-covered the row is suppressed entirely; if
+    only some are, the remainder is still flagged with an adjusted expected count.
+
+    source_aggregates_df is accepted for signature consistency but is not
+    consulted directly: the coverage signal is derived from covered_pairs, which
+    already encodes what the source maps to in each common row.
+    """
     if relationships_df.empty or common_rows_df.empty:
         return pd.DataFrame()
+
     component_to_common = {
         (row["comparison_scope"], row["component_esto_flow"], row["component_esto_product"]): row["common_row_id"]
         for _, row in common_rows_df.iterrows()
@@ -882,22 +980,33 @@ def build_unresolved_partial_coverage(relationships_df: pd.DataFrame, common_row
                 covered_by_common.setdefault(common_row_id, set()).add(pair)
         for common_row_id, covered_pairs in covered_by_common.items():
             expected_pairs = common_components.get((comparison_scope, common_row_id), set())
-            if expected_pairs and covered_pairs and covered_pairs != expected_pairs:
-                rows.append(
-                    {
-                        "comparison_scope": comparison_scope,
-                        "use_case": use_case,
-                        "source_system": source_system,
-                        "common_row_id": common_row_id,
-                        "covered_component_count": len(covered_pairs),
-                        "expected_component_count": len(expected_pairs),
-                        "missing_component_pairs": "|".join(
-                            f"{flow} :: {product}" for flow, product in sorted(expected_pairs - covered_pairs)
-                        ),
-                        "qa_status": "unresolved_partial_component_coverage",
-                        "qa_severity": "high",
-                    }
-                )
+            if not expected_pairs or not covered_pairs or covered_pairs == expected_pairs:
+                continue
+            gap = expected_pairs - covered_pairs
+            # Suppress missing pairs whose product is already covered by another
+            # component in this common row.  Two flows sharing a product in the same
+            # common row are structurally linked — covering either side via an
+            # aggregate or rollup mapping implies coverage of the other.
+            covered_products = {product for _, product in covered_pairs}
+            true_gap = {(flow_m, product_m) for flow_m, product_m in gap if product_m not in covered_products}
+            if not true_gap:
+                continue
+            agg_covered_count = len(gap) - len(true_gap)
+            rows.append(
+                {
+                    "comparison_scope": comparison_scope,
+                    "use_case": use_case,
+                    "source_system": source_system,
+                    "common_row_id": common_row_id,
+                    "covered_component_count": len(covered_pairs),
+                    "expected_component_count": len(expected_pairs) - agg_covered_count,
+                    "missing_component_pairs": "|".join(
+                        f"{flow} :: {product}" for flow, product in sorted(true_gap)
+                    ),
+                    "qa_status": "unresolved_partial_component_coverage",
+                    "qa_severity": "high",
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -1033,7 +1142,7 @@ def build_common_esto_for_scope(
     duplicate_df = build_duplicate_components(common_rows_df)
     split_df = build_source_aggregate_split_check(source_aggregates_df, map_df)
     rollup_df = common_rows_df[common_rows_df["requires_rollup"]].copy()
-    unresolved_df = build_unresolved_partial_coverage(included_df, common_rows_df)
+    unresolved_df = build_unresolved_partial_coverage(included_df, common_rows_df, source_aggregates_df)
     summary_df = build_structure_summary(
         relationships_df=included_df,
         excluded_components_df=excluded_components_df,

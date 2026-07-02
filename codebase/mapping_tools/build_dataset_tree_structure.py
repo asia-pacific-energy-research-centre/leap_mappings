@@ -167,18 +167,78 @@ _NINTH_SECTOR_COLS = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "s
 _NINTH_FUEL_COLS   = ["fuels", "subfuels"]
 
 
-def _ninth_sector_tree(df: pd.DataFrame) -> pd.DataFrame:
+def _build_ninth_subtotal_results_sets(df: pd.DataFrame) -> tuple[set[str], set[str]]:
+    """
+    Return (subtotal_sector_codes, subtotal_fuel_codes) derived from the Ninth data.
+
+    Fuel subtotals (subtotal_fuel_codes)
+    -------------------------------------
+    A fuel code is a subtotal if it appears as a parent of subfuels anywhere in
+    the data (structural: has at least one row where subfuels != 'x').  This is
+    the clean fuel signal and is independent of subtotal_results.
+
+    Sector subtotals (subtotal_sector_codes)
+    -----------------------------------------
+    A sector path is a subtotal if subtotal_results is True for ANY row where
+    that sector path is the deepest path AND the fuel is a LEAF fuel (not in
+    subtotal_fuel_codes AND subfuels == 'x').
+
+    This separation is necessary because subtotal_results fires on rows where
+    EITHER the sector OR the fuel is an aggregate.  Without filtering to leaf
+    fuels, supply-side sectors such as 01_production appear as sector subtotals
+    simply because subtotal fuel buckets (e.g. 01_coal) appear under them.
+    """
+    def _truthy(val: Any) -> bool:
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return bool(val)
+        if isinstance(val, str):
+            return val.strip().lower() in {"true", "1", "yes"}
+        return False
+
+    # Pass 1: fuel subtotals from structure (fuels that have subfuel children)
+    subtotal_fuels: set[str] = set(
+        df.loc[df["subfuels"].notna() & (df["subfuels"].astype(str).str.strip() != "x"), "fuels"]
+        .dropna()
+        .unique()
+    )
+
+    # Pass 2: sector subtotals from subtotal_results on leaf-fuel rows only
+    subtotal_sectors: set[str] = set()
+    leaf_fuel_mask = (
+        df["subfuels"].isna() | (df["subfuels"].astype(str).str.strip() == "x")
+    ) & (~df["fuels"].isin(subtotal_fuels))
+
+    for _, row in df[leaf_fuel_mask].iterrows():
+        if not _truthy(row.get("subtotal_results", False)):
+            continue
+        vals = [_str(row.get(c, "")) for c in _NINTH_SECTOR_COLS]
+        segments: list[str] = []
+        for v in vals:
+            if v in ("", "x"):
+                break
+            segments.append(v)
+        if segments:
+            subtotal_sectors.add("/".join(segments))
+
+    return subtotal_sectors, subtotal_fuels
+
+
+def _ninth_sector_tree(df: pd.DataFrame, subtotal_sector_codes: set[str]) -> pd.DataFrame:
     """
     Build 9th Edition sector hierarchy.
 
     Level is determined by how many non-'x' sector columns a row uses.
     Node code: slash-joined non-'x' values, e.g. '09_electricity/09_01_main_activity'.
+
+    is_subtotal is True when the node's full path appears in subtotal_sector_codes,
+    which is derived from subtotal_results in the source data.
     """
     seen: dict[str, dict] = {}
 
     for _, row in df[_NINTH_SECTOR_COLS].drop_duplicates().iterrows():
         vals = [_str(row[c]) for c in _NINTH_SECTOR_COLS]
-        # collect non-x segments up to first 'x'
         segments: list[str] = []
         for v in vals:
             if v in ("", "x"):
@@ -199,7 +259,7 @@ def _ninth_sector_tree(df: pd.DataFrame) -> pd.DataFrame:
                 "label": segments[depth - 1],
                 "level": depth,
                 "parent_code": parent_code,
-                "is_subtotal": False,
+                "is_subtotal": code in subtotal_sector_codes,
             }
 
     if not seen:
@@ -211,12 +271,16 @@ def _ninth_sector_tree(df: pd.DataFrame) -> pd.DataFrame:
     return result[TREE_COLS].reset_index(drop=True)
 
 
-def _ninth_fuel_tree(df: pd.DataFrame) -> pd.DataFrame:
+def _ninth_fuel_tree(df: pd.DataFrame, subtotal_fuel_codes: set[str]) -> pd.DataFrame:
     """
     Build 9th Edition fuel hierarchy.
 
     Level 1 = fuels; Level 2 = subfuels (where subfuels != 'x').
     Node code: slash-joined, e.g. '01_coal/01_01_coking_coal'.
+
+    is_subtotal is True when the top-level fuel code appears in subtotal_fuel_codes,
+    derived from subtotal_results in the source data.  Subfuel nodes are always
+    leaves and are never marked as subtotals.
     """
     seen: dict[str, dict] = {}
 
@@ -234,7 +298,7 @@ def _ninth_fuel_tree(df: pd.DataFrame) -> pd.DataFrame:
                 "label": fuel,
                 "level": 1,
                 "parent_code": "",
-                "is_subtotal": False,
+                "is_subtotal": fuel in subtotal_fuel_codes,
             }
 
         if subfuel and subfuel != "x":
@@ -256,17 +320,21 @@ def _ninth_fuel_tree(df: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(seen.values())
     leaf_mask = ~result["code"].isin(result["parent_code"].unique())
     result["is_leaf"] = leaf_mask
-    # Mark fuel-level nodes as subtotals where they have subfuel children
-    parents_with_children = set(result.loc[result["level"] == 2, "parent_code"])
-    result.loc[result["code"].isin(parents_with_children), "is_subtotal"] = True
     return result[TREE_COLS].reset_index(drop=True)
 
 
 def build_ninth_tree(data_csv_path: Path = NINTH_DATA_PATH) -> pd.DataFrame:
-    """Build 9th Edition sector and fuel hierarchy from the balance data CSV."""
+    """
+    Build 9th Edition sector and fuel hierarchy from the balance data CSV.
+
+    is_subtotal is derived solely from the subtotal_results column in the source
+    data: a node is marked True if subtotal_results is True for any row with that
+    sector path or fuel code across all economies and scenarios.
+    """
     df = pd.read_csv(data_csv_path, dtype=object)
-    sector_tree = _ninth_sector_tree(df)
-    fuel_tree   = _ninth_fuel_tree(df)
+    subtotal_sector_codes, subtotal_fuel_codes = _build_ninth_subtotal_results_sets(df)
+    sector_tree = _ninth_sector_tree(df, subtotal_sector_codes)
+    fuel_tree   = _ninth_fuel_tree(df, subtotal_fuel_codes)
     return pd.concat([sector_tree, fuel_tree], ignore_index=True)
 
 
@@ -499,6 +567,48 @@ NINTH_VALIDATION_COLS = [
     "abs_error",
 ]
 
+NINTH_SECTOR_VALIDATION_COLS = [
+    "source_issue_id",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "ninth_sector",
+    "ninth_fuel",
+    "child_ninth_sectors",
+    "esto_parent_flow",
+    "esto_parent_product",
+    "source_issue_class",
+    "child_coverage_status",
+    "inheritance_eligible",
+    "child_count",
+    "parent_value",
+    "children_sum",
+    "difference",
+    "abs_error",
+]
+
+NINTH_FUEL_VALIDATION_COLS = [
+    "source_issue_id",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "ninth_sector",
+    "ninth_fuel",
+    "child_ninth_fuels",
+    "esto_parent_product",
+    "esto_parent_flow",
+    "source_issue_class",
+    "child_coverage_status",
+    "inheritance_eligible",
+    "child_count",
+    "parent_value",
+    "children_sum",
+    "difference",
+    "abs_error",
+]
+
 LEAP_VALIDATION_COLS = [
     "source_issue_id",
     "source_system",
@@ -537,8 +647,12 @@ COMMON_ESTO_VALIDATION_COLS = [
     "year",
     "parent_value",
     "children_sum",
+    "difference",
     "abs_error",
+    "proportional_error",
     "source_inconsistency_status",
+    "sector_hierarchy_status",
+    "fuel_hierarchy_status",
     "source_issue_ids",
     "inherited_source_inconsistency",
 ]
@@ -851,6 +965,286 @@ def validate_ninth_recursive_sums(
     )
 
 
+def validate_ninth_sector_recursive_sums(
+    data_csv_path: Path = NINTH_DATA_PATH,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+    common_rows_path: Path = COMMON_ESTO_ROWS_PATH,
+    tolerance: float = 0.01,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+    scenario_filter: str = "reference",
+) -> pd.DataFrame:
+    """
+    Validate projected Ninth sub1sector parents against sub2sector children.
+
+    Checks whether each sub1sector aggregate (sub2sectors='x') matches the
+    sum of its sub2sector children for each (economy, scenario, ninth_fuel, year).
+    Produces findings keyed to Stage B's common ESTO partition labels so that
+    _build_source_inconsistency_lookup can mark matching Stage B flow-axis
+    mismatches as confirmed_inherited.
+    """
+    df = pd.read_csv(data_csv_path, dtype=object)
+    year_cols = [
+        c for c in df.columns
+        if str(c).isdigit() and int(c) > int(leap_var_base_year)
+    ]
+    if not year_cols:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+    df[year_cols] = df[year_cols].apply(pd.to_numeric, errors="coerce")
+    if scenario_filter:
+        df = df[df["scenarios"].astype(str).str.casefold() == scenario_filter.casefold()].copy()
+
+    # ninth_fuel: subfuels if not 'x', else fuels — mirrors prepare_ninth_long_format
+    df["ninth_fuel"] = df["subfuels"].astype(str).str.strip()
+    mask_x = df["ninth_fuel"] == "x"
+    df.loc[mask_x, "ninth_fuel"] = df.loc[mask_x, "fuels"].astype(str).str.strip()
+
+    has_sub1 = df["sub1sectors"].astype(str).str.strip() != "x"
+    parent_df = df[has_sub1 & (df["sub2sectors"].astype(str).str.strip() == "x")].copy()
+    child_df  = df[has_sub1 & (df["sub2sectors"].astype(str).str.strip() != "x")].copy()
+
+    if parent_df.empty or child_df.empty:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+
+    # Build ESTO flow lookup: 9th_sector -> set of esto_flow labels
+    pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
+    sector_to_flows: dict[str, set[str]] = {}
+    sector_fuel_to_products: dict[tuple[str, str], set[str]] = {}
+    for _, row in pairs.iterrows():
+        sector  = _str(row.get("9th_sector", ""))
+        fuel    = _str(row.get("9th_fuel", ""))
+        flow    = _str(row.get("esto_flow", ""))
+        product = _str(row.get("esto_product", ""))
+        if sector and flow:
+            sector_to_flows.setdefault(sector, set()).add(flow)
+        if sector and fuel and product:
+            sector_fuel_to_products.setdefault((sector, fuel), set()).add(product)
+
+    # Build partition label lookup: (common_flow_label, component_esto_product)
+    # -> common_product_label, so Stage A output matches Stage B's partition labels.
+    # Use only scopes that include Ninth data: leap_vs_esto uses ESTO-only product
+    # codes (no Ninth-driven partitions) and would overwrite partition labels with
+    # individual codes, breaking the Stage A → Stage B key match.
+    common_rows = pd.read_csv(common_rows_path, dtype=object)
+    ninth_scopes = {"leap_vs_esto_vs_ninth", "leap_vs_ninth"}
+    scope_rows = common_rows[common_rows["comparison_scope"].astype(str).isin(ninth_scopes)]
+    partition_lookup: dict[tuple[str, str], str] = {}
+    for _, row in scope_rows.iterrows():
+        flow_label   = _str(row.get("common_flow_label", ""))
+        comp_product = _str(row.get("component_esto_product", ""))
+        prod_label   = _str(row.get("common_product_label", ""))
+        if flow_label and comp_product and prod_label:
+            partition_lookup[(flow_label, comp_product)] = prod_label
+
+    group_cols = ["economy", "scenarios", "sub1sectors", "ninth_fuel"]
+    child_groups = {key: g for key, g in child_df.groupby(group_cols, dropna=False)}
+
+    mismatches: list[dict] = []
+    for group_key, parent_group in parent_df.groupby(group_cols, dropna=False):
+        children = child_groups.get(group_key)
+        if children is None or children.empty:
+            continue
+
+        economy     = _str(group_key[0])
+        scenario    = _str(group_key[1])
+        parent_sub1 = _str(group_key[2])
+        ninth_fuel  = _str(group_key[3])
+
+        esto_flows = sector_to_flows.get(parent_sub1, set())
+        if len(esto_flows) != 1:
+            continue  # Unmapped or ambiguous parent sector
+        esto_parent_flow = next(iter(esto_flows))
+
+        # Resolve component ESTO products for this fuel, then map to partition labels
+        raw_products = sector_fuel_to_products.get((parent_sub1, ninth_fuel), set())
+        partition_labels: set[str] = set()
+        for product in raw_products:
+            label = partition_lookup.get((esto_parent_flow, product), "")
+            if label:
+                partition_labels.add(label)
+        if not partition_labels:
+            continue  # No common-ESTO row covers this (sector, fuel) combination
+
+        child_sector_codes = sorted({_str(v) for v in children["sub2sectors"].unique()})
+
+        for yr in year_cols:
+            pv = pd.to_numeric(parent_group[yr], errors="coerce").sum()
+            cv = pd.to_numeric(children[yr], errors="coerce").sum()
+            if pd.isna(pv) or pd.isna(cv):
+                continue
+            difference = float(pv - cv)
+            err = abs(difference)
+            if err <= tolerance * max(abs(pv), 1):
+                continue
+
+            # One row per partition label (usually one, occasionally more)
+            for partition_label in sorted(partition_labels):
+                mismatches.append({
+                    "source_issue_id": _source_issue_id(
+                        "NINTH", "sector", economy, scenario, yr, parent_sub1, ninth_fuel
+                    ),
+                    "source_system": "NINTH",
+                    "economy": economy,
+                    "scenario": scenario,
+                    "year": yr,
+                    "ninth_sector": parent_sub1,
+                    "ninth_fuel": ninth_fuel,
+                    "child_ninth_sectors": _join_sorted(child_sector_codes),
+                    "esto_parent_flow": esto_parent_flow,
+                    "esto_parent_product": partition_label,
+                    "source_issue_class": "sum_mismatch",
+                    "child_coverage_status": "complete",
+                    "inheritance_eligible": True,
+                    "child_count": len(child_sector_codes),
+                    "parent_value": float(pv),
+                    "children_sum": float(cv),
+                    "difference": difference,
+                    "abs_error": err,
+                })
+
+    if not mismatches:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+    return (
+        pd.DataFrame(mismatches)
+        .sort_values(["economy", "year", "ninth_fuel"])
+        .reset_index(drop=True)
+    )
+
+
+def validate_ninth_fuel_recursive_sums(
+    data_csv_path: Path = NINTH_DATA_PATH,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+    common_rows_path: Path = COMMON_ESTO_ROWS_PATH,
+    tolerance: float = 0.01,
+    leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+    scenario_filter: str = "reference",
+) -> pd.DataFrame:
+    """
+    Validate projected Ninth fuel parents (subfuels='x') against subfuel children.
+
+    Checks whether each fuel aggregate (subfuels='x') matches the sum of its
+    subfuel children for each (economy, scenario, ninth_sector, year) across all
+    sector hierarchy levels. Produces findings keyed to Stage B's common ESTO
+    partition labels so that _build_source_inconsistency_lookup can mark matching
+    Stage B product-axis mismatches as confirmed_inherited.
+    """
+    df = pd.read_csv(data_csv_path, dtype=object)
+    year_cols = [
+        c for c in df.columns
+        if str(c).isdigit() and int(c) > int(leap_var_base_year)
+    ]
+    if not year_cols:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+    df[year_cols] = df[year_cols].apply(pd.to_numeric, errors="coerce")
+    if scenario_filter:
+        df = df[df["scenarios"].astype(str).str.casefold() == scenario_filter.casefold()].copy()
+
+    # ninth_sector: most specific non-'x' sector — mirrors prepare_ninth_long_format
+    sub2 = df["sub2sectors"].astype(str).str.strip()
+    sub1 = df["sub1sectors"].astype(str).str.strip()
+    sectors = df["sectors"].astype(str).str.strip()
+    df["ninth_sector"] = sectors
+    df.loc[sub1 != "x", "ninth_sector"] = sub1[sub1 != "x"]
+    df.loc[sub2 != "x", "ninth_sector"] = sub2[sub2 != "x"]
+
+    has_fuel = df["fuels"].astype(str).str.strip() != "x"
+    parent_df = df[has_fuel & (df["subfuels"].astype(str).str.strip() == "x")].copy()
+    child_df  = df[has_fuel & (df["subfuels"].astype(str).str.strip() != "x")].copy()
+
+    if parent_df.empty or child_df.empty:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+
+    # Build ESTO mapping lookup: (ninth_sector, ninth_fuel) -> set of (esto_flow, esto_product)
+    # For parent fuel rows ninth_fuel == fuels (subfuels is 'x'), matching the production join.
+    pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
+    source_targets = _mapping_targets(
+        pairs,
+        "9th_sector",
+        "9th_fuel",
+        "esto_flow",
+        "esto_product",
+    )
+
+    # Build partition label lookup: (common_flow_label, component_esto_product)
+    # -> common_product_label so Stage A output matches Stage B's product-axis partition labels.
+    # Use only scopes that include Ninth data.
+    common_rows = pd.read_csv(common_rows_path, dtype=object)
+    ninth_scopes = {"leap_vs_esto_vs_ninth", "leap_vs_ninth"}
+    scope_rows = common_rows[common_rows["comparison_scope"].astype(str).isin(ninth_scopes)]
+    partition_lookup: dict[tuple[str, str], str] = {}
+    for _, row in scope_rows.iterrows():
+        flow_label   = _str(row.get("common_flow_label", ""))
+        comp_product = _str(row.get("component_esto_product", ""))
+        prod_label   = _str(row.get("common_product_label", ""))
+        if flow_label and comp_product and prod_label:
+            partition_lookup[(flow_label, comp_product)] = prod_label
+
+    group_cols = ["economy", "scenarios", "ninth_sector", "fuels"]
+    child_groups = {key: g for key, g in child_df.groupby(group_cols, dropna=False)}
+
+    mismatches: list[dict] = []
+    for group_key, parent_group in parent_df.groupby(group_cols, dropna=False):
+        children = child_groups.get(group_key)
+        if children is None or children.empty:
+            continue
+
+        economy      = _str(group_key[0])
+        scenario     = _str(group_key[1])
+        ninth_sector = _str(group_key[2])
+        fuels_val    = _str(group_key[3])
+
+        parent_targets = source_targets.get((ninth_sector, fuels_val), set())
+        if len(parent_targets) != 1:
+            continue  # Unmapped or ambiguous parent fuel
+        esto_parent_flow, raw_esto_product = next(iter(parent_targets))
+
+        partition_label = partition_lookup.get((esto_parent_flow, raw_esto_product), "")
+        if not partition_label:
+            continue  # No common-ESTO row covers this (sector, fuel) combination
+
+        child_fuel_codes = sorted({_str(v) for v in children["subfuels"].unique()})
+
+        for yr in year_cols:
+            pv = pd.to_numeric(parent_group[yr], errors="coerce").sum()
+            cv = pd.to_numeric(children[yr], errors="coerce").sum()
+            if pd.isna(pv) or pd.isna(cv):
+                continue
+            difference = float(pv - cv)
+            err = abs(difference)
+            if err <= tolerance * max(abs(pv), 1):
+                continue
+
+            mismatches.append({
+                "source_issue_id": _source_issue_id(
+                    "NINTH", "fuel", economy, scenario, yr, ninth_sector, fuels_val
+                ),
+                "source_system": "NINTH",
+                "economy": economy,
+                "scenario": scenario,
+                "year": yr,
+                "ninth_sector": ninth_sector,
+                "ninth_fuel": fuels_val,
+                "child_ninth_fuels": _join_sorted(child_fuel_codes),
+                "esto_parent_product": partition_label,
+                "esto_parent_flow": esto_parent_flow,
+                "source_issue_class": "sum_mismatch",
+                "child_coverage_status": "complete",
+                "inheritance_eligible": True,
+                "child_count": len(child_fuel_codes),
+                "parent_value": float(pv),
+                "children_sum": float(cv),
+                "difference": difference,
+                "abs_error": err,
+            })
+
+    if not mismatches:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+    return (
+        pd.DataFrame(mismatches)
+        .sort_values(["economy", "year", "ninth_fuel"])
+        .reset_index(drop=True)
+    )
+
+
 def validate_leap_recursive_sums(
     leap_data_paths: list[Path] | None = None,
     workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
@@ -1074,6 +1468,8 @@ def validate_leap_recursive_sums(
 def _build_source_inconsistency_lookup(
     ninth_validation: pd.DataFrame,
     leap_validation: pd.DataFrame,
+    ninth_sector_validation: pd.DataFrame | None = None,
+    ninth_fuel_validation: pd.DataFrame | None = None,
 ) -> dict[tuple[str, str, str, str, str, str, str], dict[str, str]]:
     """
     Build an exact-context lookup for conservative Stage B source attribution.
@@ -1082,13 +1478,37 @@ def _build_source_inconsistency_lookup(
     and opposite-axis value. Multiple source findings for one exact key are
     retained through joined issue IDs. Only eligible findings produce
     ``confirmed_inherited``.
+
+    ``ninth_sector_validation`` (from validate_ninth_sector_recursive_sums)
+    supplies flow-axis findings where sub-sector Ninth values don't sum to their
+    parent sector, so Stage B flow-axis mismatches for those parents can be
+    marked confirmed_inherited rather than not_attributed.
+
+    ``ninth_fuel_validation`` (from validate_ninth_fuel_recursive_sums)
+    supplies product-axis findings where subfuels don't sum to their parent fuel,
+    so Stage B product-axis mismatches for those parents can be marked
+    confirmed_inherited rather than not_attributed.
+
+    Each lookup entry additionally carries ``sector_hierarchy_status`` and
+    ``fuel_hierarchy_status`` indicating which hierarchy type caused the match,
+    so Stage B can record attribution at that level of detail.
     """
     lookup: dict[tuple[str, str, str, str, str, str, str], dict[str, str]] = {}
-    frames = [
-        (ninth_validation, "product", "esto_parent_product", "esto_parent_flow"),
-        (leap_validation, "flow", "esto_parent_flow", "esto_parent_product"),
+    # (frame, axis, parent_col, other_axis_col, source_type)
+    # source_type is "sector" or "fuel" for the named hierarchy validators; None otherwise.
+    frames: list[tuple[pd.DataFrame, str, str, str, str | None]] = [
+        (ninth_validation, "product", "esto_parent_product", "esto_parent_flow", None),
+        (leap_validation, "flow", "esto_parent_flow", "esto_parent_product", None),
     ]
-    for frame, axis, parent_column, other_axis_column in frames:
+    if ninth_sector_validation is not None and not ninth_sector_validation.empty:
+        frames.append(
+            (ninth_sector_validation, "flow", "esto_parent_flow", "esto_parent_product", "sector")
+        )
+    if ninth_fuel_validation is not None and not ninth_fuel_validation.empty:
+        frames.append(
+            (ninth_fuel_validation, "product", "esto_parent_product", "esto_parent_flow", "fuel")
+        )
+    for frame, axis, parent_column, other_axis_column, source_type in frames:
         for _, row in frame.iterrows():
             parent_code = _str(row.get(parent_column, ""))
             other_axis_value = _str(row.get(other_axis_column, ""))
@@ -1109,7 +1529,12 @@ def _build_source_inconsistency_lookup(
             issue_id = _str(row.get("source_issue_id", ""))
             existing = lookup.get(key)
             if existing is None:
-                lookup[key] = {"status": status, "source_issue_ids": issue_id}
+                lookup[key] = {
+                    "status": status,
+                    "source_issue_ids": issue_id,
+                    "sector_hierarchy_status": "confirmed_inherited" if (source_type == "sector" and eligible) else "",
+                    "fuel_hierarchy_status": "confirmed_inherited" if (source_type == "fuel" and eligible) else "",
+                }
                 continue
             statuses = {existing["status"], status}
             existing["status"] = (
@@ -1119,15 +1544,23 @@ def _build_source_inconsistency_lookup(
             existing["source_issue_ids"] = _join_sorted(
                 [existing["source_issue_ids"], issue_id]
             )
+            if source_type == "sector" and eligible:
+                existing["sector_hierarchy_status"] = "confirmed_inherited"
+            if source_type == "fuel" and eligible:
+                existing["fuel_hierarchy_status"] = "confirmed_inherited"
     return lookup
 
 
 def _build_source_inconsistency_set(
     ninth_validation: pd.DataFrame,
     leap_validation: pd.DataFrame,
+    ninth_sector_validation: pd.DataFrame | None = None,
+    ninth_fuel_validation: pd.DataFrame | None = None,
 ) -> dict[tuple[str, str, str, str, str, str, str], dict[str, str]]:
     """Backward-compatible name for the exact-context source lookup."""
-    return _build_source_inconsistency_lookup(ninth_validation, leap_validation)
+    return _build_source_inconsistency_lookup(
+        ninth_validation, leap_validation, ninth_sector_validation, ninth_fuel_validation
+    )
 
 
 def _empty_esto_validation() -> pd.DataFrame:
@@ -1224,6 +1657,33 @@ def validate_esto_recursive_sums(
     ).reset_index(drop=True)
 
 
+def _resolve_to_comparison_data(
+    codes: list[str],
+    data_codes: set[str],
+    children_map: dict[str, list[str]],
+) -> list[str]:
+    """
+    Expand any codes absent from comparison data to their tree descendants.
+
+    Codes present in data are kept as-is. Codes absent from data but having
+    tree children (e.g. an intermediate subtotal filtered from the comparison
+    set) are replaced by their recursively resolved descendants. Codes absent
+    with no tree children are dropped silently.
+
+    This lets validation of a parent correctly sum through intermediate
+    subtotals that were not included in the comparison dataset.
+    """
+    resolved: list[str] = []
+    for code in codes:
+        if code in data_codes:
+            resolved.append(code)
+        elif code in children_map:
+            resolved.extend(
+                _resolve_to_comparison_data(children_map[code], data_codes, children_map)
+            )
+    return resolved
+
+
 def _validate_common_esto_axis_recursive_sums(
     tree_df: pd.DataFrame,
     comparison_data_path: Path,
@@ -1277,12 +1737,22 @@ def _validate_common_esto_axis_recursive_sums(
     group_cols = ["comparison_scope", "source_system", "economy", "scenario", other_axis_col, "year"]
     children_map = _common_esto_validation_children_map(tree_df, axis)
     source_inconsistencies = source_inconsistencies or {}
+    all_data_codes: set[str] = set(data[axis_col].dropna().unique())
     mismatches = []
 
     for parent_code, children in children_map.items():
         parent_rows = data[data[axis_col] == parent_code]
-        children_rows = data[data[axis_col].isin(children)]
-        if parent_rows.empty or children_rows.empty:
+        if parent_rows.empty:
+            continue
+        # Resolve: any direct child absent from the comparison data but present
+        # in the tree as an intermediate subtotal is expanded to its own
+        # descendants (recursively), so the children sum correctly accounts for
+        # flows that were filtered from the comparison set (e.g. 09.06).
+        resolved = _resolve_to_comparison_data(children, all_data_codes, children_map)
+        if not resolved:
+            continue
+        children_rows = data[data[axis_col].isin(resolved)]
+        if children_rows.empty:
             continue
 
         parent_sum = parent_rows.groupby(group_cols, dropna=False)["value"].sum()
@@ -1309,6 +1779,8 @@ def _validate_common_esto_axis_recursive_sums(
             )
             source_record = source_inconsistencies.get(lookup_key, {})
             source_status = source_record.get("status", "not_attributed")
+            diff = pv - cv
+            prop_err = diff / pv if abs(pv) > tolerance else None
             mismatches.append({
                 "validation_axis": axis,
                 "comparison_scope": scope,
@@ -1321,8 +1793,12 @@ def _validate_common_esto_axis_recursive_sums(
                 "year": year,
                 "parent_value": pv,
                 "children_sum": cv,
+                "difference": diff,
                 "abs_error": err,
+                "proportional_error": prop_err,
                 "source_inconsistency_status": source_status,
+                "sector_hierarchy_status": source_record.get("sector_hierarchy_status", ""),
+                "fuel_hierarchy_status": source_record.get("fuel_hierarchy_status", ""),
                 "source_issue_ids": source_record.get("source_issue_ids", ""),
                 "inherited_source_inconsistency": source_status == "confirmed_inherited",
             })

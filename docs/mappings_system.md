@@ -27,6 +27,7 @@ This document explains how the APERC Outlook mappings system works, why it is st
 ### The pipeline
 
 - [Mapping maintenance workflow](#mapping-maintenance-workflow)
+- [Splitting 09.06.02 into liquefaction and regasification sub-flows](#splitting-090602-into-liquefaction-and-regasification-sub-flows)
 - [From mapping rows to comparison outputs](#from-mapping-rows-to-comparison-outputs)
 
 ### Operations and reference
@@ -175,6 +176,85 @@ answers which semantic categories correspond; ID enrichment and duplicate
 logical-key resolution belong to `leap_initialisation`. Conversely, a branch
 that is genuinely new in LEAP may require both a refreshed structure export
 and a new or revised mapping row.
+
+---
+
+## LEAP balance export parser
+
+The pipeline reads LEAP results from per-economy `*.xlsx` files produced by
+LEAP's "full model output" balance export. Each file contains one sheet per
+year (named `EBal|<year>`). The parser (`codebase/mapping_tools/parse_leap_balance_export.py`)
+converts each sheet into long-format rows with columns
+`economy, scenario, year, leap_flow, leap_product, value`.
+
+### File layout
+
+Each sheet has a fixed three-row header:
+
+| Row | Content |
+| --- | ------- |
+| 0 | `Energy Balance for Area "<model name>"` — economy is extracted from the quoted model name |
+| 1 | `Scenario: <name>, Year: <year>, Units: Petajoule` |
+| 2 | Fuel column headers (col 0 blank, cols 1+ are fuel names) |
+
+Data rows start at row 3. Column 0 contains the sector/flow name with leading
+spaces indicating hierarchy depth. Columns 1+ contain numeric values for each
+fuel.
+
+### Two-section layout
+
+The file is split at the `Total Transformation` row into two sections with
+**different indentation conventions and different tree ordering**.
+
+**Transformation section** (rows 3 to `Total Transformation`):
+
+- 3-space indent per level (maximum one level of children)
+- Children appear **before** their parent subtotal row
+- Path reconstruction: collect indented children, then assign them to the next
+  level-0 row encountered (`child_name → "Parent/child_name"`)
+
+**Demand section** (rows after `Total Transformation`):
+
+- 2-space indent per level (up to three levels deep)
+- Parent appears **before** its children (standard top-down tree order)
+- Path reconstruction: stack-based scan — each row's indent level determines
+  its depth, and the full path is built by joining the stack
+  (`"Industry/Manufacturing/Iron and steel"`)
+
+The resulting `leap_flow` column is a slash-separated full path matching the
+`leap_sector_name_full_path` column in `outlook_mappings_master.xlsx`.
+
+### Fuel normalization
+
+A small lookup table normalises known LEAP export column name variations (e.g.
+`"Fuelwood and woodwaste"` → `"Fuelwood & woodwaste"`, typo `"Black liqour"`
+→ `"Black liquor"`). Aggregate or placeholder columns (`"Total"`, `"Biomass"`,
+`"Coal Bituminous DO NOT USE"`, etc.) are dropped before output.
+
+### Economy code
+
+The model name embedded in the file header is a long internal LEAP string. The
+parser uses the **parent directory name** as the economy code instead
+(e.g. `data/leap balances exports/20_USA/` → `economy = "20_USA"`), matching
+the economy codes used throughout the mapping system.
+
+### Hierarchy in the output
+
+Because the demand section uses indentation to encode depth, the parser
+preserves the full parent-child chain in every `leap_flow` path. For example:
+
+```text
+Industry                    → leap_flow = "Industry"
+  Manufacturing             → leap_flow = "Industry/Manufacturing"
+    Iron and steel          → leap_flow = "Industry/Manufacturing/Iron and steel"
+```
+
+This means both the aggregate (`Industry/Manufacturing`) and its sub-industry
+children (`Industry/Manufacturing/Iron and steel` etc.) appear as separate rows
+in the output. When both levels are mapped to ESTO flows, the mapping system
+sees a parent ESTO flow (e.g. `14.03 Manufacturing`) and child ESTO flows
+(e.g. `14.03.01 Iron and steel`) sourced from different LEAP rows — and the
+hierarchy validation checks whether they reconcile.
 
 ---
 
@@ -1348,3 +1428,17 @@ Before copying a candidate into the workbook:
 **Editing subtotal columns manually.** These are computed by the mapping maintenance workflow. Manual edits will be overwritten on the next maintenance run. Cardinality should be reviewed in the generated `results/maintenance/cardinality_*.csv` files.
 
 **Treating `ninth_pairs_to_esto_pairs` as complete.** This sheet can have known gaps. Use mapping coverage outputs to identify which 9th or ESTO rows are currently unmapped, removed-only, or intentionally excluded.
+
+## Real-data smoke test
+
+Use the opt-in smoke test when you want to confirm that the notebook-style
+pipeline still runs against the checked-in inputs:
+
+```shell
+RUN_MAPPING_PIPELINE_SMOKE=1 pytest -q tests/test_mapping_pipeline_smoke.py
+```
+
+It runs Stage 0 through Stage 3 against the real workbook and source files,
+including LEAP parsing and data conversion. The test is intentionally
+expensive, so it is skipped by default and should be treated as an
+integration-level check rather than a routine unit test.

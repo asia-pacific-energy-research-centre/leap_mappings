@@ -1,0 +1,109 @@
+common_flow_label,parent_flow_label,notes
+01 Production,,
+02 Imports,,
+03 Exports,,
+04 International marine bunkers,,
+05 International aviation bunkers,,
+06 Stock changes,,
+07 Total primary energy supply,,
+08 Transfers,,
+09 Total transformation sector,,
+09.01-09.02 Power sector,09 Total transformation sector,Rollup of main activity + autoproducer power plants; dash-range code cannot be inferred by prefix logic
+"09.01-09.02,09.01.01-09.01.03,09.02.01-09.02.03,09.06.02,09.06.02.01-09.06.02.02 Power sector",09 Total transformation sector,LEAP-scope connected-component rollup; multi-range code cannot be inferred by prefix logic
+09.01.01 Electricity plants,09.01-09.02 Power sector,Intermediate node 09.01 absent from common ESTO structure
+09.01.02 CHP plants,09.01-09.02 Power sector,Intermediate node 09.01 absent from common ESTO structure
+09.01.03 Heat plants,09.01-09.02 Power sector,Intermediate node 09.01 absent from common ESTO structure
+09.02.01 Electricity plants,09.01-09.02 Power sector,Intermediate node 09.02 absent from common ESTO structure
+09.02.02 CHP plants,09.01-09.02 Power sector,Intermediate node 09.02 absent from common ESTO structure
+09.02.03 Heat plants,09.01-09.02 Power sector,Intermediate node 09.02 absent from common ESTO structure
+09.03 Heat pumps,09 Total transformation sector,
+09.04 Electric boilers,09 Total transformation sector,
+09.05 Chemical heat for electricity production,09 Total transformation sector,
+09.06 Gas processing plants,09 Total transformation sector,NOTE: filtered as subtotal in esto_results_exact_rows so no parent row survives; add 09.06 to rollup reference pairs so sub-flows roll up correctly
+09.06.01 Gas works plants,09.06 Gas processing plants,
+09.06.02 Liquefaction/regasification plants,09.06 Gas processing plants,
+09.06.02.01 Liquefaction,09.06.02 Liquefaction/regasification plants,
+09.06.02.02 Regasification,09.06.02 Liquefaction/regasification plants,
+09.06.03 Natural gas blending plants,09.06 Gas processing plants,
+09.06.04 Gas-to-liquids plants,09.06 Gas processing plants,
+09.07 Oil refineries,09 Total transformation sector,
+09.08 Coal transformation,09 Total transformation sector,
+09.08.01 Coke ovens,09.08 Coal transformation,
+09.08.02 Blast furnaces,09.08 Coal transformation,
+09.08.03 Patent fuel plants,09.08 Coal transformation,
+09.08.04 BKB/PB plants,09.08 Coal transformation,
+09.08.05 Liquefaction (coal to oil),09.08 Coal transformation,
+09.09 Petrochemical industry,09 Total transformation sector,
+09.11 Charcoal processing,09 Total transformation sector,
+09.12 Non-specified transformation,09 Total transformation sector,
+09.13 Hydrogen transformation,09 Total transformation sector,
+09.13.01 Electrolysers,09.13 Hydrogen transformation,
+09.13.02 SMR wo CCS,09.13 Hydrogen transformation,
+09.13.03 SMR w CCS,09.13 Hydrogen transformation,
+"10.01.01 Electricity, CHP and heat plants",,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.02 Gas works plants,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.02-10.01.03 Gas works plants,,Rollup of 10.01.02 and 10.01.03; dash-range code cannot be inferred; top-level for tree purposes
+10.01.03 Liquefaction/regasification plants,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.05 Coke ovens,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+"10.01.05,10.01.07 Coke ovens",,Rollup of 10.01.05 and 10.01.07; comma-list code cannot be inferred; top-level for tree purposes
+10.01.06 Coal mines,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.07 Blast furnaces,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.11 Oil refineries,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.12 Oil and gas extraction,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.13 Pump storage plants,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+"10.01.13,10.01.17 Pump storage plants",,Rollup of 10.01.13 and 10.01.17; comma-list code cannot be inferred; top-level for tree purposes
+10.01.17 Non-specified own uses,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.01.19 Hydrogen transformation,,Intermediate nodes 10 and 10.01 absent; top-level for tree purposes
+10.02 Transmission and distribution losses,,Intermediate node 10 absent from common ESTO structure; top-level for tree purposes
+11 Statistical discrepancy,,
+12 Total final consumption,,
+"12,13,16.01-16.02 Total final consumption",,Combined reference aggregate spanning multiple top-level flows; top-level for tree purposes
+13 Total final energy consumption,,
+14 Industry sector,,
+14.01 Mining and quarrying,14 Industry sector,
+14.02 Construction,14 Industry sector,
+14.03 Manufacturing,14 Industry sector,
+14.03.01 Iron and steel,14.03 Manufacturing,
+14.03.02 Chemical (incl. petrochemical),14.03 Manufacturing,
+14.03.03 Non ferrous metals,14.03 Manufacturing,
+14.03.04 Non-metallic mineral products,14.03 Manufacturing,
+14.03.05 Transportation equipment,14.03 Manufacturing,
+14.03.06 Machinery,14.03 Manufacturing,
+"14.03.07 Food, beverages and tobacco",14.03 Manufacturing,
+"14.03.08 Pulp, paper and printing",14.03 Manufacturing,
+14.03.09 Wood and wood products,14.03 Manufacturing,
+14.03.10 Textiles and leather,14.03 Manufacturing,
+14.03.11 Non-specified industry,14.03 Manufacturing,
+15 Transport sector,,
+15.01 Domestic air transport,15 Transport sector,
+15.02 Road,15 Transport sector,
+15.03 Rail,15 Transport sector,
+15.04 Domestic navigation,15 Transport sector,
+15.05 Pipeline transport,15 Transport sector,
+15.05-15.06 Pipeline transport,15 Transport sector,Rollup of 15.05 and 15.06; dash-range code cannot be inferred by prefix logic
+15.06 Non-specified transport,15 Transport sector,
+16 Other sector,,
+16.01 Commercial and public services,16 Other sector,
+16.01-16.02 Buildings,16 Other sector,Rollup of 16.01 and 16.02; dash-range code cannot be inferred by prefix logic
+16.01.01 Datacentres,16.01 Commercial and public services,
+16.01.99 Commercial and public services unallocated,16.01 Commercial and public services,
+16.02 Residential,16 Other sector,
+16.03 Agriculture,16 Other sector,
+"16.03,16.03-16.04,16.04 Agriculture",16 Other sector,Combined rollup of 16.03 and 16.04; multi-range code cannot be inferred by prefix logic
+16.03-16.04 Agriculture and fishing,16 Other sector,Rollup of 16.03 and 16.04; dash-range code cannot be inferred by prefix logic
+16.04 Fishing,16 Other sector,
+16.05 Non-specified others,16 Other sector,
+17 Non-energy use,,
+18 Electricity output in GWh,,
+18.01 MAP electricity plants,18 Electricity output in GWh,
+18.01-18.03 MAP electricity plants,18 Electricity output in GWh,Rollup of 18.01-18.03; dash-range code cannot be inferred by prefix logic
+18.02 MAP CHP plants,18 Electricity output in GWh,
+18.03 AP electricity plants,18 Electricity output in GWh,
+18.04 AP CHP plants,18 Electricity output in GWh,
+19 Heat output in PJ,,
+19.01 MAP CHP plants,19 Heat output in PJ,
+"19.01,19.03 MAP CHP plants",19 Heat output in PJ,Rollup of 19.01 and 19.03; comma-list code cannot be inferred by prefix logic
+19.02 MAP heat plants,19 Heat output in PJ,
+"19.02,19.04 MAP heat plants",19 Heat output in PJ,Rollup of 19.02 and 19.04; comma-list code cannot be inferred by prefix logic
+19.03 AP CHP plants,19 Heat output in PJ,
+19.04 AP heat plants,19 Heat output in PJ,

@@ -13,6 +13,15 @@ from pathlib import Path
 import pandas as pd
 
 
+# Fuel names that appear in LEAP but represent Ninth Edition categories.
+# These should route through leap_combined_ninth -> ninth_pairs_to_esto_pairs,
+# not generate direct leap_combined_esto candidates.
+LEAP_ESTO_EXCLUDED_FUEL_NAMES: frozenset[str] = frozenset({
+    "Green electricity",
+    "Others",
+    "Solid biomass",
+})
+
 CANDIDATE_OUTPUT_COLUMNS = [
     "candidate_context",
     "candidate_status",
@@ -446,6 +455,12 @@ def generate_unmapped_leap_branch_candidates(
     max_axis_candidates: int = 3,
 ) -> pd.DataFrame:
     """Infer ESTO targets for non-zero unmapped LEAP pairs from separate axes."""
+    if leap_branch_audit_df.empty:
+        return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
+    excluded_fuels = frozenset(normalise_text(f) for f in LEAP_ESTO_EXCLUDED_FUEL_NAMES)
+    leap_branch_audit_df = leap_branch_audit_df[
+        ~leap_branch_audit_df["leap_product"].map(normalise_text).isin(excluded_fuels)
+    ]
     if leap_branch_audit_df.empty:
         return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
     mapping_df = leap_esto_df.copy()
