@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
@@ -49,6 +50,23 @@ def test_apply_common_structure_retains_generated_total_label() -> None:
         "12,13,14,16.01-16.02 Total final consumption"
     ]
     assert comparison_df["value"].tolist() == [10.0]
+
+
+def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> None:
+    source_df = pd.DataFrame([{
+        "source_system": "ESTO", "economy": "20_USA", "scenario": "historical",
+        "year": 2022, "esto_flow": "F", "esto_product": "P", "value": 1,
+    }])
+    base = {
+        "comparison_scope": "esto_only", "component_esto_flow": "F",
+        "component_esto_product": "P", "common_flow_code": "F",
+        "common_flow_name": "F", "common_flow_label": "F", "common_product_code": "P",
+        "common_product_name": "P", "common_product_label": "P", "component_sign": 1,
+    }
+    rows = [{**base, "common_row_id": "one"}, {**base, "common_row_id": "two"}]
+
+    with pytest.raises(ValueError, match="Duplicate component mapping keys"):
+        apply_common_structure(source_df, pd.DataFrame(rows))
 
 
 def test_should_ignore_missing_common_map_flow_for_known_ignored_flows() -> None:

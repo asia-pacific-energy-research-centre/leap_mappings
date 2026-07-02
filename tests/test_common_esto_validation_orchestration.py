@@ -81,7 +81,7 @@ def test_eligible_checks_with_zero_mismatches_pass(tmp_path: Path) -> None:
     detail, summary = _run(tmp_path, comparison_path)
     product = summary[summary["validation_axis"] == "product"].iloc[0]
 
-    assert detail.empty
+    assert detail["status"].tolist() == ["passed"]
     assert product["status"] == "passed"
     assert product["checks_performed"] == 1
     assert product["eligible_parent_count"] == 1
@@ -175,6 +175,7 @@ def test_stage3_and_validation_records_share_run_identifier(tmp_path: Path) -> N
         comparison_df=pd.read_csv(comparison_path),
         wide_year_df=empty,
         total_check_df=empty,
+        source_coverage_check_df=empty,
         missing_map_df=empty,
         output_dir=tmp_path / "stage3",
         error_occurred=False,

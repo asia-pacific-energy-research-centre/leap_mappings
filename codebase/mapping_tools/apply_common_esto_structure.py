@@ -745,6 +745,24 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
         "component_sign",
     ]
     map_df = common_rows_df[map_columns].drop_duplicates().copy()
+    mapping_key_columns = [
+        "comparison_scope",
+        "component_esto_flow",
+        "component_esto_product",
+    ]
+    duplicate_keys = (
+        map_df.groupby(mapping_key_columns, dropna=False)["common_row_id"]
+        .nunique()
+        .reset_index(name="common_row_count")
+    )
+    duplicate_keys = duplicate_keys[duplicate_keys["common_row_count"] > 1]
+    if not duplicate_keys.empty:
+        examples = duplicate_keys.head(10).to_dict("records")
+        raise ValueError(
+            "Each Common ESTO component must map to exactly one row within a "
+            "comparison scope. Duplicate component mapping keys found: "
+            f"{examples}"
+        )
     component_counts_df = (
         common_rows_df.groupby(["comparison_scope", "common_row_id"], dropna=False)
         .agg(
@@ -1051,19 +1069,35 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
     return check_df.sort_values(TOTAL_GROUP_COLUMNS).reset_index(drop=True)
 
 
-SOURCE_COVERAGE_GROUP_COLUMNS = ["source_system", "economy", "scenario", "year"]
+SOURCE_COVERAGE_GROUP_COLUMNS = [
+    "comparison_scope", "source_system", "economy", "scenario", "year"
+]
 
 
 def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
-    """Compare full source totals against common output totals by source/economy/scenario/year.
+    """Build a limited whole-source total diagnostic.
 
-    Unlike build_total_check (which only covers rows that found a common map), this uses
-    the complete unfiltered source so gaps from relevance filtering and missing mappings
-    are visible in the difference column.
+    This is not hierarchy coverage. It compares full source totals with scope-expanded
+    Common ESTO totals and is retained only as a diagnostic for missing mappings or
+    relevance filtering. Scope is part of the key so one source copy is never compared
+    with multiple combined-scope copies.
     """
     empty_cols = SOURCE_COVERAGE_GROUP_COLUMNS + ["source_total", "common_total", "difference"]
     if source_df.empty:
         return pd.DataFrame(columns=empty_cols)
+    source_df = source_df.copy()
+    if "comparison_scope" not in source_df.columns:
+        scopes = comparison_df[["comparison_scope"]].drop_duplicates() if not comparison_df.empty else pd.DataFrame()
+        expanded = []
+        for comparison_scope in scopes.get("comparison_scope", pd.Series(dtype=object)):
+            allowed = COMPARISON_SCOPE_SYSTEMS.get(str(comparison_scope))
+            scoped = source_df if allowed is None else source_df[source_df["source_system"].isin(allowed)]
+            if scoped.empty:
+                continue
+            scoped = scoped.copy()
+            scoped["comparison_scope"] = comparison_scope
+            expanded.append(scoped)
+        source_df = pd.concat(expanded, ignore_index=True) if expanded else pd.DataFrame(columns=empty_cols)
     before_df = (
         source_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
         .sum()
@@ -1412,10 +1446,10 @@ def run_apply_common_esto_structure(
         n_groups = len(grp)
         max_abs = grp["difference"].abs().max() if not grp.empty else 0
         total_diff = grp["difference"].sum()
-        print(f"  source coverage / {source_system}: reported ({n_groups:,} groups, total diff: {total_diff:.4g}, max abs diff: {max_abs:.4g})")
+        print(f"  limited whole-source diagnostic / {source_system}: reported ({n_groups:,} groups, total diff: {total_diff:.4g}, max abs diff: {max_abs:.4g})")
     if not total_check_df.empty and "source_total" in total_check_df.columns:
         print(
-            "Total check: compares summed source values entering the common ESTO structure "
+            "Mapped-row aggregation preservation: compares summed mapped source values entering the Common ESTO structure "
             "against summed common ESTO output values, by comparison scope and source system "
             "(differences reflect rows dropped due to relevance filtering or missing mappings)."
         )

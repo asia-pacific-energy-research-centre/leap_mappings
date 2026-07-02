@@ -1115,19 +1115,21 @@ The current implementation validates ESTO product and flow subtotals. For each n
 
 Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
-These validations do not yet implement the full two-check design above or
-prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO
-hierarchy without regard to which child pairs are mapped.
-`qa_common_esto_total_check.csv` only proves that values already admitted to
-the mapped universe are preserved through Common ESTO aggregation. Its current
-`coverage_%` presentation is therefore an aggregation-preservation measure,
-not original-source coverage. It does not compare every raw source subtotal
-against the sum of its mapped Common ESTO descendants. Stage 3 now retains
-total/subtotal-labelled Common ESTO rows. The validation summary reports
-eligible checks and mismatches, so an empty mismatch file is only evidence of
-a pass when its current-run summary row is `passed`.
+Stage 3 implements both layers. `source_parent_anchor_validation.csv` compares
+eligible raw ESTO, LEAP, and 9th Outlook parents with mapped Common ESTO
+additive frontiers; its summary reports eligible, passed, failed, and skipped
+counts. `common_esto_validation.csv` records every eligible internal Common
+ESTO parent/child check, including passes, while its summary preserves
+current-run provenance and prevents stale outputs being reported as current.
 
-- 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
+`qa_common_esto_total_check.csv` is the mapped-row aggregation-preservation
+check. It proves only that rows already admitted to the mapped universe survive
+Common ESTO aggregation. `common_esto_source_coverage_check.csv` is retained as
+a limited whole-source total diagnostic, keyed by comparison scope; it is not
+source hierarchy coverage.
+
+- Raw ESTO uses all available historical years. 9th Outlook and LEAP parent
+  anchors use years strictly after the LEAP variable base year.
 
 For example, an ESTO product check compares a parent product against the sum of its direct child products:
 

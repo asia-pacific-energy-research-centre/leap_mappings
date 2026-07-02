@@ -644,12 +644,16 @@ COMMON_ESTO_VALIDATION_COLS = [
     "other_axis_value",
     "parent_code",
     "child_count",
+    "frontier_row_count",
+    "missing_expected_children",
     "year",
     "parent_value",
     "children_sum",
     "difference",
     "abs_error",
     "proportional_error",
+    "status",
+    "reason",
     "source_inconsistency_status",
     "sector_hierarchy_status",
     "fuel_hierarchy_status",
@@ -1693,6 +1697,7 @@ def _validate_common_esto_axis_recursive_sums(
         tuple[str, str, str, str, str, str, str], dict[str, str]
     ] | None = None,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+    record_all_checks: bool = False,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -1738,7 +1743,7 @@ def _validate_common_esto_axis_recursive_sums(
     children_map = _common_esto_validation_children_map(tree_df, axis)
     source_inconsistencies = source_inconsistencies or {}
     all_data_codes: set[str] = set(data[axis_col].dropna().unique())
-    mismatches = []
+    checks = []
 
     for parent_code, children in children_map.items():
         parent_rows = data[data[axis_col] == parent_code]
@@ -1757,15 +1762,19 @@ def _validate_common_esto_axis_recursive_sums(
 
         parent_sum = parent_rows.groupby(group_cols, dropna=False)["value"].sum()
         children_sum = children_rows.groupby(group_cols, dropna=False)["value"].sum()
-        common_idx = parent_sum.index.intersection(children_sum.index)
-        if common_idx.empty:
-            continue
+        child_presence = children_rows.groupby(group_cols, dropna=False)[axis_col].agg(
+            lambda values: set(values.astype(str))
+        )
+        common_idx = parent_sum.index
 
         for idx in common_idx:
             pv = float(parent_sum.loc[idx])
-            cv = float(children_sum.loc[idx])
+            present_children = child_presence.get(idx, set())
+            missing_children = sorted(set(resolved).difference(present_children))
+            cv = float(children_sum.get(idx, 0.0))
             err = abs(pv - cv)
-            if err <= tolerance * max(abs(pv), 1):
+            failed = bool(missing_children) or err > tolerance * max(abs(pv), 1)
+            if not record_all_checks and not failed:
                 continue
             scope, source_system, economy, scenario, other_axis_value, year = idx
             lookup_key = (
@@ -1781,7 +1790,7 @@ def _validate_common_esto_axis_recursive_sums(
             source_status = source_record.get("status", "not_attributed")
             diff = pv - cv
             prop_err = diff / pv if abs(pv) > tolerance else None
-            mismatches.append({
+            checks.append({
                 "validation_axis": axis,
                 "comparison_scope": scope,
                 "source_system": source_system,
@@ -1790,12 +1799,20 @@ def _validate_common_esto_axis_recursive_sums(
                 "other_axis_value": other_axis_value,
                 "parent_code": parent_code,
                 "child_count": len(children),
+                "frontier_row_count": len(present_children),
+                "missing_expected_children": _join_sorted(missing_children),
                 "year": year,
                 "parent_value": pv,
                 "children_sum": cv,
                 "difference": diff,
                 "abs_error": err,
                 "proportional_error": prop_err,
+                "status": "failed" if failed else "passed",
+                "reason": (
+                    "missing_expected_children" if missing_children
+                    else "difference_exceeds_tolerance" if failed
+                    else "within_tolerance"
+                ),
                 "source_inconsistency_status": source_status,
                 "sector_hierarchy_status": source_record.get("sector_hierarchy_status", ""),
                 "fuel_hierarchy_status": source_record.get("fuel_hierarchy_status", ""),
@@ -1803,7 +1820,7 @@ def _validate_common_esto_axis_recursive_sums(
                 "inherited_source_inconsistency": source_status == "confirmed_inherited",
             })
 
-    result = pd.DataFrame(mismatches)
+    result = pd.DataFrame(checks)
     if result.empty:
         return _empty_common_esto_validation()
     return result.sort_values([

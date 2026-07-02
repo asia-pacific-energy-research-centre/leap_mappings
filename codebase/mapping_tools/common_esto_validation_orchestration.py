@@ -210,6 +210,7 @@ def run_common_esto_validation_workflow(
                 tolerance=tolerance,
                 source_inconsistencies=source_inconsistencies,
                 leap_var_base_year=leap_var_base_year,
+                record_all_checks=True,
             )
             metrics = _count_eligible_checks(
                 tree_df,
@@ -219,7 +220,7 @@ def run_common_esto_validation_workflow(
             )
             detail_frames.append(axis_detail)
             mismatch_counts = (
-                axis_detail.groupby("source_system").size().to_dict()
+                axis_detail[axis_detail["status"] == "failed"].groupby("source_system").size().to_dict()
                 if not axis_detail.empty
                 else {}
             )

@@ -391,6 +391,8 @@ def run_stage_3() -> None:
         _build_source_inconsistency_lookup,
         build_common_esto_tree,
         build_esto_tree,
+        build_leap_tree,
+        build_ninth_tree,
         validate_leap_recursive_sums,
         validate_ninth_fuel_recursive_sums,
         validate_ninth_recursive_sums,
@@ -398,6 +400,12 @@ def run_stage_3() -> None:
     )
     from codebase.mapping_tools.common_esto_validation_orchestration import (
         run_common_esto_validation_workflow,
+    )
+    from codebase.mapping_tools.source_parent_anchor_validation import (
+        ANCHOR_COLUMNS,
+        load_raw_source_anchor_inputs,
+        summarise_source_parent_anchors,
+        validate_source_parent_anchors,
     )
 
     run_timestamp = datetime.now(timezone.utc)
@@ -448,7 +456,9 @@ def run_stage_3() -> None:
 
     common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
     esto_tree = build_esto_tree(ESTO_CSV_PATH)
-    validation_tree = pd.concat([esto_tree, common_tree], ignore_index=True)
+    ninth_tree = build_ninth_tree(NINTH_CSV_PATH)
+    leap_tree = build_leap_tree(WORKBOOK_PATH)
+    validation_tree = pd.concat([esto_tree, ninth_tree, leap_tree, common_tree], ignore_index=True)
     tree_output_dir = REPO_ROOT / "results" / "tree_structure"
     tree_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -501,6 +511,40 @@ def run_stage_3() -> None:
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
     )
 
+    anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
+    anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
+    if skip_reason:
+        anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+        anchor_summary = pd.DataFrame([{
+            "run_id": run_id, "status": "skipped", "eligible": 0,
+            "passed": 0, "failed": 0, "skipped": 0, "reason": skip_reason,
+        }])
+    else:
+        raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
+            esto_data_path=ESTO_CSV_PATH,
+            ninth_data_path=NINTH_CSV_PATH,
+            raw_leap_path=RAW_LEAP_PATH,
+            workbook_path=WORKBOOK_PATH,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        )
+        common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
+        comparison_data = pd.read_csv(comparison_path, dtype=object)
+        anchor_detail = validate_source_parent_anchors(
+            source_df=raw_anchor_source,
+            source_tree_df=validation_tree,
+            source_mapping_df=source_mapping,
+            common_rows_df=common_rows,
+            comparison_df=comparison_data,
+        )
+        anchor_detail.insert(0, "run_id", run_id)
+        anchor_summary = summarise_source_parent_anchors(anchor_detail)
+        anchor_summary.insert(0, "run_id", run_id)
+    anchor_summary["run_timestamp_utc"] = run_timestamp_utc
+    anchor_summary["input_path"] = str(comparison_path.resolve())
+    anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
+    anchor_detail.to_csv(anchor_detail_path, index=False)
+    anchor_summary.to_csv(anchor_summary_path, index=False)
+
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
     summary_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation_summary.csv"
     validation_status = validation_summary.copy()
@@ -509,10 +553,29 @@ def run_stage_3() -> None:
     validation_status["current_output_file"] = detail_path.name
     validation_status["output_mtime_ns"] = detail_path.stat().st_mtime_ns
     validation_status["validation_summary_path"] = str(summary_path.resolve())
-    combined_status = pd.concat([stage3_status, validation_status], ignore_index=True, sort=False)
+    anchor_status = anchor_summary.copy()
+    anchor_status["record_type"] = "validation"
+    anchor_status["artifact_name"] = "source_parent_anchor_validation"
+    anchor_status["current_output_file"] = anchor_detail_path.name
+    anchor_status["output_mtime_ns"] = anchor_detail_path.stat().st_mtime_ns
+    anchor_status["validation_summary_path"] = str(anchor_summary_path.resolve())
+    combined_status = pd.concat(
+        [stage3_status, validation_status, anchor_status], ignore_index=True, sort=False
+    )
     combined_status.to_csv(status_path, index=False)
 
     print(f"  Validation detail rows: {len(detail_df):,}")
+    print("  Original-source parent anchors:")
+    if anchor_summary.empty:
+        print("    eligible 0, passed 0, failed 0, skipped 0")
+    else:
+        for _, row in anchor_summary.iterrows():
+            print(
+                f"    {row.get('validation_axis', 'all')} / {row.get('source_system', 'ALL')}: "
+                f"eligible {int(row.get('eligible', 0)):,}, passed {int(row.get('passed', 0)):,}, "
+                f"failed {int(row.get('failed', 0)):,}, skipped {int(row.get('skipped', 0)):,}"
+            )
+    print("  Internal Common ESTO parent/child consistency:")
     for _, row in validation_summary.iterrows():
         print(
             f"  {row['validation_axis']} / {row['source_system']}: {row['status']} "
