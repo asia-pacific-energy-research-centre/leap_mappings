@@ -1042,13 +1042,90 @@ For each dataset the tree structure is recorded as a CSV with one row per node:
 
 This file is produced as a prerequisite step and can be used independently of the mapping sheets — for example, to determine what level of detail a mapping row operates at, or to drive other validation tasks.
 
-### Validation process
+### Intended end-to-end validation design
+
+The final validation is intended to use two complementary checks. Together,
+they test that the Common ESTO data remain anchored to the original source
+datasets and that the newly created Common ESTO hierarchy is internally
+additive.
+
+#### 1. Original-source parent anchor check
+
+For every eligible parent or subtotal in each original source dataset, compare
+the original parent value with the sum of the corresponding additive Common
+ESTO descendants:
+
+```text
+original source parent = sum(Common ESTO additive descendants)
+```
+
+The source and Common ESTO categories do not need to have identical leaf-level
+keys. The source tree identifies reliable parent totals, and the mappings
+identify which Common ESTO rows belong beneath each parent. Checks are grouped
+by comparison scope, source system, economy, scenario, year, and the opposite
+axis. For example, a product-parent check holds the flow constant, while a
+flow-parent check holds the product constant.
+
+The Common ESTO side must use an additive frontier: include either a parent or
+its descendants, never both. Summing arbitrary parent, child, and rolled rows
+would double count values. This check answers whether the Common ESTO
+transformation preserved the known aggregates in ESTO, LEAP, and the 9th
+Outlook despite differences in their detailed category structures.
+
+#### 2. Internal Common ESTO parent-child check
+
+For every eligible Common ESTO parent, compare its value with the sum of its
+immediate Common ESTO children:
+
+```text
+Common ESTO parent = sum(immediate Common ESTO children)
+```
+
+This check answers whether the newly created Common ESTO hierarchy is
+internally consistent. Its detail output should record the parent value,
+children sum, signed and absolute differences, percentage difference, child
+count, and any expected children that are absent.
+
+Taken together, the intended chain is:
+
+```text
+original source parent
+        -> original-source parent anchor check
+Common ESTO parent
+        -> internal Common ESTO parent-child check
+Common ESTO children
+```
+
+This proves the hierarchy only for eligible portions of the tree. A check must
+be explicitly reported as `passed`, `failed`, or `skipped`, with a reason. It
+must be skipped rather than passed when no usable source parent exists, the
+mapping does not establish a clear Common ESTO boundary, the additive frontier
+is incomplete, or a graph-generated category has no source hierarchy. Zero
+eligible parent checks is never evidence of a pass.
+
+Signed totals alone are not sufficient because positive and negative values
+can cancel. Absolute differences and, where useful, positive and negative
+subtotals should accompany the principal parent checks. Mapping-key uniqueness
+also remains a separate structural prerequisite: within a comparison scope,
+one ESTO component pair must not join to multiple Common ESTO rows.
+
+### Current validation process
 
 The current implementation validates ESTO product and flow subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year. For each non-leaf ESTO flow node, it sums all immediate flow children and compares against the parent flow value by economy, product, and year.
 
 Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
-These validations do not yet prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO hierarchy without regard to which child pairs are mapped. `qa_common_esto_total_check.csv` proves that values already admitted to the mapped universe are preserved through Common ESTO aggregation, but it does not compare every raw ESTO subtotal against the sum of its mapped leaf descendants. Stage 3 now retains total/subtotal-labelled Common ESTO rows. The validation summary reports eligible checks and mismatches, so an empty mismatch file is only evidence of a pass when its current-run summary row is `passed`.
+These validations do not yet implement the full two-check design above or
+prove mapped ESTO subtotal coverage. `esto_validation.csv` checks the raw ESTO
+hierarchy without regard to which child pairs are mapped.
+`qa_common_esto_total_check.csv` only proves that values already admitted to
+the mapped universe are preserved through Common ESTO aggregation. Its current
+`coverage_%` presentation is therefore an aggregation-preservation measure,
+not original-source coverage. It does not compare every raw source subtotal
+against the sum of its mapped Common ESTO descendants. Stage 3 now retains
+total/subtotal-labelled Common ESTO rows. The validation summary reports
+eligible checks and mismatches, so an empty mismatch file is only evidence of
+a pass when its current-run summary row is `passed`.
 
 - 9th Outlook value validation and LEAP value validation are not yet implemented in this tree workflow.
 
