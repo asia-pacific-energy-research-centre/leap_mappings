@@ -35,10 +35,16 @@ def _source() -> pd.DataFrame:
 
 
 def test_numeric_strings_roll_to_road_with_detailed_lineage() -> None:
-    lineage, final, unmatched, accounting = apply_partition_frame(_source(), _mapping())
+    tree = pd.DataFrame([
+        {"dataset": "leap", "axis": "sector", "code": "Road", "parent_code": ""},
+        {"dataset": "leap", "axis": "sector", "code": "Passenger", "parent_code": "Road"},
+        {"dataset": "leap", "axis": "sector", "code": "Freight", "parent_code": "Road"},
+    ])
+    lineage, final, unmatched, accounting = apply_partition_frame(_source(), _mapping(), tree)
     assert final.iloc[0]["value"] == 6.0
     assert set(lineage["original_source_flow"]) == {"Passenger", "Freight"}
     assert set(lineage["effective_source_flow"]) == {"Road"}
+    assert set(lineage["source_parent_flow"]) == {"Road"}
     assert unmatched.empty
     assert accounting.iloc[0]["input_total"] == 6.0
 

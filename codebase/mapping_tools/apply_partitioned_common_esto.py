@@ -16,6 +16,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.structural_resolver import build_tree_index
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -148,6 +150,7 @@ def _preferred_mapping_view(mapping_df: pd.DataFrame) -> pd.DataFrame:
 def apply_partition_frame(
     source_df: pd.DataFrame,
     source_to_common_df: pd.DataFrame,
+    source_tree_df: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply compiled membership to one complete validation partition."""
     source = _normalise_source_chunk(source_df)
@@ -164,6 +167,14 @@ def apply_partition_frame(
     matched["original_source_product"] = matched["source_product"]
     matched["source_parent_flow"] = ""
     matched["source_parent_product"] = ""
+    if source_tree_df is not None and not source_tree_df.empty and not matched.empty:
+        system = str(source["source_system"].iloc[0]).casefold()
+        flow_axis = "sector" if system in {"leap", "ninth"} else "flow"
+        product_axis = "fuel" if system in {"leap", "ninth"} else "product"
+        flow_parents, _ = build_tree_index(source_tree_df, system, flow_axis)
+        product_parents, _ = build_tree_index(source_tree_df, system, product_axis)
+        matched["source_parent_flow"] = matched["original_source_flow"].astype(str).map(flow_parents).fillna("")
+        matched["source_parent_product"] = matched["original_source_product"].astype(str).map(product_parents).fillna("")
     for column in LINEAGE_COLUMNS:
         if column not in matched:
             matched[column] = ""
@@ -206,6 +217,7 @@ def apply_partitioned_common_esto(
     cache_dir: Path,
     source_to_common_path: Path,
     output_dir: Path,
+    source_tree_path: Path | None = None,
 ) -> dict[str, Any]:
     """Process cached partitions and atomically publish CSV outputs."""
     started = time.perf_counter()
@@ -214,6 +226,7 @@ def apply_partitioned_common_esto(
     if manifest.get("status") != "complete":
         raise ValueError("Partition cache is not complete.")
     mapping = pd.read_csv(source_to_common_path, dtype=object)
+    source_tree = pd.read_csv(source_tree_path, dtype=object) if source_tree_path is not None else None
     staging = output_dir.with_name(output_dir.name + ".building")
     if staging.exists():
         shutil.rmtree(staging)
@@ -228,7 +241,7 @@ def apply_partitioned_common_esto(
                 [pd.read_parquet(path) for path in sorted((cache_dir / "partitions" / key).glob("*.parquet"))],
                 ignore_index=True,
             )
-            lineage, final, unmatched, accounting = apply_partition_frame(source, mapping)
+            lineage, final, unmatched, accounting = apply_partition_frame(source, mapping, source_tree)
             lineage.to_parquet(lineage_dir / f"{key}.parquet", index=False)
             _append_csv(lineage, staging / "contribution_lineage.csv")
             _append_csv(final, staging / "common_esto_comparison_data.csv")
