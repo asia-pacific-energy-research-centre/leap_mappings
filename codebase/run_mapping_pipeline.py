@@ -65,6 +65,7 @@ COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
 
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
+LEAP_ROLLUP_AUDIT_PATH = REL_DIR / "leap_source_rollup_audit.csv"
 NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv"
 ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
@@ -224,6 +225,8 @@ def run_leap_to_esto() -> None:
         leap_results_path=RAW_LEAP_PATH,
         relationships_path=RELATIONSHIPS_PATH,
         output_path=LEAP_ESTO_PATH,
+        mapping_workbook_path=WORKBOOK_PATH,
+        rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
     )
 
 
