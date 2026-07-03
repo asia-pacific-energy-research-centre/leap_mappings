@@ -7,6 +7,11 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.structural_resolver import (
+    build_tree_index,
+    resolve_nearest_mapped_pair,
+)
+
 
 COMPARISON_SCOPE_SYSTEMS = {
     "leap_vs_esto": {"LEAP", "ESTO"},
@@ -24,6 +29,16 @@ ANCHOR_COLUMNS = [
     "parent_positive_value", "parent_negative_value", "frontier_positive_sum",
     "frontier_negative_sum",
 ]
+
+
+def _normalize_economy(economy: pd.Series) -> pd.Series:
+    """Canonicalize APEC economy codes so ``20USA`` and ``20_USA`` unify.
+
+    The underscore between the numeric prefix and the alpha code is a cosmetic
+    separator that appears inconsistently across ESTO/Ninth/LEAP sources; strip
+    it so source and comparison rows join on a single code form.
+    """
+    return economy.astype(str).str.replace("_", "", regex=False)
 
 
 def _children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, list[str]]:
@@ -87,12 +102,20 @@ def validate_source_parent_anchors(
     common_rows_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
     tolerance: float = 0.01,
+    economies: set[str] | None = None,
+    years_by_system: dict[str, set[int]] | None = None,
 ) -> pd.DataFrame:
     """Return one explicit passed/failed/skipped record per raw source parent group.
 
     Inputs use normalized source columns: ``source_flow``, ``source_product``,
     ``source_system``, economy, scenario, year, and value. Mapping rows connect
     each source pair to one ESTO component pair.
+
+    The mapping structure it validates is economy/year-independent, so callers
+    building the template only need a small numeric slice to exercise the anchor
+    totals. ``economies`` (normalized codes) and ``years_by_system`` (per source
+    system) restrict the source rows to that slice; leaving them ``None`` runs
+    the full-scale reconciliation across every economy and year.
     """
     required_source = {
         "source_system", "economy", "scenario", "year", "source_flow",
@@ -112,6 +135,19 @@ def validate_source_parent_anchors(
     source = source_df.copy()
     source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
     source["year"] = pd.to_numeric(source["year"], errors="coerce")
+    source["economy"] = _normalize_economy(source["economy"])
+    if economies is not None:
+        source = source[source["economy"].isin(economies)]
+    if years_by_system is not None:
+        # Keep only the requested years per source system (systems absent from
+        # the mapping fall through unrestricted).
+        keep = source["source_system"].map(years_by_system)
+        mask = pd.Series(True, index=source.index)
+        has_limit = keep.notna()
+        mask.loc[has_limit] = [
+            year in allowed for year, allowed in zip(source.loc[has_limit, "year"], keep[has_limit])
+        ]
+        source = source[mask]
     mappings = source_mapping_df.drop_duplicates().copy()
     records: list[dict[str, Any]] = []
 
@@ -127,11 +163,17 @@ def validate_source_parent_anchors(
     # get_group so only queried groups are materialized.
     comparison_keys = ["comparison_scope", "source_system", "economy", "scenario", "year"]
     comparison = comparison_df[comparison_keys + ["common_row_id", "value"]].copy()
+    comparison["economy"] = _normalize_economy(comparison["economy"])
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce")
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     empty_comparison = comparison.iloc[0:0]
-    comparison_groups = comparison.groupby(comparison_keys, dropna=False, sort=False)
-    comparison_group_keys = set(comparison_groups.groups)
+    # O(1) lookup on the slimmed frame: building the group->frame dict once is
+    # far cheaper than calling get_group() inside the (potentially millions of)
+    # inner-loop iterations.
+    comparison_index = {
+        key: group
+        for key, group in comparison.groupby(comparison_keys, dropna=False, sort=False)
+    }
 
     for source_system in sorted(source["source_system"].dropna().astype(str).unique()):
         dataset = source_system.casefold()
@@ -152,13 +194,41 @@ def validate_source_parent_anchors(
                 for key, group in system_mappings.groupby([axis_col, other_col], dropna=False)
             }
             empty_mapping = system_mappings.iloc[0:0]
+            # Aggregate the source to the granularity the mapping anchors: roll
+            # the non-validated ("other") axis up to its deepest mapped ancestor
+            # so leaf-level rows collapse onto the aggregate node the workbook
+            # maps (e.g. leaf plant sectors -> 09_01_electricity_plants). The
+            # groupby below then sums the collapsed rows to that level.
+            axis_source = system_source.copy()
+            other_tree_axis = "product" if other_col == "source_product" else "flow"
+            if dataset in {"leap", "ninth"}:
+                other_tree_axis = "fuel" if other_col == "source_product" else "sector"
+            parent_index, tree_issues = build_tree_index(source_tree_df, dataset, other_tree_axis)
+            if not tree_issues.empty:
+                bad = tree_issues[tree_issues["issue_type"].isin(["ambiguous_parent", "cycle"])]
+                if not bad.empty:
+                    raise ValueError(f"Invalid source tree for {dataset}/{other_tree_axis}: {bad.head(10).to_dict('records')}")
+            mapped_pairs = set(zip(system_mappings["source_flow"].astype(str), system_mappings["source_product"].astype(str)))
+            pair_remap: dict[tuple[str, str], tuple[str, str]] = {}
+            for flow, product in axis_source[["source_flow", "source_product"]].drop_duplicates().itertuples(index=False):
+                resolved = resolve_nearest_mapped_pair(
+                    flow, product, mapped_pairs,
+                    "product" if other_col == "source_product" else "flow",
+                    parent_index,
+                )
+                pair_remap[(str(flow), str(product))] = (
+                    resolved["flow"], resolved["product"]
+                ) if resolved["status"] == "resolved" else (str(flow), str(product))
+            remapped = [pair_remap[(str(flow), str(product))] for flow, product in axis_source[["source_flow", "source_product"]].itertuples(index=False)]
+            axis_source["source_flow"] = [pair[0] for pair in remapped]
+            axis_source["source_product"] = [pair[1] for pair in remapped]
             descendant_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
             # Frontier resolution depends only on (parent_code, other_axis_value),
             # not on economy/scenario/year or scope; cache across groups.
             frontier_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
             frontier_ids_cache: dict[tuple[str, str, str], list] = {}
             for parent_code, direct_children in children.items():
-                parent_rows = system_source[system_source[axis_col] == parent_code]
+                parent_rows = axis_source[axis_source[axis_col] == parent_code]
                 for group_key, parent_group in parent_rows.groupby(group_cols, dropna=False):
                     economy, scenario, year, other_axis_value = group_key
                     parent_value = float(parent_group["value"].sum())
@@ -197,11 +267,11 @@ def validate_source_parent_anchors(
                             )["common_row_id"].dropna().unique().tolist()
                             frontier_ids_cache[ids_key] = frontier_ids
                         comparison_key = (scope, source_system, economy, scenario, year)
-                        if comparison_key in comparison_group_keys:
-                            group = comparison_groups.get_group(comparison_key)
-                            rows = group[group["common_row_id"].isin(frontier_ids)]
-                        else:
+                        group = comparison_index.get(comparison_key)
+                        if group is None:
                             rows = empty_comparison
+                        else:
+                            rows = group[group["common_row_id"].isin(frontier_ids)]
                         frontier_sum = float(rows["value"].sum())
                         difference = parent_value - frontier_sum
                         abs_error = abs(difference)
@@ -239,6 +309,33 @@ def validate_source_parent_anchors(
                             "frontier_negative_sum": float(rows.loc[rows["value"] < 0, "value"].sum()),
                         })
     return pd.DataFrame(records, columns=ANCHOR_COLUMNS)
+
+
+# Economy used to exercise the numeric anchor totals when validating the
+# mapping template. The mapping is economy-independent, so one economy suffices.
+VALIDATION_ECONOMY = "20USA"
+
+
+def default_validation_slice(
+    source_df: pd.DataFrame,
+    economy: str = VALIDATION_ECONOMY,
+) -> tuple[set[str], dict[str, set[int]]]:
+    """Derive the small numeric-validation slice for template building.
+
+    Anchored on the latest year present in the ESTO source (``Y1``): ESTO is
+    checked at ``Y1`` (its last historical year), Ninth at ``Y1 + 1`` (its first
+    projection year past the ESTO horizon), and LEAP at both ``Y1`` and
+    ``Y1 + 1``. Returns ``(economies, years_by_system)`` for
+    :func:`validate_source_parent_anchors`.
+    """
+    years = pd.to_numeric(source_df["year"], errors="coerce")
+    esto_years = years[source_df["source_system"] == "ESTO"].dropna()
+    if esto_years.empty:
+        raise ValueError("Cannot derive validation slice: no ESTO years present.")
+    y1 = int(esto_years.max())
+    y2 = y1 + 1
+    years_by_system = {"ESTO": {y1}, "NINTH": {y2}, "LEAP": {y1, y2}}
+    return {_normalize_economy(pd.Series([economy])).iloc[0]}, years_by_system
 
 
 def _melt_years(df: pd.DataFrame, id_columns: list[str]) -> pd.DataFrame:
