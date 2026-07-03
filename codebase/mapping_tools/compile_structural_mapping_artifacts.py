@@ -21,7 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 STRUCTURAL_SCHEMA_VERSION = "common_esto_structural_v1"
 DEFAULT_RELATIONSHIPS_PATH = REPO_ROOT / "results" / "mapping_relationships" / "energy_balance_relationships.csv"
-DEFAULT_COMMON_MAP_PATH = REPO_ROOT / "results" / "common_esto" / "esto_to_common_esto_map.csv"
+DEFAULT_COMMON_MAP_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
 DEFAULT_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "results" / "common_esto" / "structural_artifacts"
 
@@ -33,10 +33,16 @@ SOURCE_COMPONENT_COLUMNS = [
 ]
 COMPONENT_COMMON_COLUMNS = [
     "structural_mapping_version", "comparison_scope", "component_esto_flow",
-    "component_esto_product", "common_row_id", "component_sign",
+    "component_esto_product", "common_row_id", "component_sign", "common_flow_code",
+    "common_flow_name", "common_flow_label", "common_product_code", "common_product_name",
+    "common_product_label", "common_row_basis", "is_exact_row", "requires_rollup",
+    "source_aggregate_labels", "source_aggregate_group_ids",
 ]
 SOURCE_COMMON_COLUMNS = [
-    *SOURCE_COMPONENT_COLUMNS, "common_row_id", "component_sign",
+    *SOURCE_COMPONENT_COLUMNS, "common_row_id", "component_sign", "common_flow_code",
+    "common_flow_name", "common_flow_label", "common_product_code", "common_product_name",
+    "common_product_label", "common_row_basis", "is_exact_row", "requires_rollup",
+    "source_aggregate_labels", "source_aggregate_group_ids",
 ]
 REVERSE_COLUMNS = [
     "structural_mapping_version", "comparison_scope", "common_row_id", "source_system",
