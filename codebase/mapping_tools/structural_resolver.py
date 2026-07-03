@@ -172,7 +172,12 @@ def prepare_pair_rollup_rules(
                 for right in outputs[position + 1:]
             )
             if not nested:
-                issues.append({"issue_type": "conflicting_assignment", "input_pair": "|".join(input_pair), "related_pairs": ";".join("|".join(pair) for pair in outputs)})
+                issue_type = (
+                    "conflicting_assignment"
+                    if flow_parent_index is not None or product_parent_index is not None
+                    else "ambiguous_assignment"
+                )
+                issues.append({"issue_type": issue_type, "input_pair": "|".join(input_pair), "related_pairs": ";".join("|".join(pair) for pair in outputs)})
         rule_graph[input_pair].update(outputs)
 
     for start in sorted(rule_graph):

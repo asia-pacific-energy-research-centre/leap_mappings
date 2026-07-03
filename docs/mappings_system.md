@@ -946,6 +946,27 @@ Common row labels are generated mechanically from compressed component codes and
 
 Output: `results/common_esto/common_esto_rows.csv`
 
+### Value-free structural artifacts
+
+`codebase/mapping_tools/compile_structural_mapping_artifacts.py` compiles the
+Stage 1 relationships and Stage 2 component map without reading economy, year,
+scenario, or value tables. It writes deterministic CSVs to
+`results/common_esto/structural_artifacts/`:
+
+| Artifact | Direction and purpose |
+| --- | --- |
+| `source_pair_to_esto_component.csv` | Original and effective LEAP, Ninth, or ESTO source pair to an ESTO component, including relationship/rule evidence |
+| `esto_component_to_common_row.csv` | ESTO component to comparison-scope Common ESTO row |
+| `source_pair_to_common_row.csv` | Joined source-to-common membership used when applying values |
+| `common_row_to_source_pairs.csv` | Reverse membership for inspection; it does not allocate a common-row value back to source children |
+| `structural_compilation_summary.csv` | Versioned artifact row counts |
+| `qa_*_structural.csv` | Unresolved, ambiguous, cyclic, duplicate, and conflicting structural findings |
+
+Every artifact records a structural mapping version derived from a reproducible
+fingerprint of the relationship, component-map, and workbook inputs. The
+compiler fails early when required columns are absent and can be called directly
+from a notebook through `compile_structural_mapping_artifacts()`.
+
 ### Stage 3 - Apply common structure to data
 
 `codebase/mapping_tools/apply_common_esto_structure.py`
