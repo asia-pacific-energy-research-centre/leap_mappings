@@ -65,6 +65,20 @@ LEAP_VAR_BASE_YEAR    = 2022
 
 TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_leaf", "is_subtotal"]
 
+
+def combine_dataset_trees(frames: list[pd.DataFrame]) -> pd.DataFrame:
+    """Concatenate per-dataset tree frames into one explicit edge table.
+
+    Downstream consumers (the lineage anchor validator, partitioned application
+    source-parent lineage) need a single ``dataset/axis/code/parent_code`` table.
+    Empty frames are dropped so an unavailable dataset does not add blank rows.
+    """
+    kept = [frame for frame in frames if frame is not None and not frame.empty]
+    if not kept:
+        return pd.DataFrame(columns=TREE_COLS)
+    return pd.concat(kept, ignore_index=True)
+
+
 _ESTO_PREFIX_RE = re.compile(r"^([\d.]+)\s")
 
 # ---------------------------------------------------------------------------
@@ -1937,10 +1951,14 @@ def run_tree_structure_workflow(
         print(f"  Skipping Common ESTO tree (not found: {common_rows_path.name})")
         common_tree = pd.DataFrame(columns=TREE_COLS)
 
-    all_trees = pd.concat(
-        [t for t in [esto_tree, ninth_tree, leap_tree, common_tree] if not t.empty],
-        ignore_index=True,
-    )
+    all_trees = combine_dataset_trees([esto_tree, ninth_tree, leap_tree, common_tree])
+
+    # Persist the combined tree so downstream consumers (the lineage anchor
+    # validator) have a single explicit source of dataset/axis/code/parent_code
+    # edges instead of re-concatenating the per-dataset files themselves.
+    all_trees_path = output_dir / "all_dataset_trees.csv"
+    all_trees.to_csv(all_trees_path, index=False)
+    print(f"  Wrote combined dataset trees -> {all_trees_path.name}")
 
     # ------------------------------------------------------------------
     # Stage A: source-data consistency pre-checks
