@@ -12,19 +12,25 @@ For each external code the "implied LEAP name" is derived as:
 Rules applied
 -------------
 1.  Code has a single unique LEAP name that differs from the auto-stripped
-    code  -> write/update the entry in leap_display_names with
+    code  -> propose an entry in leap_display_names with
              matches_original_product_flow_name = False.
 2.  Code has a single unique LEAP name that matches the auto-stripped code
-    -> if a display-names entry exists, update matches_original to True
+    -> if a display-names entry exists, propose matches_original = True
        (no override needed); otherwise no action.
 3.  Code maps to multiple different LEAP names (many-to-one)  ->  flagged as
-    a conflict; no automatic write.
+    a conflict; no proposal.
 4.  Code is in leap_display_names but absent from both combined sheets  ->
     flagged as a potential issue in the QA output; entry is not removed.
 
-QA output
----------
-results/maintenance/display_names_qa.csv
+This module NEVER writes to the master workbook.  Proposed additions/updates
+are reported to a review CSV; the user reviews them, sets the approval column,
+and applies the approved rows with the standalone helper
+``codebase.mapping_tools.apply_display_name_updates``.
+
+QA / review output
+------------------
+results/maintenance/display_names_qa.csv               — full QA of every code
+results/maintenance/display_names_proposed_updates.csv — proposed writes to review
 """
 
 from __future__ import annotations
@@ -43,6 +49,23 @@ if str(REPO_ROOT) not in sys.path:
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 EXCEPTION_WORKBOOK_PATH = REPO_ROOT / "config" / "mapping_issue_exception_sets.xlsx"
 QA_DIR = REPO_ROOT / "results" / "maintenance"
+
+# Review CSV listing proposed leap_display_names writes. run_display_name_update
+# only reports here; the standalone apply_display_name_updates helper writes the
+# approved rows into the master.
+PROPOSED_UPDATES_FILENAME = "display_names_proposed_updates.csv"
+PROPOSED_UPDATES_APPROVAL_COL = "CAN BE INSERTED INTO MAPPINGS"
+PROPOSED_UPDATES_COLUMNS = [
+    "code_type",
+    "code",
+    "auto_name",
+    "current_leap_display_name",
+    "proposed_leap_display_name",
+    "proposed_matches_original_product_flow_name",
+    "status",
+    "note",
+    PROPOSED_UPDATES_APPROVAL_COL,
+]
 
 _NUMERIC_PREFIX_RE = re.compile(r"^[\d.]+\s+")
 
@@ -416,13 +439,18 @@ def run_display_name_update(
                     ),
                 })
 
-    # ── Apply updates ───────────────────────────────────────────────────────
+    # ── Report proposed updates (no workbook write) ─────────────────────────
+    # This module never edits the master.  Proposed additions/updates are
+    # written to a review CSV; approved rows are applied later with the
+    # standalone apply_display_name_updates helper.
+    wb.close()
     if updates:
-        _apply_updates_to_workbook(wb, headers, rows_data, updates)
-        wb.save(workbook_path)
-        print(f"  leap_display_names: applied {len(updates)} update(s)")
+        print(
+            f"  leap_display_names: {len(updates)} proposed update(s) reported "
+            "for review (workbook NOT modified)"
+        )
     else:
-        print("  leap_display_names: no updates needed")
+        print("  leap_display_names: no updates proposed")
 
     # ── Duplicate display-name check ────────────────────────────────────────
     # For each (code_type, code), determine the effective display name that
@@ -469,16 +497,54 @@ def run_display_name_update(
     if n_dups:
         print(f"  WARNING: {n_dups} code(s) share a display name within their code_type")
 
+    # ── Proposed-updates review CSV ─────────────────────────────────────────
+    # One row per proposed write, with a blank approval column for the user.
+    qa_dir.mkdir(parents=True, exist_ok=True)
+    qa_by_key = {(r["code_type"], r["code"]): r for r in qa_rows}
+    proposed_rows = []
+    for key, auto_name, leap_display_name, matches_original in updates:
+        qa_row = qa_by_key.get(key, {})
+        proposed_rows.append({
+            "code_type": key[0],
+            "code": key[1],
+            "auto_name": auto_name,
+            "current_leap_display_name": qa_row.get("current_leap_display_name", ""),
+            "proposed_leap_display_name": leap_display_name,
+            "proposed_matches_original_product_flow_name": matches_original,
+            "status": qa_row.get("status", ""),
+            "note": qa_row.get("note", ""),
+            PROPOSED_UPDATES_APPROVAL_COL: "",
+        })
+    proposed_df = pd.DataFrame(proposed_rows, columns=PROPOSED_UPDATES_COLUMNS)
+    proposed_path = qa_dir / PROPOSED_UPDATES_FILENAME
+    try:
+        proposed_df.to_csv(proposed_path, index=False)
+        if updates:
+            print(
+                f"  proposed display-name updates -> {proposed_path.relative_to(REPO_ROOT)} "
+                f"(set '{PROPOSED_UPDATES_APPROVAL_COL}'=TRUE, then run "
+                "apply_display_name_updates)"
+            )
+    except PermissionError:
+        fallback = proposed_path.with_stem(proposed_path.stem + "_new")
+        proposed_df.to_csv(fallback, index=False)
+        print(f"  proposed display-name updates (locked, wrote to fallback) -> {fallback.relative_to(REPO_ROOT)}")
+
     # ── QA output ───────────────────────────────────────────────────────────
     qa_df = pd.DataFrame(qa_rows)
-    qa_dir.mkdir(parents=True, exist_ok=True)
     qa_path = qa_dir / "display_names_qa.csv"
+    _CSV_EXCLUDED_STATUSES = {"skipped_exception", "consistent", "ok_auto_name"}
+    qa_csv_df = (
+        qa_df[~qa_df["status"].isin(_CSV_EXCLUDED_STATUSES)]
+        if not qa_df.empty
+        else qa_df
+    )
     try:
-        qa_df.to_csv(qa_path, index=False)
+        qa_csv_df.to_csv(qa_path, index=False)
         print(f"  leap_display_names QA -> {qa_path.relative_to(REPO_ROOT)}")
     except PermissionError:
         fallback = qa_path.with_stem(qa_path.stem + "_new")
-        qa_df.to_csv(fallback, index=False)
+        qa_csv_df.to_csv(fallback, index=False)
         print(f"  leap_display_names QA (locked, wrote to fallback) -> {fallback.relative_to(REPO_ROOT)}")
 
     status_counts = qa_df["status"].value_counts().to_dict() if not qa_df.empty else {}

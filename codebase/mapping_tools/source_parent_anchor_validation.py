@@ -39,31 +39,45 @@ def _children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, l
 def _mapped_descendants(
     code: str,
     other_axis_value: str,
-    axis: str,
     children: dict[str, list[str]],
-    mapping_df: pd.DataFrame,
+    direct_index: dict[tuple[str, str], pd.DataFrame],
+    empty_frame: pd.DataFrame,
+    cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]],
+    visited: frozenset = frozenset(),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Resolve an absent intermediate source node to mapped descendants."""
-    axis_column = "source_product" if axis == "product" else "source_flow"
-    other_column = "source_flow" if axis == "product" else "source_product"
-    direct = mapping_df[
-        (mapping_df[axis_column] == code)
-        & (mapping_df[other_column] == other_axis_value)
-    ]
-    if not direct.empty:
-        return direct, []
-    if code not in children:
-        return mapping_df.iloc[0:0].copy(), [code]
-    frames: list[pd.DataFrame] = []
-    missing: list[str] = []
-    for child in children[code]:
-        resolved, child_missing = _mapped_descendants(
-            child, other_axis_value, axis, children, mapping_df
-        )
-        frames.append(resolved)
-        missing.extend(child_missing)
-    available = pd.concat(frames, ignore_index=True) if frames else mapping_df.iloc[0:0].copy()
-    return available, missing
+    """Resolve an absent intermediate source node to mapped descendants.
+
+    Result depends only on ``(code, other_axis_value)`` for a fixed source
+    system/axis, so it is memoized in ``cache``. ``direct_index`` is a prebuilt
+    ``(axis_value, other_axis_value) -> rows`` lookup replacing a per-call scan
+    of the mapping frame. ``visited`` tracks the current ancestor chain purely as
+    a cycle backstop; trees are acyclic in practice, so the cached results are
+    exact for real data.
+    """
+    key = (code, other_axis_value)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    direct = direct_index.get(key)
+    if direct is not None:
+        result = (direct, [])
+    elif code not in children or code in visited:
+        # Missing leaf, or a cycle re-entering an ancestor: flag as unresolved.
+        result = (empty_frame, [code])
+    else:
+        frames: list[pd.DataFrame] = []
+        missing: list[str] = []
+        next_visited = visited | {code}
+        for child in children[code]:
+            resolved, child_missing = _mapped_descendants(
+                child, other_axis_value, children, direct_index, empty_frame, cache, next_visited
+            )
+            frames.append(resolved)
+            missing.extend(child_missing)
+        available = pd.concat(frames, ignore_index=True) if frames else empty_frame
+        result = (available, missing)
+    cache[key] = result
+    return result
 
 
 def validate_source_parent_anchors(
@@ -101,11 +115,28 @@ def validate_source_parent_anchors(
     mappings = source_mapping_df.drop_duplicates().copy()
     records: list[dict[str, Any]] = []
 
+    scopes = common_rows_df["comparison_scope"].dropna().astype(str).unique()
+    # Prebuild scope -> scoped component map once (small; was rebuilt per group).
+    scoped_maps = {scope: common_map[common_map["comparison_scope"] == scope] for scope in scopes}
+
+    # Index the comparison frame once by its lookup keys. It has millions of
+    # rows, so the previous per-iteration boolean scan (plus a full-column
+    # pd.to_numeric on every pass) was the dominant cost. Keep only the columns
+    # used below (the raw frame is all-object dtype and would otherwise carry
+    # gigabytes of unused cells into the index), and resolve groups lazily via
+    # get_group so only queried groups are materialized.
+    comparison_keys = ["comparison_scope", "source_system", "economy", "scenario", "year"]
+    comparison = comparison_df[comparison_keys + ["common_row_id", "value"]].copy()
+    comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce")
+    comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
+    empty_comparison = comparison.iloc[0:0]
+    comparison_groups = comparison.groupby(comparison_keys, dropna=False, sort=False)
+    comparison_group_keys = set(comparison_groups.groups)
+
     for source_system in sorted(source["source_system"].dropna().astype(str).unique()):
         dataset = source_system.casefold()
         system_source = source[source["source_system"] == source_system]
         system_mappings = mappings[mappings["source_system"] == source_system]
-        scopes = common_rows_df["comparison_scope"].dropna().astype(str).unique()
         for axis, tree_axis in [("flow", "flow"), ("product", "product")]:
             # LEAP and Ninth trees use sector/fuel terminology.
             if dataset in {"leap", "ninth"}:
@@ -114,6 +145,18 @@ def validate_source_parent_anchors(
             axis_col = "source_product" if axis == "product" else "source_flow"
             other_col = "source_flow" if axis == "product" else "source_product"
             group_cols = ["economy", "scenario", "year", other_col]
+            # Prebuilt direct-mapping lookup + memo cache, scoped to this
+            # (source_system, axis) since children/mappings are fixed here.
+            direct_index = {
+                key: group
+                for key, group in system_mappings.groupby([axis_col, other_col], dropna=False)
+            }
+            empty_mapping = system_mappings.iloc[0:0]
+            descendant_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
+            # Frontier resolution depends only on (parent_code, other_axis_value),
+            # not on economy/scenario/year or scope; cache across groups.
+            frontier_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
+            frontier_ids_cache: dict[tuple[str, str, str], list] = {}
             for parent_code, direct_children in children.items():
                 parent_rows = system_source[system_source[axis_col] == parent_code]
                 for group_key, parent_group in parent_rows.groupby(group_cols, dropna=False):
@@ -121,36 +164,44 @@ def validate_source_parent_anchors(
                     parent_value = float(parent_group["value"].sum())
                     parent_positive = float(parent_group.loc[parent_group["value"] > 0, "value"].sum())
                     parent_negative = float(parent_group.loc[parent_group["value"] < 0, "value"].sum())
-                    for scope in scopes:
-                        if source_system not in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system}):
-                            continue
+                    other_axis_str = str(other_axis_value)
+                    frontier_key = (parent_code, other_axis_str)
+                    frontier_entry = frontier_cache.get(frontier_key)
+                    if frontier_entry is None:
                         frontier_parts: list[pd.DataFrame] = []
-                        missing_children: list[str] = []
+                        missing_children = []
                         for child in direct_children:
                             resolved, missing = _mapped_descendants(
-                                child, str(other_axis_value), axis, children, system_mappings
+                                child, other_axis_str, children, direct_index,
+                                empty_mapping, descendant_cache,
                             )
                             frontier_parts.append(resolved)
                             missing_children.extend(missing)
                         frontier_components = (
                             pd.concat(frontier_parts, ignore_index=True).drop_duplicates()
-                            if frontier_parts else system_mappings.iloc[0:0]
+                            if frontier_parts else empty_mapping
                         )
-                        scoped_map = common_map[common_map["comparison_scope"] == scope]
-                        frontier_ids = frontier_components.merge(
-                            scoped_map,
-                            on=["component_esto_flow", "component_esto_product"],
-                            how="left",
-                        )["common_row_id"].dropna().unique().tolist()
-                        rows = comparison_df[
-                            (comparison_df["comparison_scope"] == scope)
-                            & (comparison_df["source_system"] == source_system)
-                            & (comparison_df["economy"] == economy)
-                            & (comparison_df["scenario"] == scenario)
-                            & (pd.to_numeric(comparison_df["year"], errors="coerce") == year)
-                            & (comparison_df["common_row_id"].isin(frontier_ids))
-                        ].copy()
-                        rows["value"] = pd.to_numeric(rows["value"], errors="coerce").fillna(0.0)
+                        frontier_entry = (frontier_components, missing_children)
+                        frontier_cache[frontier_key] = frontier_entry
+                    frontier_components, missing_children = frontier_entry
+                    for scope in scopes:
+                        if source_system not in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system}):
+                            continue
+                        ids_key = (parent_code, other_axis_str, scope)
+                        frontier_ids = frontier_ids_cache.get(ids_key)
+                        if frontier_ids is None:
+                            frontier_ids = frontier_components.merge(
+                                scoped_maps[scope],
+                                on=["component_esto_flow", "component_esto_product"],
+                                how="left",
+                            )["common_row_id"].dropna().unique().tolist()
+                            frontier_ids_cache[ids_key] = frontier_ids
+                        comparison_key = (scope, source_system, economy, scenario, year)
+                        if comparison_key in comparison_group_keys:
+                            group = comparison_groups.get_group(comparison_key)
+                            rows = group[group["common_row_id"].isin(frontier_ids)]
+                        else:
+                            rows = empty_comparison
                         frontier_sum = float(rows["value"].sum())
                         difference = parent_value - frontier_sum
                         abs_error = abs(difference)

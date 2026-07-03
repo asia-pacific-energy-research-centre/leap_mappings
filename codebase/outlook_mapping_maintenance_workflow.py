@@ -682,6 +682,65 @@ def _compute_cardinality(
     return pd.DataFrame(rows).sort_values([source_flow_col, source_product_col, target_flow_col, target_product_col])
 
 
+DUPLICATE_MAPPING_COLUMNS = [
+    "sheet_name",
+    "workbook_row",
+    "duplicate_group_size",
+    "source_flow",
+    "source_product",
+    "target_flow",
+    "target_product",
+]
+
+
+def _duplicate_mapping_rows(
+    df: pd.DataFrame,
+    sheet_name: str,
+    source_flow_col: str,
+    source_product_col: str,
+    target_flow_col: str,
+    target_product_col: str,
+) -> pd.DataFrame:
+    """Return exact-duplicate active mapping rows for one sheet.
+
+    A duplicate is an active row whose full key-pair -> key-pair tuple
+    (source_flow, source_product, target_flow, target_product) is identical to
+    another active row on the same sheet. Every member of each duplicate group
+    is returned so the reviewer sees all copies. ``workbook_row`` is the 1-based
+    Excel row number (header is row 1, so data starts at row 2). Key columns are
+    renamed to generic source/target names so the three sheets share one CSV
+    layout, matching the (source_flow, source_product, target_flow,
+    target_product) convention used by ``_compute_cardinality``.
+    """
+    key_cols = [source_flow_col, source_product_col, target_flow_col, target_product_col]
+    active = _active_rows(df)
+    if any(col not in active.columns for col in key_cols):
+        return pd.DataFrame(columns=DUPLICATE_MAPPING_COLUMNS)
+    valid = active[
+        active[source_flow_col].ne("") & active[source_product_col].ne("")
+        & active[target_flow_col].ne("") & active[target_product_col].ne("")
+    ].copy()
+    if valid.empty:
+        return pd.DataFrame(columns=DUPLICATE_MAPPING_COLUMNS)
+    dups = valid[valid.duplicated(subset=key_cols, keep=False)]
+    if dups.empty:
+        return pd.DataFrame(columns=DUPLICATE_MAPPING_COLUMNS)
+    result = pd.DataFrame({
+        "sheet_name": sheet_name,
+        "workbook_row": dups.index + 2,
+        "duplicate_group_size": dups.groupby(key_cols)[source_flow_col].transform("size"),
+        "source_flow": dups[source_flow_col],
+        "source_product": dups[source_product_col],
+        "target_flow": dups[target_flow_col],
+        "target_product": dups[target_product_col],
+    })
+    return (
+        result[DUPLICATE_MAPPING_COLUMNS]
+        .sort_values(["source_flow", "source_product", "target_flow", "target_product", "workbook_row"])
+        .reset_index(drop=True)
+    )
+
+
 # ── unmapped pair detection ───────────────────────────────────────────────────
 
 def _unmapped_esto_pairs(
@@ -1163,6 +1222,7 @@ def _write_maintenance_summary(
         ("maintenance", "cardinality_leap_esto.csv", "info"),
         ("maintenance", "cardinality_leap_ninth.csv", "info"),
         ("maintenance", "cardinality_ninth_esto.csv", "info"),
+        ("maintenance", "duplicate_mappings.csv", "review"),
         ("maintenance", "many_to_many_allowed_matched.csv", "info"),
         ("maintenance", "many_to_many_conflicts.csv", "review"),
         ("maintenance", "leap_source_presence_conflicts.csv", "review"),
@@ -1402,54 +1462,28 @@ def run(
 
     _archive_workbook(WORKBOOK_PATH)
 
+    # NOTE: lookup-based recompute-and-write of leap_is_subtotal /
+    # esto_pair_is_subtotal / ninth_pair_is_subtotal is intentionally disabled.
+    # It repeatedly clobbered manually reviewed/fixed subtotal values on every
+    # --apply-maintenance run. subtotal_label_overrides remains the only
+    # mechanism that writes these columns; direct workbook edits now persist.
+
     # ── leap_combined_esto ───────────────────────────────────────────────────
     sheet_name = "leap_combined_esto"
     ws = wb[sheet_name]
     print(f"\nSheet: {sheet_name}")
-    u, sk = _update_sheet_leap_subtotals(ws, subtotal_paths)
-    print(f"  leap_is_subtotal     -> updated={u}  skipped_blank_path={sk}")
-    u, nf, sk = _update_sheet_column(
-        ws,
-        col_name="esto_pair_is_subtotal",
-        key_col_names=["esto_flow", "esto_product"],
-        lookup=esto_lookup,
-    )
-    print(f"  esto_pair_is_subtotal -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
     print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     # ── leap_combined_ninth ──────────────────────────────────────────────────
     sheet_name = "leap_combined_ninth"
     ws = wb[sheet_name]
     print(f"\nSheet: {sheet_name}")
-    u, sk = _update_sheet_leap_subtotals(ws, subtotal_paths)
-    print(f"  leap_is_subtotal      -> updated={u}  skipped_blank_path={sk}")
-    u, nf, sk = _update_sheet_column(
-        ws,
-        col_name="ninth_pair_is_subtotal",
-        key_col_names=["ninth_sector", "ninth_fuel"],
-        lookup=ninth_lookup,
-    )
-    print(f"  ninth_pair_is_subtotal -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
     print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     # ── ninth_pairs_to_esto_pairs ────────────────────────────────────────────
     sheet_name = "ninth_pairs_to_esto_pairs"
     ws = wb[sheet_name]
     print(f"\nSheet: {sheet_name}")
-    u, nf, sk = _update_sheet_column(
-        ws,
-        col_name="ninth_pair_is_subtotal",
-        key_col_names=["9th_sector", "9th_fuel"],
-        lookup=ninth_lookup,
-    )
-    print(f"  ninth_pair_is_subtotal -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
-    u, nf, sk = _update_sheet_column(
-        ws,
-        col_name="esto_pair_is_subtotal",
-        key_col_names=["esto_flow", "esto_product"],
-        lookup=esto_lookup,
-    )
-    print(f"  esto_pair_is_subtotal  -> updated={u}  not_found={nf}  skipped_blank_key={sk}")
     print(f"  reviewed subtotal overrides -> applied={_apply_subtotal_overrides_to_sheet(ws, subtotal_overrides)}")
 
     wb.save(WORKBOOK_PATH)
@@ -1485,6 +1519,36 @@ def run(
           f"({(card_lcninth['cardinality'] == 'one_to_one').sum():,} one-to-one)")
     print(f"  cardinality_ninth_esto: {len(card_nesto):,} pairs  "
           f"({(card_nesto['cardinality'] == 'one_to_one').sum():,} one-to-one)")
+
+    # Exact duplicate mapping rows (same source pair AND target pair on one sheet)
+    duplicate_mappings = pd.concat([
+        _duplicate_mapping_rows(
+            df_lcesto, "leap_combined_esto",
+            "leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product",
+        ),
+        _duplicate_mapping_rows(
+            df_lcninth, "leap_combined_ninth",
+            "leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel",
+        ),
+        _duplicate_mapping_rows(
+            df_nesto, "ninth_pairs_to_esto_pairs",
+            "9th_sector", "9th_fuel", "esto_flow", "esto_product",
+        ),
+    ], ignore_index=True)
+    duplicate_mappings.to_csv(QA_DIR / "duplicate_mappings.csv", index=False)
+    if duplicate_mappings.empty:
+        print("  duplicate_mappings: 0")
+    else:
+        _dup_groups = duplicate_mappings.drop_duplicates(
+            ["sheet_name", "source_flow", "source_product", "target_flow", "target_product"]
+        )
+        _redundant = len(duplicate_mappings) - len(_dup_groups)
+        print(
+            f"  WARNING: duplicate_mappings: {len(duplicate_mappings):,} duplicate row(s) in "
+            f"{len(_dup_groups):,} group(s); {_redundant:,} redundant copy(ies) to remove "
+            f"-> duplicate_mappings.csv "
+            f"(remove with: python -m codebase.mapping_tools.apply_duplicate_mapping_removal)"
+        )
 
     # Migrated legacy conflict checks
     all_many_to_many = _many_to_many_conflicts([
