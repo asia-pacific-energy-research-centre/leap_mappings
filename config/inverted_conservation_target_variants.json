@@ -1,0 +1,28 @@
+{
+  "schema_version": "target_variants_v1",
+  "target_system": "LEAP",
+  "families": {
+    "electricity_generation": {
+      "description": "Alternative standard and interim LEAP electricity-generation structures.",
+      "variants": {
+        "standard": [
+          "Electricity Generation"
+        ],
+        "interim": [
+          "Electricity interim/Electricity interim"
+        ]
+      }
+    },
+    "chp_generation": {
+      "description": "Alternative standard and interim LEAP CHP structures.",
+      "variants": {
+        "standard": [
+          "CHP plants"
+        ],
+        "interim": [
+          "CHP interim/CHP interim"
+        ]
+      }
+    }
+  }
+}

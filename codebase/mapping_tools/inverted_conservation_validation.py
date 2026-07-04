@@ -51,6 +51,7 @@ DIRECTION_CONFIG = {
 DEFAULT_STRUCTURAL_PATH = REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv"
 DEFAULT_TREE_PATH = REPO_ROOT / "results/tree_structure/all_dataset_trees.csv"
 DEFAULT_NINTH_FUEL_VALIDATION_PATH = REPO_ROOT / "results/tree_structure/ninth_fuel_validation.csv"
+DEFAULT_TARGET_VARIANTS_PATH = REPO_ROOT / "config/inverted_conservation_target_variants.json"
 DEFAULT_RAW_PATHS = {
     "ESTO": REPO_ROOT / "data/00APEC_2025_low_with_subtotals.csv",
     "NINTH": REPO_ROOT / "data/merged_file_energy_ALL_20251106.csv",
@@ -62,6 +63,89 @@ NO_COUNTERPART_COLUMNS = [
     "target_flow", "target_product", "economy", "scenario", "year", "source_value",
     "exception_classification", "exception_reason", "subtotal_validation_difference",
 ]
+
+VARIANT_COVERAGE_COLUMNS = [
+    "direction", "source_system", "target_system", "target_variant_family",
+    "target_variant", "reference_variant", "source_pair_count",
+    "reference_source_pair_count", "missing_source_pairs", "extra_source_pairs",
+    "variant_coverage_status", "safe_to_sum_across_variants",
+]
+
+
+def load_target_variants(path: Path | None) -> dict[str, Any]:
+    """Load optional validation-only alternative target branch definitions."""
+    if path is None or not Path(path).exists():
+        return {"families": {}}
+    config = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(config.get("families", {}), dict):
+        raise ValueError("Target variant config 'families' must be an object.")
+    return config
+
+
+def partition_edges_by_target_variant(
+    edges: pd.DataFrame,
+    target_system: str,
+    variant_config: dict[str, Any],
+) -> list[tuple[str, str, pd.DataFrame]]:
+    """Separate alternative target structures so they are never summed."""
+    if target_system != variant_config.get("target_system"):
+        return [("", "", edges.copy())]
+
+    configured_mask = pd.Series(False, index=edges.index)
+    partitions: list[tuple[str, str, pd.DataFrame]] = []
+    for family, family_config in variant_config.get("families", {}).items():
+        for variant, target_flows in family_config.get("variants", {}).items():
+            mask = edges["target_flow"].isin(target_flows)
+            configured_mask |= mask
+            subset = edges[mask].copy()
+            if not subset.empty:
+                partitions.append((family, variant, subset))
+    ordinary = edges[~configured_mask].copy()
+    if not ordinary.empty:
+        partitions.insert(0, ("", "", ordinary))
+    return partitions
+
+
+def build_variant_coverage_audit(
+    edge_partitions: list[tuple[str, str, pd.DataFrame]],
+    direction: str,
+    source_system: str,
+    target_system: str,
+) -> pd.DataFrame:
+    """Verify that every configured variant covers the same source-pair set."""
+    families: dict[str, dict[str, set[tuple[str, str]]]] = {}
+    for family, variant, edges in edge_partitions:
+        if not family:
+            continue
+        families.setdefault(family, {})[variant] = set(
+            zip(edges["source_flow"], edges["source_product"])
+        )
+    rows: list[dict[str, Any]] = []
+    for family, variants in families.items():
+        reference_variant = sorted(variants)[0]
+        reference_pairs = variants[reference_variant]
+        for variant, pairs in sorted(variants.items()):
+            missing = reference_pairs - pairs
+            extra = pairs - reference_pairs
+            rows.append({
+                "direction": direction, "source_system": source_system,
+                "target_system": target_system, "target_variant_family": family,
+                "target_variant": variant, "reference_variant": reference_variant,
+                "source_pair_count": len(pairs),
+                "reference_source_pair_count": len(reference_pairs),
+                "missing_source_pairs": " | ".join(
+                    f"{flow} / {product}" for flow, product in sorted(missing)
+                ),
+                "extra_source_pairs": " | ".join(
+                    f"{flow} / {product}" for flow, product in sorted(extra)
+                ),
+                "variant_coverage_status": (
+                    "complete_equivalent_coverage" if not missing and not extra
+                    else "coverage_mismatch"
+                ),
+                "safe_to_sum_across_variants": False,
+            })
+    return pd.DataFrame(rows, columns=VARIANT_COVERAGE_COLUMNS)
 
 
 def compose_direction_edges(
@@ -175,6 +259,8 @@ def validate_direction_partition(
     source_system: str,
     target_system: str,
     direction: str,
+    target_variant_family: str = "",
+    target_variant: str = "",
     tolerance: float = 0.01,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the existing Option-A breakdown on one inverted direction slice."""
@@ -203,6 +289,7 @@ def validate_direction_partition(
         old_id = row["check_id"]
         key = "|".join([
             "inverted_conservation_v1", direction, source_system, target_system,
+            target_variant_family, target_variant,
             str(row["economy"]), str(row["scenario"]), str(row["year"]),
             str(row["validation_axis"]), str(row["parent_code"]),
         ])
@@ -292,6 +379,16 @@ def validate_direction_partition(
     for frame in [contributions, summary]:
         frame.insert(1, "direction", direction)
         frame.insert(2, "target_system", target_system)
+        frame.insert(3, "target_variant_family", target_variant_family)
+        frame.insert(4, "target_variant", target_variant)
+        frame.insert(5, "safe_to_sum_across_variants", not bool(target_variant_family))
+        frame.insert(6, "variant_status", (
+            "verified_alternative_target_variant" if target_variant_family else "not_applicable"
+        ))
+        frame.insert(7, "effective_validation_status", (
+            "verified_alternative_target_variant"
+            if target_variant_family else frame["check_status"]
+        ))
     if not contributions.empty:
         contributions["target_flow"] = contributions["esto_flow"]
         contributions["target_product"] = contributions["esto_product"]
@@ -380,6 +477,7 @@ def run_inverted_conservation_validation(
     structural_path: Path = DEFAULT_STRUCTURAL_PATH,
     tree_path: Path = DEFAULT_TREE_PATH,
     ninth_fuel_validation_path: Path = DEFAULT_NINTH_FUEL_VALIDATION_PATH,
+    target_variants_path: Path | None = DEFAULT_TARGET_VARIANTS_PATH,
     raw_paths: dict[str, Path] | None = None,
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
@@ -404,6 +502,7 @@ def run_inverted_conservation_validation(
     structural = pd.read_csv(structural_path, dtype=object)
     tree = pd.read_csv(tree_path, dtype=object)
     ninth_fuel_validation = pd.read_csv(ninth_fuel_validation_path, dtype=object)
+    target_variants = load_target_variants(target_variants_path)
     output_dir = Path(output_dir)
     staging = output_dir.with_name(output_dir.name + ".building")
     if staging.exists():
@@ -413,6 +512,7 @@ def run_inverted_conservation_validation(
     contribution_frames: list[pd.DataFrame] = []
     summary_frames: list[pd.DataFrame] = []
     counterpart_frames: list[pd.DataFrame] = []
+    variant_coverage_frames: list[pd.DataFrame] = []
     for direction in directions:
         config = DIRECTION_CONFIG[direction]
         source_system = config["source_system"]
@@ -421,16 +521,23 @@ def run_inverted_conservation_validation(
         edges, source_gaps, target_gaps = compose_direction_edges(
             structural, source_system, target_system, comparison_scope
         )
+        edge_partitions = partition_edges_by_target_variant(
+            edges, target_system, target_variants
+        )
+        variant_coverage_frames.append(build_variant_coverage_audit(
+            edge_partitions, direction, source_system, target_system
+        ))
         years = years_by_system.get(source_system)
         for raw_partition in iter_raw_partitions(
             source_system, raw_paths[source_system], economies, years
         ):
-            contributions, summary = validate_direction_partition(
-                raw_partition, edges, tree, source_system, target_system,
-                direction, tolerance,
-            )
-            contribution_frames.append(contributions)
-            summary_frames.append(summary)
+            for variant_family, variant, variant_edges in edge_partitions:
+                contributions, summary = validate_direction_partition(
+                    raw_partition, variant_edges, tree, source_system, target_system,
+                    direction, variant_family, variant, tolerance,
+                )
+                contribution_frames.append(contributions)
+                summary_frames.append(summary)
             counterpart_frames.append(build_no_counterpart_audit(
                 raw_partition, source_gaps, target_gaps, direction,
                 source_system, target_system, comparison_scope,
@@ -440,13 +547,19 @@ def run_inverted_conservation_validation(
     contributions = pd.concat(contribution_frames, ignore_index=True) if contribution_frames else pd.DataFrame()
     summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     counterpart = pd.concat(counterpart_frames, ignore_index=True) if counterpart_frames else pd.DataFrame(columns=NO_COUNTERPART_COLUMNS)
+    variant_coverage = pd.concat(variant_coverage_frames, ignore_index=True) if variant_coverage_frames else pd.DataFrame(columns=VARIANT_COVERAGE_COLUMNS)
     contributions.to_csv(staging / "inverted_conservation_contributors.csv", index=False)
     summary.to_csv(staging / "inverted_conservation_summary.csv", index=False)
     counterpart.to_csv(staging / "inverted_conservation_no_counterpart.csv", index=False)
+    variant_coverage.to_csv(staging / "inverted_conservation_variant_coverage.csv", index=False)
     manifest = {
         "status": "complete", "directions": list(directions),
         "checks": int(len(summary)), "contributor_rows": int(len(contributions)),
         "no_counterpart_rows": int(len(counterpart)),
+        "variant_coverage_rows": int(len(variant_coverage)),
+        "variant_coverage_mismatches": int(
+            variant_coverage["variant_coverage_status"].eq("coverage_mismatch").sum()
+        ) if not variant_coverage.empty else 0,
         "esto_base_year": esto_base_year,
         "max_abs_breakdown_remainder": (
             float(summary["breakdown_remainder"].abs().max()) if not summary.empty else 0.0

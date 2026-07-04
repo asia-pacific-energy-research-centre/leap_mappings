@@ -3,8 +3,10 @@
 import pandas as pd
 
 from codebase.mapping_tools.inverted_conservation_validation import (
+    build_variant_coverage_audit,
     build_no_counterpart_audit,
     compose_direction_edges,
+    partition_edges_by_target_variant,
     validate_direction_partition,
 )
 
@@ -166,3 +168,40 @@ def test_subtotal_exception_uses_existing_tree_validation_result():
     ).iloc[0]
     assert mismatch["exception_classification"] == "subtotal_children_mismatch"
     assert mismatch["subtotal_validation_difference"] == 12.5
+
+
+def test_alternative_target_variants_are_checked_separately_and_not_summed():
+    edges, _, _ = compose_direction_edges(
+        _structural(), "ESTO", "LEAP", "leap_vs_esto"
+    )
+    config = {
+        "target_system": "LEAP",
+        "families": {
+            "production_b": {
+                "variants": {
+                    "standard": ["Supply/Branch B1"],
+                    "interim": ["Supply/Branch B2"],
+                }
+            }
+        },
+    }
+    partitions = partition_edges_by_target_variant(edges, "LEAP", config)
+    variants = {(family, variant): part for family, variant, part in partitions if family}
+    assert set(variants) == {("production_b", "standard"), ("production_b", "interim")}
+    assert set(variants[("production_b", "standard")]["target_flow"]) == {"Supply/Branch B1"}
+    assert set(variants[("production_b", "interim")]["target_flow"]) == {"Supply/Branch B2"}
+
+    audit = build_variant_coverage_audit(
+        partitions, "ESTO_TO_LEAP", "ESTO", "LEAP"
+    )
+    assert set(audit["variant_coverage_status"]) == {"complete_equivalent_coverage"}
+    assert not audit["safe_to_sum_across_variants"].any()
+
+    contributions, summary = validate_direction_partition(
+        _raw(), variants[("production_b", "standard")], _tree(),
+        "ESTO", "LEAP", "ESTO_TO_LEAP", "production_b", "standard",
+    )
+    assert set(contributions["target_variant_family"]) == {"production_b"}
+    assert set(summary["variant_status"]) == {"verified_alternative_target_variant"}
+    assert set(summary["effective_validation_status"]) == {"verified_alternative_target_variant"}
+    assert not summary["safe_to_sum_across_variants"].any()
