@@ -2,8 +2,8 @@
 unified_name_lookup.py
 
 Resolve ESTO/9th-edition codes to display names from leap_display_names in
-outlook_mappings_master.xlsx.  For codes not found there, fall back to
-stripping the leading numeric prefix from the code string.
+outlook_mappings_master.xlsx. For codes not found there, fall back to the
+derived auto-name.
 
 Key types:
     ninth_fuel     – 9th-edition fuel/subfuel codes  (e.g. 01_01_coking_coal)
@@ -14,12 +14,12 @@ Key types:
 Source
 ------
 outlook_mappings_master.xlsx
-    leap_display_names : code_type, code, auto_name, leap_display_name,
-                         matches_original_product_flow_name
+    leap_display_names : code_type, code, leap_display_name, Note,
+                         USED_IN_LEAP_INITIALISATION, IS_LEAP_ROLLUP_NAME
 
-Only rows where matches_original_product_flow_name is False are genuine
-overrides and are stored in the lookup; all other codes are served by the
-strip-prefix fallback.
+Rows whose display name differs from the derived auto-name are treated as
+genuine overrides and are stored in the lookup; all other codes use the
+fallback name.
 
 Public API
 ----------
@@ -41,6 +41,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
+
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 
 _NUMERIC_PREFIX_RE = re.compile(r"^[\d.]+\s+")
@@ -55,16 +57,15 @@ def _clean(value: object) -> str:
     return "" if text.lower() in {"", "nan", "none"} else text
 
 
-def _is_false(value: object) -> bool:
-    """Return True when value is boolean False or the string 'False'."""
-    if isinstance(value, bool):
-        return not value
-    return str(value).strip().lower() == "false"
-
-
 def _strip_numeric_prefix(code: str) -> str:
     """Strip leading numeric prefix (e.g. '09.01.01 ') from a code string."""
     return _NUMERIC_PREFIX_RE.sub("", code).strip()
+
+
+def _auto_name_for_code(code: str) -> str:
+    """Return the default display name used when no override exists."""
+    stripped = _strip_numeric_prefix(code)
+    return stripped if stripped and stripped != code else code
 
 
 # ---------------------------------------------------------------------------
@@ -74,28 +75,30 @@ def _strip_numeric_prefix(code: str) -> str:
 def _load_display_name_overrides() -> list[dict]:
     """
     Read leap_display_names sheet and return records where the display name
-    differs from auto-stripping the numeric prefix.
+    differs from the derived auto-name.
     """
     df = pd.read_excel(
         OUTLOOK_MAPPINGS_PATH,
         sheet_name="leap_display_names",
         dtype=object,
-    ).fillna("")
+    )
+    df = filter_used_in_leap_initialisation(df).fillna("")
 
     records = []
     for _, row in df.iterrows():
-        if not _is_false(row.get("matches_original_product_flow_name", "")):
-            continue
         key_type = _clean(row.get("code_type", ""))
         code = _clean(row.get("code", ""))
         name = _clean(row.get("leap_display_name", ""))
-        if key_type and code and name:
-            records.append({
-                "key_type": key_type,
-                "code": code,
-                "name": name,
-                "source_sheet": "leap_display_names",
-            })
+        if not key_type or not code or not name:
+            continue
+        if name == _auto_name_for_code(code):
+            continue
+        records.append({
+            "key_type": key_type,
+            "code": code,
+            "name": name,
+            "source_sheet": "leap_display_names",
+        })
     return records
 
 
@@ -106,8 +109,8 @@ def _load_display_name_overrides() -> list[dict]:
 def load_source_records() -> pd.DataFrame:
     """
     Return all override (key_type, code, name, source_sheet) records from
-    leap_display_names.  Only genuine overrides (matches_original_product_flow_name
-    == False) are included; strip-prefix fallbacks are not listed.
+    leap_display_names. Only genuine overrides (display name differs from the
+    derived auto-name) are included; fallback names are not listed.
     """
     records = _load_display_name_overrides()
     df = pd.DataFrame(records, columns=["key_type", "code", "name", "source_sheet"])
@@ -168,7 +171,7 @@ def resolve_name(
     Resolve a single code to a display name.
 
     Checks the leap_display_names override table first; falls back to
-    stripping the leading numeric prefix from the code string.
+    the derived auto-name for the code string.
     Returns None if neither produces a non-empty result.
     """
     overrides = _get_overrides()
@@ -176,8 +179,8 @@ def resolve_name(
     if override:
         return override
 
-    stripped = _strip_numeric_prefix(code)
-    return stripped if stripped and stripped != code else None
+    auto_name = _auto_name_for_code(code)
+    return auto_name if auto_name else None
 
 
 # ---------------------------------------------------------------------------
