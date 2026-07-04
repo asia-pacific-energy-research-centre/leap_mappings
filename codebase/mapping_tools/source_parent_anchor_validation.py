@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from codebase.mapping_tools.structural_resolver import (
@@ -149,36 +151,38 @@ def validate_source_parent_anchors(
         ]
         source = source[mask]
     mappings = source_mapping_df.drop_duplicates().copy()
-    records: list[dict[str, Any]] = []
+    records_frames: list[pd.DataFrame] = []
 
     scopes = common_rows_df["comparison_scope"].dropna().astype(str).unique()
     # Prebuild scope -> scoped component map once (small; was rebuilt per group).
     scoped_maps = {scope: common_map[common_map["comparison_scope"] == scope] for scope in scopes}
 
-    # Index the comparison frame once by its lookup keys. It has millions of
-    # rows, so the previous per-iteration boolean scan (plus a full-column
-    # pd.to_numeric on every pass) was the dominant cost. Keep only the columns
-    # used below (the raw frame is all-object dtype and would otherwise carry
-    # gigabytes of unused cells into the index), and resolve groups lazily via
-    # get_group so only queried groups are materialized.
+    # Slim + normalize the comparison frame once. It has millions of rows, so
+    # keep only the columns used below (the raw frame is all-object dtype and
+    # would otherwise carry gigabytes of unused cells forward). The per-group
+    # boolean scan of the original nested loop is replaced by a single
+    # vectorized merge per (source_system, axis) below.
     comparison_keys = ["comparison_scope", "source_system", "economy", "scenario", "year"]
     comparison = comparison_df[comparison_keys + ["common_row_id", "value"]].copy()
     comparison["economy"] = _normalize_economy(comparison["economy"])
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce")
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
-    empty_comparison = comparison.iloc[0:0]
-    # O(1) lookup on the slimmed frame: building the group->frame dict once is
-    # far cheaper than calling get_group() inside the (potentially millions of)
-    # inner-loop iterations.
-    comparison_index = {
-        key: group
-        for key, group in comparison.groupby(comparison_keys, dropna=False, sort=False)
-    }
+    comparison["common_row_id"] = comparison["common_row_id"].astype(str)
 
     for source_system in sorted(source["source_system"].dropna().astype(str).unique()):
         dataset = source_system.casefold()
         system_source = source[source["source_system"] == source_system]
         system_mappings = mappings[mappings["source_system"] == source_system]
+        # Scopes this system participates in, and the comparison rows scoped to
+        # them — pre-filtered once so the per-axis frontier merge stays small.
+        applicable_scopes = [
+            scope for scope in scopes
+            if source_system in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system})
+        ]
+        system_comparison = comparison[
+            (comparison["source_system"] == source_system)
+            & (comparison["comparison_scope"].isin(applicable_scopes))
+        ][["comparison_scope", "economy", "scenario", "year", "common_row_id", "value"]]
         for axis, tree_axis in [("flow", "flow"), ("product", "product")]:
             # LEAP and Ninth trees use sector/fuel terminology.
             if dataset in {"leap", "ninth"}:
@@ -186,7 +190,6 @@ def validate_source_parent_anchors(
             children = _children_map(source_tree_df, dataset, tree_axis)
             axis_col = "source_product" if axis == "product" else "source_flow"
             other_col = "source_flow" if axis == "product" else "source_product"
-            group_cols = ["economy", "scenario", "year", other_col]
             # Prebuilt direct-mapping lookup + memo cache, scoped to this
             # (source_system, axis) since children/mappings are fixed here.
             direct_index = {
@@ -227,88 +230,176 @@ def validate_source_parent_anchors(
             # not on economy/scenario/year or scope; cache across groups.
             frontier_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
             frontier_ids_cache: dict[tuple[str, str, str], list] = {}
-            for parent_code, direct_children in children.items():
-                parent_rows = axis_source[axis_source[axis_col] == parent_code]
-                for group_key, parent_group in parent_rows.groupby(group_cols, dropna=False):
-                    economy, scenario, year, other_axis_value = group_key
-                    parent_value = float(parent_group["value"].sum())
-                    parent_positive = float(parent_group.loc[parent_group["value"] > 0, "value"].sum())
-                    parent_negative = float(parent_group.loc[parent_group["value"] < 0, "value"].sum())
-                    other_axis_str = str(other_axis_value)
-                    frontier_key = (parent_code, other_axis_str)
-                    frontier_entry = frontier_cache.get(frontier_key)
-                    if frontier_entry is None:
-                        frontier_parts: list[pd.DataFrame] = []
-                        missing_children = []
-                        for child in direct_children:
-                            resolved, missing = _mapped_descendants(
-                                child, other_axis_str, children, direct_index,
-                                empty_mapping, descendant_cache,
-                            )
-                            frontier_parts.append(resolved)
-                            missing_children.extend(missing)
-                        frontier_components = (
-                            pd.concat(frontier_parts, ignore_index=True).drop_duplicates()
-                            if frontier_parts else empty_mapping
+            # --- Vectorized parent aggregation (replaces the per-parent /
+            # per-group / per-scope Python loop). Sum every parent's value,
+            # positive part, and negative part for every
+            # (parent_code, economy, scenario, year, other_axis_value) in one
+            # pass instead of re-filtering axis_source per parent. ---
+            parents_present = set(children.keys())
+            parent_src = axis_source[axis_source[axis_col].isin(parents_present)]
+            if parent_src.empty:
+                continue
+            parent_src = parent_src.assign(
+                _pos=parent_src["value"].where(parent_src["value"] > 0, 0.0),
+                _neg=parent_src["value"].where(parent_src["value"] < 0, 0.0),
+            )
+            agg = (
+                parent_src.groupby(
+                    [axis_col, "economy", "scenario", "year", other_col],
+                    dropna=False, sort=False,
+                )
+                .agg(
+                    parent_value=("value", "sum"),
+                    parent_positive_value=("_pos", "sum"),
+                    parent_negative_value=("_neg", "sum"),
+                )
+                .reset_index()
+                .rename(columns={axis_col: "parent_code", other_col: "other_axis_value"})
+            )
+
+            # Resolve the mapped-descendant frontier and its per-scope
+            # common_row_ids for each unique (parent_code, other_axis_value)
+            # present — reusing the memo caches. Flatten frontier ids into a
+            # join table so the comparison lookup can be a single merge.
+            missing_join_map: dict[tuple[str, str], str] = {}
+            has_missing_map: dict[tuple[str, str], bool] = {}
+            fids_empty_map: dict[tuple[str, str, str], bool] = {}
+            fid_rows: list[tuple[str, str, str, str]] = []
+            for pcode, oav in agg[["parent_code", "other_axis_value"]].drop_duplicates().itertuples(index=False):
+                oas = str(oav)
+                fk = (pcode, oas)
+                frontier_entry = frontier_cache.get(fk)
+                if frontier_entry is None:
+                    frontier_parts: list[pd.DataFrame] = []
+                    missing_children: list[str] = []
+                    for child in children.get(pcode, []):
+                        resolved, missing = _mapped_descendants(
+                            child, oas, children, direct_index,
+                            empty_mapping, descendant_cache,
                         )
-                        frontier_entry = (frontier_components, missing_children)
-                        frontier_cache[frontier_key] = frontier_entry
-                    frontier_components, missing_children = frontier_entry
-                    for scope in scopes:
-                        if source_system not in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system}):
-                            continue
-                        ids_key = (parent_code, other_axis_str, scope)
-                        frontier_ids = frontier_ids_cache.get(ids_key)
-                        if frontier_ids is None:
-                            frontier_ids = frontier_components.merge(
-                                scoped_maps[scope],
-                                on=["component_esto_flow", "component_esto_product"],
-                                how="left",
-                            )["common_row_id"].dropna().unique().tolist()
-                            frontier_ids_cache[ids_key] = frontier_ids
-                        comparison_key = (scope, source_system, economy, scenario, year)
-                        group = comparison_index.get(comparison_key)
-                        if group is None:
-                            rows = empty_comparison
-                        else:
-                            rows = group[group["common_row_id"].isin(frontier_ids)]
-                        frontier_sum = float(rows["value"].sum())
-                        difference = parent_value - frontier_sum
-                        abs_error = abs(difference)
-                        if missing_children:
-                            status, reason = "failed", "incomplete_frontier"
-                        elif not frontier_ids:
-                            status, reason = "skipped", "no_anchorable_common_esto_boundary"
-                        elif rows.empty:
-                            status, reason = "failed", "frontier_rows_absent"
-                        elif abs_error > tolerance * max(abs(parent_value), 1.0):
-                            status, reason = "failed", "difference_exceeds_tolerance"
-                        else:
-                            status, reason = "passed", "within_tolerance"
-                        records.append({
-                            "validation_axis": axis,
-                            "comparison_scope": scope,
-                            "source_system": source_system,
-                            "economy": economy,
-                            "scenario": scenario,
-                            "year": int(year) if pd.notna(year) else "",
-                            "other_axis_value": other_axis_value,
-                            "parent_code": parent_code,
-                            "status": status,
-                            "reason": reason,
-                            "parent_value": parent_value,
-                            "frontier_sum": frontier_sum,
-                            "difference": difference,
-                            "abs_error": abs_error,
-                            "proportional_error": difference / parent_value if abs(parent_value) > tolerance else None,
-                            "frontier_row_count": int(rows["common_row_id"].nunique()) if not rows.empty else 0,
-                            "missing_expected_children": "|".join(sorted(set(missing_children))),
-                            "parent_positive_value": parent_positive,
-                            "parent_negative_value": parent_negative,
-                            "frontier_positive_sum": float(rows.loc[rows["value"] > 0, "value"].sum()),
-                            "frontier_negative_sum": float(rows.loc[rows["value"] < 0, "value"].sum()),
-                        })
-    return pd.DataFrame(records, columns=ANCHOR_COLUMNS)
+                        frontier_parts.append(resolved)
+                        missing_children.extend(missing)
+                    frontier_components = (
+                        pd.concat(frontier_parts, ignore_index=True).drop_duplicates()
+                        if frontier_parts else empty_mapping
+                    )
+                    frontier_entry = (frontier_components, missing_children)
+                    frontier_cache[fk] = frontier_entry
+                frontier_components, missing_children = frontier_entry
+                missing_join_map[fk] = "|".join(sorted(set(missing_children)))
+                has_missing_map[fk] = bool(missing_children)
+                for scope in applicable_scopes:
+                    ids_key = (pcode, oas, scope)
+                    frontier_ids = frontier_ids_cache.get(ids_key)
+                    if frontier_ids is None:
+                        frontier_ids = frontier_components.merge(
+                            scoped_maps[scope],
+                            on=["component_esto_flow", "component_esto_product"],
+                            how="left",
+                        )["common_row_id"].dropna().unique().tolist()
+                        frontier_ids_cache[ids_key] = frontier_ids
+                    fids_empty_map[ids_key] = (len(frontier_ids) == 0)
+                    for cid in frontier_ids:
+                        fid_rows.append((pcode, oas, scope, str(cid)))
+
+            # Cross parent aggregates with the scopes this system serves.
+            base = agg.merge(
+                pd.DataFrame({"comparison_scope": applicable_scopes}), how="cross"
+            )
+            base["_oas"] = base["other_axis_value"].astype(str)
+
+            # Frontier sums via a single explode+merge rather than a per-group
+            # .isin() over the comparison frame.
+            if fid_rows:
+                fid_df = pd.DataFrame(
+                    fid_rows,
+                    columns=["parent_code", "_oas", "comparison_scope", "common_row_id"],
+                )
+                exploded = base[
+                    ["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"]
+                ].merge(fid_df, on=["parent_code", "_oas", "comparison_scope"], how="inner")
+                matched = exploded.merge(
+                    system_comparison,
+                    on=["comparison_scope", "economy", "scenario", "year", "common_row_id"],
+                    how="inner",
+                )
+            else:
+                matched = base.iloc[0:0].assign(value=pd.Series(dtype=float))
+
+            if not matched.empty:
+                matched = matched.assign(
+                    _mpos=matched["value"].where(matched["value"] > 0, 0.0),
+                    _mneg=matched["value"].where(matched["value"] < 0, 0.0),
+                )
+                fsum = (
+                    matched.groupby(
+                        ["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"],
+                        dropna=False, sort=False,
+                    )
+                    .agg(
+                        frontier_sum=("value", "sum"),
+                        frontier_positive_sum=("_mpos", "sum"),
+                        frontier_negative_sum=("_mneg", "sum"),
+                        frontier_row_count=("common_row_id", "nunique"),
+                        _matched=("value", "size"),
+                    )
+                    .reset_index()
+                )
+                base = base.merge(
+                    fsum,
+                    on=["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"],
+                    how="left",
+                )
+            else:
+                for col in ["frontier_sum", "frontier_positive_sum", "frontier_negative_sum",
+                            "frontier_row_count", "_matched"]:
+                    base[col] = 0.0
+
+            base["frontier_sum"] = base["frontier_sum"].fillna(0.0)
+            base["frontier_positive_sum"] = base["frontier_positive_sum"].fillna(0.0)
+            base["frontier_negative_sum"] = base["frontier_negative_sum"].fillna(0.0)
+            base["frontier_row_count"] = base["frontier_row_count"].fillna(0).astype(int)
+            base["_matched"] = base["_matched"].fillna(0)
+
+            pcoa = list(zip(base["parent_code"], base["_oas"]))
+            base["missing_expected_children"] = [missing_join_map[k] for k in pcoa]
+            has_missing = np.array([has_missing_map[k] for k in pcoa])
+            fids_empty = np.array([
+                fids_empty_map[(pc, oa, sc)]
+                for pc, oa, sc in zip(base["parent_code"], base["_oas"], base["comparison_scope"])
+            ])
+
+            base["difference"] = base["parent_value"] - base["frontier_sum"]
+            base["abs_error"] = base["difference"].abs()
+            rows_empty = (base["_matched"].to_numpy() == 0)
+            tol_exceeded = (
+                base["abs_error"].to_numpy()
+                > tolerance * np.maximum(base["parent_value"].abs().to_numpy(), 1.0)
+            )
+            # Priority order mirrors the original if/elif chain exactly.
+            conditions = [has_missing, fids_empty, rows_empty, tol_exceeded]
+            base["status"] = np.select(
+                conditions, ["failed", "skipped", "failed", "failed"], default="passed"
+            )
+            base["reason"] = np.select(
+                conditions,
+                ["incomplete_frontier", "no_anchorable_common_esto_boundary",
+                 "frontier_rows_absent", "difference_exceeds_tolerance"],
+                default="within_tolerance",
+            )
+            with np.errstate(divide="ignore", invalid="ignore"):
+                proportional = base["difference"].to_numpy() / base["parent_value"].to_numpy()
+            base["proportional_error"] = np.where(
+                base["parent_value"].abs().to_numpy() > tolerance, proportional, np.nan
+            )
+            base["year"] = [int(y) if pd.notna(y) else "" for y in base["year"]]
+            base["validation_axis"] = axis
+            base["source_system"] = source_system
+            records_frames.append(base[ANCHOR_COLUMNS].copy())
+
+    if not records_frames:
+        return pd.DataFrame(columns=ANCHOR_COLUMNS)
+    return pd.concat(records_frames, ignore_index=True)
 
 
 # Economy used to exercise the numeric anchor totals when validating the
@@ -336,6 +427,31 @@ def default_validation_slice(
     y2 = y1 + 1
     years_by_system = {"ESTO": {y1}, "NINTH": {y2}, "LEAP": {y1, y2}}
     return {_normalize_economy(pd.Series([economy])).iloc[0]}, years_by_system
+
+
+def _join_hierarchy_path(df: pd.DataFrame, columns: list[str]) -> pd.Series:
+    """Vectorized equivalent of row-wise '/'.join(non-empty, non-'x' values).
+
+    Preserves column order; skips values that are NaN, blank, or 'x'.
+    """
+    result = pd.Series("", index=df.index)
+    for column in columns:
+        cleaned = df[column].astype(str).str.strip()
+        valid = ~cleaned.isin(["", "x", "nan"])
+        has_prefix = result.str.len() > 0
+        separator = pd.Series(np.where(has_prefix & valid, "/", ""), index=df.index)
+        result = result.where(~valid, result + separator + cleaned)
+    return result
+
+
+def _resolve_most_specific(df: pd.DataFrame, columns_least_to_most_specific: list[str]) -> pd.Series:
+    """Vectorized equivalent of picking the deepest non-empty, non-'x' column value."""
+    result = pd.Series("", index=df.index)
+    for column in columns_least_to_most_specific:
+        cleaned = df[column].astype(str).str.strip()
+        valid = ~cleaned.isin(["", "x", "nan"])
+        result = result.where(~valid, cleaned)
+    return result
 
 
 def _melt_years(df: pd.DataFrame, id_columns: list[str]) -> pd.DataFrame:
@@ -378,17 +494,17 @@ def load_raw_source_anchor_inputs(
     esto_pairs["component_esto_product"] = esto_pairs["source_product"]
     mapping_frames.append(esto_pairs)
 
+    ninth_load_start = time.perf_counter()
     ninth = pd.read_csv(ninth_data_path, dtype=object)
     sector_columns = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
-    ninth["source_flow"] = ninth[sector_columns].apply(
-        lambda row: "/".join(str(value).strip() for value in row if pd.notna(value) and str(value).strip() not in {"", "x"}),
-        axis=1,
-    )
-    ninth["source_product"] = ninth.apply(
-        lambda row: "/".join(
-            str(value).strip() for value in [row.get("fuels"), row.get("subfuels")]
-            if pd.notna(value) and str(value).strip() not in {"", "x"}
-        ), axis=1,
+    source_flow = _join_hierarchy_path(ninth, sector_columns)
+    source_product = _join_hierarchy_path(ninth, ["fuels", "subfuels"])
+    ninth = ninth.copy()
+    ninth["source_flow"] = source_flow
+    ninth["source_product"] = source_product
+    print(
+        f"  [timing] 9th source_flow/source_product resolved in "
+        f"{time.perf_counter() - ninth_load_start:.2f}s ({len(ninth):,} rows)"
     )
     ninth_long = _melt_years(ninth, ["economy", "scenarios", "source_flow", "source_product"])
     ninth_long = ninth_long.rename(columns={"scenarios": "scenario"})
@@ -401,16 +517,13 @@ def load_raw_source_anchor_inputs(
         pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
     )
     sector_lookup = ninth[["source_flow"] + sector_columns].copy()
-    sector_lookup["9th_sector"] = sector_lookup[sector_columns].apply(
-        lambda row: next((str(value).strip() for value in reversed(row.tolist()) if pd.notna(value) and str(value).strip() not in {"", "x"}), ""),
-        axis=1,
-    )
+    sector_lookup["9th_sector"] = _resolve_most_specific(sector_lookup, sector_columns)
     sector_lookup = sector_lookup[["9th_sector", "source_flow"]].drop_duplicates()
     fuel_lookup = ninth[["source_product", "fuels", "subfuels"]].copy()
-    fuel_lookup["9th_fuel"] = fuel_lookup.apply(
-        lambda row: str(row["subfuels"]).strip() if pd.notna(row["subfuels"]) and str(row["subfuels"]).strip() not in {"", "x"} else str(row["fuels"]).strip(),
-        axis=1,
-    )
+    subfuels_clean = fuel_lookup["subfuels"].astype(str).str.strip()
+    valid_subfuels = ~subfuels_clean.isin(["", "x", "nan"])
+    fuels_clean = fuel_lookup["fuels"].astype(str).str.strip()
+    fuel_lookup["9th_fuel"] = np.where(valid_subfuels, subfuels_clean, fuels_clean)
     fuel_lookup = fuel_lookup[["9th_fuel", "source_product"]].drop_duplicates()
     ninth_map = ninth_map.merge(sector_lookup, on="9th_sector", how="left").merge(fuel_lookup, on="9th_fuel", how="left")
     ninth_map = ninth_map.rename(columns={"esto_flow": "component_esto_flow", "esto_product": "component_esto_product"})

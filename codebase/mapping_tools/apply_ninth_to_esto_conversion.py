@@ -34,6 +34,7 @@ def read_table(path: Path) -> pd.DataFrame:
 def prepare_ninth_long_format(
     ninth_csv_path: Path,
     scenario_filter: str = "reference",
+    mapped_pairs: set[tuple[str, str]] | None = None,
 ) -> pd.DataFrame:
     """
     Reshape the 9th Outlook wide-format CSV to long format with ninth_sector
@@ -41,6 +42,14 @@ def prepare_ninth_long_format(
 
     ninth_sector = the most specific available sector hierarchy level
     ninth_fuel   = subfuels value, or fuels where subfuels == 'x'
+
+    ``mapped_pairs`` optionally restricts the wide frame to
+    ``(ninth_sector, ninth_fuel)`` pairs that have an included ESTO mapping
+    *before* melting across every year column. This is purely a performance
+    filter: the downstream :func:`convert_ninth_results_to_esto` left-merges on
+    the same pair and drops unmapped rows anyway, so pre-filtering removes only
+    rows that would be discarded, leaving the converted output unchanged while
+    avoiding the expansion of ~85% unmapped sector/fuel combos across all years.
     """
     df = pd.read_csv(ninth_csv_path, dtype=object)
 
@@ -62,6 +71,15 @@ def prepare_ninth_long_format(
     mask_x = df["ninth_fuel"] == "x"
     df.loc[mask_x, "ninth_fuel"] = df.loc[mask_x, "fuels"].astype(str).str.strip()
     df["source_system"] = "NINTH"
+
+    # Filter-before-melt: keep only sector/fuel pairs with an included mapping.
+    # Uses string-key membership, which is a superset of what the downstream
+    # merge would match (equal raw values always share a string form), so no
+    # matchable row is dropped and the converted output is byte-for-byte identical.
+    if mapped_pairs is not None:
+        mapped_keys = {f"{str(flow)}\x1f{str(product)}" for flow, product in mapped_pairs}
+        pair_key = df["ninth_sector"].astype(str) + "\x1f" + df["ninth_fuel"].astype(str)
+        df = df[pair_key.isin(mapped_keys)].copy()
 
     # Identify year columns
     year_cols = [c for c in df.columns if str(c).isdigit()]

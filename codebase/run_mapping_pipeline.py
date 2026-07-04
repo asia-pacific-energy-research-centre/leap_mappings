@@ -237,16 +237,30 @@ def run_ninth_to_esto() -> None:
         print(f"  WARNING: {NINTH_CSV_PATH.name} not found.")
         return
 
+    import time
+
     from codebase.mapping_tools.apply_ninth_to_esto_conversion import (
         prepare_ninth_long_format,
         load_ninth_to_esto_relationships,
         convert_ninth_results_to_esto,
     )
-    print("  Preparing 9th long-format data …")
-    ninth_long = prepare_ninth_long_format(NINTH_CSV_PATH)
-    print(f"  9th long-format rows: {len(ninth_long):,}")
-
+    # Load the mapping first so the wide 9th frame can be filtered to only
+    # sector/fuel pairs with an included ESTO mapping *before* the year melt.
     relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
+    mapped_pairs = set(
+        zip(
+            relationships_df["source_flow"].astype(str),
+            relationships_df["source_product"].astype(str),
+        )
+    )
+    print("  Preparing 9th long-format data (filter-before-melt) …")
+    _t = time.perf_counter()
+    ninth_long = prepare_ninth_long_format(NINTH_CSV_PATH, mapped_pairs=mapped_pairs)
+    print(
+        f"  9th long-format rows: {len(ninth_long):,} "
+        f"(prepared in {time.perf_counter() - _t:.1f}s)"
+    )
+
     converted_df = convert_ninth_results_to_esto(ninth_long, relationships_df)
 
     NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -376,6 +390,8 @@ def run_data_convert() -> None:
 # ---------------------------------------------------------------------------
 
 def run_stage_3() -> None:
+    import time
+    stage3_t0 = time.perf_counter()
     print("\n" + "=" * 60)
     print("STAGE 3  Apply common ESTO structure to source data")
     print("=" * 60)
@@ -460,9 +476,16 @@ def run_stage_3() -> None:
         else:
             expected_mtime_ns = int(comparison_record["output_mtime_ns"])
 
+    # Read the wide 9th CSV once and share it across the tree build and the
+    # three recursive-sum validations below (each previously re-read the same
+    # ~290MB file). Each consumer copies before mutating, so the shared frame
+    # is never altered in place and outputs are unchanged.
+    print("  Reading 9th wide CSV once for Stage 3 consumers …")
+    ninth_wide = pd.read_csv(NINTH_CSV_PATH, dtype=object)
+
     common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
     esto_tree = build_esto_tree(ESTO_CSV_PATH)
-    ninth_tree = build_ninth_tree(NINTH_CSV_PATH)
+    ninth_tree = build_ninth_tree(NINTH_CSV_PATH, data_df=ninth_wide)
     leap_tree = build_leap_tree(WORKBOOK_PATH)
     validation_tree = pd.concat([esto_tree, ninth_tree, leap_tree, common_tree], ignore_index=True)
     tree_output_dir = REPO_ROOT / "results" / "tree_structure"
@@ -473,18 +496,21 @@ def run_stage_3() -> None:
         data_csv_path=NINTH_CSV_PATH,
         workbook_path=WORKBOOK_PATH,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        data_df=ninth_wide,
     )
     ninth_sector_validation = validate_ninth_sector_recursive_sums(
         data_csv_path=NINTH_CSV_PATH,
         workbook_path=WORKBOOK_PATH,
         common_rows_path=COMMON_ROWS_PATH,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        data_df=ninth_wide,
     )
     ninth_fuel_validation = validate_ninth_fuel_recursive_sums(
         data_csv_path=NINTH_CSV_PATH,
         workbook_path=WORKBOOK_PATH,
         common_rows_path=COMMON_ROWS_PATH,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        data_df=ninth_wide,
     )
     leap_validation = validate_leap_recursive_sums(
         leap_data_paths=[RAW_LEAP_PATH],
@@ -498,6 +524,8 @@ def run_stage_3() -> None:
     leap_validation.to_csv(tree_output_dir / "leap_validation.csv", index=False)
     print(f"  Ninth sector validation findings: {len(ninth_sector_validation):,}")
     print(f"  Ninth fuel validation findings: {len(ninth_fuel_validation):,}")
+    del ninth_wide
+    gc.collect()
     source_inconsistencies = _build_source_inconsistency_lookup(
         ninth_validation,
         leap_validation,
@@ -535,12 +563,17 @@ def run_stage_3() -> None:
         )
         common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
         comparison_data = pd.read_csv(comparison_path, dtype=object)
+        anchor_t0 = time.perf_counter()
         anchor_detail = validate_source_parent_anchors(
             source_df=raw_anchor_source,
             source_tree_df=validation_tree,
             source_mapping_df=source_mapping,
             common_rows_df=common_rows,
             comparison_df=comparison_data,
+        )
+        print(
+            f"  [timing] validate_source_parent_anchors: "
+            f"{time.perf_counter() - anchor_t0:.1f}s ({len(anchor_detail):,} rows)"
         )
         anchor_detail.insert(0, "run_id", run_id)
         anchor_summary = summarise_source_parent_anchors(anchor_detail)
@@ -589,6 +622,7 @@ def run_stage_3() -> None:
             f"{int(row['eligible_parent_count']):,} eligible parents, "
             f"{int(row['mismatch_count']):,} mismatches)"
         )
+    print(f"  [timing] STAGE 3 total: {time.perf_counter() - stage3_t0:.1f}s")
 
 
 # ---------------------------------------------------------------------------

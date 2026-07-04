@@ -337,7 +337,10 @@ def _ninth_fuel_tree(df: pd.DataFrame, subtotal_fuel_codes: set[str]) -> pd.Data
     return result[TREE_COLS].reset_index(drop=True)
 
 
-def build_ninth_tree(data_csv_path: Path = NINTH_DATA_PATH) -> pd.DataFrame:
+def build_ninth_tree(
+    data_csv_path: Path = NINTH_DATA_PATH,
+    data_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """
     Build 9th Edition sector and fuel hierarchy from the balance data CSV.
 
@@ -345,7 +348,7 @@ def build_ninth_tree(data_csv_path: Path = NINTH_DATA_PATH) -> pd.DataFrame:
     data: a node is marked True if subtotal_results is True for any row with that
     sector path or fuel code across all economies and scenarios.
     """
-    df = pd.read_csv(data_csv_path, dtype=object)
+    df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
     subtotal_sector_codes, subtotal_fuel_codes = _build_ninth_subtotal_results_sets(df)
     sector_tree = _ninth_sector_tree(df, subtotal_sector_codes)
     fuel_tree   = _ninth_fuel_tree(df, subtotal_fuel_codes)
@@ -808,6 +811,7 @@ def validate_ninth_recursive_sums(
     tolerance: float = 0.01,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     scenario_filter: str = "reference",
+    data_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Validate projected Ninth fuel parents against children in exact source context.
@@ -820,7 +824,7 @@ def validate_ninth_recursive_sums(
     and all non-zero children have one unambiguous ESTO mapping and the child
     coverage is complete.
     """
-    df = pd.read_csv(data_csv_path, dtype=object)
+    df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
     year_cols = [
         column
         for column in df.columns
@@ -990,6 +994,7 @@ def validate_ninth_sector_recursive_sums(
     tolerance: float = 0.01,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     scenario_filter: str = "reference",
+    data_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Validate projected Ninth sub1sector parents against sub2sector children.
@@ -1000,7 +1005,7 @@ def validate_ninth_sector_recursive_sums(
     _build_source_inconsistency_lookup can mark matching Stage B flow-axis
     mismatches as confirmed_inherited.
     """
-    df = pd.read_csv(data_csv_path, dtype=object)
+    df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
     year_cols = [
         c for c in df.columns
         if str(c).isdigit() and int(c) > int(leap_var_base_year)
@@ -1135,6 +1140,7 @@ def validate_ninth_fuel_recursive_sums(
     tolerance: float = 0.01,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     scenario_filter: str = "reference",
+    data_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Validate projected Ninth fuel parents (subfuels='x') against subfuel children.
@@ -1145,7 +1151,7 @@ def validate_ninth_fuel_recursive_sums(
     partition labels so that _build_source_inconsistency_lookup can mark matching
     Stage B product-axis mismatches as confirmed_inherited.
     """
-    df = pd.read_csv(data_csv_path, dtype=object)
+    df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
     year_cols = [
         c for c in df.columns
         if str(c).isdigit() and int(c) > int(leap_var_base_year)

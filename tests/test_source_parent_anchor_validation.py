@@ -80,3 +80,87 @@ def test_missing_intermediate_resolves_to_grandchildren() -> None:
 def test_zero_eligible_summary_is_not_passed() -> None:
     summary = summarise_source_parent_anchors(pd.DataFrame())
     assert summary.empty
+
+
+# --- Focused tests for the vectorized restructure of the anchor loop ---
+
+def _multi_partition_fixture():
+    """Parent P over two economies and two years; comparison only for E1."""
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 10},
+        {"source_system": "ESTO", "economy": "E2", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 20},
+        {"source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2023, "source_flow": "F", "source_product": "P", "value": 5},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.1", "component_esto_flow": "F", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.2", "component_esto_flow": "F", "component_esto_product": "P.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.2", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 4},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "common_row_id": "c2", "value": 6},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2023, "common_row_id": "c1", "value": 2},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2023, "common_row_id": "c2", "value": 3},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_partitions_do_not_bleed_and_absent_frontier_fails() -> None:
+    detail = validate_source_parent_anchors(*_multi_partition_fixture())
+    by_key = {(r["economy"], r["year"]): r for _, r in detail.iterrows()}
+    # Each (economy, year) keeps its own parent total — no cross-partition sum.
+    assert by_key[("E1", 2022)]["parent_value"] == 10
+    assert by_key[("E1", 2022)]["frontier_sum"] == 10
+    assert by_key[("E1", 2022)]["status"] == "passed"
+    assert by_key[("E1", 2023)]["parent_value"] == 5
+    assert by_key[("E1", 2023)]["frontier_sum"] == 5
+    assert by_key[("E1", 2023)]["status"] == "passed"
+    # E2 has a resolvable frontier but no comparison rows -> frontier_rows_absent.
+    assert by_key[("E2", 2022)]["parent_value"] == 20
+    assert by_key[("E2", 2022)]["frontier_sum"] == 0
+    assert by_key[("E2", 2022)]["status"] == "failed"
+    assert by_key[("E2", 2022)]["reason"] == "frontier_rows_absent"
+
+
+def test_signed_parent_and_frontier_sums() -> None:
+    source, tree, mappings, common, comparison = _multi_partition_fixture()
+    # Split E1/2022 parent into a positive and a negative row (nets to 10).
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 12},
+        {"source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": -2},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 13},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E1", "scenario": "historical", "year": 2022, "common_row_id": "c2", "value": -3},
+    ])
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+    assert row["parent_value"] == 10
+    assert row["parent_positive_value"] == 12
+    assert row["parent_negative_value"] == -2
+    assert row["frontier_sum"] == 10
+    assert row["frontier_positive_sum"] == 13
+    assert row["frontier_negative_sum"] == -3
+    assert row["status"] == "passed"
+
+
+def test_scope_without_anchorable_boundary_is_skipped() -> None:
+    source, tree, mappings, common, comparison = _multi_partition_fixture()
+    source = source[(source["economy"] == "E1") & (source["year"] == 2022)]
+    # Add a second scope that ESTO participates in but whose common rows do NOT
+    # cover P.1/P.2 -> frontier resolves to no common_row_id -> skipped.
+    common = pd.concat([common, pd.DataFrame([
+        {"comparison_scope": "leap_vs_esto", "component_esto_flow": "F", "component_esto_product": "OTHER", "common_row_id": "cX"},
+    ])], ignore_index=True)
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    by_scope = {r["comparison_scope"]: r for _, r in detail.iterrows()}
+    assert by_scope["esto_only"]["status"] == "passed"
+    assert by_scope["leap_vs_esto"]["status"] == "skipped"
+    assert by_scope["leap_vs_esto"]["reason"] == "no_anchorable_common_esto_boundary"
