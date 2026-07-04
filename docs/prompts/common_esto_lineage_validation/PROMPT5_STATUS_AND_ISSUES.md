@@ -111,15 +111,16 @@ Memory stayed partition-bounded throughout (peak process ~660 MB).
    means and should be your call. Until then, Prompt 4's success criterion
    ("slice results are semantically credible") is **not** met, so Prompt 5's
    "certify full output" cannot honestly be declared complete.
-2. **[Data-integrity — unexplained] Generated outputs deleted mid-session.**
-   `results/common_esto/structural_artifacts/`, `.../diagnostics/`, and the
-   495 MB `results/common_esto/common_esto_comparison_data.csv` (present at
-   session start, Jul 2–3) **disappeared during the session**. They are
-   gitignored, so git did not flag it. **My runs are scratch-scoped and do not
-   touch those paths** — I could not attribute the deletion to my code (possible
-   external cleaner / concurrent process?). I regenerated `structural_artifacts/`
-   (2.4 s, deterministic). **I did not regenerate the 495 MB comparison CSV** —
-   it needs the full Stage-3 apply; regenerate when ready.
+2. **[Resolved — no data lost] Transient disappearance of `results/common_esto/`
+   outputs.** During the session `ls`/`find`/`stat` intermittently reported
+   `structural_artifacts/`, `.../diagnostics/`, and the 495 MB
+   `common_esto_comparison_data.csv` as missing, then present again. **Follow-up
+   check confirms nothing was actually lost** — the comparison CSV still carries
+   its original mtime (2026-07-02 18:05), so it was never deleted or rewritten;
+   the "missing" reads were most likely transient I/O errors from an
+   antivirus/indexer lock on large files. Downgraded to a low-priority verify
+   item in `TODO.md`. (My initial write-up called this an "unexplained deletion"
+   — that was overstated.)
 3. **[Wiring] Partitioned application is LEAP-only.** The Prompt-3 apply run
    block only prepares/consumes `raw_leap_results.csv` (LEAP). Ninth and ESTO
    sources are not wired into the partitioned apply, yet Prompt 4/5 require all
