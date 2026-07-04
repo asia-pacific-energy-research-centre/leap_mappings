@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
+
 #%%
 COMMON_STRUCTURE_VERSION = "common_esto_v1"
 AXIS_PARTITION_SOURCE_COMPONENT_LIMIT = 50
@@ -229,7 +231,7 @@ def load_code_name_lookups(outlook_mappings_path: Path) -> tuple[dict[str, str],
     product_lookup: dict[str, str] = {}
     try:
         labels_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_display_names", dtype=object)
-        labels_df = labels_df.fillna("")
+        labels_df = filter_used_in_leap_initialisation(labels_df).fillna("")
     except Exception:
         return flow_lookup, product_lookup
     for _, row in labels_df.iterrows():

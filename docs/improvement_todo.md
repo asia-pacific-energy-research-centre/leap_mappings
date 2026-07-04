@@ -121,3 +121,13 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Rep
 - Clearly separate blocking validation failures from review diagnostics.
 - Keep `README.md`, `docs/mappings_system.md`, and the implemented pipeline behaviour synchronized.
 
+## 8. Check the LEAP side of no-data mapping rows once full LEAP output sheets exist
+
+**Status:** Proposed
+
+`codebase/mapping_tools/build_no_data_mapping_rows.py` flags `leap_combined_esto` and `leap_combined_ninth` rows whose non-LEAP side (ESTO or 9th Outlook) has no non-zero data anywhere. It currently assumes the LEAP side always has no data, because we do not yet have full LEAP output sheets in a form comparable to the ESTO/9th source tables. Once those output sheets are available:
+
+- Load real LEAP result data and compute non-zero (leap_sector_name_full_path, raw_leap_fuel_name) pairs, the same way `load_nonzero_esto_pairs`/`load_nonzero_ninth_pairs` do for the other two systems.
+- Replace the `leap_side_has_data` placeholder (`pd.NA`) with a real boolean.
+- Restrict `leap_combined_esto`/`leap_combined_ninth` flags to rows where **both** sides have no data, matching the `ninth_pairs_to_esto_pairs` logic already in place.
+

@@ -964,6 +964,15 @@ def build_intersecting_axis_group_diagnostics(
                 continue
             if left["component_set"] == right["component_set"]:
                 continue
+            is_subset_relationship = (
+                left["component_set"] <= right["component_set"]
+                or right["component_set"] <= left["component_set"]
+            )
+            if is_subset_relationship:
+                # One group's components fully contain the other's — a parent/detail
+                # (or full-range/partial-range) relationship, expected in the ESTO
+                # hierarchy rather than a genuine classification conflict.
+                continue
             diagnostics_rows.append(
                 {
                     "axis": axis,
@@ -977,9 +986,9 @@ def build_intersecting_axis_group_diagnostics(
                     "right_only_components": "|".join(sorted(right["component_set"] - left["component_set"])),
                     "left_common_row_ids": left["common_row_ids"],
                     "right_common_row_ids": right["common_row_ids"],
-                    "qa_status": "review_allowed_parent_detail_overlap",
-                    "qa_severity": "info",
-                    "qa_reason": f"intersecting_common_{axis}_groups_allowed_if_subtotals_validate",
+                    "qa_status": "review_required_partial_overlap",
+                    "qa_severity": "warning",
+                    "qa_reason": f"intersecting_common_{axis}_groups_partial_overlap_not_parent_detail",
                 }
             )
     return pd.DataFrame(diagnostics_rows)

@@ -17,6 +17,7 @@ maintenance reruns.
 from __future__ import annotations
 
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -111,6 +112,17 @@ def run(
     if unmatched:
         preview = "\n".join(unmatched[:20])
         raise ValueError(f"{len(unmatched)} mismatch row(s) had no matching workbook row:\n{preview}")
+
+    print("\n" + "=" * 70)
+    print("CONFIRMATION REQUIRED")
+    print("=" * 70)
+    print(f"About to flip {updated_rows} cell(s) to True and write:")
+    print(f"  {mapping_workbook_path}")
+    print(f"A timestamped archive was already created at:\n  {archive_path}")
+    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if answer != "yes":
+        print("Aborted -- no changes written.")
+        sys.exit(0)
 
     wb.save(mapping_workbook_path)
 

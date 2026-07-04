@@ -10,6 +10,7 @@ not represented by a False review decision are removed.
 from __future__ import annotations
 
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -256,6 +257,21 @@ def run(
     for row_values in override_rows:
         override_ws.append(row_values)
 
+    print("\n" + "=" * 70)
+    print("CONFIRMATION REQUIRED")
+    print("=" * 70)
+    print(f"About to write {updated_cells} cell update(s) to:")
+    print(f"  {mapping_workbook_path}")
+    print(f"and rebuild exception/override sheets in:")
+    print(f"  {exception_workbook_path}")
+    print(f"Timestamped archives were already created at:")
+    print(f"  {mapping_archive}")
+    print(f"  {exception_archive}")
+    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if answer != "yes":
+        print("Aborted -- no changes written.")
+        sys.exit(0)
+
     mapping_wb.save(mapping_workbook_path)
     exception_wb.save(exception_workbook_path)
 
@@ -274,7 +290,7 @@ def run(
 #%%
 # --- Notebook run block ---
 
-APPLY_SUBTOTAL_REVIEW = True
+APPLY_SUBTOTAL_REVIEW = False
 
 if APPLY_SUBTOTAL_REVIEW:
     APPLY_RESULT = run()

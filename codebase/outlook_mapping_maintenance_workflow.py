@@ -1460,6 +1460,16 @@ def run(
         print("  subtotal preview only; workbook update skipped (explicit apply flag not set)")
         return
 
+    print("\n" + "=" * 70)
+    print("CONFIRMATION REQUIRED")
+    print("=" * 70)
+    print(f"About to apply reviewed subtotal overrides and write:")
+    print(f"  {WORKBOOK_PATH}")
+    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if answer != "yes":
+        print("Aborted -- no changes written.")
+        sys.exit(0)
+
     _archive_workbook(WORKBOOK_PATH)
 
     # NOTE: lookup-based recompute-and-write of leap_is_subtotal /

@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from codebase.mapping_issue_exceptions import EXCEPTION_WORKBOOK_PATH, split_allowed_rows
+from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
 USE_CASES = [
@@ -1264,7 +1265,8 @@ def _is_combined_esto_flow(label: str) -> bool:
 def _build_flow_prefix_to_label(workbook_path: Path) -> dict[str, str]:
     """Build {code_prefix: full_label} from esto_flow entries in leap_display_names."""
     try:
-        df = pd.read_excel(workbook_path, sheet_name="leap_display_names", dtype=object).fillna("")
+        df = pd.read_excel(workbook_path, sheet_name="leap_display_names", dtype=object)
+        df = filter_used_in_leap_initialisation(df).fillna("")
     except Exception:
         return {}
     result: dict[str, str] = {}
