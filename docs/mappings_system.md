@@ -1258,31 +1258,50 @@ source-tree vocabulary is incomplete relative to the mapped boundary.
 ### Contributor breakdown (explaining a failed anchor)
 
 `run_anchor_contribution_breakdown()` (same module) decomposes each failed
-anchor's single `difference` into the individual ESTO `(flow, product)` pairs
-that produce it. It reconciles the same slice, then for every check whose status
-is in `statuses` (default `("failed",)`) emits one contributor row per pair in
-the boundary — the union of the raw `source_pairs` and converted `components`,
-so a pair present on only one side still appears with the other side zero. It
-adds **no new numeric observation**: it re-expresses the totals reconcile
-already compares, and each check's summary carries a `breakdown_remainder` that
-must reproduce reconcile's own `difference` (asserted ≤ 1e-9). Outputs land in
-`results/common_esto/anchor_contribution_breakdown/`:
-`anchor_contribution_breakdown.csv` (one row per contributor, sorted so the
-largest `|contribution_difference|` leads each check, with a `counting_role` and
-an `exclusion_reason` such as `raw_present_converted_row_missing`),
-`anchor_contribution_summary.csv` (one row per check with `check_difference`,
-`breakdown_remainder`, `lineage_complete`), and `contribution_manifest.json`.
-`check_id` is a deterministic hash of the semantic check key plus the schema
-version, never a cache-local index.
+anchor's single `difference` into the mapping contributors behind it. It
+reconciles the same slice, then for every check whose status is in `statuses`
+(default `("failed",)`) walks the boundary's mapping **edges** and emits
+contributor rows. It adds **no new numeric observation**: it re-expresses the
+totals reconcile already compares, and each check's `breakdown_remainder` must
+reproduce reconcile's own `difference` (asserted ≤ 1e-9).
 
-On the `20USA` ESTO slice this reproduces the two oil-family failures exactly
-(`breakdown_remainder` = 0). Both resolve to `08 Transfers` and `17 Non-energy
-use` rows that are members of the raw parent but absent from the converted
-exact-row surface: `06 Crude oil & NGL` = −6,540.03 PJ (NGL transfers −7,022.39,
-crude-oil transfers +746.93, refinery-feedstock transfers −264.58) and
-`07 Petroleum products` = +11,078.06 PJ (LPG/ethane transfers and ethane
-non-energy use dominating). This is Phase 1 of the mappings conservation-lineage
-plan — ESTO only, `failed` only, no change to any converted output.
+The raw side (LEAP/Ninth vocabulary) and the converted side (ESTO vocabulary)
+are joined by the edges, so this is **Option A — honest, no allocation, no
+rerun**:
+
+- A **bijective** edge (one source pair ↔ one ESTO component, neither fanning
+  out nor shared) is netted per row as `raw_value − converted_value`
+  (`counting_role = resolved_pair`, `value_quality = exact_direct`). For ESTO
+  every edge is an identity row, so every contributor resolves and the output
+  matches the pure ESTO decomposition exactly.
+- An **entangled** member — a source pair that fans out to several components,
+  or a component fed by several sources — is *not* split, because the converters
+  do not record the allocation share that split it. Fan-out sources and targets
+  are listed one-sided (`raw_source` / `converted_component` rows) and flagged
+  `value_quality = unknown`, `mapping_status = unsafe_unallocated_fanout` (or
+  `unsafe_many_to_one`), with no fabricated per-edge difference.
+
+Every source pair and component appears exactly once, so the two column sums
+equal reconcile's `raw_parent_total` / `converted_boundary_total` and the total
+difference always reproduces. The per-check summary's `fully_attributed` records
+whether it reproduced per row (no entangled residue) or only in aggregate;
+`resolved_difference` + `unresolved_difference` = `breakdown_difference`.
+
+Outputs land in `results/common_esto/anchor_contribution_breakdown/`:
+`anchor_contribution_breakdown.csv`, `anchor_contribution_summary.csv`, and
+`contribution_manifest.json`. `check_id` is a deterministic hash of the semantic
+check key plus the schema version, never a cache-local index.
+
+On the `20USA` slice all 14 failing anchors reproduce (`breakdown_remainder` ≤
+4e-12). **8 are fully attributed** per row — both ESTO oil families
+(`06 Crude oil & NGL` = −6,540.03 PJ and `07 Petroleum products` = +11,078.06
+PJ, resolving to `08 Transfers` / `17 Non-energy use` rows absent from the
+converted surface), LEAP `Hydrogen transformation`, and the 1:1 Ninth transport
+/ biomass anchors. **6 are partially attributed** — the fan-out Ninth anchors
+(`08_transfers`, `09_total_transformation_sector`, `14_industry_sector`,
+`16_others`), where the clean pairs net per row and the fanned-out rows are
+flagged unresolved. No converted output is changed. Applying allocation shares to
+attribute or correct the fan-out (Options B/C) is a separate, reviewed decision.
 
 ---
 

@@ -204,7 +204,7 @@ class ParentBoundary:
 
     __slots__ = (
         "parent_code", "source_pairs", "components", "common_rows",
-        "member_count", "is_rollup", "contaminating_codes",
+        "member_count", "is_rollup", "contaminating_codes", "edges",
     )
 
     def __init__(
@@ -216,6 +216,7 @@ class ParentBoundary:
         member_count: int,
         is_rollup: bool,
         contaminating_codes: frozenset[str],
+        edges: tuple[tuple[str, str, str, str, str], ...] = (),
     ) -> None:
         self.parent_code = parent_code
         # Mapped raw source pairs under this parent -- the left side sums these
@@ -227,6 +228,14 @@ class ParentBoundary:
         self.member_count = member_count
         self.is_rollup = is_rollup
         self.contaminating_codes = contaminating_codes
+        # De-duplicated mapping edges under this parent, each a tuple of
+        # ``(source_flow, source_product, esto_flow, esto_product, relationship_id)``.
+        # The raw side keys on the first two, the converted side on the next two;
+        # for ESTO identity rows they coincide. Edges carry the source->target
+        # topology that the aggregate ``source_pairs``/``components`` sets lose,
+        # so a contributor breakdown can tell a clean 1:1 pair apart from a
+        # fanned-out one.
+        self.edges = edges
 
     @property
     def anchorable(self) -> bool:
@@ -347,9 +356,22 @@ def build_parent_boundaries(
         contaminating: set[str] = set()
         for cr in common_rows:
             contaminating |= common_contributors.get(cr, set()) - codes
+        relationship_ids = (
+            members["relationship_id"].fillna("").astype(str)
+            if "relationship_id" in members
+            else pd.Series([""] * len(members))
+        )
+        edge_map: dict[tuple[str, str, str, str], str] = {}
+        for sf, sp, cf, cp, rid in zip(
+            members["original_source_flow"], members["original_source_product"],
+            members["component_esto_flow"], members["component_esto_product"],
+            relationship_ids,
+        ):
+            edge_map.setdefault((sf, sp, cf, cp), rid)
+        edges = tuple((sf, sp, cf, cp, rid) for (sf, sp, cf, cp), rid in edge_map.items())
         boundaries[parent] = ParentBoundary(
             parent, source_pairs, components, common_rows, len(members), is_rollup,
-            frozenset(contaminating),
+            frozenset(contaminating), edges,
         )
     return boundaries
 
@@ -447,37 +469,52 @@ def reconcile_partition(
 # --------------------------------------------------------------------------- #
 #
 # A reconcile check reports a single ``difference`` per parent. This layer
-# decomposes that one number into the individual ESTO ``(flow, product)`` pairs
-# that make it up, so a failed anchor can be read as "these specific rows are
-# present on the raw side but missing/different on the converted side" rather
-# than an unexplained aggregate. It adds *no new numeric observation*: it is a
-# pure re-expression of the same raw and converted totals reconcile already
-# compares, and the per-check sum is asserted to reproduce reconcile's own
-# ``difference`` to floating-point tolerance (``breakdown_remainder``).
+# decomposes that one number into the individual mapping contributors behind it,
+# so a failed anchor reads as "these specific rows drive the gap" rather than an
+# unexplained aggregate. It adds *no new numeric observation*: it re-expresses
+# the same raw and converted totals reconcile already compares, and the per-check
+# ``breakdown_remainder`` is asserted to reproduce reconcile's own ``difference``.
 #
-# For ESTO the raw source pairs and the converted components are the same exact
-# identity rows, so each contributor aligns one-to-one. The union of a
-# boundary's ``source_pairs`` (raw side) and ``components`` (converted side) is
-# taken so that a pair present on only one side still appears -- with the other
-# side zero -- and the two column sums still equal ``raw_parent_total`` and
-# ``converted_boundary_total`` respectively.
+# The raw side and the converted side live in different vocabularies (LEAP/Ninth
+# codes vs ESTO codes) joined by the boundary's mapping ``edges``. This layer is
+# **Option A -- honest, no allocation, no rerun**:
+#
+# * A *bijective* edge (one source pair <-> one ESTO component, neither fanning
+#   out nor shared) is netted per row: ``raw_value - converted_value``. For ESTO
+#   every edge is an identity row, so every contributor is bijective and the
+#   output matches the pure ESTO decomposition exactly.
+# * Anything *entangled* -- a source pair that fans out to several components, or
+#   a component fed by several sources -- is NOT split per edge, because the
+#   converters do not record the allocation share that split it. Those rows are
+#   emitted one-sided (raw ledger and converted ledger) and flagged
+#   ``value_quality=unknown`` / ``mapping_status=unsafe_unallocated_fanout`` (or
+#   ``unsafe_many_to_one``). No per-edge difference is fabricated for them.
+#
+# Every source pair and every component still appears exactly once, so the two
+# column sums equal reconcile's ``raw_parent_total`` and
+# ``converted_boundary_total`` and the total difference always reproduces --
+# ``fully_attributed`` records whether it did so per row (no entangled residue)
+# or only in aggregate.
 
-BREAKDOWN_SCHEMA_VERSION = "anchor_contribution_v1"
+BREAKDOWN_SCHEMA_VERSION = "anchor_contribution_v2"
 
 CONTRIBUTION_COLUMNS = [
     "check_id", "validation_axis", "source_system", "economy", "scenario", "year",
-    "parent_code", "boundary_kind", "check_status",
-    "esto_flow", "esto_product",
+    "parent_code", "boundary_kind", "check_status", "counting_role",
+    "source_flow", "source_product", "esto_flow", "esto_product", "relationship_id",
     "raw_value", "converted_value", "contribution_difference",
-    "counting_role", "exclusion_reason",
+    "mapping_cardinality", "value_quality", "mapping_status", "exclusion_reason",
 ]
 
 CONTRIBUTION_SUMMARY_COLUMNS = [
     "check_id", "validation_axis", "source_system", "economy", "scenario", "year",
     "parent_code", "boundary_kind", "check_status", "check_difference",
     "breakdown_raw_total", "breakdown_converted_total", "breakdown_difference",
-    "breakdown_remainder", "contributor_count", "explaining_contributor_count",
-    "lineage_complete",
+    "breakdown_remainder",
+    "resolved_difference", "resolved_contributor_count",
+    "unresolved_raw_total", "unresolved_converted_total", "unresolved_difference",
+    "unresolved_source_count", "unresolved_component_count",
+    "fully_attributed", "lineage_complete",
 ]
 
 # A contribution counts as "explaining" the failure once its raw/converted gap
@@ -503,19 +540,34 @@ def check_id(
     return "chk_" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
 
-def _contribution_reason(in_raw: bool, in_conv: bool, raw_v: float, conv_v: float) -> str:
-    """Classify why a contributor differs between the raw and converted sides."""
-    if in_raw and in_conv:
-        if abs(raw_v - conv_v) <= _EXPLAINING_EPS:
-            return ""  # mapped cleanly, no contribution to the difference
-        if conv_v == 0.0:
-            return "raw_present_converted_row_missing"
-        if raw_v == 0.0:
-            return "converted_present_raw_row_missing"
-        return "value_mismatch"
-    if in_raw:
-        return "structural_member_raw_side_only"
-    return "structural_member_converted_side_only"
+def _resolved_reason(raw_v: float, conv_v: float) -> str:
+    """Why a *bijective* contributor differs between the raw and converted sides."""
+    if abs(raw_v - conv_v) <= _EXPLAINING_EPS:
+        return ""  # mapped cleanly, no contribution to the difference
+    if conv_v == 0.0:
+        return "raw_present_converted_row_missing"
+    if raw_v == 0.0:
+        return "converted_present_raw_row_missing"
+    return "value_mismatch"
+
+
+def _edge_topology(
+    edges: tuple[tuple[str, str, str, str, str], ...]
+) -> tuple[
+    dict[tuple[str, str], set[tuple[str, str]]],
+    dict[tuple[str, str], set[tuple[str, str]]],
+    dict[tuple[tuple[str, str], tuple[str, str]], str],
+]:
+    """Index mapping edges into source->targets, target<-sources, and edge ids."""
+    targets_of: dict[tuple[str, str], set[tuple[str, str]]] = defaultdict(set)
+    sources_of: dict[tuple[str, str], set[tuple[str, str]]] = defaultdict(set)
+    relationship_of: dict[tuple[tuple[str, str], tuple[str, str]], str] = {}
+    for sf, sp, cf, cp, rid in edges:
+        source, target = (sf, sp), (cf, cp)
+        targets_of[source].add(target)
+        sources_of[target].add(source)
+        relationship_of[(source, target)] = rid
+    return targets_of, sources_of, relationship_of
 
 
 def build_anchor_contributions(
@@ -527,13 +579,15 @@ def build_anchor_contributions(
     tolerance: float = 0.01,
     statuses: tuple[str, ...] = ("failed",),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Decompose each selected anchor into per-``(esto_flow, esto_product)`` rows.
+    """Decompose each selected anchor into its mapping contributors (Option A).
 
     Reconciles the partition first (so status/difference match the anchor
     validation exactly), then for every parent whose status is in ``statuses``
-    emits one contributor row per ESTO pair in the boundary, and a per-check
-    summary whose ``breakdown_remainder`` proves the contributions reproduce
-    reconcile's own ``difference``.
+    emits contributor rows: bijective edges netted per row, entangled fan-out /
+    many-to-one members listed one-sided and flagged unresolved. The per-check
+    summary's ``breakdown_remainder`` proves the contributions reproduce
+    reconcile's own ``difference``; ``fully_attributed`` says whether every
+    contribution was attributed per row.
 
     Returns ``(contributions_df, summary_df)``.
     """
@@ -550,6 +604,7 @@ def build_anchor_contributions(
     economy = str(raw_partition["economy"].iloc[0])
     scenario = str(raw_partition["scenario"].iloc[0])
     year = raw_partition["year"].iloc[0]
+    year_out = int(year) if pd.notna(year) else ""
 
     raw = raw_partition.copy()
     raw["value"] = pd.to_numeric(raw["value"], errors="coerce").fillna(0.0)
@@ -571,56 +626,125 @@ def build_anchor_contributions(
         parent = drow["parent_code"]
         boundary = boundaries_by_axis[axis][parent]
         cid = check_id(source_system, economy, scenario, year, axis, parent)
-
-        pairs = sorted(set(boundary.source_pairs) | set(boundary.components))
-        rows_for_check: list[dict[str, Any]] = []
-        for flow, product in pairs:
-            in_raw = (flow, product) in boundary.source_pairs
-            in_conv = (flow, product) in boundary.components
-            raw_v = raw_pair_totals.get((flow, product), 0.0) if in_raw else 0.0
-            conv_v = converted_totals.get((flow, product), 0.0) if in_conv else 0.0
-            counting_role = (
-                "raw_and_converted" if in_raw and in_conv
-                else "raw_only" if in_raw else "converted_only"
-            )
-            rows_for_check.append({
-                "check_id": cid, "validation_axis": axis,
-                "source_system": source_system, "economy": economy,
-                "scenario": scenario,
-                "year": int(year) if pd.notna(year) else "",
-                "parent_code": parent, "boundary_kind": boundary.kind,
-                "check_status": drow["status"],
-                "esto_flow": flow, "esto_product": product,
-                "raw_value": raw_v, "converted_value": conv_v,
-                "contribution_difference": raw_v - conv_v,
-                "counting_role": counting_role,
-                "exclusion_reason": _contribution_reason(in_raw, in_conv, raw_v, conv_v),
-            })
-        # Largest contributions to the failure first; zero-diff members trail.
-        rows_for_check.sort(key=lambda r: abs(r["contribution_difference"]), reverse=True)
-        contribution_rows.extend(rows_for_check)
-
-        breakdown_raw = sum(r["raw_value"] for r in rows_for_check)
-        breakdown_converted = sum(r["converted_value"] for r in rows_for_check)
-        breakdown_difference = breakdown_raw - breakdown_converted
-        remainder = breakdown_difference - float(drow["difference"])
-        explaining = sum(
-            1 for r in rows_for_check
-            if abs(r["contribution_difference"]) > _EXPLAINING_EPS
-        )
-        summary_rows.append({
-            "check_id": cid, "validation_axis": axis,
-            "source_system": source_system, "economy": economy,
-            "scenario": scenario, "year": int(year) if pd.notna(year) else "",
+        base = {
+            "check_id": cid, "validation_axis": axis, "source_system": source_system,
+            "economy": economy, "scenario": scenario, "year": year_out,
             "parent_code": parent, "boundary_kind": boundary.kind,
             "check_status": drow["status"],
+        }
+
+        targets_of, sources_of, relationship_of = _edge_topology(boundary.edges)
+
+        resolved_rows: list[dict[str, Any]] = []
+        raw_ledger_rows: list[dict[str, Any]] = []
+        converted_ledger_rows: list[dict[str, Any]] = []
+
+        # A source pair resolves iff it maps to exactly one component and that
+        # component is fed by exactly one source: a clean 1:1 whose value can be
+        # honestly netted. Everything else is entangled and left unallocated.
+        resolved_sources: set[tuple[str, str]] = set()
+        resolved_targets: set[tuple[str, str]] = set()
+        for source, targets in targets_of.items():
+            if len(targets) != 1:
+                continue
+            (target,) = tuple(targets)
+            if len(sources_of[target]) != 1:
+                continue
+            resolved_sources.add(source)
+            resolved_targets.add(target)
+            raw_v = raw_pair_totals.get(source, 0.0)
+            conv_v = converted_totals.get(target, 0.0)
+            resolved_rows.append({
+                **base, "counting_role": "resolved_pair",
+                "source_flow": source[0], "source_product": source[1],
+                "esto_flow": target[0], "esto_product": target[1],
+                "relationship_id": relationship_of.get((source, target), ""),
+                "raw_value": raw_v, "converted_value": conv_v,
+                "contribution_difference": raw_v - conv_v,
+                "mapping_cardinality": "direct", "value_quality": "exact_direct",
+                "mapping_status": "resolved",
+                "exclusion_reason": _resolved_reason(raw_v, conv_v),
+            })
+
+        # Entangled raw ledger: source pairs not cleanly bijective.
+        for source, targets in targets_of.items():
+            if source in resolved_sources:
+                continue
+            raw_v = raw_pair_totals.get(source, 0.0)
+            fanout = len(targets) > 1
+            cardinality = "fanout" if fanout else "many_to_one"
+            status = "unsafe_unallocated_fanout" if fanout else "unsafe_many_to_one"
+            raw_ledger_rows.append({
+                **base, "counting_role": "raw_source",
+                "source_flow": source[0], "source_product": source[1],
+                "esto_flow": "", "esto_product": "",
+                "relationship_id": "|".join(sorted(
+                    relationship_of.get((source, t), "") for t in targets
+                )).strip("|"),
+                "raw_value": raw_v, "converted_value": None,
+                "contribution_difference": None,
+                "mapping_cardinality": cardinality, "value_quality": "unknown",
+                "mapping_status": status,
+                "exclusion_reason": (
+                    "fanout_source_unallocated" if fanout
+                    else "many_to_one_source_unattributed"
+                ),
+            })
+
+        # Entangled converted ledger: components not cleanly bijective.
+        for target, sources in sources_of.items():
+            if target in resolved_targets:
+                continue
+            conv_v = converted_totals.get(target, 0.0)
+            fed_by_fanout = any(len(targets_of[s]) > 1 for s in sources)
+            cardinality = "fanout_target" if fed_by_fanout else "many_to_one_target"
+            status = "unsafe_unallocated_fanout" if fed_by_fanout else "unsafe_many_to_one"
+            converted_ledger_rows.append({
+                **base, "counting_role": "converted_component",
+                "source_flow": "", "source_product": "",
+                "esto_flow": target[0], "esto_product": target[1],
+                "relationship_id": "",
+                "raw_value": None, "converted_value": conv_v,
+                "contribution_difference": None,
+                "mapping_cardinality": cardinality, "value_quality": "unknown",
+                "mapping_status": status,
+                "exclusion_reason": (
+                    "fanout_target_unallocated" if fed_by_fanout
+                    else "many_to_one_target_unattributed"
+                ),
+            })
+
+        resolved_rows.sort(key=lambda r: abs(r["contribution_difference"]), reverse=True)
+        raw_ledger_rows.sort(key=lambda r: abs(r["raw_value"]), reverse=True)
+        converted_ledger_rows.sort(key=lambda r: abs(r["converted_value"]), reverse=True)
+        contribution_rows.extend(resolved_rows + raw_ledger_rows + converted_ledger_rows)
+
+        resolved_difference = sum(r["contribution_difference"] for r in resolved_rows)
+        unresolved_raw = sum(r["raw_value"] for r in raw_ledger_rows)
+        unresolved_converted = sum(r["converted_value"] for r in converted_ledger_rows)
+        unresolved_difference = unresolved_raw - unresolved_converted
+        breakdown_raw = sum(r["raw_value"] for r in resolved_rows) + unresolved_raw
+        breakdown_converted = (
+            sum(r["converted_value"] for r in resolved_rows) + unresolved_converted
+        )
+        breakdown_difference = breakdown_raw - breakdown_converted
+        remainder = breakdown_difference - float(drow["difference"])
+        fully_attributed = not raw_ledger_rows and not converted_ledger_rows
+        summary_rows.append({
+            **base,
             "check_difference": float(drow["difference"]),
             "breakdown_raw_total": breakdown_raw,
             "breakdown_converted_total": breakdown_converted,
             "breakdown_difference": breakdown_difference,
             "breakdown_remainder": remainder,
-            "contributor_count": len(rows_for_check),
-            "explaining_contributor_count": explaining,
+            "resolved_difference": resolved_difference,
+            "resolved_contributor_count": len(resolved_rows),
+            "unresolved_raw_total": unresolved_raw,
+            "unresolved_converted_total": unresolved_converted,
+            "unresolved_difference": unresolved_difference,
+            "unresolved_source_count": len(raw_ledger_rows),
+            "unresolved_component_count": len(converted_ledger_rows),
+            "fully_attributed": bool(fully_attributed),
             "lineage_complete": bool(abs(remainder) <= _EXPLAINING_EPS),
         })
 
@@ -1066,6 +1190,7 @@ def run_anchor_contribution_breakdown(
     summary_all.to_csv(staging / "anchor_contribution_summary.csv", index=False)
 
     incomplete = summary_all[~summary_all["lineage_complete"]] if not summary_all.empty else summary_all
+    partial = summary_all[~summary_all["fully_attributed"]] if not summary_all.empty else summary_all
     max_remainder = (
         float(summary_all["breakdown_remainder"].abs().max()) if not summary_all.empty else 0.0
     )
@@ -1080,6 +1205,8 @@ def run_anchor_contribution_breakdown(
         "contributor_rows": int(len(contributions_all)),
         "max_abs_remainder": max_remainder,
         "lineage_complete_all": bool(incomplete.empty),
+        "fully_attributed_count": int((summary_all["fully_attributed"]).sum()) if not summary_all.empty else 0,
+        "partially_attributed_check_ids": partial["check_id"].tolist() if not partial.empty else [],
         "incomplete_check_ids": incomplete["check_id"].tolist() if not incomplete.empty else [],
     }
     (staging / "contribution_manifest.json").write_text(
@@ -1113,8 +1240,9 @@ if RUN_RECONCILIATION:
 
 RUN_CONTRIBUTION_BREAKDOWN = False
 CONTRIBUTION_ECONOMY = "20USA"
-# Default to ESTO only: reproduces the two oil-family failures exactly.
-CONTRIBUTION_SYSTEMS = ("ESTO",)
+# All three systems: ESTO reproduces the oil-family failures per row; LEAP/Ninth
+# net their bijective edges and flag fan-out / many-to-one members unresolved.
+CONTRIBUTION_SYSTEMS = SOURCE_SYSTEMS
 
 if RUN_CONTRIBUTION_BREAKDOWN:
     CONTRIBUTION_RESULT = run_anchor_contribution_breakdown(
