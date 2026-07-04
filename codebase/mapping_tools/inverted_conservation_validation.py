@@ -50,6 +50,7 @@ DIRECTION_CONFIG = {
 
 DEFAULT_STRUCTURAL_PATH = REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv"
 DEFAULT_TREE_PATH = REPO_ROOT / "results/tree_structure/all_dataset_trees.csv"
+DEFAULT_NINTH_FUEL_VALIDATION_PATH = REPO_ROOT / "results/tree_structure/ninth_fuel_validation.csv"
 DEFAULT_RAW_PATHS = {
     "ESTO": REPO_ROOT / "data/00APEC_2025_low_with_subtotals.csv",
     "NINTH": REPO_ROOT / "data/merged_file_energy_ALL_20251106.csv",
@@ -59,6 +60,7 @@ NO_COUNTERPART_COLUMNS = [
     "direction", "counterpart_state", "source_system", "target_system",
     "comparison_scope", "common_row_id", "source_flow", "source_product",
     "target_flow", "target_product", "economy", "scenario", "year", "source_value",
+    "exception_classification", "exception_reason", "subtotal_validation_difference",
 ]
 
 
@@ -215,6 +217,77 @@ def validate_direction_partition(
     unresolved_target = contributions["counting_role"].eq("converted_component")
     contributions.loc[unresolved_target, "converted_value"] = pd.NA
 
+    # Describe each connected source/target set as one relationship group. This
+    # preserves the useful combined total even when individual target values
+    # cannot be allocated.
+    raw_totals = raw_partition.groupby(["source_flow", "source_product"])["value"].sum()
+    group_details: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for axis, axis_boundaries in boundaries.items():
+        for parent, boundary in axis_boundaries.items():
+            targets_of, sources_of, _ = _edge_topology(boundary.edges)
+            unseen = set(targets_of)
+            group_number = 0
+            while unseen:
+                group_number += 1
+                source_stack = [unseen.pop()]
+                group_sources: set[tuple[str, str]] = set()
+                group_targets: set[tuple[str, str]] = set()
+                while source_stack:
+                    source_pair = source_stack.pop()
+                    if source_pair in group_sources:
+                        continue
+                    group_sources.add(source_pair)
+                    for target_pair in targets_of[source_pair]:
+                        if target_pair in group_targets:
+                            continue
+                        group_targets.add(target_pair)
+                        for linked_source in sources_of[target_pair]:
+                            if linked_source not in group_sources:
+                                unseen.discard(linked_source)
+                                source_stack.append(linked_source)
+                group_key = "|".join([
+                    direction, axis, parent,
+                    ";".join(f"{f}::{p}" for f, p in sorted(group_sources)),
+                    ";".join(f"{f}::{p}" for f, p in sorted(group_targets)),
+                ])
+                group_id = "relgrp_" + hashlib.sha1(group_key.encode("utf-8")).hexdigest()[:16]
+                is_bijective = len(group_sources) == 1 and len(group_targets) == 1
+                total = float(sum(raw_totals.get(pair, 0.0) for pair in group_sources))
+                detail = {
+                    "relationship_group_id": group_id,
+                    "involved_source_pairs": " | ".join(
+                        f"{flow} / {product}" for flow, product in sorted(group_sources)
+                    ),
+                    "involved_target_pairs": " | ".join(
+                        f"{flow} / {product}" for flow, product in sorted(group_targets)
+                    ),
+                    "combined_source_value": total,
+                    "individual_target_values_available": bool(is_bijective),
+                    "relationship_explanation": (
+                        "One source pair maps to one target pair."
+                        if is_bijective else
+                        f"{total:g} belongs to this combined target set; no individual target allocation is available."
+                    ),
+                }
+                for source_pair in group_sources:
+                    group_details[(axis, parent, "S:" + "\x1f".join(source_pair))] = detail
+                for target_pair in group_targets:
+                    group_details[(axis, parent, "T:" + "\x1f".join(target_pair))] = detail
+
+    def _group_detail(row: pd.Series) -> dict[str, Any]:
+        if row["counting_role"] in {"resolved_pair", "raw_source"}:
+            key = "S:" + "\x1f".join([str(row["source_flow"]), str(row["source_product"])])
+        else:
+            key = "T:" + "\x1f".join([str(row["esto_flow"]), str(row["esto_product"])])
+        return group_details.get((row["validation_axis"], row["parent_code"], key), {})
+
+    if not contributions.empty:
+        group_frame = pd.DataFrame(
+            [_group_detail(row) for _, row in contributions.iterrows()],
+            index=contributions.index,
+        )
+        contributions = pd.concat([contributions, group_frame], axis=1)
+
     # Keep legacy internal column names while adding explicit target labels.
     for frame in [contributions, summary]:
         frame.insert(1, "direction", direction)
@@ -233,13 +306,48 @@ def build_no_counterpart_audit(
     source_system: str,
     target_system: str,
     comparison_scope: str,
+    tree_df: pd.DataFrame | None = None,
+    ninth_fuel_validation: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Report unavailable counterparts without calling them failures."""
     raw_totals = raw_partition.groupby(["source_flow", "source_product"])["value"].sum()
     base = raw_partition.iloc[0]
+    subtotal_products: set[str] = set()
+    if tree_df is not None and "is_subtotal" in tree_df:
+        tree_sub = tree_df[
+            tree_df["dataset"].astype(str).str.casefold().eq(source_system.casefold())
+            & tree_df["axis"].astype(str).str.casefold().eq("fuel")
+            & tree_df["is_subtotal"].astype(str).str.casefold().isin({"true", "1", "yes"})
+        ]
+        subtotal_products = set(tree_sub["code"].astype(str))
+
+    validation = ninth_fuel_validation.copy() if ninth_fuel_validation is not None else pd.DataFrame()
+    if not validation.empty:
+        validation["_economy"] = validation["economy"].astype(str).str.replace("_", "", regex=False)
+        validation["_year"] = pd.to_numeric(validation["year"], errors="coerce")
     rows: list[dict[str, Any]] = []
     for row in source_without_target.to_dict("records"):
         source_pair = (row["source_flow"], row["source_product"])
+        classification = ""
+        reason = ""
+        validation_difference: Any = pd.NA
+        if source_system == "NINTH" and source_pair[1] in subtotal_products:
+            matches = validation
+            if not matches.empty:
+                matches = matches[
+                    matches["_economy"].eq(str(base["economy"]).replace("_", ""))
+                    & matches["scenario"].astype(str).str.casefold().eq(str(base["scenario"]).casefold())
+                    & matches["_year"].eq(pd.to_numeric(base["year"], errors="coerce"))
+                    & matches["ninth_sector"].astype(str).eq(source_pair[0])
+                    & matches["ninth_fuel"].astype(str).eq(source_pair[1])
+                ]
+            if matches.empty:
+                classification = "verified_subtotal_represented_by_children"
+                reason = "Existing Ninth fuel-tree validation found no parent/children mismatch; do not map the subtotal into LEAP."
+            else:
+                classification = "subtotal_children_mismatch"
+                reason = "Existing Ninth fuel-tree validation records a parent/children mismatch; retain the residual for review."
+                validation_difference = pd.to_numeric(matches.iloc[0]["difference"], errors="coerce")
         rows.append({
             "direction": direction, "counterpart_state": "source_without_target",
             "source_system": source_system, "target_system": target_system,
@@ -248,6 +356,9 @@ def build_no_counterpart_audit(
             "target_flow": "", "target_product": "",
             "economy": str(base["economy"]), "scenario": str(base["scenario"]),
             "year": base["year"], "source_value": float(raw_totals.get(source_pair, 0.0)),
+            "exception_classification": classification,
+            "exception_reason": reason,
+            "subtotal_validation_difference": validation_difference,
         })
     for row in target_without_source.to_dict("records"):
         rows.append({
@@ -258,6 +369,8 @@ def build_no_counterpart_audit(
             "target_flow": row["target_flow"], "target_product": row["target_product"],
             "economy": str(base["economy"]), "scenario": str(base["scenario"]),
             "year": base["year"], "source_value": pd.NA,
+            "exception_classification": "", "exception_reason": "",
+            "subtotal_validation_difference": pd.NA,
         })
     return pd.DataFrame(rows, columns=NO_COUNTERPART_COLUMNS)
 
@@ -266,6 +379,7 @@ def run_inverted_conservation_validation(
     output_dir: Path,
     structural_path: Path = DEFAULT_STRUCTURAL_PATH,
     tree_path: Path = DEFAULT_TREE_PATH,
+    ninth_fuel_validation_path: Path = DEFAULT_NINTH_FUEL_VALIDATION_PATH,
     raw_paths: dict[str, Path] | None = None,
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
@@ -289,6 +403,7 @@ def run_inverted_conservation_validation(
     years_by_system["ESTO"] = {esto_base_year}
     structural = pd.read_csv(structural_path, dtype=object)
     tree = pd.read_csv(tree_path, dtype=object)
+    ninth_fuel_validation = pd.read_csv(ninth_fuel_validation_path, dtype=object)
     output_dir = Path(output_dir)
     staging = output_dir.with_name(output_dir.name + ".building")
     if staging.exists():
@@ -319,6 +434,7 @@ def run_inverted_conservation_validation(
             counterpart_frames.append(build_no_counterpart_audit(
                 raw_partition, source_gaps, target_gaps, direction,
                 source_system, target_system, comparison_scope,
+                tree, ninth_fuel_validation,
             ))
 
     contributions = pd.concat(contribution_frames, ignore_index=True) if contribution_frames else pd.DataFrame()

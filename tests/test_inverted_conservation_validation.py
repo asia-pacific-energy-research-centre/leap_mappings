@@ -42,7 +42,7 @@ def _tree() -> pd.DataFrame:
         {"dataset": "esto", "axis": "flow", "code": "01.01 Production A", "parent_code": "01 Production"},
         {"dataset": "esto", "axis": "flow", "code": "01.02 Production B", "parent_code": "01 Production"},
         {"dataset": "esto", "axis": "flow", "code": "01.03 Production C", "parent_code": "01 Production"},
-        {"dataset": "esto", "axis": "product", "code": "06 Fuels", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "06 Fuels", "parent_code": "", "is_subtotal": True},
         {"dataset": "esto", "axis": "product", "code": "06.01 Fuel A", "parent_code": "06 Fuels"},
         {"dataset": "esto", "axis": "product", "code": "06.02 Fuel B", "parent_code": "06 Fuels"},
         {"dataset": "esto", "axis": "product", "code": "06.03 Fuel C", "parent_code": "06 Fuels"},
@@ -105,6 +105,10 @@ def test_fanout_lists_both_leap_branches_without_splitting_value():
     assert set(targets["target_flow"]) == {"Supply/Branch B1", "Supply/Branch B2"}
     assert set(targets["mapping_status"]) == {"unsafe_unallocated_fanout"}
     assert targets["converted_value"].isna().all()
+    assert source.iloc[0]["combined_source_value"] == 100.0
+    assert source.iloc[0]["involved_target_pairs"] == "Supply/Branch B1 / Fuel B | Supply/Branch B2 / Fuel B"
+    assert bool(source.iloc[0]["individual_target_values_available"]) is False
+    assert source.iloc[0]["relationship_group_id"] == targets.iloc[0]["relationship_group_id"]
 
 
 def test_no_counterpart_rows_are_unanchorable_accounting_not_failures():
@@ -127,3 +131,38 @@ def test_breakdown_reproduces_check_and_ids_include_direction():
     assert abs(check["breakdown_remainder"]) <= 1e-9
     assert bool(check["fully_attributed"]) is False
     assert check["check_id"].startswith("dirchk_")
+
+
+def test_subtotal_exception_uses_existing_tree_validation_result():
+    raw = pd.DataFrame([{
+        "source_system": "NINTH", "economy": "20USA", "scenario": "reference",
+        "year": 2023, "source_flow": "12_total_final_consumption",
+        "source_product": "15_solid_biomass", "value": 1901.0,
+    }])
+    source_gap = pd.DataFrame([{
+        "source_flow": "12_total_final_consumption",
+        "source_product": "15_solid_biomass", "common_row_id": "common_biomass",
+    }])
+    target_gap = pd.DataFrame(columns=["target_flow", "target_product", "common_row_id"])
+    tree = pd.DataFrame([{
+        "dataset": "ninth", "axis": "fuel", "code": "15_solid_biomass",
+        "is_subtotal": True,
+    }])
+
+    verified = build_no_counterpart_audit(
+        raw, source_gap, target_gap, "NINTH_TO_LEAP", "NINTH", "LEAP",
+        "leap_vs_esto_vs_ninth", tree, pd.DataFrame(),
+    ).iloc[0]
+    assert verified["exception_classification"] == "verified_subtotal_represented_by_children"
+
+    mismatch_validation = pd.DataFrame([{
+        "economy": "20_USA", "scenario": "reference", "year": 2023,
+        "ninth_sector": "12_total_final_consumption", "ninth_fuel": "15_solid_biomass",
+        "difference": 12.5,
+    }])
+    mismatch = build_no_counterpart_audit(
+        raw, source_gap, target_gap, "NINTH_TO_LEAP", "NINTH", "LEAP",
+        "leap_vs_esto_vs_ninth", tree, mismatch_validation,
+    ).iloc[0]
+    assert mismatch["exception_classification"] == "subtotal_children_mismatch"
+    assert mismatch["subtotal_validation_difference"] == 12.5
