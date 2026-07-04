@@ -1,0 +1,129 @@
+"""Small 20USA base-year tests for Flavor-A ESTO-to-LEAP conservation."""
+
+import pandas as pd
+
+from codebase.mapping_tools.inverted_conservation_validation import (
+    build_no_counterpart_audit,
+    compose_direction_edges,
+    validate_direction_partition,
+)
+
+
+def _structural() -> pd.DataFrame:
+    rows = []
+
+    def add(system, flow, product, common_row):
+        rows.append({
+            "comparison_scope": "leap_vs_esto",
+            "source_system": system,
+            "original_source_flow": flow,
+            "original_source_product": product,
+            "common_row_id": common_row,
+        })
+
+    # Clean one-to-one pair.
+    add("ESTO", "01.01 Production A", "06.01 Fuel A", "common_a")
+    add("LEAP", "Supply/Production A", "Fuel A", "common_a")
+
+    # One ESTO pair connects to two LEAP branches. No split is available.
+    add("ESTO", "01.02 Production B", "06.02 Fuel B", "common_b")
+    add("LEAP", "Supply/Branch B1", "Fuel B", "common_b")
+    add("LEAP", "Supply/Branch B2", "Fuel B", "common_b")
+
+    # Source and target rows which have no counterpart.
+    add("ESTO", "01.03 Production C", "06.03 Fuel C", "esto_only_common")
+    add("LEAP", "Supply/Hydrogen", "Hydrogen", "leap_only_common")
+    return pd.DataFrame(rows)
+
+
+def _tree() -> pd.DataFrame:
+    return pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "01 Production", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "01.01 Production A", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "flow", "code": "01.02 Production B", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "flow", "code": "01.03 Production C", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "product", "code": "06 Fuels", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "06.01 Fuel A", "parent_code": "06 Fuels"},
+        {"dataset": "esto", "axis": "product", "code": "06.02 Fuel B", "parent_code": "06 Fuels"},
+        {"dataset": "esto", "axis": "product", "code": "06.03 Fuel C", "parent_code": "06 Fuels"},
+    ])
+
+
+def _raw() -> pd.DataFrame:
+    base = {
+        "source_system": "ESTO", "economy": "20USA",
+        "scenario": "historical", "year": 2023,
+    }
+    return pd.DataFrame([
+        {**base, "source_flow": "01.01 Production A", "source_product": "06.01 Fuel A", "value": 40.0},
+        {**base, "source_flow": "01.02 Production B", "source_product": "06.02 Fuel B", "value": 100.0},
+        {**base, "source_flow": "01.03 Production C", "source_product": "06.03 Fuel C", "value": 25.0},
+    ])
+
+
+def _run():
+    edges, source_gaps, target_gaps = compose_direction_edges(
+        _structural(), "ESTO", "LEAP", "leap_vs_esto"
+    )
+    contributions, summary = validate_direction_partition(
+        _raw(), edges, _tree(), "ESTO", "LEAP", "ESTO_TO_LEAP"
+    )
+    audit = build_no_counterpart_audit(
+        _raw(), source_gaps, target_gaps, "ESTO_TO_LEAP", "ESTO", "LEAP",
+        "leap_vs_esto",
+    )
+    return contributions, summary, audit
+
+
+def test_bijective_pair_resolves_without_changing_value():
+    contributions, _, _ = _run()
+    row = contributions[
+        contributions["source_flow"].eq("01.01 Production A")
+        & contributions["validation_axis"].eq("flow")
+    ].iloc[0]
+    assert row["counting_role"] == "resolved_pair"
+    assert row["mapping_status"] == "resolved"
+    assert row["value_quality"] == "exact_direct"
+    assert row["raw_value"] == 40.0
+    assert row["converted_value"] == 40.0
+
+
+def test_fanout_lists_both_leap_branches_without_splitting_value():
+    contributions, _, _ = _run()
+    parent_rows = contributions[
+        contributions["parent_code"].eq("01 Production")
+        & contributions["validation_axis"].eq("flow")
+    ]
+    source = parent_rows[parent_rows["source_flow"].eq("01.02 Production B")]
+    targets = parent_rows[parent_rows["target_flow"].isin([
+        "Supply/Branch B1", "Supply/Branch B2"
+    ])]
+    assert len(source) == 1
+    assert source.iloc[0]["raw_value"] == 100.0
+    assert pd.isna(source.iloc[0]["contribution_difference"])
+    assert source.iloc[0]["mapping_status"] == "unsafe_unallocated_fanout"
+    assert set(targets["target_flow"]) == {"Supply/Branch B1", "Supply/Branch B2"}
+    assert set(targets["mapping_status"]) == {"unsafe_unallocated_fanout"}
+    assert targets["converted_value"].isna().all()
+
+
+def test_no_counterpart_rows_are_unanchorable_accounting_not_failures():
+    _, _, audit = _run()
+    source_gap = audit[audit["counterpart_state"].eq("source_without_target")].iloc[0]
+    target_gap = audit[audit["counterpart_state"].eq("target_without_source")].iloc[0]
+    assert source_gap["source_flow"] == "01.03 Production C"
+    assert source_gap["source_value"] == 25.0
+    assert target_gap["target_flow"] == "Supply/Hydrogen"
+    assert pd.isna(target_gap["source_value"])
+
+
+def test_breakdown_reproduces_check_and_ids_include_direction():
+    _, summary, _ = _run()
+    check = summary[
+        summary["parent_code"].eq("01 Production")
+        & summary["validation_axis"].eq("flow")
+    ].iloc[0]
+    assert check["check_difference"] == 100.0
+    assert abs(check["breakdown_remainder"]) <= 1e-9
+    assert bool(check["fully_attributed"]) is False
+    assert check["check_id"].startswith("dirchk_")
