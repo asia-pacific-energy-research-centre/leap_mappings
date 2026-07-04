@@ -1185,6 +1185,76 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.
 
+### Anchor reconciliation against converted outputs (`reconcile_anchor_validation.py`)
+
+`codebase/mapping_tools/reconcile_anchor_validation.py` **replaces the earlier
+tree-walk anchor validator** (`validate_lineage_anchors.py`). The tree-walk
+approach re-derived each source system's frontier from its own tree and crossed
+every parent against every unrelated other-axis value, manufacturing thousands
+of false `missing_mapped_child` / contamination failures from vocabulary that
+did not match the mapped vocabulary. The reconciler instead compares two
+**independently derived** totals per source parent:
+
+- **left** — the raw source parent total, read straight from the raw source
+  data (`raw_leap_results.csv`, the 9th `merged_file_energy_*` and the ESTO
+  `00APEC_*_low_with_subtotals` balances).
+- **right** — the converted-to-ESTO total for the common boundary that parent
+  maps into, read from the already-correct conversion outputs
+  (`leap_results_converted_to_esto.csv`, `ninth_results_converted_to_esto.csv`,
+  `esto_results_exact_rows.csv`).
+
+Both sides come from **different files**, so a fabricated mismatch on either
+side is detectable — the check is not a tautology. Boundaries are classified
+purely from the structural artifacts (`source_pair_to_common_row.csv`); the tree
+is used only to enumerate parents, to sum a parent's raw descendants, and to
+detect subtotal overlap. No hierarchy or frontier is inferred from string
+prefixes.
+
+**Interpretation — a necessary, not sufficient, condition.** The reconciler
+treats *"the mapped children sum back to the raw source parent total"* as
+evidence the parent's data was mapped cleanly. Children summing to the parent
+does not *prove* every child was mapped to the correct common row — offsetting
+errors could in principle still sum correctly. We accept it as the working
+verification because producing a correct parent total by any other route would
+be very hard: for independently-mapped children to add back up to the raw
+parent, the mapping almost certainly has to be right. A clean reconciliation is
+therefore strong, if not absolute, evidence. Where a parent reconciles we report
+`passed` and claim nothing about per-child correctness beyond that; where it does
+not, that is a real signal.
+
+**Subtotal handling (anti-chain filter).** The source data carries a subtotal at
+every level of both axes. If a mapped pair *and* a strict descendant of it are
+both mapped, the ancestor's raw row already contains the descendant's value, so
+summing both double-counts. The reconciler keeps only the minimal (deepest)
+mapped pairs — the granularity the conversion actually joins on — regardless of
+absolute tree depth. This preserves systems whose mappings sit at intermediate
+nodes (9th) while collapsing ESTO/LEAP subtotal+leaf overlaps to the leaf.
+
+**Boundary classification and statuses.** A parent is *anchorable* only if it
+lands solely in exact ESTO rows owned by its own descendants; a rolled/combined
+common row, or an exact row shared with source pairs outside the parent, mixes in
+unrelated contributors and is reported `unanchorable` (never a pass, never a hard
+failure). Per parent × axis × system × economy × scenario × year the status is
+one of `passed` (`within_tolerance`), `failed` (`difference_outside_tolerance`),
+or `unanchorable` (`rollup_boundary_not_separable`, `parent_absent_from_converted_output`,
+`no_anchorable_boundary`). Empty validation is never reported as passed.
+
+Modes are `structural` (schemas + every parent resolves to an anchorable or
+explicitly-unanchorable boundary, no values), `slice` (one economy and boundary
+years — the default numeric mode), and `full` (all partitions). Processing is
+partition-by-partition with memory bounded to one partition plus the small
+structural tables. Outputs land in `results/common_esto/anchor_reconciliation/`:
+`validation_summary.csv`, `validation_failures.csv`,
+`unmatched_unanchorable_boundaries.csv`, `partition_status_and_value_accounting.csv`,
+and a bounded pass sample.
+
+On the `20USA` slice the split is credible (64 passed / 14 failed / 150
+unanchorable across all three systems and both axes): the Prompt-4
+`missing_mapped_child` explosion is gone, and the residual failures are a small
+enumerable set — the 9th `target` scenario absent from the converted output, an
+ESTO crude-oil/petroleum reclassification (~10%), and 9th/LEAP parents whose
+source-tree vocabulary is incomplete relative to the mapped boundary.
+
 ---
 
 ## Adding new scenarios
