@@ -1255,6 +1255,35 @@ enumerable set — the 9th `target` scenario absent from the converted output, a
 ESTO crude-oil/petroleum reclassification (~10%), and 9th/LEAP parents whose
 source-tree vocabulary is incomplete relative to the mapped boundary.
 
+### Contributor breakdown (explaining a failed anchor)
+
+`run_anchor_contribution_breakdown()` (same module) decomposes each failed
+anchor's single `difference` into the individual ESTO `(flow, product)` pairs
+that produce it. It reconciles the same slice, then for every check whose status
+is in `statuses` (default `("failed",)`) emits one contributor row per pair in
+the boundary — the union of the raw `source_pairs` and converted `components`,
+so a pair present on only one side still appears with the other side zero. It
+adds **no new numeric observation**: it re-expresses the totals reconcile
+already compares, and each check's summary carries a `breakdown_remainder` that
+must reproduce reconcile's own `difference` (asserted ≤ 1e-9). Outputs land in
+`results/common_esto/anchor_contribution_breakdown/`:
+`anchor_contribution_breakdown.csv` (one row per contributor, sorted so the
+largest `|contribution_difference|` leads each check, with a `counting_role` and
+an `exclusion_reason` such as `raw_present_converted_row_missing`),
+`anchor_contribution_summary.csv` (one row per check with `check_difference`,
+`breakdown_remainder`, `lineage_complete`), and `contribution_manifest.json`.
+`check_id` is a deterministic hash of the semantic check key plus the schema
+version, never a cache-local index.
+
+On the `20USA` ESTO slice this reproduces the two oil-family failures exactly
+(`breakdown_remainder` = 0). Both resolve to `08 Transfers` and `17 Non-energy
+use` rows that are members of the raw parent but absent from the converted
+exact-row surface: `06 Crude oil & NGL` = −6,540.03 PJ (NGL transfers −7,022.39,
+crude-oil transfers +746.93, refinery-feedstock transfers −264.58) and
+`07 Petroleum products` = +11,078.06 PJ (LPG/ethane transfers and ethane
+non-energy use dominating). This is Phase 1 of the mappings conservation-lineage
+plan — ESTO only, `failed` only, no change to any converted output.
+
 ---
 
 ## Adding new scenarios

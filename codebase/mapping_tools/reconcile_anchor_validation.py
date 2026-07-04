@@ -45,6 +45,7 @@ never from string prefixes or tree-reconstructed frontiers. The tree is used
 #%%
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -442,6 +443,194 @@ def reconcile_partition(
 
 
 # --------------------------------------------------------------------------- #
+# Contributor breakdown (Phase 1: explain a failed anchor from its parts).
+# --------------------------------------------------------------------------- #
+#
+# A reconcile check reports a single ``difference`` per parent. This layer
+# decomposes that one number into the individual ESTO ``(flow, product)`` pairs
+# that make it up, so a failed anchor can be read as "these specific rows are
+# present on the raw side but missing/different on the converted side" rather
+# than an unexplained aggregate. It adds *no new numeric observation*: it is a
+# pure re-expression of the same raw and converted totals reconcile already
+# compares, and the per-check sum is asserted to reproduce reconcile's own
+# ``difference`` to floating-point tolerance (``breakdown_remainder``).
+#
+# For ESTO the raw source pairs and the converted components are the same exact
+# identity rows, so each contributor aligns one-to-one. The union of a
+# boundary's ``source_pairs`` (raw side) and ``components`` (converted side) is
+# taken so that a pair present on only one side still appears -- with the other
+# side zero -- and the two column sums still equal ``raw_parent_total`` and
+# ``converted_boundary_total`` respectively.
+
+BREAKDOWN_SCHEMA_VERSION = "anchor_contribution_v1"
+
+CONTRIBUTION_COLUMNS = [
+    "check_id", "validation_axis", "source_system", "economy", "scenario", "year",
+    "parent_code", "boundary_kind", "check_status",
+    "esto_flow", "esto_product",
+    "raw_value", "converted_value", "contribution_difference",
+    "counting_role", "exclusion_reason",
+]
+
+CONTRIBUTION_SUMMARY_COLUMNS = [
+    "check_id", "validation_axis", "source_system", "economy", "scenario", "year",
+    "parent_code", "boundary_kind", "check_status", "check_difference",
+    "breakdown_raw_total", "breakdown_converted_total", "breakdown_difference",
+    "breakdown_remainder", "contributor_count", "explaining_contributor_count",
+    "lineage_complete",
+]
+
+# A contribution counts as "explaining" the failure once its raw/converted gap
+# is larger than pure floating-point noise; zero-difference members mapped
+# cleanly and are retained only for completeness, not as evidence.
+_EXPLAINING_EPS = 1e-9
+
+
+def check_id(
+    source_system: str, economy: str, scenario: str, year: Any,
+    validation_axis: str, parent_code: str,
+) -> str:
+    """Deterministic content-derived ID for an anchor check.
+
+    Stable across runs because it is a hash of the semantic check key plus the
+    breakdown schema version -- never a cache-local row index.
+    """
+    key = "|".join([
+        BREAKDOWN_SCHEMA_VERSION, str(source_system), str(economy), str(scenario),
+        "" if pd.isna(year) else str(int(year)) if isinstance(year, (int, float)) and not isinstance(year, bool) else str(year),
+        str(validation_axis), str(parent_code),
+    ])
+    return "chk_" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _contribution_reason(in_raw: bool, in_conv: bool, raw_v: float, conv_v: float) -> str:
+    """Classify why a contributor differs between the raw and converted sides."""
+    if in_raw and in_conv:
+        if abs(raw_v - conv_v) <= _EXPLAINING_EPS:
+            return ""  # mapped cleanly, no contribution to the difference
+        if conv_v == 0.0:
+            return "raw_present_converted_row_missing"
+        if raw_v == 0.0:
+            return "converted_present_raw_row_missing"
+        return "value_mismatch"
+    if in_raw:
+        return "structural_member_raw_side_only"
+    return "structural_member_converted_side_only"
+
+
+def build_anchor_contributions(
+    raw_partition: pd.DataFrame,
+    converted: pd.DataFrame,
+    boundaries_by_axis: dict[str, dict[str, ParentBoundary]],
+    converted_components_by_axis: dict[str, set[tuple[str, str]]],
+    source_system: str,
+    tolerance: float = 0.01,
+    statuses: tuple[str, ...] = ("failed",),
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Decompose each selected anchor into per-``(esto_flow, esto_product)`` rows.
+
+    Reconciles the partition first (so status/difference match the anchor
+    validation exactly), then for every parent whose status is in ``statuses``
+    emits one contributor row per ESTO pair in the boundary, and a per-check
+    summary whose ``breakdown_remainder`` proves the contributions reproduce
+    reconcile's own ``difference``.
+
+    Returns ``(contributions_df, summary_df)``.
+    """
+    detail = reconcile_partition(
+        raw_partition, converted, boundaries_by_axis,
+        converted_components_by_axis, source_system, tolerance,
+    )
+    if detail.empty:
+        return (
+            pd.DataFrame(columns=CONTRIBUTION_COLUMNS),
+            pd.DataFrame(columns=CONTRIBUTION_SUMMARY_COLUMNS),
+        )
+
+    economy = str(raw_partition["economy"].iloc[0])
+    scenario = str(raw_partition["scenario"].iloc[0])
+    year = raw_partition["year"].iloc[0]
+
+    raw = raw_partition.copy()
+    raw["value"] = pd.to_numeric(raw["value"], errors="coerce").fillna(0.0)
+    raw_pair_totals: dict[tuple[str, str], float] = {
+        tuple(k): float(v)
+        for k, v in raw.groupby(["source_flow", "source_product"])["value"].sum().items()
+    }
+    converted_totals: dict[tuple[str, str], float] = {}
+    if not converted.empty:
+        grouped = converted.groupby(["esto_flow", "esto_product"])["value"].sum()
+        converted_totals = {tuple(k): float(v) for k, v in grouped.items()}
+
+    contribution_rows: list[dict[str, Any]] = []
+    summary_rows: list[dict[str, Any]] = []
+    for drow in detail.to_dict("records"):
+        if drow["status"] not in statuses:
+            continue
+        axis = drow["validation_axis"]
+        parent = drow["parent_code"]
+        boundary = boundaries_by_axis[axis][parent]
+        cid = check_id(source_system, economy, scenario, year, axis, parent)
+
+        pairs = sorted(set(boundary.source_pairs) | set(boundary.components))
+        rows_for_check: list[dict[str, Any]] = []
+        for flow, product in pairs:
+            in_raw = (flow, product) in boundary.source_pairs
+            in_conv = (flow, product) in boundary.components
+            raw_v = raw_pair_totals.get((flow, product), 0.0) if in_raw else 0.0
+            conv_v = converted_totals.get((flow, product), 0.0) if in_conv else 0.0
+            counting_role = (
+                "raw_and_converted" if in_raw and in_conv
+                else "raw_only" if in_raw else "converted_only"
+            )
+            rows_for_check.append({
+                "check_id": cid, "validation_axis": axis,
+                "source_system": source_system, "economy": economy,
+                "scenario": scenario,
+                "year": int(year) if pd.notna(year) else "",
+                "parent_code": parent, "boundary_kind": boundary.kind,
+                "check_status": drow["status"],
+                "esto_flow": flow, "esto_product": product,
+                "raw_value": raw_v, "converted_value": conv_v,
+                "contribution_difference": raw_v - conv_v,
+                "counting_role": counting_role,
+                "exclusion_reason": _contribution_reason(in_raw, in_conv, raw_v, conv_v),
+            })
+        # Largest contributions to the failure first; zero-diff members trail.
+        rows_for_check.sort(key=lambda r: abs(r["contribution_difference"]), reverse=True)
+        contribution_rows.extend(rows_for_check)
+
+        breakdown_raw = sum(r["raw_value"] for r in rows_for_check)
+        breakdown_converted = sum(r["converted_value"] for r in rows_for_check)
+        breakdown_difference = breakdown_raw - breakdown_converted
+        remainder = breakdown_difference - float(drow["difference"])
+        explaining = sum(
+            1 for r in rows_for_check
+            if abs(r["contribution_difference"]) > _EXPLAINING_EPS
+        )
+        summary_rows.append({
+            "check_id": cid, "validation_axis": axis,
+            "source_system": source_system, "economy": economy,
+            "scenario": scenario, "year": int(year) if pd.notna(year) else "",
+            "parent_code": parent, "boundary_kind": boundary.kind,
+            "check_status": drow["status"],
+            "check_difference": float(drow["difference"]),
+            "breakdown_raw_total": breakdown_raw,
+            "breakdown_converted_total": breakdown_converted,
+            "breakdown_difference": breakdown_difference,
+            "breakdown_remainder": remainder,
+            "contributor_count": len(rows_for_check),
+            "explaining_contributor_count": explaining,
+            "lineage_complete": bool(abs(remainder) <= _EXPLAINING_EPS),
+        })
+
+    return (
+        pd.DataFrame(contribution_rows, columns=CONTRIBUTION_COLUMNS),
+        pd.DataFrame(summary_rows, columns=CONTRIBUTION_SUMMARY_COLUMNS),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Structural mode & summaries.
 # --------------------------------------------------------------------------- #
 
@@ -788,6 +977,120 @@ def run_anchor_reconciliation(
     return manifest
 
 
+def run_anchor_contribution_breakdown(
+    structural_path: Path,
+    tree_path: Path,
+    output_dir: Path,
+    converted_paths: dict[str, Path] | None = None,
+    raw_paths: dict[str, Path] | None = None,
+    economies: set[str] | None = None,
+    years_by_system: dict[str, set[int]] | None = None,
+    systems: tuple[str, ...] = SOURCE_SYSTEMS,
+    statuses: tuple[str, ...] = ("failed",),
+    tolerance: float = 0.01,
+) -> dict[str, Any]:
+    """Phase 1: explain failed anchors from their ESTO-pair contributors.
+
+    For each requested source system this reconciles a slice, then decomposes
+    every check whose status is in ``statuses`` into contributor rows. It writes
+    ``anchor_contribution_breakdown.csv`` (one row per contributor) and
+    ``anchor_contribution_summary.csv`` (one row per check, carrying
+    ``breakdown_remainder`` and ``lineage_complete``). This adds no numeric
+    observation the reconciliation does not already make; it only re-expresses
+    the same totals contributor-by-contributor.
+
+    The default ``systems``/``statuses`` reproduce the two ESTO oil-family
+    failures when run on the ``20USA`` slice.
+    """
+    converted_paths = converted_paths or DEFAULT_CONVERTED_PATHS
+    raw_paths = raw_paths or DEFAULT_RAW_PATHS
+    structural = pd.read_csv(structural_path, dtype=object)
+    tree = pd.read_csv(tree_path, dtype=object)
+
+    output_dir = Path(output_dir)
+    staging = output_dir.with_name(output_dir.name + ".building")
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+
+    if years_by_system is None:
+        converted_for_years = {
+            system: load_converted_output(converted_paths[system], system, economies=economies)
+            for system in SOURCE_SYSTEMS
+        }
+        years_by_system = default_slice_years(converted_for_years)
+
+    contribution_frames: list[pd.DataFrame] = []
+    summary_frames: list[pd.DataFrame] = []
+    for system in systems:
+        years = years_by_system.get(system) if years_by_system else None
+        converted = load_converted_output(
+            converted_paths[system], system, economies=economies, years=years
+        )
+        boundaries_by_axis = {
+            axis: build_parent_boundaries(structural, tree, system, axis)
+            for axis in ["flow", "product"]
+        }
+        converted_components_by_axis = {
+            axis: set(zip(converted["esto_flow"], converted["esto_product"]))
+            for axis in ["flow", "product"]
+        } if not converted.empty else {"flow": set(), "product": set()}
+        for raw_partition in iter_raw_partitions(system, raw_paths[system], economies, years):
+            economy = str(raw_partition["economy"].iloc[0])
+            scenario = str(raw_partition["scenario"].iloc[0])
+            year = raw_partition["year"].iloc[0]
+            partition_converted = converted[
+                (converted["economy"] == economy)
+                & (converted["scenario"].astype(str).str.casefold() == scenario.casefold())
+                & (converted["year"] == year)
+            ]
+            contributions, summary = build_anchor_contributions(
+                raw_partition, partition_converted, boundaries_by_axis,
+                converted_components_by_axis, system, tolerance, statuses,
+            )
+            if not contributions.empty:
+                contribution_frames.append(contributions)
+            if not summary.empty:
+                summary_frames.append(summary)
+
+    contributions_all = (
+        pd.concat(contribution_frames, ignore_index=True)
+        if contribution_frames else pd.DataFrame(columns=CONTRIBUTION_COLUMNS)
+    )
+    summary_all = (
+        pd.concat(summary_frames, ignore_index=True)
+        if summary_frames else pd.DataFrame(columns=CONTRIBUTION_SUMMARY_COLUMNS)
+    )
+
+    contributions_all.to_csv(staging / "anchor_contribution_breakdown.csv", index=False)
+    summary_all.to_csv(staging / "anchor_contribution_summary.csv", index=False)
+
+    incomplete = summary_all[~summary_all["lineage_complete"]] if not summary_all.empty else summary_all
+    max_remainder = (
+        float(summary_all["breakdown_remainder"].abs().max()) if not summary_all.empty else 0.0
+    )
+    manifest = {
+        "schema_version": BREAKDOWN_SCHEMA_VERSION,
+        "status": "complete",
+        "systems": list(systems),
+        "statuses": list(statuses),
+        "economies": sorted(economies) if economies else "all",
+        "years_by_system": {k: sorted(v) for k, v in (years_by_system or {}).items()},
+        "checks_explained": int(len(summary_all)),
+        "contributor_rows": int(len(contributions_all)),
+        "max_abs_remainder": max_remainder,
+        "lineage_complete_all": bool(incomplete.empty),
+        "incomplete_check_ids": incomplete["check_id"].tolist() if not incomplete.empty else [],
+    }
+    (staging / "contribution_manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    shutil.move(str(staging), str(output_dir))
+    return manifest
+
+
 # --- Notebook run block ---
 
 RUN_RECONCILIATION = False
@@ -803,5 +1106,24 @@ if RUN_RECONCILIATION:
         economies={RECONCILIATION_ECONOMY} if RECONCILIATION_MODE != "full" else None,
     )
     print(json.dumps(RECONCILIATION_RESULT, indent=2))
+
+#%%
+
+# --- Contributor-breakdown run block (Phase 1) ---
+
+RUN_CONTRIBUTION_BREAKDOWN = False
+CONTRIBUTION_ECONOMY = "20USA"
+# Default to ESTO only: reproduces the two oil-family failures exactly.
+CONTRIBUTION_SYSTEMS = ("ESTO",)
+
+if RUN_CONTRIBUTION_BREAKDOWN:
+    CONTRIBUTION_RESULT = run_anchor_contribution_breakdown(
+        structural_path=REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv",
+        tree_path=REPO_ROOT / "results/tree_structure/all_dataset_trees.csv",
+        output_dir=REPO_ROOT / "results/common_esto/anchor_contribution_breakdown",
+        economies={CONTRIBUTION_ECONOMY},
+        systems=CONTRIBUTION_SYSTEMS,
+    )
+    print(json.dumps(CONTRIBUTION_RESULT, indent=2))
 
 #%%
