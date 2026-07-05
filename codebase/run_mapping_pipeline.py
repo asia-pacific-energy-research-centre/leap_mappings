@@ -563,6 +563,10 @@ def run_stage_3() -> None:
         )
         common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
         comparison_data = pd.read_csv(comparison_path, dtype=object)
+        from codebase.mapping_tools.mapping_issue_exceptions import (
+            load_unmodelled_source_codes,
+        )
+        unmodelled_source_codes = load_unmodelled_source_codes()
         anchor_t0 = time.perf_counter()
         anchor_detail = validate_source_parent_anchors(
             source_df=raw_anchor_source,
@@ -570,6 +574,7 @@ def run_stage_3() -> None:
             source_mapping_df=source_mapping,
             common_rows_df=common_rows,
             comparison_df=comparison_data,
+            unmodelled_source_codes=unmodelled_source_codes,
         )
         print(
             f"  [timing] validate_source_parent_anchors: "

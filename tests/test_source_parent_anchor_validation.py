@@ -151,6 +151,40 @@ def test_signed_parent_and_frontier_sums() -> None:
     assert row["status"] == "passed"
 
 
+def test_unmodelled_source_codes_are_dropped() -> None:
+    # Parent product coded "19 ..." (an aggregate fuel) must be dropped when
+    # fuel 19 is in the unmodelled-source set, regardless of its numeric outcome.
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "19 Total", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "19.01 A", "parent_code": "19 Total"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "19 Total", "value": 10},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "19.01 A", "component_esto_flow": "F", "component_esto_product": "19.01 A"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "19.01 A", "common_row_id": "c1"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 999},
+    ])
+    without = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    assert not without.empty  # normally evaluated and reported
+    withx = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison,
+        unmodelled_source_codes={"sector": set(), "fuel": {19}},
+    )
+    assert withx.empty  # excepted fuel 19 -> row dropped entirely
+    # A non-excepted fuel code is unaffected.
+    keep = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison,
+        unmodelled_source_codes={"sector": set(), "fuel": {99}},
+    )
+    assert not keep.empty
+
+
 def test_scope_without_anchorable_boundary_is_skipped() -> None:
     source, tree, mappings, common, comparison = _multi_partition_fixture()
     source = source[(source["economy"] == "E1") & (source["year"] == 2022)]

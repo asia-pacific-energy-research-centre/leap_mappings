@@ -13,6 +13,7 @@ from codebase.mapping_tools.structural_resolver import (
     build_tree_index,
     resolve_nearest_mapped_pair,
 )
+from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pair_mask
 
 
 COMPARISON_SCOPE_SYSTEMS = {
@@ -106,6 +107,7 @@ def validate_source_parent_anchors(
     tolerance: float = 0.01,
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
+    unmodelled_source_codes: dict[str, set[int]] | None = None,
 ) -> pd.DataFrame:
     """Return one explicit passed/failed/skipped record per raw source parent group.
 
@@ -387,6 +389,20 @@ def validate_source_parent_anchors(
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
+            # Drop unmodelled ESTO/9th sectors/fuels (e.g. stock changes,
+            # statistical discrepancy, power-output flows, aggregate fuels): we
+            # never reconcile them, so they must not surface as issues at all.
+            # Flow/product resolve from the current axis.
+            if unmodelled_source_codes:
+                if axis == "flow":
+                    flow_codes, product_codes = base["parent_code"], base["other_axis_value"]
+                else:
+                    flow_codes, product_codes = base["other_axis_value"], base["parent_code"]
+                excepted = unmodelled_source_pair_mask(
+                    flow_codes, product_codes, unmodelled_source_codes
+                ).to_numpy()
+                if excepted.any():
+                    base = base.loc[~excepted]
             with np.errstate(divide="ignore", invalid="ignore"):
                 proportional = base["difference"].to_numpy() / base["parent_value"].to_numpy()
             base["proportional_error"] = np.where(
