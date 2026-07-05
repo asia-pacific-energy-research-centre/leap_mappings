@@ -45,11 +45,39 @@ def test_exact_parent_children_match_without_double_counting() -> None:
 
 
 def test_missing_child_fails_and_is_reported() -> None:
+    # Genuine gap: parent 10 but mapped frontier only explains 4 -> failed.
     detail = validate_source_parent_anchors(*_fixture(include_child_b_mapping=False))
     row = detail.iloc[0]
     assert row["status"] == "failed"
     assert row["reason"] == "incomplete_frontier"
     assert row["missing_expected_children"] == "P.2"
+
+
+def test_incomplete_frontier_that_reconciles_is_passed() -> None:
+    # Parent reconciles to its mapped leaf exactly, but one leaf child is
+    # unmapped (an intentional placeholder). "Reconciles wins" -> passed.
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 4},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.1", "component_esto_flow": "F", "component_esto_product": "P.1"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.1", "common_row_id": "c1"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 4},
+    ])
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+    assert row["status"] == "passed"
+    assert row["reason"] == "within_tolerance_incomplete_frontier"
+    assert row["missing_expected_children"] == "P.2"  # still reported for lineage
+    assert row["frontier_sum"] == 4
 
 
 def test_tolerance_boundary_and_summary() -> None:
