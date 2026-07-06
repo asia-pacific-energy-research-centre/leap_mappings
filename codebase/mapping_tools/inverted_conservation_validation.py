@@ -31,6 +31,7 @@ from codebase.mapping_tools.reconcile_anchor_validation import (
     build_parent_boundaries,
     iter_raw_partitions,
 )
+from codebase.mapping_tools.structural_resolver import build_tree_index
 
 
 DIRECTION_CONFIG = {
@@ -129,6 +130,84 @@ def _normalize_target_pair(
 ) -> tuple[str, str]:
     pair = (str(flow).strip(), str(product).strip())
     return alias_map.get(pair, pair)
+
+
+def _ancestor_chain(code: str, parent_index: dict[str, str]) -> list[str]:
+    """Return explicit ancestors for one code, nearest parent first."""
+    chain: list[str] = []
+    seen = {code}
+    current = parent_index.get(code, "")
+    while current and current not in seen:
+        chain.append(current)
+        seen.add(current)
+        current = parent_index.get(current, "")
+    return chain
+
+
+def _build_target_rollup_map(
+    edges: pd.DataFrame,
+    tree_df: pd.DataFrame,
+    target_system: str,
+) -> dict[tuple[str, str], tuple[str, str]]:
+    """Collapse target-side rollup ancestors to the nearest present ancestor."""
+    if edges.empty or tree_df.empty:
+        return {}
+    try:
+        flow_parent, _ = build_tree_index(tree_df, target_system, "flow")
+        product_parent, _ = build_tree_index(tree_df, target_system, "product")
+    except ValueError:
+        return {}
+
+    target_pairs = {
+        (str(flow).strip(), str(product).strip())
+        for flow, product in edges[["target_flow", "target_product"]]
+        .dropna()
+        .itertuples(index=False, name=None)
+    }
+    if not target_pairs:
+        return {}
+
+    rollup_map: dict[tuple[str, str], tuple[str, str]] = {}
+    for flow, product in target_pairs:
+        candidates: list[tuple[int, tuple[str, str]]] = []
+        for depth, ancestor_flow in enumerate(_ancestor_chain(flow, flow_parent), start=1):
+            candidate = (ancestor_flow, product)
+            if candidate in target_pairs:
+                candidates.append((depth, candidate))
+        for depth, ancestor_product in enumerate(_ancestor_chain(product, product_parent), start=1):
+            candidate = (flow, ancestor_product)
+            if candidate in target_pairs:
+                candidates.append((depth, candidate))
+        if candidates:
+            _, canonical = min(candidates, key=lambda item: (item[0], item[1][0], item[1][1]))
+            rollup_map[(flow, product)] = canonical
+        else:
+            rollup_map[(flow, product)] = (flow, product)
+    return rollup_map
+
+
+def _apply_target_rollup_map(
+    edges: pd.DataFrame,
+    rollup_map: dict[tuple[str, str], tuple[str, str]],
+) -> pd.DataFrame:
+    """Rewrite target pairs through the rollup map and drop duplicate edges."""
+    if edges.empty or not rollup_map:
+        return edges
+    working = edges.copy()
+    normalized = working.apply(
+        lambda row: rollup_map.get(
+            (str(row["target_flow"]).strip(), str(row["target_product"]).strip()),
+            (str(row["target_flow"]).strip(), str(row["target_product"]).strip()),
+        ),
+        axis=1,
+        result_type="expand",
+    )
+    working["target_flow"] = normalized[0]
+    working["target_product"] = normalized[1]
+    working = working.drop_duplicates(
+        ["source_flow", "source_product", "target_flow", "target_product"]
+    ).copy()
+    return working
 
 
 def partition_edges_by_target_variant(
@@ -491,6 +570,7 @@ def validate_direction_partition(
     target_variant: str = "",
     tolerance: float = 0.01,
     alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
+    ignore_target_rollup_ancestors: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the existing Option-A breakdown on one inverted direction slice."""
     adapted = _structural_edges_for_existing_boundary_builder(edges, source_system)
@@ -498,8 +578,14 @@ def validate_direction_partition(
         axis: build_parent_boundaries(adapted, tree_df, source_system, axis)
         for axis in ["flow", "product"]
     }
-    projected = project_bijective_values(raw_partition, edges, alias_map)
-    target_pairs = set(zip(edges["target_flow"], edges["target_product"]))
+    effective_edges = edges
+    if ignore_target_rollup_ancestors:
+        effective_edges = _apply_target_rollup_map(
+            edges,
+            _build_target_rollup_map(edges, tree_df, target_system),
+        )
+    projected = project_bijective_values(raw_partition, effective_edges, alias_map)
+    target_pairs = set(zip(effective_edges["target_flow"], effective_edges["target_product"]))
     if alias_map:
         target_pairs = {
             _normalize_target_pair(flow, product, alias_map)
@@ -720,6 +806,7 @@ def run_inverted_conservation_validation(
     years_by_system: dict[str, set[int]] | None = None,
     directions: tuple[str, ...] = ("ESTO_TO_LEAP", "NINTH_TO_LEAP"),
     tolerance: float = 0.01,
+    ignore_target_rollup_ancestors: bool = True,
 ) -> dict[str, Any]:
     """Write Flavor-A direction summaries, contributors, and counterpart gaps."""
     raw_paths = raw_paths or DEFAULT_RAW_PATHS
@@ -774,6 +861,7 @@ def run_inverted_conservation_validation(
                 contributions, summary = validate_direction_partition(
                     raw_partition, variant_edges, tree, source_system, target_system,
                     direction, variant_family, variant, tolerance, alias_map,
+                    ignore_target_rollup_ancestors,
                 )
                 contribution_frames.append(contributions)
                 summary_frames.append(summary)
