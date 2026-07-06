@@ -3,6 +3,7 @@
 import pandas as pd
 
 from codebase.mapping_tools.inverted_conservation_validation import (
+    _build_alias_map,
     build_variant_coverage_audit,
     build_no_counterpart_audit,
     compose_direction_edges,
@@ -205,3 +206,105 @@ def test_alternative_target_variants_are_checked_separately_and_not_summed():
     assert set(summary["variant_status"]) == {"verified_alternative_target_variant"}
     assert set(summary["effective_validation_status"]) == {"verified_alternative_target_variant"}
     assert not summary["safe_to_sum_across_variants"].any()
+
+
+def test_placeholder_alias_buckets_can_collapse_to_one_canonical_target():
+    structural = pd.DataFrame([
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.01 Production A",
+            "original_source_product": "06.01 Fuel A",
+            "common_row_id": "common_alias",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.02 Production B",
+            "original_source_product": "06.02 Fuel B",
+            "common_row_id": "common_alias",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plant interim/Heat plant interim",
+            "original_source_product": "Electricity",
+            "common_row_id": "common_alias",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plants",
+            "original_source_product": "Electricity",
+            "common_row_id": "common_alias",
+        },
+    ])
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "01 Production", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "01.01 Production A", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "flow", "code": "01.02 Production B", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "product", "code": "06 Fuels", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "06.01 Fuel A", "parent_code": "06 Fuels"},
+        {"dataset": "esto", "axis": "product", "code": "06.02 Fuel B", "parent_code": "06 Fuels"},
+    ])
+    raw = pd.DataFrame([
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.01 Production A",
+            "source_product": "06.01 Fuel A", "value": 40.0,
+        },
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.02 Production B",
+            "source_product": "06.02 Fuel B", "value": 60.0,
+        },
+    ])
+    alias_map = _build_alias_map({
+        "aliases": [
+            {
+                "canonical_target_flow": "Heat plants",
+                "canonical_target_product": "Electricity",
+                "aliases": [
+                    {
+                        "target_flow": "Heat plant interim/Heat plant interim",
+                        "target_product": "Electricity",
+                    }
+                ],
+            }
+        ]
+    })
+
+    edges, _, _ = compose_direction_edges(
+        structural, "ESTO", "LEAP", "leap_vs_esto", alias_map
+    )
+    contributions, summary = validate_direction_partition(
+        raw, edges, tree, "ESTO", "LEAP", "ESTO_TO_LEAP", alias_map=alias_map
+    )
+
+    alias_rows = contributions[contributions["counting_role"].eq("resolved_alias_group")]
+    assert len(alias_rows) == 2
+    assert set(alias_rows["validation_axis"]) == {"flow", "product"}
+    assert set(alias_rows["target_flow"]) == {"Heat plants"}
+    assert set(alias_rows["target_product"]) == {"Electricity"}
+    assert set(alias_rows["raw_value"]) == {100.0}
+    assert set(alias_rows["converted_value"]) == {100.0}
+    assert set(alias_rows["mapping_status"]) == {"resolved_alias"}
+
+    flow_checks = summary[
+        summary["validation_axis"].eq("flow")
+        & summary["parent_code"].eq("01 Production")
+    ]
+    product_checks = summary[
+        summary["validation_axis"].eq("product")
+        & summary["parent_code"].eq("06 Fuels")
+    ]
+    assert len(flow_checks) == 1
+    assert len(product_checks) == 1
+    assert bool(flow_checks.iloc[0]["fully_attributed"]) is True
+    assert bool(product_checks.iloc[0]["fully_attributed"]) is True
+    assert bool(flow_checks.iloc[0]["lineage_complete"]) is True
+    assert bool(product_checks.iloc[0]["lineage_complete"]) is True
+    assert flow_checks.iloc[0]["unresolved_source_count"] == 0
+    assert product_checks.iloc[0]["unresolved_source_count"] == 0
+    assert flow_checks.iloc[0]["unresolved_component_count"] == 0
+    assert product_checks.iloc[0]["unresolved_component_count"] == 0

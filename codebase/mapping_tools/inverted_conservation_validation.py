@@ -52,6 +52,7 @@ DEFAULT_STRUCTURAL_PATH = REPO_ROOT / "results/common_esto/structural_artifacts/
 DEFAULT_TREE_PATH = REPO_ROOT / "results/tree_structure/all_dataset_trees.csv"
 DEFAULT_NINTH_FUEL_VALIDATION_PATH = REPO_ROOT / "results/tree_structure/ninth_fuel_validation.csv"
 DEFAULT_TARGET_VARIANTS_PATH = REPO_ROOT / "config/inverted_conservation_target_variants.json"
+DEFAULT_TARGET_ALIASES_PATH = REPO_ROOT / "config/inverted_conservation_target_aliases.json"
 DEFAULT_RAW_PATHS = {
     "ESTO": REPO_ROOT / "data/00APEC_2025_low_with_subtotals.csv",
     "NINTH": REPO_ROOT / "data/merged_file_energy_ALL_20251106.csv",
@@ -80,6 +81,54 @@ def load_target_variants(path: Path | None) -> dict[str, Any]:
     if not isinstance(config.get("families", {}), dict):
         raise ValueError("Target variant config 'families' must be an object.")
     return config
+
+
+def load_target_aliases(path: Path | None) -> dict[str, Any]:
+    """Load optional placeholder-alias normalization rules for target branches."""
+    if path is None or not Path(path).exists():
+        return {"aliases": []}
+    config = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    aliases = config.get("aliases", [])
+    if not isinstance(aliases, list):
+        raise ValueError("Target alias config 'aliases' must be an array.")
+    return config
+
+
+def _build_alias_map(alias_config: dict[str, Any]) -> dict[tuple[str, str], tuple[str, str]]:
+    """Return alias->canonical target pair mappings."""
+    alias_map: dict[tuple[str, str], tuple[str, str]] = {}
+    for entry in alias_config.get("aliases", []):
+        canonical_flow = str(entry.get("canonical_target_flow", "")).strip()
+        canonical_product = str(entry.get("canonical_target_product", "")).strip()
+        if not canonical_flow or not canonical_product:
+            continue
+        canonical_pair = (canonical_flow, canonical_product)
+        raw_aliases = entry.get("aliases", [])
+        if not isinstance(raw_aliases, list):
+            raise ValueError("Each target alias entry must contain an 'aliases' list.")
+        for alias in raw_aliases:
+            alias_flow = str(alias.get("target_flow", "")).strip()
+            alias_product = str(alias.get("target_product", canonical_product)).strip()
+            if not alias_flow:
+                continue
+            alias_pair = (alias_flow, alias_product)
+            existing = alias_map.get(alias_pair)
+            if existing is not None and existing != canonical_pair:
+                raise ValueError(
+                    f"Alias pair {alias_pair} maps to multiple canonical targets: "
+                    f"{existing} and {canonical_pair}"
+                )
+            alias_map[alias_pair] = canonical_pair
+    return alias_map
+
+
+def _normalize_target_pair(
+    flow: str,
+    product: str,
+    alias_map: dict[tuple[str, str], tuple[str, str]],
+) -> tuple[str, str]:
+    pair = (str(flow).strip(), str(product).strip())
+    return alias_map.get(pair, pair)
 
 
 def partition_edges_by_target_variant(
@@ -153,6 +202,7 @@ def compose_direction_edges(
     source_system: str,
     target_system: str,
     comparison_scope: str,
+    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Compose X-to-Y pairs by joining their existing shared common rows.
 
@@ -186,6 +236,17 @@ def compose_direction_edges(
     edges = edges.drop_duplicates(
         ["source_flow", "source_product", "target_flow", "target_product"]
     ).copy()
+    if alias_map:
+        normalized_targets = edges.apply(
+            lambda row: _normalize_target_pair(row["target_flow"], row["target_product"], alias_map),
+            axis=1,
+            result_type="expand",
+        )
+        edges["target_flow"] = normalized_targets[0]
+        edges["target_product"] = normalized_targets[1]
+        edges = edges.drop_duplicates(
+            ["source_flow", "source_product", "target_flow", "target_product"]
+        ).copy()
     edges["relationship_id"] = edges.apply(
         lambda row: "dir_" + hashlib.sha1(
             "|".join([
@@ -221,7 +282,11 @@ def _structural_edges_for_existing_boundary_builder(
     return adapted
 
 
-def project_bijective_values(raw_partition: pd.DataFrame, edges: pd.DataFrame) -> pd.DataFrame:
+def project_bijective_values(
+    raw_partition: pd.DataFrame,
+    edges: pd.DataFrame,
+    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
+) -> pd.DataFrame:
     """Project only exclusive one-to-one source values onto target pairs."""
     edge_tuples = tuple(
         edges[["source_flow", "source_product", "target_flow", "target_product", "relationship_id"]]
@@ -231,12 +296,14 @@ def project_bijective_values(raw_partition: pd.DataFrame, edges: pd.DataFrame) -
     raw_totals = raw_partition.groupby(["source_flow", "source_product"])["value"].sum()
     rows: list[dict[str, Any]] = []
     base = raw_partition.iloc[0]
+    emitted_targets: set[tuple[str, str]] = set()
     for source_pair, targets in targets_of.items():
         if len(targets) != 1:
             continue
         target_pair = next(iter(targets))
         if len(sources_of[target_pair]) != 1:
             continue
+        emitted_targets.add(target_pair)
         rows.append({
             "source_system": str(base["source_system"]),
             "economy": str(base["economy"]),
@@ -246,10 +313,171 @@ def project_bijective_values(raw_partition: pd.DataFrame, edges: pd.DataFrame) -
             "esto_product": target_pair[1],
             "value": float(raw_totals.get(source_pair, 0.0)),
         })
+    if alias_map:
+        canonical_targets = set(alias_map.values())
+        grouped_sources: dict[tuple[str, str], set[tuple[str, str]]] = {}
+        for source_pair, targets in targets_of.items():
+            normalized_targets = {
+                alias_map.get(target_pair, target_pair) for target_pair in targets
+            }
+            if len(normalized_targets) == 1:
+                canonical_target = next(iter(normalized_targets))
+                if canonical_target in canonical_targets:
+                    grouped_sources.setdefault(canonical_target, set()).add(source_pair)
+        for canonical_target, source_pairs in grouped_sources.items():
+            if canonical_target in emitted_targets:
+                continue
+            if len(source_pairs) <= 1:
+                continue
+            rows.append({
+                "source_system": str(base["source_system"]),
+                "economy": str(base["economy"]),
+                "scenario": str(base["scenario"]),
+                "year": base["year"],
+                "esto_flow": canonical_target[0],
+                "esto_product": canonical_target[1],
+                "value": float(sum(raw_totals.get(pair, 0.0) for pair in source_pairs)),
+            })
     return pd.DataFrame(rows, columns=[
         "source_system", "economy", "scenario", "year",
         "esto_flow", "esto_product", "value",
     ])
+
+
+def _collapse_alias_groups(
+    contributions: pd.DataFrame,
+    alias_map: dict[tuple[str, str], tuple[str, str]],
+) -> pd.DataFrame:
+    """Collapse placeholder-alias target groups into one canonical bucket."""
+    if contributions.empty or not alias_map:
+        return contributions
+    working = contributions.copy()
+    collapsed_rows: list[dict[str, Any]] = []
+    collapsed_group_ids: set[str] = set()
+    for group_id, group in working.groupby("relationship_group_id", dropna=False):
+        if not group_id:
+            continue
+        canonical_pairs = {
+            tuple(pair) for pair in group[["esto_flow", "esto_product"]]
+            .dropna()
+            .astype(str)
+            .itertuples(index=False, name=None)
+            if pair[0] or pair[1]
+        }
+        if len(canonical_pairs) != 1:
+            continue
+        canonical_pair = next(iter(canonical_pairs))
+        if canonical_pair not in set(alias_map.values()):
+            continue
+        source_pairs = {
+            (str(row["source_flow"]).strip(), str(row["source_product"]).strip())
+            for _, row in group.iterrows()
+            if str(row["source_flow"]).strip() or str(row["source_product"]).strip()
+        }
+        if len(source_pairs) <= 1:
+            continue
+        if group["counting_role"].eq("resolved_pair").any():
+            continue
+
+        canonical_flow, canonical_product = canonical_pair
+        raw_total = pd.to_numeric(group["raw_value"], errors="coerce").fillna(0.0).sum()
+        source_pairs = sorted(source_pairs)
+        target_pairs = [(canonical_flow, canonical_product)]
+        base = group.iloc[0].to_dict()
+        base.update({
+            "counting_role": "resolved_alias_group",
+            "source_flow": " | ".join(f"{flow}" for flow, _ in source_pairs),
+            "source_product": " | ".join(f"{product}" for _, product in source_pairs),
+            "esto_flow": canonical_flow,
+            "esto_product": canonical_product,
+            "target_flow": canonical_flow,
+            "target_product": canonical_product,
+            "relationship_id": "alias_" + hashlib.sha1(
+                "|".join([
+                    str(group_id), canonical_flow, canonical_product,
+                    ";".join(f"{flow}::{product}" for flow, product in source_pairs),
+                    canonical_flow + "::" + canonical_product,
+                ]).encode("utf-8")
+            ).hexdigest()[:16],
+            "raw_value": raw_total,
+            "converted_value": raw_total,
+            "contribution_difference": 0.0,
+            "mapping_cardinality": "alias_bucket",
+            "value_quality": "alias_normalized",
+            "mapping_status": "resolved_alias",
+            "exclusion_reason": "placeholder_alias_collapsed",
+            "relationship_explanation": (
+                "Placeholder alias rows were normalized to one canonical target bucket."
+            ),
+            "combined_source_value": raw_total,
+            "individual_target_values_available": True,
+            "involved_source_pairs": " | ".join(
+                f"{flow} / {product}" for flow, product in source_pairs
+            ),
+            "involved_target_pairs": " | ".join(
+                f"{flow} / {product}" for flow, product in target_pairs
+            ),
+        })
+        collapsed_rows.append(base)
+        collapsed_group_ids.add(str(group_id))
+
+    if not collapsed_rows:
+        return contributions
+
+    remaining = working[~working["relationship_group_id"].astype(str).isin(collapsed_group_ids)].copy()
+    collapsed_df = pd.DataFrame(collapsed_rows)
+    return pd.concat([remaining, collapsed_df], ignore_index=True, sort=False)
+
+
+def _recalculate_summary_from_contributions(
+    contributions: pd.DataFrame,
+    summary: pd.DataFrame,
+) -> pd.DataFrame:
+    """Refresh breakdown counts after alias groups have been collapsed."""
+    if summary.empty:
+        return summary
+    metrics: list[dict[str, Any]] = []
+    for check_id, group in contributions.groupby("check_id", dropna=False):
+        resolved_mask = group["counting_role"].isin({"resolved_pair", "resolved_alias_group"})
+        raw_mask = group["counting_role"].eq("raw_source")
+        converted_mask = group["counting_role"].eq("converted_component")
+        resolved_rows = group[resolved_mask]
+        raw_rows = group[raw_mask]
+        converted_rows = group[converted_mask]
+        resolved_difference = pd.to_numeric(resolved_rows["contribution_difference"], errors="coerce").fillna(0.0).sum()
+        unresolved_raw = pd.to_numeric(raw_rows["raw_value"], errors="coerce").fillna(0.0).sum()
+        unresolved_converted = pd.to_numeric(converted_rows["converted_value"], errors="coerce").fillna(0.0).sum()
+        breakdown_raw = pd.to_numeric(group["raw_value"], errors="coerce").fillna(0.0).sum()
+        breakdown_converted = pd.to_numeric(group["converted_value"], errors="coerce").fillna(0.0).sum()
+        breakdown_difference = breakdown_raw - breakdown_converted
+        metrics.append({
+            "check_id": check_id,
+            "breakdown_raw_total": breakdown_raw,
+            "breakdown_converted_total": breakdown_converted,
+            "breakdown_difference": breakdown_difference,
+            "breakdown_remainder": breakdown_difference - float(summary.loc[summary["check_id"].eq(check_id), "check_difference"].iloc[0]),
+            "resolved_difference": resolved_difference,
+            "resolved_contributor_count": int(resolved_rows.shape[0]),
+            "unresolved_raw_total": unresolved_raw,
+            "unresolved_converted_total": unresolved_converted,
+            "unresolved_difference": unresolved_raw - unresolved_converted,
+            "unresolved_source_count": int(raw_rows.shape[0]),
+            "unresolved_component_count": int(converted_rows.shape[0]),
+            "fully_attributed": bool(raw_rows.empty and converted_rows.empty),
+            "lineage_complete": bool(
+                abs(breakdown_difference - float(summary.loc[summary["check_id"].eq(check_id), "check_difference"].iloc[0]))
+                <= 1e-9
+            ),
+        })
+    metrics_df = pd.DataFrame(metrics)
+    updated = summary.drop(columns=[
+        "breakdown_raw_total", "breakdown_converted_total", "breakdown_difference",
+        "breakdown_remainder", "resolved_difference", "resolved_contributor_count",
+        "unresolved_raw_total", "unresolved_converted_total", "unresolved_difference",
+        "unresolved_source_count", "unresolved_component_count", "fully_attributed",
+        "lineage_complete",
+    ], errors="ignore").merge(metrics_df, on="check_id", how="left")
+    return updated
 
 
 def validate_direction_partition(
@@ -262,6 +490,7 @@ def validate_direction_partition(
     target_variant_family: str = "",
     target_variant: str = "",
     tolerance: float = 0.01,
+    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the existing Option-A breakdown on one inverted direction slice."""
     adapted = _structural_edges_for_existing_boundary_builder(edges, source_system)
@@ -269,8 +498,13 @@ def validate_direction_partition(
         axis: build_parent_boundaries(adapted, tree_df, source_system, axis)
         for axis in ["flow", "product"]
     }
-    projected = project_bijective_values(raw_partition, edges)
+    projected = project_bijective_values(raw_partition, edges, alias_map)
     target_pairs = set(zip(edges["target_flow"], edges["target_product"]))
+    if alias_map:
+        target_pairs = {
+            _normalize_target_pair(flow, product, alias_map)
+            for flow, product in target_pairs
+        }
     target_pairs_by_axis = {"flow": target_pairs, "product": target_pairs}
     contributions, summary = build_anchor_contributions(
         raw_partition=raw_partition,
@@ -374,6 +608,8 @@ def validate_direction_partition(
             index=contributions.index,
         )
         contributions = pd.concat([contributions, group_frame], axis=1)
+        contributions = _collapse_alias_groups(contributions, alias_map or {})
+        summary = _recalculate_summary_from_contributions(contributions, summary)
 
     # Keep legacy internal column names while adding explicit target labels.
     for frame in [contributions, summary]:
@@ -478,6 +714,7 @@ def run_inverted_conservation_validation(
     tree_path: Path = DEFAULT_TREE_PATH,
     ninth_fuel_validation_path: Path = DEFAULT_NINTH_FUEL_VALIDATION_PATH,
     target_variants_path: Path | None = DEFAULT_TARGET_VARIANTS_PATH,
+    target_aliases_path: Path | None = DEFAULT_TARGET_ALIASES_PATH,
     raw_paths: dict[str, Path] | None = None,
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
@@ -503,6 +740,8 @@ def run_inverted_conservation_validation(
     tree = pd.read_csv(tree_path, dtype=object)
     ninth_fuel_validation = pd.read_csv(ninth_fuel_validation_path, dtype=object)
     target_variants = load_target_variants(target_variants_path)
+    target_aliases = load_target_aliases(target_aliases_path)
+    alias_map = _build_alias_map(target_aliases)
     output_dir = Path(output_dir)
     staging = output_dir.with_name(output_dir.name + ".building")
     if staging.exists():
@@ -519,7 +758,7 @@ def run_inverted_conservation_validation(
         target_system = config["target_system"]
         comparison_scope = config["comparison_scope"]
         edges, source_gaps, target_gaps = compose_direction_edges(
-            structural, source_system, target_system, comparison_scope
+            structural, source_system, target_system, comparison_scope, alias_map
         )
         edge_partitions = partition_edges_by_target_variant(
             edges, target_system, target_variants
@@ -534,7 +773,7 @@ def run_inverted_conservation_validation(
             for variant_family, variant, variant_edges in edge_partitions:
                 contributions, summary = validate_direction_partition(
                     raw_partition, variant_edges, tree, source_system, target_system,
-                    direction, variant_family, variant, tolerance,
+                    direction, variant_family, variant, tolerance, alias_map,
                 )
                 contribution_frames.append(contributions)
                 summary_frames.append(summary)

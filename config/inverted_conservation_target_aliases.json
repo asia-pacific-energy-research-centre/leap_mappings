@@ -1,0 +1,16 @@
+{
+  "schema_version": "target_aliases_v1",
+  "target_system": "LEAP",
+  "aliases": [
+    {
+      "canonical_target_flow": "Heat plants",
+      "canonical_target_product": "Electricity",
+      "aliases": [
+        {
+          "target_flow": "Heat plant interim/Heat plant interim",
+          "target_product": "Electricity"
+        }
+      ]
+    }
+  ]
+}
