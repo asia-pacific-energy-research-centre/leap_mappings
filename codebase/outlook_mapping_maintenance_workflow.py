@@ -35,7 +35,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import sys
@@ -1462,20 +1461,12 @@ def run(
         return
 
     print("\n" + "=" * 70)
-    print("CONFIRMATION REQUIRED")
+    print("PREVIEW ONLY")
     print("=" * 70)
-    print(f"About to apply reviewed subtotal overrides and write:")
-    print(f"  {WORKBOOK_PATH}")
-    if os.environ.get("CODEX_AUTO_CONFIRM_MAINTENANCE", "").strip().lower() in {"1", "true", "yes"}:
-        answer = "yes"
-        print("\nType 'yes' to proceed, anything else to abort: yes (auto-confirmed)")
-    else:
-        answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
-    if answer != "yes":
-        print("Aborted -- no changes written.")
-        sys.exit(0)
-
-    _archive_workbook(WORKBOOK_PATH)
+    print("Workbook writes are disabled for now.")
+    print(f"  Skipping write of: {WORKBOOK_PATH}")
+    print("  Reviewed subtotal overrides were only reported in preview mode.")
+    return
 
     # NOTE: lookup-based recompute-and-write of leap_is_subtotal /
     # esto_pair_is_subtotal / ninth_pair_is_subtotal is intentionally disabled.
@@ -1691,4 +1682,3 @@ def run(
 
 if __name__ == "__main__":
     run()
-

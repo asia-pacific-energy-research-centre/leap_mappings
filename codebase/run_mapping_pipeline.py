@@ -685,9 +685,8 @@ def main() -> None:
         "--apply-maintenance",
         action="store_true",
         help=(
-            "Allow Stage 0 to write computed subtotal values to the mapping workbook. "
-            "Reviewed subtotal_label_overrides are applied last. Without this flag, "
-            "Stage 0 writes preview and stale-override QA files only."
+            "Deprecated no-op placeholder. Stage 0 now runs preview-only and does not "
+            "write the mapping workbook."
         ),
     )
     args = parser.parse_args()
