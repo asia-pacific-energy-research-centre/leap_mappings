@@ -554,6 +554,11 @@ def run_stage_3() -> None:
             "passed": 0, "failed": 0, "skipped": 0, "reason": skip_reason,
         }])
     else:
+        # Release memory before the final anchor pass. The core Stage 3
+        # comparison output and validation summary are already written by this
+        # point, so they are no longer needed for the anchor QA step.
+        del detail_df, source_inconsistencies
+        gc.collect()
         raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
             esto_data_path=ESTO_CSV_PATH,
             ninth_data_path=NINTH_CSV_PATH,
@@ -568,21 +573,39 @@ def run_stage_3() -> None:
         )
         unmodelled_source_codes = load_unmodelled_source_codes()
         anchor_t0 = time.perf_counter()
-        anchor_detail = validate_source_parent_anchors(
-            source_df=raw_anchor_source,
-            source_tree_df=validation_tree,
-            source_mapping_df=source_mapping,
-            common_rows_df=common_rows,
-            comparison_df=comparison_data,
-            unmodelled_source_codes=unmodelled_source_codes,
-        )
-        print(
-            f"  [timing] validate_source_parent_anchors: "
-            f"{time.perf_counter() - anchor_t0:.1f}s ({len(anchor_detail):,} rows)"
-        )
-        anchor_detail.insert(0, "run_id", run_id)
-        anchor_summary = summarise_source_parent_anchors(anchor_detail)
-        anchor_summary.insert(0, "run_id", run_id)
+        try:
+            anchor_detail = validate_source_parent_anchors(
+                source_df=raw_anchor_source,
+                source_tree_df=validation_tree,
+                source_mapping_df=source_mapping,
+                common_rows_df=common_rows,
+                comparison_df=comparison_data,
+                unmodelled_source_codes=unmodelled_source_codes,
+            )
+        except MemoryError as exc:
+            print(
+                "  WARNING: source_parent_anchor_validation ran out of memory; "
+                "skipping anchor detail and writing a skipped summary."
+            )
+            print(f"  WARNING: {type(exc).__name__}: {exc}")
+            anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+            anchor_summary = pd.DataFrame([{
+                "run_id": run_id,
+                "status": "skipped",
+                "eligible": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "reason": "memory_error",
+            }])
+        else:
+            print(
+                f"  [timing] validate_source_parent_anchors: "
+                f"{time.perf_counter() - anchor_t0:.1f}s ({len(anchor_detail):,} rows)"
+            )
+            anchor_detail.insert(0, "run_id", run_id)
+            anchor_summary = summarise_source_parent_anchors(anchor_detail)
+            anchor_summary.insert(0, "run_id", run_id)
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""

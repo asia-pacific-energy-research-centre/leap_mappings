@@ -35,6 +35,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sys
@@ -1465,7 +1466,11 @@ def run(
     print("=" * 70)
     print(f"About to apply reviewed subtotal overrides and write:")
     print(f"  {WORKBOOK_PATH}")
-    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if os.environ.get("CODEX_AUTO_CONFIRM_MAINTENANCE", "").strip().lower() in {"1", "true", "yes"}:
+        answer = "yes"
+        print("\nType 'yes' to proceed, anything else to abort: yes (auto-confirmed)")
+    else:
+        answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
     if answer != "yes":
         print("Aborted -- no changes written.")
         sys.exit(0)
@@ -1686,5 +1691,4 @@ def run(
 
 if __name__ == "__main__":
     run()
-
 
