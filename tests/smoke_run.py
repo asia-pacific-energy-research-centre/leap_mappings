@@ -80,7 +80,7 @@ run(["python", "-m", "pytest", "-q",
 # ### Stage 0 — maintenance workflow
 
 # %%
-run(["python", "codebase/outlook_mapping_maintenance_workflow.py"])
+run(["python", "codebase/archive/outlook_mapping_maintenance_workflow.py"])
 
 stage0_outputs = [
     REPO_ROOT / "results" / "maintenance" / "maintenance_summary.csv",

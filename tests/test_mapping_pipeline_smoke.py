@@ -36,7 +36,7 @@ from codebase.run_mapping_pipeline import (  # noqa: E402
     run_stage_2,
     run_stage_3,
 )
-import codebase.outlook_mapping_maintenance_workflow as maintenance_workflow  # noqa: E402
+import codebase.archive.outlook_mapping_maintenance_workflow as maintenance_workflow  # noqa: E402
 
 
 TREE_DIR = Path(r"C:\Users\Work\github\leap_mappings\results\tree_structure")

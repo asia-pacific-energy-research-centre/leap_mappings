@@ -11,7 +11,7 @@ drive the canonical mapping pipeline and its maintenance checks.
 | Script | Bucket | Purpose |
 |---|---|---|
 | `codebase/run_mapping_pipeline.py` | Pipeline orchestrator | End-to-end Common ESTO / LEAP mapping pipeline. Runs maintenance, relationship building, common ESTO structure, LEAP parse, and the conversion stages. |
-| `codebase/outlook_mapping_maintenance_workflow.py` | Maintenance / Stage 0 | Updates subtotal flags, produces mapping QA outputs, and supports workbook maintenance for `outlook_mappings_master.xlsx`. |
+| `codebase/archive/outlook_mapping_maintenance_workflow.py` | Maintenance / Stage 0 | Updates subtotal flags, produces mapping QA outputs, and supports workbook maintenance for `outlook_mappings_master.xlsx`. |
 | `codebase/propagate_esto_rows_workflow.py` | Maintenance utility | Appends a reviewed ESTO row set to matching ESTO source files, usually for controlled maintenance or propagation of approved rows. |
 
 ## Legacy / Archive
@@ -60,4 +60,3 @@ runtime surface:
 - The old refresh workflow is intentionally retained as a legacy reference.
 - When the workbook or source data changes, run the maintenance workflow before
   the main pipeline.
-

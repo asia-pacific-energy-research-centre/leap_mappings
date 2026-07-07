@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from openpyxl import Workbook
 
-from codebase.outlook_mapping_maintenance_workflow import (
+from codebase.archive.outlook_mapping_maintenance_workflow import (
     _apply_subtotal_overrides_to_sheet,
     _archive_workbook,
     _build_stale_subtotal_override_rows,

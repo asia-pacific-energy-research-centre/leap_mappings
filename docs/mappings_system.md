@@ -682,7 +682,7 @@ A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggr
 
 ## Mapping maintenance workflow
 
-`codebase/outlook_mapping_maintenance_workflow.py` reads `config/outlook_mappings_master.xlsx` and maintains or checks workbook fields without creating the final dashboard dataset.
+`codebase/archive/outlook_mapping_maintenance_workflow.py` reads `config/outlook_mappings_master.xlsx` and maintains or checks workbook fields without creating the final dashboard dataset.
 
 Run this after editing mapping rows or rollup rules.
 
@@ -901,7 +901,7 @@ The mapping rows in `outlook_mappings_master.xlsx` are the human-maintained inpu
 
 ### Stage 0 - Mapping maintenance
 
-`codebase/outlook_mapping_maintenance_workflow.py`
+`codebase/archive/outlook_mapping_maintenance_workflow.py`
 
 Maintains the workbook, recalculates subtotal columns, writes cardinality QA outputs, checks subtotal alignment, and produces tree-structure outputs.
 
@@ -1534,9 +1534,9 @@ Many-to-many relationships that survive into the common structure are a high-sev
 
 Stage 2 outputs are structure outputs, not final result data. Review `common_esto_rows.csv` and `esto_to_common_esto_map.csv` for the generated comparison categories that Stage 3 will apply to LEAP, ESTO, and 9th data. The QA files above explain why rows were rolled together and whether any source aggregate was split or only partially covered. A clean Stage 2 does not mean source values match; it means the common comparison structure is internally consistent enough for Stage 3.
 
-### Maintenance workflow (`outlook_mapping_maintenance_workflow.py`)
+### Maintenance workflow (`codebase/archive/outlook_mapping_maintenance_workflow.py`)
 
-`codebase/outlook_mapping_maintenance_workflow.py` produces QA outputs to `results/maintenance/`:
+`codebase/archive/outlook_mapping_maintenance_workflow.py` produces QA outputs to `results/maintenance/`:
 
 | File | Contents |
 | --- | --- |

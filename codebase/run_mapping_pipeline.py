@@ -132,7 +132,7 @@ def run_stage_0(apply_subtotal_changes: bool = False) -> None:
     print("\n" + "=" * 60)
     print("STAGE 0  Maintenance")
     print("=" * 60)
-    from codebase.outlook_mapping_maintenance_workflow import run as maintenance_run
+    from codebase.archive.outlook_mapping_maintenance_workflow import run as maintenance_run
     maintenance_run(apply_subtotal_changes_to_workbook=apply_subtotal_changes)
 
 

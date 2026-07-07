@@ -4,7 +4,7 @@
 Legacy refresh workflow for config/leap_mappings.xlsx.
 
 The current Stage 0 path for config/outlook_mappings_master.xlsx is
-codebase/outlook_mapping_maintenance_workflow.py. Keep this file as legacy
+codebase/archive/outlook_mapping_maintenance_workflow.py. Keep this file as legacy
 reference for old workbook checks and migration ideas; do not use it for the
 new canonical mapping pipeline unless a task explicitly asks for legacy
 workbook maintenance.

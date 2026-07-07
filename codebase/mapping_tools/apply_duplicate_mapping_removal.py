@@ -15,7 +15,7 @@ same sheet:
   ninth_pairs_to_esto_pairs   (9th_sector, 9th_fuel) -> (esto_flow, esto_product)
 
 Counterpart to the duplicate_mappings.csv report produced by
-codebase/outlook_mapping_maintenance_workflow.py. Because the removed rows are
+codebase/archive/outlook_mapping_maintenance_workflow.py. Because the removed rows are
 exact duplicates of a retained row, deleting them is lossless: the mapping the
 row expressed is still present via the copy that is kept (the lowest workbook
 row of each group).
@@ -251,7 +251,7 @@ def main() -> None:
         sys.exit(1)
     if not DUPLICATE_CSV_PATH.exists():
         print(f"[ERROR] Duplicate report not found: {DUPLICATE_CSV_PATH}")
-        print("        Run codebase/outlook_mapping_maintenance_workflow.py first "
+        print("        Run codebase/archive/outlook_mapping_maintenance_workflow.py first "
               "(apply mode) to generate and review it.")
         sys.exit(1)
 

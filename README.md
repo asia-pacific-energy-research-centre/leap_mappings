@@ -21,7 +21,7 @@ Scripts then generate the structured outputs used by comparison tools and dashbo
 ## Layered Workflow
 
 1. Refresh and audit the simple mapping workbook:
-   - `codebase/outlook_mapping_maintenance_workflow.py`
+   - `codebase/archive/outlook_mapping_maintenance_workflow.py`
    - input: `config/outlook_mappings_master.xlsx`
 
 2. Generate canonical relationship rows:

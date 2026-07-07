@@ -41,7 +41,7 @@ run identifiers.
 **Status:** Confirmed
 **Owner:** leap_mappings
 **Type:** Mapping
-**Affected areas:** `config/outlook_mappings_master.xlsx`; `config/mapping_issue_exception_sets.xlsx` sheet `subtotal_mismatch_allowed`; `codebase/outlook_mapping_maintenance_workflow.py`; `results/maintenance/subtotal_mismatches.csv`
+**Affected areas:** `config/outlook_mappings_master.xlsx`; `config/mapping_issue_exception_sets.xlsx` sheet `subtotal_mismatch_allowed`; `codebase/archive/outlook_mapping_maintenance_workflow.py`; `results/maintenance/subtotal_mismatches.csv`
 
 ### Situation
 
