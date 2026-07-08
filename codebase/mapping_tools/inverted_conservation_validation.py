@@ -14,6 +14,7 @@ import hashlib
 import json
 import shutil
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -95,41 +96,94 @@ def load_target_aliases(path: Path | None) -> dict[str, Any]:
     return config
 
 
-def _build_alias_map(alias_config: dict[str, Any]) -> dict[tuple[str, str], tuple[str, str]]:
-    """Return alias->canonical target pair mappings."""
-    alias_map: dict[tuple[str, str], tuple[str, str]] = {}
+_WILDCARD_MARKERS = {"", "*"}
+
+
+@dataclass
+class AliasMap:
+    """Placeholder-alias normalization rules for target branches.
+
+    ``exact`` matches one specific (flow, product) pair. ``flow_only`` matches
+    any product under an aliased flow (e.g. every fuel under a placeholder
+    flow bucket), passing the product through unchanged.
+    """
+
+    exact: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    flow_only: dict[str, str] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.exact) or bool(self.flow_only)
+
+    def lookup(self, flow: str, product: str) -> tuple[str, str]:
+        pair = (str(flow).strip(), str(product).strip())
+        if pair in self.exact:
+            return self.exact[pair]
+        canonical_flow = self.flow_only.get(pair[0])
+        if canonical_flow is not None:
+            return (canonical_flow, pair[1])
+        return pair
+
+    def canonical_flows(self) -> set[str]:
+        return {flow for flow, _ in self.exact.values()} | set(self.flow_only.values())
+
+
+def _build_alias_map(alias_config: dict[str, Any]) -> AliasMap:
+    """Return alias->canonical target pair mappings.
+
+    An entry whose ``canonical_target_product`` is omitted (or ``""``/``"*"``)
+    is a flow-level wildcard: every alias under it collapses into the
+    canonical flow regardless of product, so all fuels under a placeholder
+    flow (not just one) are normalized.
+    """
+    exact: dict[tuple[str, str], tuple[str, str]] = {}
+    flow_only: dict[str, str] = {}
     for entry in alias_config.get("aliases", []):
         canonical_flow = str(entry.get("canonical_target_flow", "")).strip()
-        canonical_product = str(entry.get("canonical_target_product", "")).strip()
-        if not canonical_flow or not canonical_product:
+        canonical_product_raw = str(entry.get("canonical_target_product", "")).strip()
+        if not canonical_flow:
             continue
-        canonical_pair = (canonical_flow, canonical_product)
+        entry_is_wildcard = canonical_product_raw in _WILDCARD_MARKERS
         raw_aliases = entry.get("aliases", [])
         if not isinstance(raw_aliases, list):
             raise ValueError("Each target alias entry must contain an 'aliases' list.")
         for alias in raw_aliases:
             alias_flow = str(alias.get("target_flow", "")).strip()
-            alias_product = str(alias.get("target_product", canonical_product)).strip()
             if not alias_flow:
                 continue
+            alias_product_raw = str(alias.get("target_product", "")).strip()
+            if entry_is_wildcard and alias_product_raw in _WILDCARD_MARKERS:
+                existing_flow = flow_only.get(alias_flow)
+                if existing_flow is not None and existing_flow != canonical_flow:
+                    raise ValueError(
+                        f"Alias flow {alias_flow!r} maps to multiple canonical flows: "
+                        f"{existing_flow} and {canonical_flow}"
+                    )
+                flow_only[alias_flow] = canonical_flow
+                continue
+            alias_product = alias_product_raw or canonical_product_raw
+            if not alias_product:
+                raise ValueError(
+                    f"Alias for flow {alias_flow!r} needs a target_product unless the "
+                    "entry is a flow-level wildcard."
+                )
             alias_pair = (alias_flow, alias_product)
-            existing = alias_map.get(alias_pair)
+            canonical_pair = (canonical_flow, canonical_product_raw or alias_product)
+            existing = exact.get(alias_pair)
             if existing is not None and existing != canonical_pair:
                 raise ValueError(
                     f"Alias pair {alias_pair} maps to multiple canonical targets: "
                     f"{existing} and {canonical_pair}"
                 )
-            alias_map[alias_pair] = canonical_pair
-    return alias_map
+            exact[alias_pair] = canonical_pair
+    return AliasMap(exact=exact, flow_only=flow_only)
 
 
 def _normalize_target_pair(
     flow: str,
     product: str,
-    alias_map: dict[tuple[str, str], tuple[str, str]],
+    alias_map: AliasMap,
 ) -> tuple[str, str]:
-    pair = (str(flow).strip(), str(product).strip())
-    return alias_map.get(pair, pair)
+    return alias_map.lookup(flow, product)
 
 
 def _ancestor_chain(code: str, parent_index: dict[str, str]) -> list[str]:
@@ -281,7 +335,7 @@ def compose_direction_edges(
     source_system: str,
     target_system: str,
     comparison_scope: str,
-    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
+    alias_map: AliasMap | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Compose X-to-Y pairs by joining their existing shared common rows.
 
@@ -364,7 +418,7 @@ def _structural_edges_for_existing_boundary_builder(
 def project_bijective_values(
     raw_partition: pd.DataFrame,
     edges: pd.DataFrame,
-    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
+    alias_map: AliasMap | None = None,
 ) -> pd.DataFrame:
     """Project only exclusive one-to-one source values onto target pairs."""
     edge_tuples = tuple(
@@ -393,15 +447,15 @@ def project_bijective_values(
             "value": float(raw_totals.get(source_pair, 0.0)),
         })
     if alias_map:
-        canonical_targets = set(alias_map.values())
+        canonical_flows = alias_map.canonical_flows()
         grouped_sources: dict[tuple[str, str], set[tuple[str, str]]] = {}
         for source_pair, targets in targets_of.items():
             normalized_targets = {
-                alias_map.get(target_pair, target_pair) for target_pair in targets
+                alias_map.lookup(target_pair[0], target_pair[1]) for target_pair in targets
             }
             if len(normalized_targets) == 1:
                 canonical_target = next(iter(normalized_targets))
-                if canonical_target in canonical_targets:
+                if canonical_target[0] in canonical_flows:
                     grouped_sources.setdefault(canonical_target, set()).add(source_pair)
         for canonical_target, source_pairs in grouped_sources.items():
             if canonical_target in emitted_targets:
@@ -425,7 +479,7 @@ def project_bijective_values(
 
 def _collapse_alias_groups(
     contributions: pd.DataFrame,
-    alias_map: dict[tuple[str, str], tuple[str, str]],
+    alias_map: AliasMap,
 ) -> pd.DataFrame:
     """Collapse placeholder-alias target groups into one canonical bucket."""
     if contributions.empty or not alias_map:
@@ -446,7 +500,7 @@ def _collapse_alias_groups(
         if len(canonical_pairs) != 1:
             continue
         canonical_pair = next(iter(canonical_pairs))
-        if canonical_pair not in set(alias_map.values()):
+        if canonical_pair[0] not in alias_map.canonical_flows():
             continue
         source_pairs = {
             (str(row["source_flow"]).strip(), str(row["source_product"]).strip())
@@ -569,7 +623,7 @@ def validate_direction_partition(
     target_variant_family: str = "",
     target_variant: str = "",
     tolerance: float = 0.01,
-    alias_map: dict[tuple[str, str], tuple[str, str]] | None = None,
+    alias_map: AliasMap | None = None,
     ignore_target_rollup_ancestors: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the existing Option-A breakdown on one inverted direction slice."""
@@ -694,7 +748,7 @@ def validate_direction_partition(
             index=contributions.index,
         )
         contributions = pd.concat([contributions, group_frame], axis=1)
-        contributions = _collapse_alias_groups(contributions, alias_map or {})
+        contributions = _collapse_alias_groups(contributions, alias_map or AliasMap())
         summary = _recalculate_summary_from_contributions(contributions, summary)
 
     # Keep legacy internal column names while adding explicit target labels.

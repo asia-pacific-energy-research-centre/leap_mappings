@@ -366,8 +366,8 @@ def build_source_aggregate_edges(
     are later fed into a union-find structure so that all reachable pairs end up
     in the same connected component — and therefore the same common ESTO row.
 
-    Subtotal exclusion
-    ------------------
+    Subtotal and rollup-derived exclusion
+    --------------------------------------
     Rows where ``esto_pair_is_subtotal`` is True are excluded from edge
     creation.  They remain in the output as standalone common rows but are not
     used to structurally connect other flows.  This prevents parent-level ESTO
@@ -380,8 +380,19 @@ def build_source_aggregate_edges(
     otherwise cause the graph to merge flows 12, 13, 14, and 16.01-16.02 into
     one ``12,13,14,16.01-16.02 Total final consumption`` row.
 
-    The full set of component pairs (including subtotals) is still recorded in
-    the aggregate-group metadata for diagnostic purposes.
+    Rows where ``is_rollup_derived`` is True are excluded for the same reason.
+    ``_apply_leap_rollup_rules`` duplicates existing leaf-level relationships
+    under a shared generic source label (e.g. every ``Transport`` subsector's
+    mapping gets copied under ``source_flow="Transport"``) so that an
+    aggregate-level LEAP result still finds an ESTO target.  Without this
+    exclusion, that shared generic label makes the algorithm see one LEAP
+    source fanning out to many ESTO leaves (e.g. ``15.05 Pipeline transport``
+    and ``15.06 Non-specified transport``), and unions genuinely distinct
+    sibling flows into a single common row.
+
+    The full set of component pairs (including subtotals and rollup-derived
+    rows) is still recorded in the aggregate-group metadata for diagnostic
+    purposes.
     """
     edges: list[tuple[tuple[str, str], tuple[str, str]]] = []
     aggregate_rows: list[dict[str, Any]] = []
@@ -392,10 +403,12 @@ def build_source_aggregate_edges(
     # create connected-component edges — doing so would merge unrelated ESTO flows.
     relationships_df = relationships_df[relationships_df["source_flow"].notna() & (relationships_df["source_flow"].astype(str).str.strip() != "")]
     subtotal_mask = relationships_df.get("esto_pair_is_subtotal", pd.Series(False, index=relationships_df.index)).fillna(False).astype(bool)
+    rollup_derived_mask = relationships_df.get("is_rollup_derived", pd.Series(False, index=relationships_df.index)).fillna(False).astype(bool)
+    exclude_mask = subtotal_mask | rollup_derived_mask
     group_columns = ["use_case", "source_system", "source_flow", "source_product"]
     for group_values, group_df in relationships_df.groupby(group_columns, dropna=False):
         all_pairs = sorted({component_pair(row) for _, row in group_df.iterrows()})
-        edge_pairs = sorted({component_pair(row) for _, row in group_df[~subtotal_mask.reindex(group_df.index, fill_value=False)].iterrows()})
+        edge_pairs = sorted({component_pair(row) for _, row in group_df[~exclude_mask.reindex(group_df.index, fill_value=False)].iterrows()})
         if len(edge_pairs) <= 1 or allocation_allows_split(group_df):
             continue
         for pair in edge_pairs[1:]:

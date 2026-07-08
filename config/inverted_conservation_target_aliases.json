@@ -4,11 +4,9 @@
   "aliases": [
     {
       "canonical_target_flow": "Heat plants",
-      "canonical_target_product": "Electricity",
       "aliases": [
         {
-          "target_flow": "Heat plant interim/Heat plant interim",
-          "target_product": "Electricity"
+          "target_flow": "Heat plant interim/Heat plant interim"
         }
       ]
     }

@@ -1,0 +1,2 @@
+we should ignore any of the ignored sectors/fuels from the esto and ninth data as sources of issues. they are sectors/fuels where we arent modelling their data, so dont need to match it in any way: 
+C:\Users\Work\github\leap_mappings\config\mapping_issue_exception_sets.xlsx > we can put them in here and for certain other processes whether they e in this or the leap_initalsiation rpeo, also use this excpetion set to ignore those.

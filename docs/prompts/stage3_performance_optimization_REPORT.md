@@ -131,6 +131,59 @@ against the pre-change implementation, plus the 18 passing unit tests.
   test_chunked_cache_reuse_and_result_equivalence`) — missing `pyarrow`/
   `fastparquet`; environmental, unrelated to these changes.
 
+## Follow-on: issue-suppression changes (2026-07-05, committed 43053f3 + bad0251)
+
+After reviewing the anchor diagnostics, two output-changing refinements were made
+(separate from the perf work) and persisted via a `--stages 3` rerun.
+
+### 1. Unmodelled-source exception set (`43053f3`)
+
+Sectors/fuels we do not model and never reconcile are dropped from the anchor
+output. New `config/mapping_issue_exception_sets.xlsx` sheet
+`unmodelled_source_ignored`: sectors **06** (stock changes), **11** (statistical
+discrepancy — the user said "08", but ESTO 08 is Transfers/modelled), **18/19**
+(power-output flows); fuels **19/20/21** (Total / Total Renewables / Modern
+renewables). Reusable loader `codebase/mapping_tools/mapping_issue_exceptions.py`
+matches by leading code number scoped by axis (covers `18.02 ...` and
+`18_electricity_output_in_gwh/...` alike); importable by other processes here or
+in `leap_initialisation`. Effect: **4,612,008 of 20,360,259 rows dropped (22.7%)**.
+
+### 2. "Reconciles wins" for incomplete frontiers (`bad0251`)
+
+The classifier failed subtotal parents whose mapped leaves already summed to the
+parent, merely because an intentionally-unmapped placeholder leaf (e.g.
+`08_gas_unallocated`) existed. **14.2M of 15.9M `incomplete_frontier` failures
+(89%) actually reconciled** (`parent_value == frontier_sum` within tolerance).
+Now such rows pass with reason `within_tolerance_incomplete_frontier`; only
+genuine gaps (`pv != fs`) remain `failed / incomplete_frontier`.
+
+### Corrected full-run anchor totals (15,748,251 rows)
+
+| reason | status | count |
+|---|---|---|
+| within_tolerance_incomplete_frontier | passed | 10,506,571 |
+| within_tolerance | passed | 417,039 |
+| incomplete_frontier (genuine gap) | failed | 1,516,874 |
+| frontier_rows_absent | failed | 1,378,646 |
+| difference_exceeds_tolerance | failed | 86,248 |
+| no_anchorable_common_esto_boundary | skipped | 1,842,873 |
+
+`validate_source_parent_anchors` reran in **459 s** for 15.7M rows; Stage 3 total
+2,239 s. Diagnostics regenerated under
+`results/tree_structure/anchor_diagnostics/`.
+
+### Output-integrity note on the `--stages 3` rerun
+
+All `results/mapping_relationships/*.csv` remained byte-identical. Three auxiliary
+`common_esto` QA candidate files
+(`highly_recommended_mapping_candidates.csv`,
+`qa_nonzero_unmapped_leap_branch_mapping_candidates.csv`,
+`qa_nonzero_unmapped_leap_branches.csv`) changed by ~1 row. These are written by
+`run_apply_common_esto_structure`, which **none of these commits touch** (verified
+via `git diff --name-only`); they matched byte-for-byte in the earlier *full*
+run, so the drift is pre-existing nondeterminism in that workflow (candidate
+ordering/dedup), not a product of the anchor changes.
+
 ## How to unwind
 
 All changes are in the working tree (uncommitted until the full run verifies).

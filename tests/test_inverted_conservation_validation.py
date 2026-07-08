@@ -308,3 +308,121 @@ def test_placeholder_alias_buckets_can_collapse_to_one_canonical_target():
     assert product_checks.iloc[0]["unresolved_source_count"] == 0
     assert flow_checks.iloc[0]["unresolved_component_count"] == 0
     assert product_checks.iloc[0]["unresolved_component_count"] == 0
+
+
+def test_flow_level_wildcard_alias_collapses_every_product_not_just_one():
+    """A wildcard alias (no canonical_target_product) must normalize ALL
+    fuels under the aliased flow pair, not only the one product an earlier,
+    narrower config happened to list."""
+    structural = pd.DataFrame([
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.01 Production A",
+            "original_source_product": "06.01 Fuel A",
+            "common_row_id": "common_electricity",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.02 Production B",
+            "original_source_product": "06.01 Fuel A",
+            "common_row_id": "common_electricity",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plant interim/Heat plant interim",
+            "original_source_product": "Electricity",
+            "common_row_id": "common_electricity",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plants",
+            "original_source_product": "Electricity",
+            "common_row_id": "common_electricity",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.01 Production A",
+            "original_source_product": "06.02 Fuel B",
+            "common_row_id": "common_peat",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "ESTO",
+            "original_source_flow": "01.02 Production B",
+            "original_source_product": "06.02 Fuel B",
+            "common_row_id": "common_peat",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plant interim/Heat plant interim",
+            "original_source_product": "Peat",
+            "common_row_id": "common_peat",
+        },
+        {
+            "comparison_scope": "leap_vs_esto",
+            "source_system": "LEAP",
+            "original_source_flow": "Heat plants",
+            "original_source_product": "Peat",
+            "common_row_id": "common_peat",
+        },
+    ])
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "01 Production", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "01.01 Production A", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "flow", "code": "01.02 Production B", "parent_code": "01 Production"},
+        {"dataset": "esto", "axis": "product", "code": "06 Fuels", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "06.01 Fuel A", "parent_code": "06 Fuels"},
+        {"dataset": "esto", "axis": "product", "code": "06.02 Fuel B", "parent_code": "06 Fuels"},
+    ])
+    raw = pd.DataFrame([
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.01 Production A",
+            "source_product": "06.01 Fuel A", "value": 40.0,
+        },
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.02 Production B",
+            "source_product": "06.01 Fuel A", "value": 60.0,
+        },
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.01 Production A",
+            "source_product": "06.02 Fuel B", "value": 5.0,
+        },
+        {
+            "source_system": "ESTO", "economy": "20USA", "scenario": "historical",
+            "year": 2023, "source_flow": "01.02 Production B",
+            "source_product": "06.02 Fuel B", "value": 7.0,
+        },
+    ])
+    alias_map = _build_alias_map({
+        "aliases": [
+            {
+                "canonical_target_flow": "Heat plants",
+                "aliases": [
+                    {"target_flow": "Heat plant interim/Heat plant interim"},
+                ],
+            }
+        ]
+    })
+
+    edges, _, _ = compose_direction_edges(
+        structural, "ESTO", "LEAP", "leap_vs_esto", alias_map
+    )
+    contributions, _ = validate_direction_partition(
+        raw, edges, tree, "ESTO", "LEAP", "ESTO_TO_LEAP", alias_map=alias_map
+    )
+
+    alias_rows = contributions[contributions["counting_role"].eq("resolved_alias_group")]
+    resolved_products = set(
+        zip(alias_rows["target_flow"], alias_rows["target_product"])
+    )
+    assert ("Heat plants", "Electricity") in resolved_products
+    assert ("Heat plants", "Peat") in resolved_products
