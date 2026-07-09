@@ -1294,13 +1294,19 @@ def _expand_combined_esto_flow(flow_label: str, prefix_to_label: dict[str, str])
 def expand_combined_esto_targets(
     relationship_df: pd.DataFrame,
     prefix_to_label: dict[str, str],
+    registered_rollup_flows: set[str] | None = None,
 ) -> pd.DataFrame:
     """Expand relationship rows with combined ESTO flow targets into individual rows."""
+    registered_rollup_flows = registered_rollup_flows or set()
     normal_rows: list[dict[str, Any]] = []
     expanded_rows: list[dict[str, Any]] = []
     for _, row in relationship_df.iterrows():
         target_flow = _str(row.get("target_flow", ""))
-        if _str(row.get("target_system")) == "ESTO" and _is_combined_esto_flow(target_flow):
+        if (
+            _str(row.get("target_system")) == "ESTO"
+            and _is_combined_esto_flow(target_flow)
+            and target_flow not in registered_rollup_flows
+        ):
             components = _expand_combined_esto_flow(target_flow, prefix_to_label)
             for component_flow in components:
                 new_row = row.to_dict()
@@ -1340,6 +1346,25 @@ def _build_rolled_flow_to_components(esto_rules: pd.DataFrame) -> dict[str, list
     return result
 
 
+def _build_registered_rollup_flow_set(esto_rules: pd.DataFrame) -> set[str]:
+    """Return rolled ESTO flows that have an explicit tree position."""
+    required = {"rolled_esto_flow", "parent_flow_label", "child_flow_labels"}
+    if esto_rules.empty or not required.issubset(esto_rules.columns):
+        return set()
+    rules = esto_rules.copy()
+    if "include" in rules.columns:
+        include = rules["include"].map(lambda value: _str(value).casefold() in {"true", "1", "yes", "y"})
+        rules = rules[include].copy()
+    result: set[str] = set()
+    for _, rule in rules.iterrows():
+        rolled_flow = _str(rule.get("rolled_esto_flow"))
+        parent_label = _str(rule.get("parent_flow_label"))
+        child_labels = _str(rule.get("child_flow_labels"))
+        if rolled_flow and parent_label and child_labels:
+            result.add(rolled_flow)
+    return result
+
+
 def _resolve_rolled_flow_components(
     rolled_flow: str,
     rolled_flow_to_components: dict[str, list[str]],
@@ -1360,6 +1385,7 @@ def _resolve_rolled_flow_components(
 def expand_esto_rollup_targets(
     relationship_df: pd.DataFrame,
     rolled_flow_to_components: dict[str, list[str]],
+    registered_rollup_flows: set[str] | None = None,
 ) -> pd.DataFrame:
     """Expand relationship rows whose ESTO target is an esto_rollup_rules rolled flow.
 
@@ -1373,13 +1399,28 @@ def expand_esto_rollup_targets(
     """
     if not rolled_flow_to_components:
         return relationship_df
+    registered_rollup_flows = registered_rollup_flows or set()
     normal_rows: list[dict[str, Any]] = []
     expanded_rows: list[dict[str, Any]] = []
     for _, row in relationship_df.iterrows():
         target_flow = _str(row.get("target_flow", ""))
-        if _str(row.get("target_system")) == "ESTO" and target_flow in rolled_flow_to_components:
-            for component_flow in _resolve_rolled_flow_components(target_flow, rolled_flow_to_components):
+        if (
+            _str(row.get("target_system")) == "ESTO"
+            and target_flow in rolled_flow_to_components
+            and target_flow not in registered_rollup_flows
+        ):
+            component_flows = _resolve_rolled_flow_components(target_flow, rolled_flow_to_components)
+            # One source row fans out to every component, and the components
+            # merge back into a single common row downstream, so each expanded
+            # row must carry only its share of the source value or the source
+            # gets counted once per component. allocation_method stays
+            # "direct": Stage 2 only draws the merge edges between these
+            # targets when no split-allowing allocation method is present.
+            component_share = 1.0 / len(component_flows) if len(component_flows) > 1 else None
+            for component_flow in component_flows:
                 new_row = row.to_dict()
+                if component_share is not None:
+                    new_row["allocation_share"] = component_share
                 new_row["target_flow"] = component_flow
                 new_row["relationship_type"] = infer_relationship_type(component_flow, "ESTO")
                 new_row["relationship_level"] = infer_relationship_level(
@@ -1414,7 +1455,12 @@ def _load_known_esto_flows(workbook_path: Path) -> set[str]:
         return set()
     if "flows" not in df.columns:
         return set()
-    return {_str(value) for value in df["flows"] if _str(value)}
+    known_flows = {_str(value) for value in df["flows"] if _str(value)}
+    try:
+        _, esto_rules, _ = load_rollup_rules(workbook_path)
+    except Exception:
+        return known_flows
+    return known_flows | _build_registered_rollup_flow_set(esto_rules)
 
 
 def build_unknown_esto_target_qa(relationship_df: pd.DataFrame, known_esto_flows: set[str]) -> pd.DataFrame:
@@ -1683,13 +1729,15 @@ def run_relationship_workflow(
 
     base_df = pd.concat(relationship_frames, ignore_index=True)
 
-    # Expand combined ESTO targets and apply rollup rules
-    flow_prefix_to_label = _build_flow_prefix_to_label(mapping_workbook_path)
-    base_df = expand_combined_esto_targets(base_df, flow_prefix_to_label)
     leap_rules, esto_rules, ninth_rules = load_rollup_rules(mapping_workbook_path)
     rolled_flow_to_components = _build_rolled_flow_to_components(esto_rules)
+    registered_rollup_flows = _build_registered_rollup_flow_set(esto_rules)
+
+    # Expand combined ESTO targets and apply rollup rules
+    flow_prefix_to_label = _build_flow_prefix_to_label(mapping_workbook_path)
+    base_df = expand_combined_esto_targets(base_df, flow_prefix_to_label, registered_rollup_flows)
     rows_before_rollup_expansion = len(base_df)
-    base_df = expand_esto_rollup_targets(base_df, rolled_flow_to_components)
+    base_df = expand_esto_rollup_targets(base_df, rolled_flow_to_components, registered_rollup_flows)
     if len(base_df) != rows_before_rollup_expansion:
         print(f"ESTO rollup target expansion: {rows_before_rollup_expansion:,} -> {len(base_df):,} rows")
     leap_rollup_df = _apply_leap_rollup_rules(base_df, leap_rules)

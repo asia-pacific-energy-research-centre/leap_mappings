@@ -15,6 +15,9 @@ from codebase.mapping_tools.build_energy_balance_relationships import (
     SHEET_CONFIGS,
     _apply_leap_rollup_rules,
     build_relationship_rows,
+    build_unknown_esto_target_qa,
+    expand_combined_esto_targets,
+    expand_esto_rollup_targets,
     parse_esto_pair_is_subtotal,
 )
 
@@ -301,3 +304,82 @@ class TestApplyLeapRollupRulesSkipsAlreadyDirectlyMappedAggregates:
         assert (result["source_flow"] == "Road").sum() == 2
         assert set(result["target_flow"]) == {"15.02 Road"}
         assert result["is_rollup_derived"].all()
+
+
+class TestRegisteredEstoRollupTargets:
+    """Registered rollup tree nodes must stay as full-value relationship rows."""
+
+    def test_combined_registered_rollup_target_is_not_expanded(self) -> None:
+        relationship_df = pd.DataFrame(
+            [
+                _make_leap_row(
+                    source_flow="Other sector/Agriculture and fishing",
+                    target_flow="16.03-16.04 Agriculture and fishing",
+                )
+            ],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        result = expand_combined_esto_targets(
+            relationship_df,
+            prefix_to_label={
+                "16.03": "16.03 Agriculture",
+                "16.04": "16.04 Fishing",
+            },
+            registered_rollup_flows={"16.03-16.04 Agriculture and fishing"},
+        )
+
+        assert len(result) == 1
+        assert result.iloc[0]["target_flow"] == "16.03-16.04 Agriculture and fishing"
+
+    def test_registered_rollup_target_is_not_split_to_components(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_leap_row("Power sector", "09.01-09.02 Power sector")],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        result = expand_esto_rollup_targets(
+            relationship_df,
+            rolled_flow_to_components={
+                "09.01-09.02 Power sector": [
+                    "09.01 Main activity producer",
+                    "09.02 Autoproducers",
+                ]
+            },
+            registered_rollup_flows={"09.01-09.02 Power sector"},
+        )
+
+        assert len(result) == 1
+        assert result.iloc[0]["target_flow"] == "09.01-09.02 Power sector"
+        assert result.iloc[0]["allocation_share"] == ""
+
+    def test_unregistered_rollup_target_keeps_fallback_split_behavior(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_leap_row("Source", "Synthetic split target")],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        result = expand_esto_rollup_targets(
+            relationship_df,
+            rolled_flow_to_components={
+                "Synthetic split target": ["09.01 Main activity producer", "09.02 Autoproducers"]
+            },
+            registered_rollup_flows=set(),
+        )
+
+        assert len(result) == 2
+        assert set(result["target_flow"]) == {"09.01 Main activity producer", "09.02 Autoproducers"}
+        assert result["allocation_share"].astype(float).tolist() == [0.5, 0.5]
+
+    def test_registered_rollup_target_is_known_for_unknown_target_qa(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_leap_row("Power sector", "09.01-09.02 Power sector")],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        qa_df = build_unknown_esto_target_qa(
+            relationship_df,
+            known_esto_flows={"09.01 Main activity producer", "09.01-09.02 Power sector"},
+        )
+
+        assert qa_df.empty

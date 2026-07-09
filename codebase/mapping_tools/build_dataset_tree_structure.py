@@ -99,13 +99,56 @@ def _parent_prefix(prefix: str) -> str | None:
     return ".".join(parts[:-1]) if len(parts) > 1 else None
 
 
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    """Return non-blank strings once, preserving first-seen order."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = _str(value)
+        if clean and clean not in seen:
+            result.append(clean)
+            seen.add(clean)
+    return result
+
+
+def _load_rollup_hierarchy(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> dict[str, dict[str, Any]]:
+    """Load declared ESTO rolled-flow hierarchy nodes from the mapping workbook."""
+    try:
+        rules = pd.read_excel(workbook_path, sheet_name="esto_rollup_rules", dtype=object)
+    except Exception:
+        return {}
+    required = {"rolled_esto_flow", "parent_flow_label", "child_flow_labels"}
+    if not required.issubset(rules.columns):
+        return {}
+    if "include" in rules.columns:
+        include = rules["include"].map(lambda value: _str(value).casefold() in {"true", "1", "yes", "y"})
+        rules = rules[include].copy()
+
+    hierarchy: dict[str, dict[str, Any]] = {}
+    for _, rule in rules.iterrows():
+        rolled_flow = _str(rule.get("rolled_esto_flow"))
+        parent_label = _str(rule.get("parent_flow_label"))
+        child_labels = _str(rule.get("child_flow_labels"))
+        if not rolled_flow or not parent_label or not child_labels:
+            continue
+        if rolled_flow in hierarchy:
+            continue
+        children = _dedupe_preserve_order(child_labels.split(";"))
+        hierarchy[rolled_flow] = {"parent_label": parent_label, "children": children}
+    return hierarchy
+
+
 def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
-                           subtotal_codes: set[str]) -> pd.DataFrame:
+                           subtotal_codes: set[str],
+                           synthetic_nodes: dict[str, dict[str, Any]] | None = None) -> pd.DataFrame:
     """
     Build a tree DataFrame for one ESTO axis (flow or product) from a list of
     unique code labels.  Hierarchy is inferred from the numeric dot-prefix.
     """
     # Build prefix → full label lookup
+    synthetic_nodes = synthetic_nodes or {}
+    codes = _dedupe_preserve_order([*codes, *synthetic_nodes.keys()])
+
     prefix_map: dict[str, str] = {}
     for c in codes:
         p = _extract_esto_prefix(c)
@@ -130,9 +173,42 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
             "is_subtotal": c in subtotal_codes,
         })
 
+    existing_codes = {row["code"] for row in rows}
+    for synthetic_code, node in synthetic_nodes.items():
+        if synthetic_code in existing_codes:
+            continue
+        parent_code = _str(node.get("parent_label"))
+        rows.append({
+            "dataset": dataset,
+            "axis": axis,
+            "code": synthetic_code,
+            "label": synthetic_code,
+            "level": None,
+            "parent_code": parent_code if parent_code in codes else "",
+            "is_subtotal": True,
+        })
+
     df = pd.DataFrame(rows)
     if df.empty:
         return pd.DataFrame(columns=TREE_COLS)
+
+    for _ in range(3):
+        level_by_code = {
+            _str(row["code"]): row["level"]
+            for _, row in df.iterrows()
+            if _str(row["code"]) and pd.notna(row["level"])
+        }
+        for idx, row in df[df["level"].isna()].iterrows():
+            parent_level = level_by_code.get(_str(row["parent_code"]))
+            if parent_level is not None:
+                df.at[idx, "level"] = int(parent_level) + 1
+    df["level"] = pd.to_numeric(df["level"], errors="coerce").fillna(0).astype(int)
+
+    for synthetic_code, node in synthetic_nodes.items():
+        for child_code in node.get("children", []):
+            child_mask = df["code"].eq(child_code)
+            if child_mask.any():
+                df.loc[child_mask, "parent_code"] = synthetic_code
 
     leaf_mask = ~df["code"].isin(df["parent_code"].unique())
     df["is_leaf"] = leaf_mask
@@ -143,7 +219,10 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
 # ESTO tree
 # ---------------------------------------------------------------------------
 
-def build_esto_tree(data_csv_path: Path = ESTO_DATA_PATH) -> pd.DataFrame:
+def build_esto_tree(
+    data_csv_path: Path = ESTO_DATA_PATH,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+) -> pd.DataFrame:
     """Build ESTO flow and product hierarchy from the balance data CSV."""
     df = pd.read_csv(data_csv_path, dtype=object)
 
@@ -167,7 +246,8 @@ def build_esto_tree(data_csv_path: Path = ESTO_DATA_PATH) -> pd.DataFrame:
         )
     }
 
-    flow_tree = _build_esto_axis_tree(flows, "flow", "esto", subtotal_flows)
+    rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
+    flow_tree = _build_esto_axis_tree(flows, "flow", "esto", subtotal_flows, rollup_hierarchy)
     prod_tree = _build_esto_axis_tree(prods, "product", "esto", subtotal_prods)
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
@@ -426,7 +506,10 @@ def build_leap_tree(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> pd.DataFrame
 # Common ESTO tree
 # ---------------------------------------------------------------------------
 
-def build_common_esto_tree(common_rows_path: Path = COMMON_ESTO_ROWS_PATH) -> pd.DataFrame:
+def build_common_esto_tree(
+    common_rows_path: Path = COMMON_ESTO_ROWS_PATH,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+) -> pd.DataFrame:
     """
     Build Common ESTO flow and product hierarchy from common_esto_rows.csv.
 
@@ -456,7 +539,8 @@ def build_common_esto_tree(common_rows_path: Path = COMMON_ESTO_ROWS_PATH) -> pd
         )
     }
 
-    flow_tree = _build_esto_axis_tree(flow_labels, "flow", "common_esto", subtotal_flows)
+    rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
+    flow_tree = _build_esto_axis_tree(flow_labels, "flow", "common_esto", subtotal_flows, rollup_hierarchy)
     prod_tree = _build_esto_axis_tree(prod_labels, "product", "common_esto", subtotal_prods)
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)

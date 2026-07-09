@@ -7,11 +7,15 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.build_dataset_tree_structure import (
+    OUTLOOK_MAPPINGS_PATH,
+    _build_esto_axis_tree,
     _build_source_inconsistency_lookup,
+    _load_rollup_hierarchy,
     validate_common_esto_recursive_sums,
     validate_leap_recursive_sums,
     validate_ninth_recursive_sums,
 )
+from codebase.mapping_tools.structural_resolver import build_tree_index
 
 
 #%%
@@ -29,6 +33,110 @@ def _write_mapping_workbook(
             "leap_sector_name_full_path", "raw_leap_fuel_name",
             "esto_flow", "esto_product",
         ]).to_excel(writer, sheet_name="leap_combined_esto", index=False)
+
+
+def test_esto_axis_tree_splices_synthetic_rollup_node() -> None:
+    """Declared rollup labels become real tree nodes and take their children."""
+    tree = _build_esto_axis_tree(
+        codes=[
+            "16 Other sector",
+            "16.01 Commercial and public services",
+            "16.02 Residential",
+            "16.03 Agriculture",
+        ],
+        axis="flow",
+        dataset="esto",
+        subtotal_codes={"16 Other sector"},
+        synthetic_nodes={
+            "16.01-16.02 Buildings": {
+                "parent_label": "16 Other sector",
+                "children": [
+                    "16.01 Commercial and public services",
+                    "16.02 Residential",
+                ],
+            }
+        },
+    )
+
+    parent_by_code = tree.set_index("code")["parent_code"].to_dict()
+    assert parent_by_code["16.01-16.02 Buildings"] == "16 Other sector"
+    assert parent_by_code["16.01 Commercial and public services"] == "16.01-16.02 Buildings"
+    assert parent_by_code["16.02 Residential"] == "16.01-16.02 Buildings"
+    assert parent_by_code["16.03 Agriculture"] == "16 Other sector"
+    assert bool(tree.set_index("code").loc["16.01-16.02 Buildings", "is_subtotal"])
+
+
+def test_load_rollup_hierarchy_keeps_declared_parent_and_children(tmp_path: Path) -> None:
+    """The workbook loader dedupes rolled labels and ignores blank hierarchy rows."""
+    workbook_path = tmp_path / "mappings.xlsx"
+    pd.DataFrame([
+        {
+            "include": True,
+            "rolled_esto_flow": "16.01-16.02 Buildings",
+            "parent_flow_label": "16 Other sector",
+            "child_flow_labels": "16.01 Commercial and public services; 16.02 Residential",
+        },
+        {
+            "include": True,
+            "rolled_esto_flow": "16.01-16.02 Buildings",
+            "parent_flow_label": "ignored duplicate",
+            "child_flow_labels": "ignored duplicate",
+        },
+        {
+            "include": True,
+            "rolled_esto_flow": "Blank hierarchy",
+            "parent_flow_label": "",
+            "child_flow_labels": "",
+        },
+    ]).to_excel(workbook_path, sheet_name="esto_rollup_rules", index=False)
+
+    hierarchy = _load_rollup_hierarchy(workbook_path)
+
+    assert list(hierarchy) == ["16.01-16.02 Buildings"]
+    assert hierarchy["16.01-16.02 Buildings"] == {
+        "parent_label": "16 Other sector",
+        "children": ["16.01 Commercial and public services", "16.02 Residential"],
+    }
+
+
+def test_in_scope_real_rollup_hierarchy_has_no_tree_index_issues() -> None:
+    """The three demand/power rollup nodes should stay structurally unambiguous."""
+    in_scope = {
+        "16.01-16.02 Buildings",
+        "16.03-16.04 Agriculture and fishing",
+        "09.01-09.02 Power sector",
+    }
+    hierarchy = {
+        key: value
+        for key, value in _load_rollup_hierarchy(OUTLOOK_MAPPINGS_PATH).items()
+        if key in in_scope
+    }
+    codes = _dedupe_for_test([
+        "09 Total transformation sector",
+        "09.01 Main activity producer",
+        "09.02 Autoproducers",
+        "16 Other sector",
+        "16.01 Commercial and public services",
+        "16.02 Residential",
+        "16.03 Agriculture",
+        "16.04 Fishing",
+        *hierarchy.keys(),
+    ])
+    tree = _build_esto_axis_tree(codes, "flow", "esto", set(), hierarchy)
+
+    _, issues = build_tree_index(tree, "esto", "flow")
+
+    assert set(hierarchy) == in_scope
+    assert issues.empty
+
+
+def _dedupe_for_test(values: list[str]) -> list[str]:
+    """Small local helper to keep the real-workbook fixture readable."""
+    result: list[str] = []
+    for value in values:
+        if value not in result:
+            result.append(value)
+    return result
 
 
 def _ninth_row(

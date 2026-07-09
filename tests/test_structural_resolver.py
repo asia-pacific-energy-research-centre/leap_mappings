@@ -61,6 +61,20 @@ def test_duplicate_missing_parent_and_cycle_are_reported() -> None:
     assert rule_issues["issue_type"].tolist() == ["exact_duplicate_rule"]
 
 
+def test_ambiguous_parent_is_reported() -> None:
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "Parent A", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "Parent B", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "Shared child", "parent_code": "Parent A"},
+        {"dataset": "esto", "axis": "flow", "code": "Shared child", "parent_code": "Parent B"},
+    ])
+
+    _, tree_issues = build_tree_index(tree, "esto", "flow")
+
+    assert tree_issues["issue_type"].tolist() == ["ambiguous_parent"]
+    assert tree_issues.iloc[0]["code"] == "Shared child"
+
+
 def test_passenger_and_freight_roll_to_road_without_false_duplicate() -> None:
     rules = pd.DataFrame([
         {"i": "Passenger road", "ip": "", "o": "Road", "op": "", "include": True},
