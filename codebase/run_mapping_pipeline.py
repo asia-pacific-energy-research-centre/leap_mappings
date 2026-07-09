@@ -490,6 +490,11 @@ def run_stage_3() -> None:
     validation_tree = pd.concat([esto_tree, ninth_tree, leap_tree, common_tree], ignore_index=True)
     tree_output_dir = REPO_ROOT / "results" / "tree_structure"
     tree_output_dir.mkdir(parents=True, exist_ok=True)
+    esto_tree.to_csv(tree_output_dir / "esto_tree.csv", index=False)
+    ninth_tree.to_csv(tree_output_dir / "ninth_tree.csv", index=False)
+    leap_tree.to_csv(tree_output_dir / "leap_tree.csv", index=False)
+    common_tree.to_csv(tree_output_dir / "common_esto_tree.csv", index=False)
+    validation_tree.to_csv(tree_output_dir / "all_dataset_trees.csv", index=False)
 
     print("  Running projection-only source hierarchy validation ...")
     ninth_validation = validate_ninth_recursive_sums(
