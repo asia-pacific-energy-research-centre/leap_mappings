@@ -559,21 +559,21 @@ def run_stage_3() -> None:
         # point, so they are no longer needed for the anchor QA step.
         del detail_df, source_inconsistencies
         gc.collect()
-        raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
-            esto_data_path=ESTO_CSV_PATH,
-            ninth_data_path=NINTH_CSV_PATH,
-            raw_leap_path=RAW_LEAP_PATH,
-            workbook_path=WORKBOOK_PATH,
-            leap_var_base_year=LEAP_VAR_BASE_YEAR,
-        )
-        common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
-        comparison_data = pd.read_csv(comparison_path, dtype=object)
-        from codebase.mapping_tools.mapping_issue_exceptions import (
-            load_unmodelled_source_codes,
-        )
-        unmodelled_source_codes = load_unmodelled_source_codes()
-        anchor_t0 = time.perf_counter()
         try:
+            raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
+                esto_data_path=ESTO_CSV_PATH,
+                ninth_data_path=NINTH_CSV_PATH,
+                raw_leap_path=RAW_LEAP_PATH,
+                workbook_path=WORKBOOK_PATH,
+                leap_var_base_year=LEAP_VAR_BASE_YEAR,
+            )
+            common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
+            comparison_data = pd.read_csv(comparison_path, dtype=object)
+            from codebase.mapping_tools.mapping_issue_exceptions import (
+                load_unmodelled_source_codes,
+            )
+            unmodelled_source_codes = load_unmodelled_source_codes()
+            anchor_t0 = time.perf_counter()
             anchor_detail = validate_source_parent_anchors(
                 source_df=raw_anchor_source,
                 source_tree_df=validation_tree,
