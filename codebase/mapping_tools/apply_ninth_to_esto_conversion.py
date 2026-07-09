@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
+
 #%%
 REQUIRED_NINTH_COLUMNS = ["ninth_sector", "ninth_fuel", "value"]
 GROUP_COLUMNS = ["source_system", "economy", "scenario", "year", "target_flow", "target_product"]
@@ -117,6 +119,7 @@ def load_ninth_to_esto_relationships(relationships_path: Path) -> pd.DataFrame:
 def convert_ninth_results_to_esto(
     ninth_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
+    target_values_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Join raw 9th rows to ESTO targets and aggregate values."""
     missing_columns = [column for column in REQUIRED_NINTH_COLUMNS if column not in ninth_results_df.columns]
@@ -133,6 +136,13 @@ def convert_ninth_results_to_esto(
     if not missing_mapping_df.empty:
         print(f"Warning: 9th result rows without included ESTO mapping: {len(missing_mapping_df):,}")
 
+    if target_values_df is not None:
+        merged_df = apply_target_dataset_allocation(merged_df, target_values_df)
+
+    if "allocation_share" in merged_df.columns:
+        allocation_share = pd.to_numeric(merged_df["allocation_share"], errors="coerce").fillna(1.0)
+        merged_df["value"] = merged_df["value"] * allocation_share
+
     merged_df["source_system"] = "NINTH"
     keep_group_columns = [column for column in GROUP_COLUMNS if column in merged_df.columns]
     converted_df = (
@@ -143,15 +153,28 @@ def convert_ninth_results_to_esto(
     return converted_df
 
 
+def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> bool:
+    """Return True when conversion needs target ESTO basis values."""
+    if "allocation_source" not in relationships_df.columns:
+        return False
+    return relationships_df["allocation_source"].fillna("").astype(str).str.strip().str.casefold().eq(
+        "target_dataset_share"
+    ).any()
+
+
 def run_conversion(
     ninth_results_path: Path,
     relationships_path: Path,
     output_path: Path,
+    target_values_path: Path | None = None,
 ) -> pd.DataFrame:
     """Run 9th-to-ESTO conversion."""
     ninth_results_df = read_table(ninth_results_path)
     relationships_df = load_ninth_to_esto_relationships(relationships_path)
-    converted_df = convert_ninth_results_to_esto(ninth_results_df, relationships_df)
+    target_values_df = None
+    if target_values_path is not None and relationships_need_target_dataset_share(relationships_df):
+        target_values_df = read_table(target_values_path)
+    converted_df = convert_ninth_results_to_esto(ninth_results_df, relationships_df, target_values_df)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(output_path, index=False)
     print(f"Raw 9th rows read: {len(ninth_results_df):,}")

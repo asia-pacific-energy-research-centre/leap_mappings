@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.source_rollups import apply_source_rollups
+from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
 
 #%%
 REQUIRED_LEAP_COLUMNS = ["leap_flow", "leap_product", "value"]
@@ -60,6 +61,7 @@ def convert_leap_results_to_esto(
     leap_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
     rollup_rules_df: pd.DataFrame | None = None,
+    target_values_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Join raw LEAP rows to ESTO targets and aggregate values."""
     missing_columns = [column for column in REQUIRED_LEAP_COLUMNS if column not in leap_results_df.columns]
@@ -98,6 +100,13 @@ def convert_leap_results_to_esto(
     if not missing_mapping_df.empty:
         print(f"Warning: LEAP result rows without included ESTO mapping: {len(missing_mapping_df):,}")
 
+    if target_values_df is not None:
+        merged_df = apply_target_dataset_allocation(merged_df, target_values_df)
+
+    if "allocation_share" in merged_df.columns:
+        allocation_share = pd.to_numeric(merged_df["allocation_share"], errors="coerce").fillna(1.0)
+        merged_df["value"] = merged_df["value"] * allocation_share
+
     keep_group_columns = [column for column in GROUP_COLUMNS if column in merged_df.columns]
     converted_df = (
         merged_df.dropna(subset=["target_flow", "target_product"])
@@ -107,12 +116,22 @@ def convert_leap_results_to_esto(
     return converted_df
 
 
+def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> bool:
+    """Return True when conversion needs target ESTO basis values."""
+    if "allocation_source" not in relationships_df.columns:
+        return False
+    return relationships_df["allocation_source"].fillna("").astype(str).str.strip().str.casefold().eq(
+        "target_dataset_share"
+    ).any()
+
+
 def run_conversion(
     leap_results_path: Path,
     relationships_path: Path,
     output_path: Path,
     mapping_workbook_path: Path | None = None,
     rollup_audit_path: Path | None = None,
+    target_values_path: Path | None = None,
 ) -> pd.DataFrame:
     """Run LEAP-to-ESTO conversion."""
     leap_results_df = read_table(leap_results_path)
@@ -144,7 +163,10 @@ def run_conversion(
             rolled_product_column="rolled_raw_leap_fuel_name",
             allowed_rolled_pairs=allowed_pairs,
         )
-    converted_df = convert_leap_results_to_esto(leap_results_df, relationships_df)
+    target_values_df = None
+    if target_values_path is not None and relationships_need_target_dataset_share(relationships_df):
+        target_values_df = read_table(target_values_path)
+    converted_df = convert_leap_results_to_esto(leap_results_df, relationships_df, target_values_df=target_values_df)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(output_path, index=False)
     if rollup_audit_path is not None and rollup_audit_df is not None:

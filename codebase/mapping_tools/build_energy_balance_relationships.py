@@ -1421,6 +1421,7 @@ def expand_esto_rollup_targets(
                 new_row = row.to_dict()
                 if component_share is not None:
                     new_row["allocation_share"] = component_share
+                    new_row["allocation_source"] = "target_dataset_share"
                 new_row["target_flow"] = component_flow
                 new_row["relationship_type"] = infer_relationship_type(component_flow, "ESTO")
                 new_row["relationship_level"] = infer_relationship_level(

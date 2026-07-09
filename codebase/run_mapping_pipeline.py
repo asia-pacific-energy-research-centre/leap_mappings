@@ -227,6 +227,7 @@ def run_leap_to_esto() -> None:
         output_path=LEAP_ESTO_PATH,
         mapping_workbook_path=WORKBOOK_PATH,
         rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
+        target_values_path=ESTO_ROWS_PATH,
     )
 
 
@@ -243,6 +244,7 @@ def run_ninth_to_esto() -> None:
         prepare_ninth_long_format,
         load_ninth_to_esto_relationships,
         convert_ninth_results_to_esto,
+        relationships_need_target_dataset_share,
     )
     # Load the mapping first so the wide 9th frame can be filtered to only
     # sector/fuel pairs with an included ESTO mapping *before* the year melt.
@@ -261,7 +263,10 @@ def run_ninth_to_esto() -> None:
         f"(prepared in {time.perf_counter() - _t:.1f}s)"
     )
 
-    converted_df = convert_ninth_results_to_esto(ninth_long, relationships_df)
+    target_values_df = None
+    if relationships_need_target_dataset_share(relationships_df):
+        target_values_df = pd.read_csv(ESTO_ROWS_PATH, dtype=object)
+    converted_df = convert_ninth_results_to_esto(ninth_long, relationships_df, target_values_df)
 
     NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(NINTH_ESTO_PATH, index=False)
@@ -380,9 +385,9 @@ def run_data_convert() -> None:
     print("\n" + "=" * 60)
     print("DATA CONVERT  LEAP, 9th, ESTO -> common input format")
     print("=" * 60)
+    run_esto_exact_rows()
     run_leap_to_esto()
     run_ninth_to_esto()
-    run_esto_exact_rows()
 
 
 # ---------------------------------------------------------------------------

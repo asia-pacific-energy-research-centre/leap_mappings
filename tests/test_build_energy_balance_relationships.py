@@ -370,6 +370,7 @@ class TestRegisteredEstoRollupTargets:
         assert len(result) == 2
         assert set(result["target_flow"]) == {"09.01 Main activity producer", "09.02 Autoproducers"}
         assert result["allocation_share"].astype(float).tolist() == [0.5, 0.5]
+        assert set(result["allocation_source"]) == {"target_dataset_share"}
 
     def test_registered_rollup_target_is_known_for_unknown_target_qa(self) -> None:
         relationship_df = pd.DataFrame(
