@@ -1272,6 +1272,124 @@ def save_outputs(
     return status_df
 
 
+def save_fast_path_outputs(
+    comparison_df: pd.DataFrame,
+    wide_year_df: pd.DataFrame,
+    output_dir: Path,
+    run_id: str | None = None,
+    run_timestamp_utc: str | None = None,
+) -> pd.DataFrame:
+    """Write only the final Common ESTO comparison outputs and status manifest."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_timestamp = run_timestamp_utc or datetime.now(timezone.utc).isoformat()
+    resolved_run_id = run_id or datetime.now(timezone.utc).strftime("common_esto_fast_path_%Y%m%dT%H%M%S%fZ")
+    written_paths = [
+        write_csv_with_locked_fallback(
+            drop_internal_common_columns(comparison_df),
+            output_dir / "common_esto_comparison_data.csv",
+        ),
+        write_csv_with_locked_fallback(
+            wide_year_df,
+            output_dir / "common_esto_comparison_wide.csv",
+        ),
+    ]
+    status_df = pd.DataFrame([
+        {
+            "run_id": resolved_run_id,
+            "run_timestamp_utc": resolved_timestamp,
+            "record_type": "fast_path_output",
+            "artifact_name": path.stem,
+            "validation_name": "",
+            "validation_axis": "",
+            "source_system": "",
+            "status": "passed",
+            "checks_performed": "",
+            "eligible_parent_count": "",
+            "mismatch_count": "",
+            "reason": "Fast-path Common ESTO comparison output written from cached inputs.",
+            "current_output_file": path.name,
+            "output_path": str(path.resolve()),
+            "output_mtime_ns": path.stat().st_mtime_ns,
+            "input_path": "",
+            "input_mtime_ns": "",
+            "input_mtime_utc": "",
+            "input_size_bytes": "",
+        }
+        for path in written_paths
+    ])
+    status_df.to_csv(output_dir / "common_esto_output_status.csv", index=False)
+    return status_df
+
+
+def run_common_esto_comparison_fast_path(
+    source_paths: dict[str, Path],
+    common_rows_path: Path,
+    output_dir: Path,
+    default_economy: str,
+    active_component_abs_tolerance: float,
+    ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
+    esto_base_year: int | None = None,
+    run_id: str | None = None,
+    run_timestamp_utc: str | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
+    required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
+    missing_paths = [path for path in required_paths if not path.exists()]
+    if missing_paths:
+        missing_text = "\n".join(str(path) for path in missing_paths)
+        raise FileNotFoundError(f"Fast-path Common ESTO regen is missing cached input files:\n{missing_text}")
+
+    source_df = read_source_tables(source_paths, default_economy=default_economy)
+    common_rows_df = pd.read_csv(common_rows_path, dtype=str).fillna("")
+    for column in ["component_esto_flow", "component_esto_product"]:
+        if column in common_rows_df.columns:
+            common_rows_df[column] = common_rows_df[column].map(normalise_label)
+
+    relevance_df, resolved_esto_base_year = build_component_relevance(
+        source_df=source_df,
+        active_component_abs_tolerance=active_component_abs_tolerance,
+        ninth_projection_start_year=ninth_projection_start_year,
+        esto_base_year=esto_base_year,
+    )
+    active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
+    if not relevance_df.empty:
+        relevant_pairs_df = relevance_df[["component_esto_flow", "component_esto_product"]].rename(
+            columns={
+                "component_esto_flow": "esto_flow",
+                "component_esto_product": "esto_product",
+            }
+        )
+        active_source_df = active_source_df.merge(
+            relevant_pairs_df.drop_duplicates(),
+            on=["esto_flow", "esto_product"],
+            how="inner",
+        )
+    adjusted_common_rows_df, pruned_components_df = relabel_common_rows_for_active_components(
+        relevance_df=relevance_df,
+        common_rows_df=common_rows_df,
+    )
+    comparison_df, missing_map_df, _ = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
+    wide_year_df = build_wide_year_output(comparison_df)
+    save_fast_path_outputs(
+        comparison_df=comparison_df,
+        wide_year_df=wide_year_df,
+        output_dir=output_dir,
+        run_id=run_id,
+        run_timestamp_utc=run_timestamp_utc,
+    )
+
+    print(f"Fast-path ESTO-shaped source rows read: {len(source_df):,}")
+    print(f"Fast-path ESTO base year used for component relevance: {resolved_esto_base_year}")
+    print(f"Fast-path nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
+    print(f"Fast-path Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
+    print(f"Fast-path comparison rows written: {len(comparison_df):,}")
+    print(f"Fast-path wide year rows written: {len(wide_year_df):,}")
+    print(f"Fast-path source rows missing common map: {len(missing_map_df):,}")
+    print(f"Fast-path wrote Common ESTO comparison outputs to: {output_dir}")
+    return comparison_df, wide_year_df, missing_map_df
+
+
 def run_apply_common_esto_structure(
     source_paths: dict[str, Path],
     common_rows_path: Path,
