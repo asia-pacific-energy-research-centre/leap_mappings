@@ -45,7 +45,16 @@ from typing import Callable, Dict, Tuple
 import pandas as pd
 import openpyxl
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        if (parent / "AGENTS.md").exists() and (parent / "config" / "outlook_mappings_master.xlsx").exists():
+            return parent
+    raise RuntimeError("Could not locate repo root.")
+
+
+REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

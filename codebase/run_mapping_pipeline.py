@@ -544,6 +544,7 @@ def run_stage_3() -> None:
         source_inconsistencies=source_inconsistencies,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
     )
+    validation_detail_row_count = len(detail_df)
 
     anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
     anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
@@ -631,7 +632,7 @@ def run_stage_3() -> None:
     )
     combined_status.to_csv(status_path, index=False)
 
-    print(f"  Validation detail rows: {len(detail_df):,}")
+    print(f"  Validation detail rows: {validation_detail_row_count:,}")
     print("  Original-source parent anchors:")
     if anchor_summary.empty:
         print("    eligible 0, passed 0, failed 0, skipped 0")

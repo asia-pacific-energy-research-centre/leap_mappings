@@ -1,0 +1,836 @@
+Context: I just updated config/outlook_mappings_master.xlsx > esto_rollup_rules so the 09.x transformation rows also roll to the matching "(including own use)" rows, not only the 10.x own-use/loss rows. After the run, specifically verify that results/common_esto/common_esto_rows.csv and results/common_esto/common_esto_comparison_data.csv contain rows like "09.08.01 Coke ovens (including own use)" and that the corresponding components include both "09.08.01 Coke ovens" and "10.01.05 Coke ovens".
+
+
+Please do C:\Users\Work\github\leap_mappings\docs\prompts\run_mapping_pipeline_future_prompt.md
+
+
+
+
+Wednesday 4:58 PM
+
+
+
+
+
+
+You stopped after 7h 4m 46s
+
+
+
+
+I’ll run the mapping-pipeline prompt from the leap_mappings repo and use the updated workbook as the active input. First I’m loading the repo instructions and the referenced prompt so the run and verification match your project conventions.
+
+
+
+
+Ran 4 commands
+
+
+The prompt confirms codebase\run_mapping_pipeline.py is the intended entrypoint and specifically says generated results/ outputs should be written, while config/outlook_mappings_master.xlsx must not be modified by automation. I’m checking the mapping repo status now so I can separate your workbook change and any pre-existing outputs from pipeline-generated files.
+
+
+
+
+Ran 4 commands
+
+
+Pre-existing state in leap_mappings: config/outlook_mappings_master.xlsx is modified, and there is an untracked config/E0E85740. I’m leaving both alone and checking the pipeline entrypoint for any automatic workbook write behavior before starting the run.
+
+
+
+
+Ran 3 commands
+
+
+run_mapping_pipeline.py runs Stage 0 in preview mode by default; its --apply-maintenance flag is a deprecated no-op placeholder and the script states it does not write the mapping workbook. I’m recording the workbook hash/mtime, then I’ll launch the full pipeline in the background with a separate timestamped log.
+
+
+
+
+Ran 2 commands
+
+
+The workbook SHA256 before the run is 9E5C01B7E227F76E2C84BB153A51E166EB387591C38ECBB94BBE9F0F128A1D7A with LastWriteTime 2026-07-08 16:54:58. I’m starting the pipeline now and will follow the prompt’s polling cadence.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_codex_$ts.err.log"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; [pscustomobject]@{Id=$p.Id; StartTime=$p.StartTime; Stdout=$stdout; Stderr=$stderr} | Format-List for 7s
+
+
+
+The background launch command returned without printing the process object, so I’m doing a one-time sanity check to capture the PID/log names. After that I’ll use the scheduled polling cadence rather than checking continuously.
+
+
+
+
+Ran 3 commands
+
+
+The first launch exited immediately, so this is an error path rather than a long run. I’m reading the short stdout/stderr logs now, then I’ll make the smallest safe fix or rerun if it’s an environment issue.
+
+
+
+
+Ran 3 commands
+
+
+Stage 0 failed before writing the comparison outputs because build_missing_mapped_esto_rows.py resolved the workbook as codebase\config\outlook_mappings_master.xlsx instead of repo-root config\.... I’m inspecting that resolver and will patch only that path bug before rerunning.
+
+
+
+
+Ran 3 commands
+
+
+The related maintenance workflow also sets REPO_ROOT one level too shallow (...\leap_mappings\codebase). I’m correcting both resolvers to locate the actual repo root by looking for AGENTS.md plus config\outlook_mappings_master.xlsx, matching the project’s own pattern.
+
+
+
+
+Ran Get-Content codebase\archive\outlook_mapping_maintenance_workflow.py -TotalCount 80; rg -n "Path\(__file__\)|parents\[|REPO_ROOT =" codebase\mapping_tools\build_missing_mapped_esto_rows.py for 5s
+
+
+
+The failure is a straightforward repo-root bug, not a workbook/data issue. I’m applying a small patch now and then I’ll rerun the pipeline from the start.
+
+
+
+
+Edited a file
+
+
+I’ve patched the Stage 0 maintenance root resolver. I’m checking build_missing_mapped_esto_rows.py for its own root constant because the traceback came from that helper.
+
+
+
+
+Ran 3 commands
+
+
+The helper did not have its own root constant; it received the bad workbook path from Stage 0. I’m rerunning the full pipeline after the resolver fix and writing the PID to a sidecar file so monitoring is reliable.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_codex_$ts.pid.txt"; $psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = 'C:\Users\Work\miniconda3\python.exe'; $psi.Arguments = 'codebase\run_mapping_pipeline.py'; $psi.WorkingDirectory = (Get-Location).Path; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $p = New-Object System.Diagnostics.Process; $p.StartInfo = $psi; $null = $p.Start(); $outStream = [System.IO.File]::CreateText($stdout); $errStream = [System.IO.File]::CreateText($stderr); $p.BeginOutputReadLine(); $p.BeginErrorReadLine(); Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action { if ($EventArgs.Data -ne $null) { $Event.MessageData.WriteLine($EventArgs.Data); $Event.MessageData.Flush() } } -MessageData $outStream | Out-Null; Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -Action { if ($EventArgs.Data -ne $null) { $Event.MessageData.WriteLine($EventArgs.Data); $Event.MessageData.Flush() } } -MessageData $errStream | Out-Null; [pscustomobject]@{Id=$p.Id; StartTime=$p.StartTime; Stdout=$stdout; Stderr=$stderr} | Tee-Object -FilePath $pidFile | Format-List for 10s
+
+
+
+That launch method still didn’t return a visible PID, so I’m checking whether a process actually survived. If it didn’t, I’ll switch to a simpler Start-Process redirect and infer the PID from process start time plus the log file names.
+
+
+
+
+Ran 3 commands
+
+
+The rerun is alive as PID 35520, started 2026-07-08 17:01:07. The custom stdout file is empty because the script tees to results\logs\mapping_pipeline.log; I’ll use that internal log for scheduled polling.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 35520 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- LOG TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline.log; '--- STDERR TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_codex_20260708_170106.err.log -ErrorAction SilentlyContinue for 5m 6s
+
+
+
+First scheduled poll: PID 35520 is still active with CPU time increasing, but the log tail is empty. That is likely an artifact of the way I launched this rerun with redirected pipes; I’m going to wait for the second scheduled poll before intervening, because the process is still consuming CPU.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 35520 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- INTERNAL LOG INFO ---'; Get-Item results\logs\mapping_pipeline.log | Format-List FullName,LastWriteTime,Length; '--- LOG TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline.log -ErrorAction SilentlyContinue; '--- CODEx ERR INFO ---'; Get-Item results\logs\mapping_pipeline_codex_20260708_170106.err.log -ErrorAction SilentlyContinue | Format-List FullName,LastWriteTime,Length; Get-Content -Tail 40 results\logs\mapping_pipeline_codex_20260708_170106.err.log -ErrorAction SilentlyContinue for 5m 6s
+
+
+
+Second scheduled poll: CPU increased from about 322s to 638s, so the process is doing work, but mapping_pipeline.log is still length 0. Because progress is not inspectable from logs, I’m treating this as a monitoring problem and checking only lightweight process metadata at the next scheduled interval.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 35520 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- INTERNAL LOG INFO ---'; Get-Item results\logs\mapping_pipeline.log | Format-List FullName,LastWriteTime,Length; '--- LOG TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline.log -ErrorAction SilentlyContinue; '--- RECENT RESULTS ---'; Get-ChildItem results -Recurse -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 10m 6s
+
+
+
+The rerun finished sometime before the 10-minute poll and reached Stage 3 data generation; the main comparison files were written. I’m checking the full tail, stderr, output status, and then I’ll verify the specific “Coke ovens (including own use)” rows/components you asked about.
+
+
+
+
+Ran 4 commands
+
+
+Stage 3 wrote the main comparison artifacts, but the log does not show the final validation block or Pipeline complete, and common_esto_output_status.csv only lists Stage 3 output artifacts, not the later validation records. I’m rerunning the affected Stage 3 step only with simpler file redirection so any failure is captured cleanly.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.pid.txt"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py','--stages','3') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; "Id=$($p.Id)`nStartTime=$($p.StartTime)`nStdout=$stdout`nStderr=$stderr" | Set-Content $pidFile; Get-Content $pidFile for 10s
+
+
+
+The Stage 3 rerun launch again returned without printing the PID to the tool output, so I’m doing the same immediate sanity check for PID/log files, then I’ll follow the scheduled Stage 3 polling cadence.
+
+
+
+
+Ran 3 commands
+
+
+Stage 3 rerun PID is 25532. I also see an older Python process 41460; I’m checking its command line once so I don’t accidentally leave a stale pipeline process running.
+
+
+
+
+Ran Get-CimInstance Win32_Process -Filter "ProcessId=41460 OR ProcessId=25532" | Select-Object ProcessId,CommandLine,CreationDate | Format-List for 7s
+
+
+
+The older process is codebase\supply_reconciliation_workflow.py, not this mapping pipeline run, so I’m leaving it alone. Stage 3 PID 25532 is the only mapping rerun process I’ll monitor.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- INTERNAL LOG TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline.log -ErrorAction SilentlyContinue for 5m 6s
+
+
+
+Stage 3 first scheduled poll: PID 25532 is active, CPU time is increasing, and memory is about 1.1 GB. Logs are still buffered at this point, so I’m continuing to the second scheduled poll.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- RECENT STATUS ---'; Get-Item results\common_esto\common_esto_output_status.csv | Format-List LastWriteTime,Length for 5m 7s
+
+
+
+Second Stage 3 poll: CPU time increased from 330s to 620s; common_esto_output_status.csv was updated during the run. No stderr has appeared. I’m moving to the next scheduled 10-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 60 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 60 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- INTERNAL LOG TAIL ---'; Get-Content -Tail 60 results\logs\mapping_pipeline.log -ErrorAction SilentlyContinue for 10m 8s
+
+
+
+Stage 3 is still running at the 10-minute poll with CPU time continuing to rise and no stderr. The log remains buffered, so I’m continuing with the next scheduled 10-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- RECENT FILES ---'; Get-ChildItem results\tree_structure,results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 10m 7s
+
+
+
+Second 10-minute poll: Stage 3 continues to consume CPU and is still updating Stage 3/common output files. No stderr. The next scheduled interval is 20 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- TREE STATUS ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 7s
+
+
+
+At the 20-minute poll, Stage 3 is still alive and has reached tree/common validation outputs: common_esto_validation*.csv, ninth_*_validation.csv, and leap_validation.csv were updated. It is likely in the source-parent anchor validation pass now, so I’m continuing with the next scheduled 20-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 25532 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 100 results\logs\mapping_pipeline_stage3_codex_20260708_172641.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 100 results\logs\mapping_pipeline_stage3_codex_20260708_172641.err.log -ErrorAction SilentlyContinue; '--- TREE STATUS ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 7s
+
+
+
+Stage 3 completed the expensive output and anchor validation work, then failed at the final reporting print because detail_df had already been deleted to save memory. I’m patching that local variable handling so the stage can exit cleanly, then I’ll rerun Stage 3 once more.
+
+
+
+
+Ran 2 commands
+
+
+The first file read command had a PowerShell range syntax issue; I’m rereading the relevant block and applying the small fix.
+
+
+
+
+Ran 2 commands
+
+
+I found the intended memory-saving deletion. The fix is to store len(detail_df) before deleting it, then print that stored count.
+
+
+
+
+Edited a file
+
+
+The reporting bug is patched. I’m doing a quick syntax check, then I’ll rerun Stage 3 so the pipeline exits normally and writes a complete status manifest.
+
+
+
+
+Ran 2 commands
+
+
+Syntax check passed. I’m launching the final Stage 3 rerun now; this is the expensive validation path again, but it should now finish cleanly instead of failing at the final summary print.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_stage3_codex_$ts.pid.txt"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py','--stages','3') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; "Id=$($p.Id)`nStartTime=$($p.StartTime)`nStdout=$stdout`nStderr=$stderr" | Set-Content $pidFile; Get-Content $pidFile for 10s
+
+
+
+The launcher again suppressed its printed PID, so I’m doing the immediate PID/log sanity check and then using the required polling schedule.
+
+
+
+
+Ran 3 commands
+
+
+Final Stage 3 rerun PID is 41484. The separate supply_reconciliation_workflow.py process is still present and unrelated, so I’m continuing to leave it untouched.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue for 5m 6s
+
+
+
+Final Stage 3 first scheduled poll: PID 41484 is active, CPU time is increasing, memory is about 1.1 GB, and stderr is empty. Continuing to the second 5-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 40 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue; '--- STATUS FILE ---'; Get-Item results\common_esto\common_esto_output_status.csv | Format-List LastWriteTime,Length for 5m 6s
+
+
+
+Second scheduled poll: Stage 3 is still active with CPU increasing and the status file updated during the run. No stderr. Next poll is after 10 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 60 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 60 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 8 FullName,LastWriteTime,Length for 10m 6s
+
+
+
+At the 10-minute poll, Stage 3 is still active with CPU increasing and no stderr. It has not reached the later tree output writes yet in this rerun, so I’m continuing to the next 10-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 10m 7s
+
+
+
+Second 10-minute poll: Stage 3 has reached and rewritten the tree/common validation outputs. Memory has climbed as expected for this phase; no stderr. The next scheduled interval is 20 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 100 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 100 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 9s
+
+
+
+At the 20-minute poll, Stage 3 is still in the anchor-validation region, with CPU increasing and memory around 9 GB. No stderr. I’m continuing to the next scheduled 20-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 41484 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STAGE3 STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 120 results\logs\mapping_pipeline_stage3_codex_20260708_184031.out.log -ErrorAction SilentlyContinue; '--- STAGE3 STDERR TAIL ---'; Get-Content -Tail 120 results\logs\mapping_pipeline_stage3_codex_20260708_184031.err.log -ErrorAction SilentlyContinue; '--- STATUS HEAD ---'; Import-Csv results\common_esto\common_esto_output_status.csv | Select-Object record_type,artifact_name,current_output_file | Format-Table -AutoSize for 20m 9s
+
+
+
+The final Stage 3 rerun completed cleanly and printed Pipeline complete. I’m now verifying the requested 09.08.01 Coke ovens (including own use) rows in common_esto_rows.csv and common_esto_comparison_data.csv, including the component rows.
+
+
+
+
+Ran 3 commands
+
+
+The workbook hash after the run matches the pre-run hash exactly, so the pipeline did not modify config/outlook_mappings_master.xlsx. I’m querying the two requested output CSVs now for the Coke ovens rollup rows and their ESTO components.
+
+
+
+
+Ran @'
+import pandas as pd
+from pathlib import Path
+flow_label = '09.08.01 Coke ovens (including own use)'
+component_flows = {'09.08.01 Coke ovens', '10.01.05 Coke ovens'}
+rows_path = Path('results/common_esto/common_esto_rows.csv')
+comp_path = Path('results/common_esto/common_esto_comparison_data.csv')
+rows = pd.read_csv(rows_path, dtype=object).fillna('')
+match_rows = rows[rows['common_flow_label'].eq(flow_label)].copy()
+print('common_esto_rows matches:', len(match_rows))
+print('comparison scopes:', sorted(match_rows['comparison_scope'].unique()))
+print('common products:', sorted(match_rows['common_product_label'].unique())[:20])
+print('component flows:', sorted(match_rows['component_esto_flow'].unique()))
+print('has both requested component flows:', component_flows.issubset(set(match_rows['component_esto_flow'])))
+print('sample common_esto_rows:')
+print(match_rows[['comparison_scope','common_row_id','common_flow_label','common_product_label','component_esto_flow','component_esto_product']].head(20).to_string(index=False))
+
+comp_cols = ['comparison_scope','source_system','economy','scenario','year','common_flow_label','common_product_label','common_row_id','value']
+comparison_matches = []
+for chunk in pd.read_csv(comp_path, dtype=object, chunksize=500000):
+    chunk = chunk.fillna('')
+    m = chunk[chunk['common_flow_label'].eq(flow_label)]
+    if not m.empty:
+        comparison_matches.append(m[comp_cols])
+if comparison_matches:
+    comp = pd.concat(comparison_matches, ignore_index=True)
+else:
+    comp = pd.DataFrame(columns=comp_cols)
+print('\ncommon_esto_comparison_data matches:', len(comp))
+print('comparison data scopes:', sorted(comp['comparison_scope'].unique()))
+print('source systems:', sorted(comp['source_system'].unique()))
+print('years min/max:', (comp['year'].min(), comp['year'].max()) if not comp.empty else ('',''))
+print('sample comparison rows:')
+print(comp.head(20).to_string(index=False))
+'@ | C:\Users\Work\miniconda3\python.exe - for 21s
+
+
+
+The exact requested label was not present in either CSV. I’m widening the search to all “including own use” / Coke oven labels to see whether the row is absent, differently labeled, or suppressed by the common-row generation.
+
+
+
+
+Ran @'
+import pandas as pd
+from pathlib import Path
+for path in [Path('results/common_esto/common_esto_rows.csv'), Path('results/common_esto/common_esto_comparison_data.csv')]:
+    print('\n---', path, '---')
+    cols = pd.read_csv(path, nrows=0).columns.tolist()
+    label_cols = [c for c in cols if 'flow' in c.lower() or 'aggregate' in c.lower()]
+    matches = []
+    for chunk in pd.read_csv(path, dtype=object, chunksize=500000):
+        chunk = chunk.fillna('')
+        mask = pd.Series(False, index=chunk.index)
+        for c in label_cols:
+            mask = mask | chunk[c].astype(str).str.contains('own use|Coke ovens|09.08.01|10.01.05', case=False, regex=True, na=False)
+        m = chunk[mask]
+        if not m.empty:
+            matches.append(m)
+    if matches:
+        df = pd.concat(matches, ignore_index=True)
+        print('matches', len(df))
+        print('columns searched', label_cols)
+        show_cols = [c for c in ['comparison_scope','source_system','common_row_id','common_flow_code','common_flow_name','common_flow_label','common_product_label','component_esto_flow','component_esto_product','source_aggregate_labels','value'] if c in df.columns]
+        print(df[show_cols].drop_duplicates().head(80).to_string(index=False))
+        for c in show_cols:
+            if 'flow' in c or 'aggregate' in c:
+                vals = sorted(set(df[c].astype(str)))[:50]
+                print(c, vals)
+    else:
+        print('no matches')
+'@ | C:\Users\Work\miniconda3\python.exe - for 24s
+
+
+
+The outputs contain 09.08.01 Coke ovens and 10.01.05 Coke ovens separately, but not the expected 09.08.01 Coke ovens (including own use). I’m tracing the rollup rule application now to see whether the new workbook rules are present but not being applied, or whether they are being filtered before Stage 2.
+
+
+
+
+Ran 3 commands
+
+
+The workbook contains the new rules, including 09.08.01 Coke ovens -> 09.08.01 Coke ovens (including own use), but those rows have blank rollup_context. The generated relationships show rollup-derived rows for the broader 9th own-use rollup, but not the detailed ESTO “including own use” rollup. I’m checking the Stage 1 rollup code to confirm whether blank context is causing the rule to be ignored.
+
+
+
+
+Ran $lines = Get-Content codebase\mapping_tools\build_energy_balance_relationships.py; $lines[1300..1490] for 6s
+
+
+
+Stage 1 does not create rollup-derived relationship rows for ESTO rules; it converts esto_rollup_rules into common_esto_overrides.csv for Stage 2. I’m checking whether that override file contains the detailed Coke ovens group and whether Stage 2 used it.
+
+
+
+
+Ran 3 commands
+
+
+The root cause is in Stage 2: common_esto_overrides.csv has the right Coke ovens override rows, but the Stage 2 override builder drops them because blank component_esto_product is not expanded. Per the docs, blank product means “all products” / keep original product, so I’m patching Stage 2 to expand those override rows against the in-scope ESTO components and carry the preferred flow label through to the generated common row.
+
+
+
+
+Ran rg -n "def aggregate_metadata|source_aggregate_membership|preferred_common" codebase\mapping_tools\build_common_esto_structure.py; $lines = Get-Content codebase\mapping_tools\build_common_esto_structure.py; $lines[480..570] for 5s
+
+
+
+I’m keeping the patch narrow: expand blank-product overrides inside Stage 2 using the current scope’s required ESTO components, and use any single preferred flow/product label from the matching manual override group when naming the common row.
+
+
+
+
+Edited a file
+
+
+The Stage 2 override expansion is patched. I’m running a syntax check, then I’ll rerun Stage 2 and Stage 3 so common_esto_rows.csv and common_esto_comparison_data.csv are regenerated from the fixed structure.
+
+
+
+
+Ran 2 commands
+
+
+Syntax check passed. I’m launching --stages 2,3 so Stage 2 rebuilds common_esto_rows.csv with the expanded overrides, then Stage 3 rebuilds the comparison data and validations.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.pid.txt"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py','--stages','2,3') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; "Id=$($p.Id)`nStartTime=$($p.StartTime)`nStdout=$stdout`nStderr=$stderr" | Set-Content $pidFile; Get-Content $pidFile for 9s
+
+
+
+The launcher again didn’t echo the PID in the tool output, so I’m capturing it from the pid file/process list and then I’ll resume the scheduled polling cadence.
+
+
+
+
+Ran 3 commands
+
+
+The Stage 2+3 rerun is PID 35740. The unrelated supply reconciliation process is still separate. I’ll poll the mapping run after 5 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 60 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 60 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- INTERNAL LOG TAIL ---'; Get-Content -Tail 60 results\logs\mapping_pipeline.log -ErrorAction SilentlyContinue for 5m 5s
+
+
+
+First scheduled poll for the Stage 2+3 rerun: PID 35740 is active, CPU is increasing, memory is low so it is still early. No stderr. Continuing to the second 5-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- RECENT COMMON FILES ---'; Get-ChildItem results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 8 FullName,LastWriteTime,Length for 5m 5s
+
+
+
+Second 5-minute poll: Stage 2 has rewritten common-structure outputs and Stage 3 is underway. CPU is increasing and stderr is empty. Next poll is after 10 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- RECENT COMMON/TREE FILES ---'; Get-ChildItem results\common_esto,results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 10m 5s
+
+
+
+At the 10-minute poll, Stage 3 has regenerated the main comparison files. The process is still active, likely in validation. No stderr. Continuing to the next 10-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 10m 5s
+
+
+
+Second 10-minute poll: Stage 3 is still active with CPU increasing; validation outputs have not yet been rewritten in this run, so it is still before or within the validation build. No stderr. Next interval is 20 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 100 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 100 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 5s
+
+
+
+At the 20-minute poll, Stage 3 has rewritten tree/common validation outputs and is in the high-memory anchor validation pass. CPU is increasing, stderr is empty. Continuing to the next 20-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 140 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 140 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- STATUS HEAD ---'; Import-Csv results\common_esto\common_esto_output_status.csv | Select-Object record_type,artifact_name,current_output_file | Format-Table -AutoSize for 20m 7s
+
+
+
+Second 20-minute poll: the process is still alive and CPU is still increasing; status manifest is not finalized yet, so anchor validation is still running or finishing. No stderr. I’m continuing with the next 20-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 35740 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 160 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 160 results\logs\mapping_pipeline_stage2_3_codex_20260708_195652.err.log -ErrorAction SilentlyContinue; '--- STATUS HEAD ---'; Import-Csv results\common_esto\common_esto_output_status.csv | Select-Object record_type,artifact_name,current_output_file | Format-Table -AutoSize for 20m 6s
+
+
+
+The Stage 2+3 rerun completed cleanly. It also surfaced one new warning: one broad common ESTO row, with diagnostics written under results\common_esto\diagnostics. I’m verifying the Coke ovens rows now and checking that diagnostic summary.
+
+
+
+
+Ran 3 commands
+
+
+The exact detailed 09.08.01 Coke ovens (including own use) label is still absent after expanding overrides. I’m doing one more trace on the regenerated rows to find how the override groups are materializing and whether a broader override is absorbing the detailed rows first.
+
+
+
+
+Ran 3 commands
+
+
+The expanded override revealed a second issue: broad parent rollups and detailed child rollups overlap through the same own-use component, so the graph collapses them into one broad row instead of producing the detailed “including own use” row. I’m going to prefer the most specific rolled ESTO flow when multiple rollup rules share the same input flow/product, which matches the project guidance to prefer the narrowest mapping needed.
+
+
+
+
+Edited a file, ran 2 commands
+
+
+The patch compiled, but I noticed I referenced a helper that exists in Stage 2, not Stage 1. I’m replacing that with a local code-extraction helper in Stage 1 before rerunning.
+
+
+
+
+Edited a file
+
+
+The Stage 1 specificity helper is fixed. I’m running syntax checks, then the affected pipeline path is Stage 1 through Stage 3 because Stage 1 regenerates common_esto_overrides.csv.
+
+
+
+
+Ran 2 commands
+
+
+Syntax checks passed. I’m launching --stages 1,2,3 now to regenerate the relationships/overrides, common structure, comparison data, and validations with the specificity fix.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_stage1_3_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_stage1_3_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_stage1_3_codex_$ts.pid.txt"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py','--stages','1,2,3') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; "Id=$($p.Id)`nStartTime=$($p.StartTime)`nStdout=$stdout`nStderr=$stderr" | Set-Content $pidFile; Get-Content $pidFile for 9s
+
+
+
+The launch output is suppressed again, so I’m capturing the PID from the process list and pid file, then I’ll follow the same polling schedule.
+
+
+
+
+Ran 2 commands
+
+
+Stage 1-3 rerun PID is 22208. I’ll poll after 5 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- RECENT FILES ---'; Get-ChildItem results\mapping_relationships,results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 5m 5s
+
+
+
+First scheduled poll: Stage 1 has rewritten relationship QA outputs; process is active with CPU increasing and no stderr. Continuing to the second 5-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 100 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 100 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- RECENT FILES ---'; Get-ChildItem results\mapping_relationships,results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 5m 5s
+
+
+
+Second 5-minute poll: Stage 2 has rebuilt common structure outputs and Stage 3 is underway; no stderr. Next poll is after 10 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 120 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 120 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- RECENT COMMON/TREE FILES ---'; Get-ChildItem results\common_esto,results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 10m 3s
+
+
+
+At the first 10-minute poll, Stage 3 has regenerated the main comparison outputs. The process is still active, with no stderr. Continuing to the next 10-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 120 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 120 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 10m 6s
+
+
+
+Second 10-minute poll: Stage 3 is still active with CPU increasing and no stderr; tree validation outputs have not yet been rewritten in this run. Next interval is 20 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 140 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 140 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 6s
+
+
+
+At the 20-minute poll, tree validation outputs have been rewritten and the process is in the later anchor-validation phase. CPU is increasing, stderr is empty. Continuing to the next 20-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 22208 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 180 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 180 results\logs\mapping_pipeline_stage1_3_codex_20260708_213145.err.log -ErrorAction SilentlyContinue; '--- STATUS HEAD ---'; Import-Csv results\common_esto\common_esto_output_status.csv | Select-Object record_type,artifact_name,current_output_file | Format-Table -AutoSize for 20m 7s
+
+
+
+The final Stage 1-3 rerun completed cleanly. I’m running the exact Coke ovens verification again now, plus final workbook hash/status checks.
+
+
+
+
+Ran 4 commands
+
+
+The exact detailed label is still absent even after removing the less-specific duplicate input rules. I’m checking the current labels and override file one last time; at this point this looks like a workbook rule/schema issue rather than just a pipeline execution issue.
+
+
+
+
+Ran 2 commands
+
+
+The overrides are now narrow enough, and the components are grouped as 09.08.01,10.01.05 Coke ovens, but the preferred “(including own use)” label still is not being carried into the final common label. I’m patching the label selection to use the matched manual override group IDs directly, then I’ll rerun Stage 2+3.
+
+
+
+
+Edited a file
+
+
+The label carry-through patch is in. I’m syntax-checking it, then I’ll rerun Stage 2+3 to regenerate the common rows and comparison data.
+
+
+
+
+Ran 2 commands
+
+
+Syntax check passed. I’m launching another --stages 2,3 rerun so the label fix reaches both requested CSVs.
+
+
+
+
+Ran $logDir = Join-Path (Get-Location) 'results\logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts = Get-Date -Format 'yyyyMMdd_HHmmss'; $stdout = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.out.log"; $stderr = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.err.log"; $pidFile = Join-Path $logDir "mapping_pipeline_stage2_3_codex_$ts.pid.txt"; $p = Start-Process -FilePath 'C:\Users\Work\miniconda3\python.exe' -ArgumentList @('codebase\run_mapping_pipeline.py','--stages','2,3') -WorkingDirectory (Get-Location) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -WindowStyle Hidden; "Id=$($p.Id)`nStartTime=$($p.StartTime)`nStdout=$stdout`nStderr=$stderr" | Set-Content $pidFile; Get-Content $pidFile for 10s
+
+
+
+The launch output is suppressed again. I’m capturing the PID from the process list and then polling on schedule.
+
+
+
+
+Ran 2 commands
+
+
+Stage 2+3 rerun PID is 2252. I’ll poll after 5 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- RECENT FILES ---'; Get-ChildItem results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 5m 4s
+
+
+
+First scheduled poll: Stage 2+3 is active; main common outputs are already being rewritten and stderr is empty. Continuing to the second 5-minute poll.
+
+
+
+
+Ran Start-Sleep -Seconds 300; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 80 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- RECENT FILES ---'; Get-ChildItem results\common_esto -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 5m 5s
+
+
+
+Second 5-minute poll: Stage 2 is complete and Stage 3 has started writing comparison data; CPU is increasing and stderr remains empty. Next poll is after 10 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 100 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 100 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- RECENT COMMON/TREE FILES ---'; Get-ChildItem results\common_esto,results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 10m 5s
+
+
+
+First 10-minute poll: Stage 3 has regenerated the main comparison outputs and is still active, with no stderr. Continuing to the next 10-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 600; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 120 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 120 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 FullName,LastWriteTime,Length for 10m 5s
+
+
+
+Second 10-minute poll: Stage 3 is still active and has not yet rewritten tree validation outputs in this rerun. No stderr. Next interval is 20 minutes.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 160 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 160 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- RECENT TREE FILES ---'; Get-ChildItem results\tree_structure -File | Sort-Object LastWriteTime -Descending | Select-Object -First 12 FullName,LastWriteTime,Length for 20m 7s
+
+
+
+At the 20-minute poll, tree validation outputs have been rewritten and Stage 3 is in the memory-heavy anchor validation phase. CPU is still increasing and stderr is empty. Continuing to the next 20-minute interval.
+
+
+
+
+Ran Start-Sleep -Seconds 1200; $p = Get-Process -Id 2252 -ErrorAction SilentlyContinue; if ($p) { [pscustomobject]@{Alive=$true; Id=$p.Id; CPU=$p.CPU; StartTime=$p.StartTime; Now=Get-Date; WorkingSetMB=[math]::Round($p.WorkingSet64/1MB,1)} | Format-List } else { [pscustomobject]@{Alive=$false; Now=Get-Date} | Format-List }; '--- STDOUT INFO ---'; Get-Item results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log | Format-List LastWriteTime,Length; Get-Content -Tail 180 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.out.log -ErrorAction SilentlyContinue; '--- STDERR TAIL ---'; Get-Content -Tail 180 results\logs\mapping_pipeline_stage2_3_codex_20260708_224543.err.log -ErrorAction SilentlyContinue; '--- STATUS HEAD ---'; Import-Csv results\common_esto\common_esto_output_status.csv | Select-Object record_type,artifact_name,current_output_file | Format-Table -AutoSize for 20m 8s
+
+
+
+The rerun completed and the main outputs are valid, but the final source-parent anchor validation hit ArrowMemoryError and was skipped with a skipped summary. I’m verifying the requested rows now.
+
+
+
+
+Ran 4 commands
+
+
+The exact label is still absent; the current output labels are still 09.08.01,10.01.05 Coke ovens, so the preferred workbook label is not taking effect. Also Excel or another process now has outlook_mappings_master.xlsx open, which created config\\~$outlook_mappings_master.xlsx and prevents hashing; I’m not touching it.
+
+
+
+
+I’m going to inspect the Stage 2 helper behavior directly on the generated override rows and required component rows, rather than rerunning again blindly. That should show whether the preferred label is present in the manual aggregate metadata or lost before common-row naming.
+
+
+
+
+Ran @'
+import pandas as pd
+from codebase.mapping_tools.build_common_esto_structure import build_manual_override_edges, manual_override_labels_for_group_ids, manual_override_labels_for_component
+ov = pd.read_csv('results/mapping_relationships/common_esto_overrides.csv', dtype=object).fillna('')
+rows = pd.read_csv('results/common_esto/common_esto_rows.csv', dtype=object).fillna('')
+# reconstruct required components from current common rows, unique exact components
+req = rows[['component_esto_flow','component_esto_product']].drop_duplicates().copy()
+edges, ag = build_manual_override_edges(ov, req, 'esto_only')
+print('edges', len(edges), 'ag rows', len(ag))
+mask = ag.astype(str).apply(lambda col: col.str.contains('09.08.01|10.01.05|including own use|Coke ovens', case=False, regex=True, na=False)).any(axis=1)
+print(ag.loc[mask].head(40).to_string(index=False))
+# pick one current row with both component flows
+m = rows[(rows['common_flow_label'].str.contains('09.08.01,10.01.05', regex=False)) & (rows['common_product_label'].eq('02.02 Gas coke'))]
+print('\ncurrent row components')
+print(m[['common_row_id','common_flow_label','common_product_label','component_esto_flow','component_esto_product','aggregate_group_source_id']].to_string(index=False))
+component_pairs = list(m[['component_esto_flow','component_esto_product']].drop_duplicates().itertuples(index=False, name=None))
+source_id = m['aggregate_group_source_id'].iloc[0] if not m.empty else ''
+print('component helper:', manual_override_labels_for_component(component_pairs, ag))
+print('id helper:', manual_override_labels_for_group_ids(source_id, ag))
+print('source_id', source_id)
+'@ | C:\Users\Work\miniconda3\python.exe - for 8s
+
+
+
+The helper now returns the correct preferred label for the current Coke ovens component group, but the persisted common_esto_rows.csv still has the old auto label. I’m rerunning Stage 2 alone in the foreground to isolate whether the structure file is being regenerated from the patched code before spending time on Stage 3 again.
+
+
+
+
+Ran a command
+
+
+
+
+
+Edited 4 files+155-4Review changesUndoReview
+
+codebase/archive/outlook_mapping_maintenance_workflow.pycodebase/archive/outlook_mapping_maintenance_workflow.py+10-1
+codebase/mapping_tools/build_common_esto_structure.pycodebase/mapping_tools/build_common_esto_structure.py+118-1
+codebase/mapping_tools/build_energy_balance_relationships.pycodebase/mapping_tools/build_energy_balance_relationships.py+25-1
+Show 1 more file

@@ -1324,6 +1324,117 @@ def expand_combined_esto_targets(
     return pd.DataFrame(all_rows, columns=relationship_df.columns).reset_index(drop=True)
 
 
+def _build_rolled_flow_to_components(esto_rules: pd.DataFrame) -> dict[str, list[str]]:
+    """Map each esto_rollup_rules rolled_esto_flow label to its unique input component flows."""
+    if esto_rules.empty or "rolled_esto_flow" not in esto_rules.columns:
+        return {}
+    result: dict[str, list[str]] = {}
+    for _, rule in esto_rules.iterrows():
+        rolled = _str(rule.get("rolled_esto_flow"))
+        component = _str(rule.get("input_esto_flow"))
+        if not rolled or not component or component == rolled:
+            continue
+        components = result.setdefault(rolled, [])
+        if component not in components:
+            components.append(component)
+    return result
+
+
+def _resolve_rolled_flow_components(
+    rolled_flow: str,
+    rolled_flow_to_components: dict[str, list[str]],
+    max_depth: int = 5,
+) -> list[str]:
+    """Resolve a rolled flow to real component flows, following nested rollup definitions."""
+    resolved: list[str] = []
+    pending = [(component, 1) for component in rolled_flow_to_components.get(rolled_flow, [])]
+    while pending:
+        component, depth = pending.pop(0)
+        if component in rolled_flow_to_components and depth < max_depth:
+            pending.extend((nested, depth + 1) for nested in rolled_flow_to_components[component])
+        elif component not in resolved:
+            resolved.append(component)
+    return resolved
+
+
+def expand_esto_rollup_targets(
+    relationship_df: pd.DataFrame,
+    rolled_flow_to_components: dict[str, list[str]],
+) -> pd.DataFrame:
+    """Expand relationship rows whose ESTO target is an esto_rollup_rules rolled flow.
+
+    Mapping sheets may point ``esto_flow`` at a rolled label such as
+    ``09.08.01 Coke ovens (including own use)``.  Those labels do not exist in
+    the ESTO balance, so each such row is expanded into one relationship per
+    component flow (e.g. ``09.08.01 Coke ovens`` and ``10.01.05 Coke ovens``),
+    keeping the mapped product.  Because the expanded rows share one source
+    pair, the common-structure stage links the components into a single common
+    row, and the rolled label is applied to that row via common_esto_overrides.
+    """
+    if not rolled_flow_to_components:
+        return relationship_df
+    normal_rows: list[dict[str, Any]] = []
+    expanded_rows: list[dict[str, Any]] = []
+    for _, row in relationship_df.iterrows():
+        target_flow = _str(row.get("target_flow", ""))
+        if _str(row.get("target_system")) == "ESTO" and target_flow in rolled_flow_to_components:
+            for component_flow in _resolve_rolled_flow_components(target_flow, rolled_flow_to_components):
+                new_row = row.to_dict()
+                new_row["target_flow"] = component_flow
+                new_row["relationship_type"] = infer_relationship_type(component_flow, "ESTO")
+                new_row["relationship_level"] = infer_relationship_level(
+                    component_flow, row.get("source_sector_path", ""), "ESTO"
+                )
+                existing_notes = _str(row.get("notes", ""))
+                rollup_note = f"expanded_from_esto_rollup: {target_flow}"
+                new_row["notes"] = f"{existing_notes}; {rollup_note}" if existing_notes else rollup_note
+                new_row["relationship_id"] = make_relationship_id(
+                    _str(row["source_system"]),
+                    _str(row["source_flow"]),
+                    _str(row["source_product"]),
+                    _str(row["target_system"]),
+                    component_flow,
+                    _str(row["target_product"]),
+                )
+                new_row["relationship_key"] = f"{new_row['relationship_id']}::{_str(row['use_case'])}"
+                expanded_rows.append(new_row)
+        else:
+            normal_rows.append(row.to_dict())
+
+    if not expanded_rows:
+        return relationship_df
+    return pd.DataFrame(normal_rows + expanded_rows, columns=relationship_df.columns).reset_index(drop=True)
+
+
+def _load_known_esto_flows(workbook_path: Path) -> set[str]:
+    """Load real ESTO flow labels from the 'ESTO unique flows and products' sheet."""
+    try:
+        df = pd.read_excel(workbook_path, sheet_name="ESTO unique flows and products", dtype=object)
+    except Exception:
+        return set()
+    if "flows" not in df.columns:
+        return set()
+    return {_str(value) for value in df["flows"] if _str(value)}
+
+
+def build_unknown_esto_target_qa(relationship_df: pd.DataFrame, known_esto_flows: set[str]) -> pd.DataFrame:
+    """List ESTO target flows that match no real ESTO flow (no ESTO data will ever compare)."""
+    esto_rows = relationship_df[relationship_df["target_system"].astype(str).str.strip() == "ESTO"]
+    target_flows = esto_rows["target_flow"].astype(str).str.strip()
+    unknown_rows = esto_rows[target_flows.ne("") & ~target_flows.isin(known_esto_flows)]
+    if unknown_rows.empty:
+        return pd.DataFrame(columns=["target_flow", "source_sheet", "relationship_row_count", "qa_status"])
+    qa_df = (
+        unknown_rows.groupby(["target_flow", "source_sheet"], dropna=False)
+        .size()
+        .reset_index(name="relationship_row_count")
+        .sort_values(["target_flow", "source_sheet"])
+        .reset_index(drop=True)
+    )
+    qa_df["qa_status"] = "esto_target_flow_has_no_esto_data"
+    return qa_df
+
+
 # ---------------------------------------------------------------------------
 # Rollup rule loaders and appliers
 # ---------------------------------------------------------------------------
@@ -1352,6 +1463,18 @@ def _apply_leap_rollup_rules(
         & relationship_df["include_in_use_case"].astype(bool)
     ].copy()
 
+    # A rolled aggregate that already has its own direct (non-rollup) mapping is
+    # authoritative for that source flow. Cloning its individual input branches'
+    # relationships on top would duplicate/inflate whatever those branches already
+    # map to (e.g. "Industry" cloned onto "Total final consumption" bogusly injects
+    # the whole-economy total into "14 Industry sector"; see
+    # docs/prompts/investigate_demand_sector_parent_child_mismatches_FINDINGS.md #2/#3).
+    directly_mapped_flows = set(
+        leap_df.loc[~leap_df["is_rollup_derived"].astype(bool), "source_flow"]
+        .astype(str)
+        .str.strip()
+    )
+
     new_rows: list[dict[str, Any]] = []
     for _, rule in leap_rules.iterrows():
         input_flow = _str(rule.get("input_leap_sector_name_full_path"))
@@ -1359,6 +1482,8 @@ def _apply_leap_rollup_rules(
         rolled_flow = _str(rule.get("rolled_leap_sector_name_full_path"))
         rolled_fuel = _str(rule.get("rolled_raw_leap_fuel_name"))
         if not input_flow or not rolled_flow:
+            continue
+        if rolled_flow in directly_mapped_flows:
             continue
 
         mask = leap_df["source_flow"].astype(str).str.strip() == input_flow
@@ -1562,6 +1687,11 @@ def run_relationship_workflow(
     flow_prefix_to_label = _build_flow_prefix_to_label(mapping_workbook_path)
     base_df = expand_combined_esto_targets(base_df, flow_prefix_to_label)
     leap_rules, esto_rules, ninth_rules = load_rollup_rules(mapping_workbook_path)
+    rolled_flow_to_components = _build_rolled_flow_to_components(esto_rules)
+    rows_before_rollup_expansion = len(base_df)
+    base_df = expand_esto_rollup_targets(base_df, rolled_flow_to_components)
+    if len(base_df) != rows_before_rollup_expansion:
+        print(f"ESTO rollup target expansion: {rows_before_rollup_expansion:,} -> {len(base_df):,} rows")
     leap_rollup_df = _apply_leap_rollup_rules(base_df, leap_rules)
     ninth_rollup_df = _apply_ninth_rollup_rules(base_df, ninth_rules)
     esto_overrides_df = build_esto_overrides(esto_rules)
@@ -1579,6 +1709,19 @@ def run_relationship_workflow(
     if not ninth_rollup_df.empty:
         print(f"NINTH rollup rows added: {len(ninth_rollup_df):,}")
     print(f"ESTO override entries: {len(esto_overrides_df):,}")
+
+    known_esto_flows = _load_known_esto_flows(mapping_workbook_path)
+    if known_esto_flows:
+        unknown_esto_qa_df = build_unknown_esto_target_qa(relationship_df, known_esto_flows)
+        qa_dir.mkdir(parents=True, exist_ok=True)
+        unknown_esto_qa_df.to_csv(qa_dir / "qa_unknown_esto_target_flows.csv", index=False)
+        if not unknown_esto_qa_df.empty:
+            unknown_count = unknown_esto_qa_df["target_flow"].nunique()
+            print(
+                f"WARNING: {unknown_count} ESTO target flow labels match no real ESTO flow and no "
+                "esto_rollup_rules rollup; their comparisons will have no ESTO data. "
+                "See qa_unknown_esto_target_flows.csv"
+            )
 
     relationship_catalogue_df = build_relationship_catalogue(relationship_df)
     compact_catalogue_df = build_compact_relationship_catalogue(relationship_df)

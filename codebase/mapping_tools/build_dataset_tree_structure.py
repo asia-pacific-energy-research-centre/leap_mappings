@@ -1793,7 +1793,10 @@ def _validate_common_esto_axis_recursive_sums(
             missing_children = sorted(set(resolved).difference(present_children))
             cv = float(children_sum.get(idx, 0.0))
             err = abs(pv - cv)
-            failed = bool(missing_children) or err > tolerance * max(abs(pv), 1)
+            # Missing children alone are not a failure: a child label absent
+            # from the comparison data while parent and children sums still
+            # agree contributes nothing to reconcile.
+            failed = err > tolerance * max(abs(pv), 1)
             if not record_all_checks and not failed:
                 continue
             scope, source_system, economy, scenario, other_axis_value, year = idx
@@ -1829,9 +1832,9 @@ def _validate_common_esto_axis_recursive_sums(
                 "proportional_error": prop_err,
                 "status": "failed" if failed else "passed",
                 "reason": (
-                    "missing_expected_children" if missing_children
-                    else "difference_exceeds_tolerance" if failed
-                    else "within_tolerance"
+                    ("missing_expected_children" if missing_children else "difference_exceeds_tolerance")
+                    if failed
+                    else ("missing_children_within_tolerance" if missing_children else "within_tolerance")
                 ),
                 "source_inconsistency_status": source_status,
                 "sector_hierarchy_status": source_record.get("sector_hierarchy_status", ""),

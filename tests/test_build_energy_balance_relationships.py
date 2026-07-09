@@ -11,7 +11,9 @@ import pandas as pd
 import pytest
 
 from codebase.mapping_tools.build_energy_balance_relationships import (
+    RELATIONSHIP_COLUMNS,
     SHEET_CONFIGS,
+    _apply_leap_rollup_rules,
     build_relationship_rows,
     parse_esto_pair_is_subtotal,
 )
@@ -180,3 +182,122 @@ class TestSubtotalFlagCountsInRelationshipOutput:
         source_df.to_excel(mapping_path, index=False)
         result = build_relationship_rows(source_df, mapping_path, _NINTH_SHEET_CONFIG)
         assert result["esto_pair_is_subtotal"].eq(False).all()
+
+
+# ---------------------------------------------------------------------------
+# _apply_leap_rollup_rules: rolled aggregates that already have a direct
+# mapping must not have their component branches' relationships cloned onto
+# them (see docs/prompts/investigate_demand_sector_parent_child_mismatches_FINDINGS.md #2/#3).
+# ---------------------------------------------------------------------------
+
+
+def _make_leap_row(
+    source_flow: str,
+    target_flow: str,
+    is_rollup_derived: bool = False,
+    source_product: str = "08.01 Natural gas",
+) -> dict[str, Any]:
+    row = {c: "" for c in RELATIONSHIP_COLUMNS}
+    row.update(
+        source_system="LEAP",
+        source_flow=source_flow,
+        source_product=source_product,
+        source_sector_path=source_flow,
+        source_fuel=source_product,
+        target_system="ESTO",
+        target_flow=target_flow,
+        target_product=source_product,
+        is_rollup_derived=is_rollup_derived,
+        include_in_use_case=True,
+        relationship_id=f"id::{source_flow}::{target_flow}",
+        relationship_key=f"id::{source_flow}::{target_flow}::use_case",
+        use_case="use_case",
+    )
+    return row
+
+
+def _make_leap_rule(input_flow: str, rolled_flow: str) -> dict[str, Any]:
+    return {
+        "input_leap_sector_name_full_path": input_flow,
+        "input_raw_leap_fuel_name": "",
+        "rolled_leap_sector_name_full_path": rolled_flow,
+        "rolled_raw_leap_fuel_name": "",
+    }
+
+
+class TestApplyLeapRollupRulesSkipsAlreadyDirectlyMappedAggregates:
+    """Regression for the 14 Industry sector / 15 Transport sector inflation bug."""
+
+    def test_component_with_direct_target_not_cloned_onto_rolled_aggregate(self) -> None:
+        """'Industry' already maps directly to '14 Industry sector'; the rollup rule
+        that folds 'Industry' into 'Total final consumption' must not clone that
+        row, since 'Total final consumption' already has its own direct mapping."""
+        relationship_df = pd.DataFrame(
+            [
+                _make_leap_row("Industry", "14 Industry sector"),
+                _make_leap_row("Total final consumption", "12 Total final consumption"),
+            ],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+        leap_rules = pd.DataFrame([_make_leap_rule("Industry", "Total final consumption")])
+
+        result = _apply_leap_rollup_rules(relationship_df, leap_rules)
+
+        assert not (
+            (result["source_flow"] == "Total final consumption")
+            & (result["target_flow"] == "14 Industry sector")
+        ).any(), "Total final consumption must not be cloned onto 14 Industry sector's target"
+
+    def test_transport_children_not_doubled_by_rolled_transport(self) -> None:
+        """'Transport' already maps directly to '15 Transport sector'; rollup rules
+        folding its non-road children into 'Transport' must not clone those
+        children's targets, which would double-count into 15.05/15.06."""
+        relationship_df = pd.DataFrame(
+            [
+                _make_leap_row("Transport", "15 Transport sector"),
+                _make_leap_row(
+                    "Transport non road/Pipeline transport", "15.05 Pipeline transport"
+                ),
+                _make_leap_row(
+                    "Transport non road/Nonspecified transport",
+                    "15.06 Non-specified transport",
+                ),
+            ],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+        leap_rules = pd.DataFrame(
+            [
+                _make_leap_rule("Transport non road/Pipeline transport", "Transport"),
+                _make_leap_rule("Transport non road/Nonspecified transport", "Transport"),
+            ]
+        )
+
+        result = _apply_leap_rollup_rules(relationship_df, leap_rules)
+
+        assert not (result["source_flow"] == "Transport").any(), (
+            "Transport already has a direct mapping; its component branches must not "
+            "be cloned onto it"
+        )
+
+    def test_rollup_still_applies_when_aggregate_has_no_direct_mapping(self) -> None:
+        """Sanity check: legitimate rollups (no pre-existing direct row for the
+        rolled aggregate) must still be cloned as before."""
+        relationship_df = pd.DataFrame(
+            [
+                _make_leap_row("Freight road", "15.02 Road"),
+                _make_leap_row("Passenger road", "15.02 Road"),
+            ],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+        leap_rules = pd.DataFrame(
+            [
+                _make_leap_rule("Freight road", "Road"),
+                _make_leap_rule("Passenger road", "Road"),
+            ]
+        )
+
+        result = _apply_leap_rollup_rules(relationship_df, leap_rules)
+
+        assert (result["source_flow"] == "Road").sum() == 2
+        assert set(result["target_flow"]) == {"15.02 Road"}
+        assert result["is_rollup_derived"].all()

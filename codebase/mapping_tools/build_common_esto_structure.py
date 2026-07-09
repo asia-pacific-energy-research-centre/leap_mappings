@@ -754,10 +754,42 @@ def build_intersecting_axis_group_diagnostics(axis_group_sets_df: pd.DataFrame) 
     return pd.DataFrame(diagnostics_rows)
 
 
+def build_preferred_flow_partition_labels(
+    overrides_df: pd.DataFrame,
+    comparison_scope: str,
+) -> dict[frozenset[str], str]:
+    """Map exact flow-component sets from manual override groups to a preferred display label.
+
+    ``common_esto_overrides.csv`` (generated from ``esto_rollup_rules``) carries a
+    ``preferred_common_flow_label`` such as ``09.08.01 Coke ovens (including own
+    use)`` for each override group.  When the flow-axis partition closure ends up
+    with exactly that group's flow set, the preferred label should be displayed
+    instead of the mechanically compressed one (``09.08.01,10.01.05 Coke ovens``).
+    """
+    if overrides_df.empty:
+        return {}
+    scope_values = overrides_df["comparison_scope"].astype(str).map(normalise_text)
+    scoped_df = overrides_df[(scope_values == "") | (scope_values == normalise_text(comparison_scope))]
+    result: dict[frozenset[str], str] = {}
+    for _, group_df in scoped_df.groupby("override_group_id", dropna=False):
+        flows = frozenset(
+            normalise_text(value) for value in group_df["component_esto_flow"] if normalise_text(value)
+        )
+        labels = {
+            normalise_text(value)
+            for value in group_df["preferred_common_flow_label"]
+            if normalise_text(value)
+        }
+        if len(flows) > 1 and len(labels) == 1:
+            result[flows] = next(iter(labels))
+    return result
+
+
 def build_axis_partition_lookup(
     common_rows_df: pd.DataFrame,
     axis: str,
     code_to_name: dict[str, str],
+    preferred_partition_labels: dict[frozenset[str], str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build global non-overlapping partitions for product or flow labels."""
     settings = axis_settings(axis)
@@ -804,6 +836,12 @@ def build_axis_partition_lookup(
         else:
             partition_name = nearest_parent_name(component_codes, code_to_name, component_names[0] if component_names else "")
         partition_label = make_label(partition_code, partition_name)
+        partition_created_by = "axis_partition_closure" if len(partition_components) > 1 else "exact_axis_component"
+        if preferred_partition_labels:
+            preferred_label = preferred_partition_labels.get(frozenset(partition_components), "")
+            if preferred_label:
+                partition_label = preferred_label
+                partition_created_by = "manual_override_preferred_label"
         partition_id = f"{axis}_partition_{hashlib.sha1('|'.join(partition_components).encode('utf-8')).hexdigest()[:16]}"
         for component in partition_components:
             lookup_rows.append(
@@ -816,7 +854,7 @@ def build_axis_partition_lookup(
                     "partition_name": partition_name,
                     "partition_label": partition_label,
                     "partition_components": "|".join(partition_components),
-                    "partition_created_by": "axis_partition_closure" if len(partition_components) > 1 else "exact_axis_component",
+                    "partition_created_by": partition_created_by,
                 }
             )
     return pd.DataFrame(lookup_rows), intersection_df, skipped_broad_rows_df
@@ -1143,6 +1181,7 @@ def build_common_esto_for_scope(
         common_rows_df,
         axis="flow",
         code_to_name=flow_code_to_name,
+        preferred_partition_labels=build_preferred_flow_partition_labels(overrides_df, comparison_scope),
     )
     common_rows_df = apply_axis_partition_labels(
         common_rows_df,
