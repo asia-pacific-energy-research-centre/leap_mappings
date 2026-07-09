@@ -248,7 +248,7 @@ def parse_leap_balance_xlsx(
     Parse a LEAP balance export file into long-format rows.
 
     Supports both single-sheet files and multi-sheet workbooks where each
-    sheet represents one year (sheet names like 'EBal|2060', 'EBal|2059', …).
+    sheet represents one year (sheet names like 'EBal|2060', '2060', …).
     All matching year sheets are parsed and concatenated so the full
     projection time series is captured rather than just the first sheet.
 
@@ -267,8 +267,8 @@ def parse_leap_balance_xlsx(
     xl = pd.ExcelFile(xlsx_path)
     sheet_names = xl.sheet_names
 
-    # Detect multi-year workbooks (sheets named like 'EBal|2060')
-    ebal_sheets = [s for s in sheet_names if re.match(r"^EBal\|\d{4}$", str(s))]
+    # Detect multi-year workbooks (sheets named like 'EBal|2060' or '2060').
+    ebal_sheets = [s for s in sheet_names if re.match(r"^(EBal\|)?\d{4}$", str(s))]
 
     if ebal_sheets:
         frames = []
