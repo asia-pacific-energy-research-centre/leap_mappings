@@ -39,6 +39,8 @@ OUTPUT_DIR = COMMON_ESTO_DIR
 # Frequently changed run settings.
 RUN_REGEN_COMMON_ESTO_FAST_PATH = False
 DEFAULT_ECONOMY = "20_USA"
+ECONOMIES: list[str] | None = None  # Example: ["02_BD"]. Keep None for all cached economies.
+WRITE_ECONOMY_SCOPED_OUTPUT_DIR = True
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0
 ESTO_BASE_YEAR = None
 
@@ -48,14 +50,19 @@ if __name__ == "__main__":
         if RUN_REGEN_COMMON_ESTO_FAST_PATH:
             RUN_TIMESTAMP = datetime.now(timezone.utc)
             RUN_ID = RUN_TIMESTAMP.strftime("common_esto_fast_path_%Y%m%dT%H%M%S%fZ")
+            resolved_output_dir = OUTPUT_DIR
+            if ECONOMIES and WRITE_ECONOMY_SCOPED_OUTPUT_DIR:
+                economy_id = "_".join(economy.replace("_", "") for economy in ECONOMIES)
+                resolved_output_dir = COMMON_ESTO_DIR / "economy_scoped" / economy_id
             run_common_esto_comparison_fast_path(
                 source_paths=SOURCE_PATHS,
                 common_rows_path=COMMON_ROWS_PATH,
-                output_dir=OUTPUT_DIR,
+                output_dir=resolved_output_dir,
                 default_economy=DEFAULT_ECONOMY,
                 active_component_abs_tolerance=ACTIVE_COMPONENT_ABS_TOLERANCE,
                 ninth_projection_start_year=NINTH_PROJECTION_START_YEAR,
                 esto_base_year=ESTO_BASE_YEAR,
+                economies=ECONOMIES,
                 run_id=RUN_ID,
                 run_timestamp_utc=RUN_TIMESTAMP.isoformat(),
             )

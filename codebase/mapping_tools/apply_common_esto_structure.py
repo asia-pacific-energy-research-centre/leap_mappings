@@ -1321,6 +1321,26 @@ def save_fast_path_outputs(
     return status_df
 
 
+def economy_filter_aliases(economies: list[str]) -> dict[str, str]:
+    """Return acceptable cached economy-code variants mapped to requested codes."""
+    alias_lookup: dict[str, str] = {}
+    for economy in economies:
+        canonical = str(economy).strip()
+        if not canonical:
+            continue
+        variants = {
+            canonical,
+            canonical.replace("_", ""),
+        }
+        if len(canonical) >= 5 and canonical[2] == "_":
+            variants.add(canonical[:2] + canonical[3:])
+        if len(canonical) == 4 and canonical[:2].isdigit():
+            variants.add(canonical[:2] + "_" + canonical[2:])
+        for variant in variants:
+            alias_lookup[variant] = canonical
+    return alias_lookup
+
+
 def run_common_esto_comparison_fast_path(
     source_paths: dict[str, Path],
     common_rows_path: Path,
@@ -1329,6 +1349,7 @@ def run_common_esto_comparison_fast_path(
     active_component_abs_tolerance: float,
     ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
     esto_base_year: int | None = None,
+    economies: list[str] | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1340,6 +1361,16 @@ def run_common_esto_comparison_fast_path(
         raise FileNotFoundError(f"Fast-path Common ESTO regen is missing cached input files:\n{missing_text}")
 
     source_df = read_source_tables(source_paths, default_economy=default_economy)
+    if economies is not None:
+        economy_aliases = economy_filter_aliases(economies)
+        if not economy_aliases:
+            raise ValueError("Economy filter was provided but no economy codes were usable.")
+        source_df["_requested_economy"] = source_df["economy"].astype(str).map(economy_aliases)
+        source_df = source_df[source_df["_requested_economy"].notna()].copy()
+        if source_df.empty:
+            raise ValueError(f"No cached source rows found for economy filter: {sorted(set(economy_aliases.values()))}")
+        source_df["economy"] = source_df["_requested_economy"]
+        source_df = source_df.drop(columns=["_requested_economy"])
     common_rows_df = pd.read_csv(common_rows_path, dtype=str).fillna("")
     for column in ["component_esto_flow", "component_esto_product"]:
         if column in common_rows_df.columns:
@@ -1379,7 +1410,9 @@ def run_common_esto_comparison_fast_path(
         run_timestamp_utc=run_timestamp_utc,
     )
 
-    print(f"Fast-path ESTO-shaped source rows read: {len(source_df):,}")
+    if economies is not None:
+        print(f"Fast-path economy filter: {', '.join(sorted(set(economy_aliases.values())))}")
+    print(f"Fast-path ESTO-shaped source rows used: {len(source_df):,}")
     print(f"Fast-path ESTO base year used for component relevance: {resolved_esto_base_year}")
     print(f"Fast-path nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
     print(f"Fast-path Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
