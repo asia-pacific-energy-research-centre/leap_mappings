@@ -66,10 +66,13 @@ COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
 LEAP_ROLLUP_AUDIT_PATH = REL_DIR / "leap_source_rollup_audit.csv"
+LEAP_SOURCE_LINEAGE_PATH = REL_DIR / "leap_source_to_esto_component_lineage.csv"
 NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv"
+NINTH_SOURCE_LINEAGE_PATH = REL_DIR / "ninth_source_to_esto_component_lineage.csv"
 ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
+ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv"
 
 # Aggregate comparisons that require the exact ESTO parent alongside the
 # ordinary non-subtotal frontier. Other dashboard totals are currently built
@@ -228,6 +231,7 @@ def run_leap_to_esto() -> None:
         mapping_workbook_path=WORKBOOK_PATH,
         rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
         target_values_path=ESTO_ROWS_PATH,
+        lineage_output_path=LEAP_SOURCE_LINEAGE_PATH,
     )
 
 
@@ -266,13 +270,22 @@ def run_ninth_to_esto() -> None:
     target_values_df = None
     if relationships_need_target_dataset_share(relationships_df):
         target_values_df = pd.read_csv(ESTO_ROWS_PATH, dtype=object)
-    converted_df = convert_ninth_results_to_esto(ninth_long, relationships_df, target_values_df)
+    converted_df, lineage_df = convert_ninth_results_to_esto(
+        ninth_long,
+        relationships_df,
+        target_values_df,
+        return_lineage=True,
+    )
 
     NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(NINTH_ESTO_PATH, index=False)
+    NINTH_SOURCE_LINEAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lineage_df.to_csv(NINTH_SOURCE_LINEAGE_PATH, index=False)
     print(f"  Conversion relationships used: {len(relationships_df):,}")
     print(f"  Converted ESTO rows written: {len(converted_df):,}")
+    print(f"  Source-to-ESTO lineage rows written: {len(lineage_df):,}")
     print(f"  Wrote: {NINTH_ESTO_PATH.relative_to(REPO_ROOT)}")
+    print(f"  Wrote lineage: {NINTH_SOURCE_LINEAGE_PATH.relative_to(REPO_ROOT)}")
 
 
 def configured_rollup_reference_pairs(
@@ -456,6 +469,7 @@ def run_stage_3() -> None:
         structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
         ninth_source_data_path=NINTH_CSV_PATH,
         ninth_projection_start_year=2023,
+        esto_component_lineage_output_path=ESTO_COMPONENT_LINEAGE_PATH,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )

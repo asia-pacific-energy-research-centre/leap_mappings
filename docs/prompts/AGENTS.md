@@ -34,7 +34,6 @@ Reviewed on 2026-07-10.
 | `investigate_demand_sector_parent_child_mismatches.md` | Investigation | Complete; archive pending | Report-only diagnosis of demand-sector parent/child mismatches. Companion findings file now contains detailed verdicts and proposed fixes/exceptions. | Do not rerun as-is unless the findings are challenged by newer outputs. Archive this prompt with `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` after preserving the current uncommitted findings edits. |
 | `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` | Findings report | Complete; archive pending | Contains the completed analysis for 14 Industry, 14.03 Manufacturing, and 15 Transport parent/child mismatch families. | File had pre-existing uncommitted edits at review time, so it was not moved by this guide update. Use it as context for follow-up implementation prompts. |
 | `regen_common_esto_comparison_fast_path_prompt.md` | Implementation | Partially stale, still useful | Core fast-path workflow exists in `codebase/regen_common_esto_comparison_fast_path_workflow.py`, with coverage in `tests/test_common_esto_fast_path.py`. | Commits `352e6e2` and `e868330` show the main work is complete. The optional dashboard hook names `codebase/common_esto_dashboard_workflow.py`, which does not exist in this repo; rewrite or archive after deciding whether any follow-up remains. |
-| `row_level_lineage_for_common_esto_prompt.md` | Implementation | Valid, active, high value | Adds additive lineage side outputs at the LEAP/NINTH-to-ESTO conversion loss points and the ESTO-component-to-common-row loss point. | `return_lineage` and lineage output constants are not present in code yet. Do not revive `apply_partitioned_common_esto.py`; capture lineage from the existing production frames. |
 | `run_mapping_pipeline_future_prompt.md` | Long-running execution | Valid, active | Reusable procedure for running `codebase/run_mapping_pipeline.py`, preserving workbook safety, logs, polling cadence, QA reporting, and output links. | Use only when the user actually wants a current pipeline run. Check whether Stage 0 writes the workbook before launching. |
 
 ## Recommended Tackling Order
@@ -55,6 +54,7 @@ Reviewed on 2026-07-10.
 - `register_rollup_groups_as_tree_nodes_prompt.md` - completed and verified by commits `802858a`, `3ff2684`, and the later handoff update `23d9865`.
 - `explore_parent_level_own_use_comparison_rows.md` and `explore_parent_level_own_use_comparison_rows_FINDINGS.md` - report-only design exploration completed 2026-07-10.
 - `unify_rollup_rules_prompt.md` - completed and verified by the full mapping pipeline run on 2026-07-12; NINTH unknown target QA is clean and legacy rolled target counts are zero.
+- `row_level_lineage_for_common_esto_prompt.md` - completed and verified by focused tests, full tests, and real `data_convert,3` lineage reconciliation on 2026-07-12.
 
 ## Known Folder Issues
 

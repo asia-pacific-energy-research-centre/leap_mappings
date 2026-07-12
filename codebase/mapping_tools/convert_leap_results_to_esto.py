@@ -18,6 +18,20 @@ from codebase.mapping_tools.target_share_allocation import apply_target_dataset_
 #%%
 REQUIRED_LEAP_COLUMNS = ["leap_flow", "leap_product", "value"]
 GROUP_COLUMNS = ["economy", "scenario", "year", "target_flow", "target_product"]
+SOURCE_LINEAGE_COLUMNS = [
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "source_flow",
+    "source_product",
+    "target_flow",
+    "target_product",
+    "relationship_id",
+    "allocation_share",
+    "allocation_source",
+    "value",
+]
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
@@ -57,12 +71,35 @@ def load_leap_to_esto_relationships(relationships_path: Path) -> pd.DataFrame:
     return mapping_df
 
 
+def build_source_to_esto_lineage(merged_df: pd.DataFrame, source_system: str) -> pd.DataFrame:
+    """Return post-allocation source-to-ESTO contribution rows."""
+    mapped_df = merged_df.dropna(subset=["target_flow", "target_product"]).copy()
+    if mapped_df.empty:
+        return pd.DataFrame(columns=SOURCE_LINEAGE_COLUMNS)
+    if "source_system" not in mapped_df.columns:
+        mapped_df["source_system"] = source_system
+    else:
+        mapped_df["source_system"] = source_system
+    if "relationship_id" not in mapped_df.columns:
+        mapped_df["relationship_id"] = ""
+    if "allocation_share" not in mapped_df.columns:
+        mapped_df["allocation_share"] = 1.0
+    mapped_df["allocation_share"] = pd.to_numeric(mapped_df["allocation_share"], errors="coerce").fillna(1.0)
+    if "allocation_source" not in mapped_df.columns:
+        mapped_df["allocation_source"] = ""
+    for column in SOURCE_LINEAGE_COLUMNS:
+        if column not in mapped_df.columns:
+            mapped_df[column] = ""
+    return mapped_df[SOURCE_LINEAGE_COLUMNS].copy()
+
+
 def convert_leap_results_to_esto(
     leap_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
     rollup_rules_df: pd.DataFrame | None = None,
     target_values_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+    return_lineage: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Join raw LEAP rows to ESTO targets and aggregate values."""
     missing_columns = [column for column in REQUIRED_LEAP_COLUMNS if column not in leap_results_df.columns]
     if missing_columns:
@@ -106,6 +143,7 @@ def convert_leap_results_to_esto(
     if "allocation_share" in merged_df.columns:
         allocation_share = pd.to_numeric(merged_df["allocation_share"], errors="coerce").fillna(1.0)
         merged_df["value"] = merged_df["value"] * allocation_share
+    lineage_df = build_source_to_esto_lineage(merged_df, source_system="LEAP") if return_lineage else None
 
     keep_group_columns = [column for column in GROUP_COLUMNS if column in merged_df.columns]
     converted_df = (
@@ -113,6 +151,8 @@ def convert_leap_results_to_esto(
         .groupby(keep_group_columns, as_index=False)["value"]
         .sum()
     )
+    if return_lineage:
+        return converted_df, lineage_df
     return converted_df
 
 
@@ -132,6 +172,7 @@ def run_conversion(
     mapping_workbook_path: Path | None = None,
     rollup_audit_path: Path | None = None,
     target_values_path: Path | None = None,
+    lineage_output_path: Path | None = None,
 ) -> pd.DataFrame:
     """Run LEAP-to-ESTO conversion."""
     leap_results_df = read_table(leap_results_path)
@@ -166,9 +207,27 @@ def run_conversion(
     target_values_df = None
     if target_values_path is not None and relationships_need_target_dataset_share(relationships_df):
         target_values_df = read_table(target_values_path)
-    converted_df = convert_leap_results_to_esto(leap_results_df, relationships_df, target_values_df=target_values_df)
+    if lineage_output_path is not None:
+        converted_df, lineage_df = convert_leap_results_to_esto(
+            leap_results_df,
+            relationships_df,
+            target_values_df=target_values_df,
+            return_lineage=True,
+        )
+    else:
+        converted_df = convert_leap_results_to_esto(
+            leap_results_df,
+            relationships_df,
+            target_values_df=target_values_df,
+        )
+        lineage_df = None
     output_path.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(output_path, index=False)
+    if lineage_output_path is not None and lineage_df is not None:
+        lineage_output_path.parent.mkdir(parents=True, exist_ok=True)
+        lineage_df.to_csv(lineage_output_path, index=False)
+        print(f"Source-to-ESTO lineage rows written: {len(lineage_df):,}")
+        print(f"Wrote lineage: {lineage_output_path}")
     if rollup_audit_path is not None and rollup_audit_df is not None:
         rollup_audit_path.parent.mkdir(parents=True, exist_ok=True)
         rollup_audit_df.to_csv(rollup_audit_path, index=False)

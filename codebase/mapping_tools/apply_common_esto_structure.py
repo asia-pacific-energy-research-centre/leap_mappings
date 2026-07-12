@@ -49,6 +49,29 @@ OUTPUT_COLUMNS = [
     "source_aggregate_group_ids",
     "value",
 ]
+ESTO_COMPONENT_LINEAGE_COLUMNS = [
+    "comparison_scope",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "esto_flow",
+    "esto_product",
+    "common_row_id",
+    "common_flow_code",
+    "common_flow_name",
+    "common_flow_label",
+    "common_product_code",
+    "common_product_name",
+    "common_product_label",
+    "common_row_basis",
+    "is_exact_row",
+    "requires_rollup",
+    "source_aggregate_labels",
+    "source_aggregate_group_ids",
+    "component_sign",
+    "value",
+]
 COMPARISON_INTERNAL_COLUMNS = [
     "common_component_count",
     "common_flow_component_count",
@@ -710,10 +733,19 @@ def save_relevance_diagnostics(
     return written_paths
 
 
-def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def apply_common_structure(
+    source_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    return_lineage: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Join ESTO-shaped source rows to common rows and aggregate values."""
     if source_df.empty:
-        return pd.DataFrame(columns=OUTPUT_COLUMNS), pd.DataFrame(), pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
+        comparison_df = pd.DataFrame(columns=OUTPUT_COLUMNS)
+        missing_map_df = pd.DataFrame()
+        mapped_source_df = pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
+        if return_lineage:
+            return comparison_df, missing_map_df, mapped_source_df, pd.DataFrame(columns=ESTO_COMPONENT_LINEAGE_COLUMNS)
+        return comparison_df, missing_map_df, mapped_source_df
     common_rows_df = common_rows_df.copy()
     metadata_defaults: dict[str, object] = {
         "common_row_basis": "",
@@ -808,6 +840,12 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
     mapped_df["component_sign"] = pd.to_numeric(mapped_df["component_sign"], errors="coerce").fillna(1)
     mapped_df["value"] = mapped_df["value"] * mapped_df["component_sign"]
     mapped_source_df = mapped_df[SOURCE_VALUE_SCOPE_COLUMNS].copy()
+    lineage_df = None
+    if return_lineage:
+        for column in ESTO_COMPONENT_LINEAGE_COLUMNS:
+            if column not in mapped_df.columns:
+                mapped_df[column] = ""
+        lineage_df = mapped_df[ESTO_COMPONENT_LINEAGE_COLUMNS].copy()
     group_columns = OUTPUT_COLUMNS[:-1] + COMPARISON_INTERNAL_COLUMNS
     comparison_df = (
         mapped_df.groupby(group_columns, dropna=False, as_index=False)["value"]
@@ -815,6 +853,8 @@ def apply_common_structure(source_df: pd.DataFrame, common_rows_df: pd.DataFrame
         .sort_values(OUTPUT_COLUMNS[:-1])
         .reset_index(drop=True)
     )
+    if return_lineage:
+        return comparison_df, missing_map_df, mapped_source_df, lineage_df
     return comparison_df, missing_map_df, mapped_source_df
 
 
@@ -1199,6 +1239,8 @@ def save_outputs(
     missing_map_df: pd.DataFrame,
     output_dir: Path,
     error_occurred: bool,
+    esto_component_lineage_df: pd.DataFrame | None = None,
+    esto_component_lineage_output_path: Path | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
 ) -> pd.DataFrame:
@@ -1231,6 +1273,11 @@ def save_outputs(
         missing_map_df,
         error_tagged_path(output_dir / "common_esto_source_rows_missing_common_map.csv", error_occurred),
     ))
+    if esto_component_lineage_df is not None and esto_component_lineage_output_path is not None:
+        written_paths.append(write_csv_with_locked_fallback(
+            esto_component_lineage_df,
+            error_tagged_path(esto_component_lineage_output_path, error_occurred),
+        ))
     # This legacy output was produced by an unreliable label-based subtotal
     # filter. Remove it so a stale file cannot be mistaken for current QA.
     legacy_filtered_path = output_dir / "common_esto_subtotal_rows_filtered.csv"
@@ -1436,6 +1483,7 @@ def run_apply_common_esto_structure(
     ninth_source_data_path: Path | None = None,
     ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
     esto_base_year: int | None = None,
+    esto_component_lineage_output_path: Path | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1551,7 +1599,12 @@ def run_apply_common_esto_structure(
         highly_recommended_mapping_candidates_df=highly_recommended_mapping_candidates_df,
         output_dir=output_dir,
     )
-    unfiltered_comparison_df, missing_map_df, mapped_source_df = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    (
+        unfiltered_comparison_df,
+        missing_map_df,
+        mapped_source_df,
+        esto_component_lineage_df,
+    ) = apply_common_structure(active_source_df, adjusted_common_rows_df, return_lineage=True)
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     comparison_df = unfiltered_comparison_df.copy()
     broad_diagnostics = build_broad_common_row_diagnostics(
@@ -1581,6 +1634,8 @@ def run_apply_common_esto_structure(
         missing_map_df,
         output_dir,
         error_occurred=error_occurred,
+        esto_component_lineage_df=esto_component_lineage_df,
+        esto_component_lineage_output_path=esto_component_lineage_output_path,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )

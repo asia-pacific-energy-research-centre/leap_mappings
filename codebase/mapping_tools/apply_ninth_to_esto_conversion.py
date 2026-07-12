@@ -16,6 +16,20 @@ from codebase.mapping_tools.target_share_allocation import apply_target_dataset_
 #%%
 REQUIRED_NINTH_COLUMNS = ["ninth_sector", "ninth_fuel", "value"]
 GROUP_COLUMNS = ["source_system", "economy", "scenario", "year", "target_flow", "target_product"]
+SOURCE_LINEAGE_COLUMNS = [
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "source_flow",
+    "source_product",
+    "target_flow",
+    "target_product",
+    "relationship_id",
+    "allocation_share",
+    "allocation_source",
+    "value",
+]
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
@@ -116,11 +130,31 @@ def load_ninth_to_esto_relationships(relationships_path: Path) -> pd.DataFrame:
     return mapping_df
 
 
+def build_source_to_esto_lineage(merged_df: pd.DataFrame, source_system: str) -> pd.DataFrame:
+    """Return post-allocation source-to-ESTO contribution rows."""
+    mapped_df = merged_df.dropna(subset=["target_flow", "target_product"]).copy()
+    if mapped_df.empty:
+        return pd.DataFrame(columns=SOURCE_LINEAGE_COLUMNS)
+    mapped_df["source_system"] = source_system
+    if "relationship_id" not in mapped_df.columns:
+        mapped_df["relationship_id"] = ""
+    if "allocation_share" not in mapped_df.columns:
+        mapped_df["allocation_share"] = 1.0
+    mapped_df["allocation_share"] = pd.to_numeric(mapped_df["allocation_share"], errors="coerce").fillna(1.0)
+    if "allocation_source" not in mapped_df.columns:
+        mapped_df["allocation_source"] = ""
+    for column in SOURCE_LINEAGE_COLUMNS:
+        if column not in mapped_df.columns:
+            mapped_df[column] = ""
+    return mapped_df[SOURCE_LINEAGE_COLUMNS].copy()
+
+
 def convert_ninth_results_to_esto(
     ninth_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
     target_values_df: pd.DataFrame | None = None,
-) -> pd.DataFrame:
+    return_lineage: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Join raw 9th rows to ESTO targets and aggregate values."""
     missing_columns = [column for column in REQUIRED_NINTH_COLUMNS if column not in ninth_results_df.columns]
     if missing_columns:
@@ -144,12 +178,15 @@ def convert_ninth_results_to_esto(
         merged_df["value"] = merged_df["value"] * allocation_share
 
     merged_df["source_system"] = "NINTH"
+    lineage_df = build_source_to_esto_lineage(merged_df, source_system="NINTH") if return_lineage else None
     keep_group_columns = [column for column in GROUP_COLUMNS if column in merged_df.columns]
     converted_df = (
         merged_df.dropna(subset=["target_flow", "target_product"])
         .groupby(keep_group_columns, as_index=False)["value"]
         .sum()
     )
+    if return_lineage:
+        return converted_df, lineage_df
     return converted_df
 
 
@@ -167,6 +204,7 @@ def run_conversion(
     relationships_path: Path,
     output_path: Path,
     target_values_path: Path | None = None,
+    lineage_output_path: Path | None = None,
 ) -> pd.DataFrame:
     """Run 9th-to-ESTO conversion."""
     ninth_results_df = read_table(ninth_results_path)
@@ -174,9 +212,23 @@ def run_conversion(
     target_values_df = None
     if target_values_path is not None and relationships_need_target_dataset_share(relationships_df):
         target_values_df = read_table(target_values_path)
-    converted_df = convert_ninth_results_to_esto(ninth_results_df, relationships_df, target_values_df)
+    if lineage_output_path is not None:
+        converted_df, lineage_df = convert_ninth_results_to_esto(
+            ninth_results_df,
+            relationships_df,
+            target_values_df,
+            return_lineage=True,
+        )
+    else:
+        converted_df = convert_ninth_results_to_esto(ninth_results_df, relationships_df, target_values_df)
+        lineage_df = None
     output_path.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(output_path, index=False)
+    if lineage_output_path is not None and lineage_df is not None:
+        lineage_output_path.parent.mkdir(parents=True, exist_ok=True)
+        lineage_df.to_csv(lineage_output_path, index=False)
+        print(f"Source-to-ESTO lineage rows written: {len(lineage_df):,}")
+        print(f"Wrote lineage: {lineage_output_path}")
     print(f"Raw 9th rows read: {len(ninth_results_df):,}")
     print(f"Conversion relationships used: {len(relationships_df):,}")
     print(f"Converted ESTO rows written: {len(converted_df):,}")

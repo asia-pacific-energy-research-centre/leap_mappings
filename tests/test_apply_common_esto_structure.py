@@ -86,6 +86,122 @@ def test_apply_common_structure_retains_generated_total_label() -> None:
     assert comparison_df["value"].tolist() == [10.0]
 
 
+def test_apply_common_structure_default_returns_three_tuple() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "economy": "20_USA",
+                "scenario": "historical",
+                "year": 2022,
+                "esto_flow": "F1",
+                "esto_product": "P1",
+                "value": 10.0,
+            }
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_only",
+                "component_esto_flow": "F1",
+                "component_esto_product": "P1",
+                "common_row_id": "common_1",
+                "common_flow_code": "F",
+                "common_flow_name": "Flow",
+                "common_flow_label": "F Flow",
+                "common_product_code": "P",
+                "common_product_name": "Product",
+                "common_product_label": "P Product",
+                "component_sign": 1,
+            }
+        ]
+    )
+
+    result = apply_common_structure(source_df, common_rows_df)
+
+    assert isinstance(result, tuple)
+    assert len(result) == 3
+
+
+def test_apply_common_structure_lineage_sums_to_comparison_and_keeps_fan_in_rows() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "economy": "20_USA",
+                "scenario": "historical",
+                "year": 2022,
+                "esto_flow": "F1",
+                "esto_product": "P",
+                "value": 10.0,
+            },
+            {
+                "source_system": "ESTO",
+                "economy": "20_USA",
+                "scenario": "historical",
+                "year": 2022,
+                "esto_flow": "F2",
+                "esto_product": "P",
+                "value": 5.0,
+            },
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_only",
+                "component_esto_flow": "F1",
+                "component_esto_product": "P",
+                "common_row_id": "common_fan_in",
+                "common_flow_code": "F1-F2",
+                "common_flow_name": "Combined flow",
+                "common_flow_label": "F1-F2 Combined flow",
+                "common_product_code": "P",
+                "common_product_name": "Product",
+                "common_product_label": "P Product",
+                "common_row_basis": "connected_component_rollup",
+                "is_exact_row": False,
+                "requires_rollup": True,
+                "source_aggregate_labels": "combined",
+                "source_aggregate_group_ids": "group-1",
+                "component_sign": 1,
+            },
+            {
+                "comparison_scope": "esto_only",
+                "component_esto_flow": "F2",
+                "component_esto_product": "P",
+                "common_row_id": "common_fan_in",
+                "common_flow_code": "F1-F2",
+                "common_flow_name": "Combined flow",
+                "common_flow_label": "F1-F2 Combined flow",
+                "common_product_code": "P",
+                "common_product_name": "Product",
+                "common_product_label": "P Product",
+                "common_row_basis": "connected_component_rollup",
+                "is_exact_row": False,
+                "requires_rollup": True,
+                "source_aggregate_labels": "combined",
+                "source_aggregate_group_ids": "group-1",
+                "component_sign": -1,
+            },
+        ]
+    )
+
+    comparison_df, missing_map_df, _, lineage_df = apply_common_structure(
+        source_df,
+        common_rows_df,
+        return_lineage=True,
+    )
+
+    assert missing_map_df.empty
+    assert len(comparison_df) == 1
+    assert len(lineage_df) == 2
+    assert comparison_df.loc[0, "value"] == 5.0
+    assert lineage_df["value"].sum() == comparison_df.loc[0, "value"]
+    assert lineage_df.set_index("esto_flow")["value"].to_dict() == {"F1": 10.0, "F2": -5.0}
+
+
 def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> None:
     source_df = pd.DataFrame([{
         "source_system": "ESTO", "economy": "20_USA", "scenario": "historical",

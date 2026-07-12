@@ -24,9 +24,12 @@ if os.environ.get("RUN_MAPPING_PIPELINE_SMOKE") != "1":
 from codebase.run_mapping_pipeline import (  # noqa: E402
     COMMON_ESTO_DIR,
     COMMON_ROWS_PATH,
+    ESTO_COMPONENT_LINEAGE_PATH,
     ESTO_ROWS_PATH,
     LEAP_ESTO_PATH,
+    LEAP_SOURCE_LINEAGE_PATH,
     NINTH_ESTO_PATH,
+    NINTH_SOURCE_LINEAGE_PATH,
     RAW_LEAP_PATH,
     RELATIONSHIPS_PATH,
     run_data_convert,
@@ -51,6 +54,19 @@ def _assert_csv_has_rows(path: Path) -> pd.DataFrame:
 
 def _assert_exists(path: Path) -> None:
     assert path.exists(), f"Missing expected output: {path}"
+
+
+def _assert_grouped_values_match(
+    left_df: pd.DataFrame,
+    right_df: pd.DataFrame,
+    key_columns: list[str],
+) -> None:
+    left = left_df.groupby(key_columns, dropna=False, as_index=False)["value"].sum()
+    right = right_df.groupby(key_columns, dropna=False, as_index=False)["value"].sum()
+    merged = left.merge(right, on=key_columns, how="outer", suffixes=("_left", "_right"))
+    merged["value_left"] = pd.to_numeric(merged["value_left"], errors="coerce").fillna(0)
+    merged["value_right"] = pd.to_numeric(merged["value_right"], errors="coerce").fillna(0)
+    assert (merged["value_left"] - merged["value_right"]).abs().max() < 1e-9
 
 
 def test_real_pipeline_smoke_run() -> None:
@@ -90,15 +106,34 @@ def test_real_pipeline_smoke_run() -> None:
     run_data_convert()
     for path in [LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH]:
         _assert_csv_has_rows(path)
+    leap_lineage_df = _assert_csv_has_rows(LEAP_SOURCE_LINEAGE_PATH)
+    ninth_lineage_df = _assert_csv_has_rows(NINTH_SOURCE_LINEAGE_PATH)
+    _assert_grouped_values_match(
+        leap_lineage_df,
+        pd.read_csv(LEAP_ESTO_PATH, low_memory=False),
+        ["economy", "scenario", "year", "target_flow", "target_product"],
+    )
+    _assert_grouped_values_match(
+        ninth_lineage_df,
+        pd.read_csv(NINTH_ESTO_PATH, low_memory=False),
+        ["source_system", "economy", "scenario", "year", "target_flow", "target_product"],
+    )
 
     run_stage_3()
     comparison_df = _assert_csv_has_rows(COMMON_ESTO_DIR / "common_esto_comparison_data.csv")
+    component_lineage_df = _assert_csv_has_rows(ESTO_COMPONENT_LINEAGE_PATH)
     _assert_exists(TREE_DIR / "common_esto_validation.csv")
     validation_summary_df = _assert_csv_has_rows(TREE_DIR / "common_esto_validation_summary.csv")
     status_df = _assert_csv_has_rows(COMMON_ESTO_DIR / "common_esto_output_status.csv")
+    _assert_grouped_values_match(
+        component_lineage_df,
+        comparison_df,
+        ["comparison_scope", "source_system", "economy", "scenario", "year", "common_row_id"],
+    )
 
     assert "common_row_id" in comparison_df.columns
     assert "status" in validation_summary_df.columns
     assert "artifact_name" in status_df.columns
     assert "common_esto_comparison_data" in set(status_df["artifact_name"].astype(str))
+    assert "esto_component_to_common_row_lineage" in set(status_df["artifact_name"].astype(str))
 
