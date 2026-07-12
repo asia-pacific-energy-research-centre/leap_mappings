@@ -30,7 +30,7 @@ Reviewed on 2026-07-10.
 
 | Prompt | Type | Status | Basic Details | Notes Before Use |
 |---|---|---|---|---|
-| `buildings_ninth_counterpart_gap_prompt.md` | Investigation | Valid, active | Investigates whether `Buildings` and `Buildings/Services` NINTH counterpart gaps are expected one-sided granularity limits or missing mappings. | Referenced inverted-conservation, structural-artifact, tree, and workbook paths exist. Do not edit the workbook until the gap is classified fuel-by-fuel or as a justified group. |
+| `buildings_ninth_counterpart_gap_prompt.md` | Investigation | Valid, active, next | Classifies `Buildings` and `Buildings/Services` NINTH counterpart gaps as expected granularity differences, missing mappings, hierarchy duplicates, or human-decision cases. | Investigation only. Do not edit `outlook_mappings_master.xlsx`; write findings to `docs/prompts/buildings_ninth_counterpart_gap_FINDINGS.md`. |
 | `investigate_demand_sector_parent_child_mismatches.md` | Investigation | Complete; archive pending | Report-only diagnosis of demand-sector parent/child mismatches. Companion findings file now contains detailed verdicts and proposed fixes/exceptions. | Do not rerun as-is unless the findings are challenged by newer outputs. Archive this prompt with `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` after preserving the current uncommitted findings edits. |
 | `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` | Findings report | Complete; archive pending | Contains the completed analysis for 14 Industry, 14.03 Manufacturing, and 15 Transport parent/child mismatch families. | File had pre-existing uncommitted edits at review time, so it was not moved by this guide update. Use it as context for follow-up implementation prompts. |
 | `regen_common_esto_comparison_fast_path_prompt.md` | Implementation | Partially stale, still useful | Core fast-path workflow exists in `codebase/regen_common_esto_comparison_fast_path_workflow.py`, with coverage in `tests/test_common_esto_fast_path.py`. | Commits `352e6e2` and `e868330` show the main work is complete. The optional dashboard hook names `codebase/common_esto_dashboard_workflow.py`, which does not exist in this repo; rewrite or archive after deciding whether any follow-up remains. |
@@ -38,15 +38,13 @@ Reviewed on 2026-07-10.
 
 ## Recommended Tackling Order
 
-1. `row_level_lineage_for_common_esto_prompt.md`
-   - Independent, useful for dashboard/debuggability, and should be implemented from existing production frames.
-2. `buildings_ninth_counterpart_gap_prompt.md`
+1. `buildings_ninth_counterpart_gap_prompt.md`
    - Investigation-only; use it to separate genuine mapping gaps from permanent granularity differences.
-3. `run_mapping_pipeline_future_prompt.md`
+2. `run_mapping_pipeline_future_prompt.md`
    - Run after code/workbook changes that justify refreshed outputs.
-4. `regen_common_esto_comparison_fast_path_prompt.md`
+3. `regen_common_esto_comparison_fast_path_prompt.md`
    - Do not rerun as a full implementation prompt. Rewrite or archive after deciding whether the optional dashboard hook is real.
-5. `investigate_demand_sector_parent_child_mismatches.md`
+4. `investigate_demand_sector_parent_child_mismatches.md`
    - Do not tackle as an active prompt; use the findings report to create narrower follow-up fix prompts.
 
 ## Recently Archived
@@ -63,4 +61,3 @@ Reviewed on 2026-07-10.
 - Some prompts still contain point-in-time line numbers or dated assumptions; verify with `rg` before acting.
 - `regen_common_esto_comparison_fast_path_prompt.md` is mostly superseded by committed code but has a newer optional hook referencing a missing file.
 - `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` and `regen_common_esto_comparison_fast_path_prompt.md` had pre-existing uncommitted edits during this review.
-- `row_level_lineage_for_common_esto_prompt.md` was untracked during this review and should be intentionally added or removed by whoever owns it.
