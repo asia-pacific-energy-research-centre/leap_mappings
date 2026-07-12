@@ -36,27 +36,25 @@ Reviewed on 2026-07-10.
 | `regen_common_esto_comparison_fast_path_prompt.md` | Implementation | Partially stale, still useful | Core fast-path workflow exists in `codebase/regen_common_esto_comparison_fast_path_workflow.py`, with coverage in `tests/test_common_esto_fast_path.py`. | Commits `352e6e2` and `e868330` show the main work is complete. The optional dashboard hook names `codebase/common_esto_dashboard_workflow.py`, which does not exist in this repo; rewrite or archive after deciding whether any follow-up remains. |
 | `row_level_lineage_for_common_esto_prompt.md` | Implementation | Valid, active, high value | Adds additive lineage side outputs at the LEAP/NINTH-to-ESTO conversion loss points and the ESTO-component-to-common-row loss point. | `return_lineage` and lineage output constants are not present in code yet. Do not revive `apply_partitioned_common_esto.py`; capture lineage from the existing production frames. |
 | `run_mapping_pipeline_future_prompt.md` | Long-running execution | Valid, active | Reusable procedure for running `codebase/run_mapping_pipeline.py`, preserving workbook safety, logs, polling cadence, QA reporting, and output links. | Use only when the user actually wants a current pipeline run. Check whether Stage 0 writes the workbook before launching. |
-| `unify_rollup_rules_prompt.md` | Implementation and documentation | Valid, active, high value | Traces `leap_to_ninth_comparison`, then implements NINTH target-side rollup expansion and documents rollup-rule handling. | `qa_unknown_ninth_target_flows.csv` support is not present yet. Read archived `explore_parent_level_own_use_comparison_rows_FINDINGS.md` first; preserve the non-overlap rule for parent own-use rows. |
 
 ## Recommended Tackling Order
 
-1. `unify_rollup_rules_prompt.md`
-   - High-value implementation now that the parent-level own-use design report is archived. Trace current consumers before coding.
-2. `row_level_lineage_for_common_esto_prompt.md`
+1. `row_level_lineage_for_common_esto_prompt.md`
    - Independent, useful for dashboard/debuggability, and should be implemented from existing production frames.
-3. `buildings_ninth_counterpart_gap_prompt.md`
+2. `buildings_ninth_counterpart_gap_prompt.md`
    - Investigation-only; use it to separate genuine mapping gaps from permanent granularity differences.
-4. `run_mapping_pipeline_future_prompt.md`
+3. `run_mapping_pipeline_future_prompt.md`
    - Run after code/workbook changes that justify refreshed outputs.
-5. `regen_common_esto_comparison_fast_path_prompt.md`
+4. `regen_common_esto_comparison_fast_path_prompt.md`
    - Do not rerun as a full implementation prompt. Rewrite or archive after deciding whether the optional dashboard hook is real.
-6. `investigate_demand_sector_parent_child_mismatches.md`
+5. `investigate_demand_sector_parent_child_mismatches.md`
    - Do not tackle as an active prompt; use the findings report to create narrower follow-up fix prompts.
 
 ## Recently Archived
 
 - `register_rollup_groups_as_tree_nodes_prompt.md` - completed and verified by commits `802858a`, `3ff2684`, and the later handoff update `23d9865`.
 - `explore_parent_level_own_use_comparison_rows.md` and `explore_parent_level_own_use_comparison_rows_FINDINGS.md` - report-only design exploration completed 2026-07-10.
+- `unify_rollup_rules_prompt.md` - completed and verified by the full mapping pipeline run on 2026-07-12; NINTH unknown target QA is clean and legacy rolled target counts are zero.
 
 ## Known Folder Issues
 
@@ -64,5 +62,5 @@ Reviewed on 2026-07-10.
 - Several prompt files contain mojibake artifacts from earlier encoding issues.
 - Some prompts still contain point-in-time line numbers or dated assumptions; verify with `rg` before acting.
 - `regen_common_esto_comparison_fast_path_prompt.md` is mostly superseded by committed code but has a newer optional hook referencing a missing file.
-- `investigate_demand_sector_parent_child_mismatches_FINDINGS.md`, `regen_common_esto_comparison_fast_path_prompt.md`, and `unify_rollup_rules_prompt.md` had pre-existing uncommitted edits during this review.
+- `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` and `regen_common_esto_comparison_fast_path_prompt.md` had pre-existing uncommitted edits during this review.
 - `row_level_lineage_for_common_esto_prompt.md` was untracked during this review and should be intentionally added or removed by whoever owns it.

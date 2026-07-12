@@ -57,12 +57,12 @@ Report findings before implementing.
 
 In `build_energy_balance_relationships.py`:
 - Build a rolled-name → component-sectors lookup from `ninth_rollup_rules`
-  (`rolled_9th_sector` → `input_9th_sector` values; respect `include`; support nesting the
+  (`rolled_ninth_sector` → `input_ninth_sector` values; respect `include`; support nesting the
   same way `_resolve_rolled_flow_components` does).
 - Expand relationship rows with `target_system == "NINTH"` whose `target_flow` names a
   rolled NINTH sector, one row per component, provenance note
   `expanded_from_ninth_rollup: <rolled name>`, new relationship ids/keys. Handle
-  fuel-specific rules (`input_9th_fuel` / `rolled_9th_fuel` non-blank) explicitly — if they
+  fuel-specific rules (`input_ninth_fuel` / `rolled_ninth_fuel` non-blank) explicitly — if they
   are not needed for target expansion, skip them with a comment saying why.
 - Add `qa_unknown_ninth_target_flows.csv`: NINTH targets matching no real NINTH sector and
   no rolled name. Real NINTH sectors must be collected from ALL sector columns of the
