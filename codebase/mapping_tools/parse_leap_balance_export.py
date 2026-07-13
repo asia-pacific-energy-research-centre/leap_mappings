@@ -307,7 +307,12 @@ def parse_leap_balance_dir(
     Uses the parent directory name as the economy code if not provided
     (e.g. the directory '20_USA' → economy='20_USA').
     """
-    xlsx_files = sorted(export_dir.glob("*.xlsx"))
+    # Excel creates ``~$`` lock files while a workbook is open. They are not
+    # workbooks and pandas cannot read them, so never treat them as LEAP input.
+    xlsx_files = sorted(
+        path for path in export_dir.glob("*.xlsx")
+        if not path.name.startswith("~$")
+    )
     if not xlsx_files:
         raise FileNotFoundError(f"No .xlsx files found in {export_dir}")
 
@@ -323,7 +328,11 @@ def parse_leap_balance_dir(
     combined = pd.concat(frames, ignore_index=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_csv(output_path, index=False)
-    print(f"  Combined LEAP long-format: {len(combined):,} rows -> {output_path.relative_to(REPO_ROOT)}")
+    try:
+        display_path = output_path.relative_to(REPO_ROOT)
+    except ValueError:
+        display_path = output_path
+    print(f"  Combined LEAP long-format: {len(combined):,} rows -> {display_path}")
     return combined
 
 
