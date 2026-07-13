@@ -433,22 +433,54 @@ def build_source_aggregate_edges(
 def build_manual_override_edges(
     overrides_df: pd.DataFrame,
     comparison_scope: str,
+    required_components_df: pd.DataFrame,
 ) -> tuple[list[tuple[tuple[str, str], tuple[str, str]]], pd.DataFrame]:
-    """Build graph edges from manual common row overrides."""
+    """Build graph edges from manual common row overrides.
+
+    A blank ``component_esto_product`` is a wildcard: the override applies to
+    each product that all of its component flows have in the required mapping
+    rows.  This lets a flow-level rule such as Agriculture + Fishing produce
+    one common row per product without linking unlike products together.
+    """
     if overrides_df.empty:
         return [], pd.DataFrame()
     scope_values = overrides_df["comparison_scope"].astype(str).map(normalise_text)
     overrides_df = overrides_df[(scope_values == "") | (scope_values == normalise_text(comparison_scope))].copy()
     if overrides_df.empty:
         return [], pd.DataFrame()
+
+    products_by_flow: dict[str, set[str]] = {}
+    for _, row in required_components_df.iterrows():
+        flow = normalise_text(row["component_esto_flow"])
+        product = normalise_text(row["component_esto_product"])
+        if flow and product:
+            products_by_flow.setdefault(flow, set()).add(product)
+
     edges: list[tuple[tuple[str, str], tuple[str, str]]] = []
     rows: list[dict[str, Any]] = []
     for override_group_id, group_df in overrides_df.groupby("override_group_id", dropna=False):
+        rules = [
+            (
+                normalise_text(row["component_esto_flow"]),
+                normalise_text(row["component_esto_product"]),
+            )
+            for _, row in group_df.iterrows()
+            if normalise_text(row["component_esto_flow"])
+        ]
+        if len(rules) <= 1:
+            continue
+
+        applicable_products: set[str] | None = None
+        for flow, product in rules:
+            flow_products = {product} if product else products_by_flow.get(flow, set())
+            applicable_products = flow_products if applicable_products is None else applicable_products & flow_products
+
         component_pairs = sorted(
             {
-                (normalise_text(row["component_esto_flow"]), normalise_text(row["component_esto_product"]))
-                for _, row in group_df.iterrows()
-                if normalise_text(row["component_esto_flow"]) and normalise_text(row["component_esto_product"])
+                (flow, product)
+                for flow, _ in rules
+                for product in (applicable_products or set())
+                if product in products_by_flow.get(flow, set())
             }
         )
         if len(component_pairs) <= 1:
@@ -1148,6 +1180,7 @@ def build_common_esto_for_scope(
     override_edges, manual_aggregates_df = build_manual_override_edges(
         overrides_df,
         comparison_scope=comparison_scope,
+        required_components_df=required_components_df,
     )
     aggregate_groups_df = pd.concat([source_aggregates_df, manual_aggregates_df], ignore_index=True)
     components_by_root = build_connected_components(required_components_df, source_edges + override_edges)
