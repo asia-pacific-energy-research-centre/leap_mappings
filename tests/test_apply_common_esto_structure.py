@@ -11,6 +11,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     normalise_source_columns,
     should_ignore_missing_common_map_flow,
 )
+from codebase.mapping_issue_exceptions import filter_unmodelled_source_rows
 
 
 def test_normalise_source_columns_uses_one_economy_code_for_compact_and_underscored_inputs() -> None:
@@ -274,6 +275,25 @@ def test_filter_missing_common_map_diagnostics_drops_ignored_flows_only() -> Non
         "09.01.01 Electricity plants",
         "16.09 Other sources",
     ]
+
+
+def test_filter_unmodelled_source_rows_handles_esto_and_ninth_flow_labels() -> None:
+    source_df = pd.DataFrame(
+        {
+            "esto_flow": [
+                "06 Stock changes",
+                "11 Statistical discrepancy",
+                "18_electricity_output_in_gwh",
+                "19_heat_output_in_pj",
+                "09.01.01 Electricity plants",
+            ],
+            "value": [1, 2, 3, 4, 5],
+        }
+    )
+
+    filtered_df = filter_unmodelled_source_rows(source_df)
+
+    assert filtered_df["esto_flow"].tolist() == ["09.01.01 Electricity plants"]
 
 
 def test_component_relevance_uses_esto_base_year_ninth_projections_and_leap_balances() -> None:

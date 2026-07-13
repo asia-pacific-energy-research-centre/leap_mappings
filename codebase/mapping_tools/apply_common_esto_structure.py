@@ -9,6 +9,7 @@ economy, scenario, year, ESTO flow/product, and value columns.
 #%%
 from pathlib import Path
 import sys
+import re
 from datetime import datetime, timezone
 
 import gc
@@ -19,7 +20,10 @@ SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
-from codebase.mapping_issue_exceptions import row_is_allowed
+from codebase.mapping_issue_exceptions import (
+    filter_unmodelled_source_rows,
+    row_is_allowed,
+)
 from codebase.mapping_tools.mapping_candidate_generation import (
     collapsed_path,
     generate_partial_coverage_mapping_candidates,
@@ -219,7 +223,12 @@ def read_source_tables(source_paths: dict[str, Path], default_economy: str) -> p
         print(f"{source_system} ESTO-shaped rows read: {len(source_df):,}")
     if not frames:
         return pd.DataFrame(columns=SOURCE_VALUE_COLUMNS)
-    return pd.concat(frames, ignore_index=True)
+    source_df = pd.concat(frames, ignore_index=True)
+    filtered_source_df = filter_unmodelled_source_rows(source_df)
+    filtered_count = len(source_df) - len(filtered_source_df)
+    if filtered_count:
+        print(f"Unmodelled source rows excluded from Common ESTO comparison: {filtered_count:,}")
+    return filtered_source_df
 
 
 def split_code_name(label: object) -> tuple[str, str]:

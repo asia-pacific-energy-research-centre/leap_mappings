@@ -22,6 +22,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mapping_issue_exceptions import (
+    load_unmodelled_source_codes as _load_unmodelled_source_codes,
+)
+
 DEFAULT_WORKBOOK_PATH = (
     Path(__file__).resolve().parents[2] / "config" / "mapping_issue_exception_sets.xlsx"
 )
@@ -49,21 +53,7 @@ def load_unmodelled_source_codes(
     Returns ``{"sector": {...}, "fuel": {...}}`` of leading code numbers. Missing
     workbook/sheet yields empty sets so callers degrade to "no suppression".
     """
-    result: dict[str, set[int]] = {"sector": set(), "fuel": set()}
-    try:
-        df = pd.read_excel(workbook_path, sheet_name=sheet_name, dtype=object)
-    except (FileNotFoundError, ValueError):
-        return result
-    if "enabled" in df.columns:
-        df = df[df["enabled"].apply(
-            lambda v: v is True or str(v).strip().casefold() in {"true", "1", "yes"}
-        )]
-    for axis, code in zip(df.get("axis", []), df.get("code", [])):
-        axis_key = str(axis).strip().casefold()
-        number = leading_code_number(code)
-        if axis_key in result and number is not None:
-            result[axis_key].add(number)
-    return result
+    return _load_unmodelled_source_codes(Path(workbook_path), sheet_name=sheet_name)
 
 
 def excepted_code_mask(codes: pd.Series, excepted_numbers: set[int]) -> pd.Series:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import re
 
 import pandas as pd
 
@@ -18,6 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 EXCEPTION_WORKBOOK_PATH = REPO_ROOT / "config" / "mapping_issue_exception_sets.xlsx"
 EXCEPTION_METADATA_COLUMNS = {"enabled", "notes"}
 MATCH_PREFIX_SUFFIX = "*"
+UNMODELLED_SOURCE_SHEET = "unmodelled_source_ignored"
+_LEADING_CODE = re.compile(r"^\s*0*(\d+)")
 
 
 def _norm(value: object) -> str:
@@ -28,6 +31,58 @@ def _norm(value: object) -> str:
 
 def _truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def leading_code_number(value: object) -> int | None:
+    """Return the leading numeric code from an ESTO or 9th label."""
+    match = _LEADING_CODE.match(str(value))
+    return int(match.group(1)) if match else None
+
+
+@lru_cache(maxsize=None)
+def load_unmodelled_source_codes(
+    workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+    sheet_name: str = UNMODELLED_SOURCE_SHEET,
+) -> dict[str, set[int]]:
+    """Load enabled unmodelled ESTO/9th source codes from the exception workbook."""
+    result: dict[str, set[int]] = {"sector": set(), "fuel": set()}
+    try:
+        source_df = pd.read_excel(workbook_path, sheet_name=sheet_name, dtype=object)
+    except (FileNotFoundError, ValueError):
+        return result
+
+    if "enabled" in source_df.columns:
+        source_df = source_df[source_df["enabled"].map(_truthy)]
+    for axis, code in zip(source_df.get("axis", []), source_df.get("code", [])):
+        axis_name = str(axis).strip().lower()
+        code_number = leading_code_number(code)
+        if axis_name in result and code_number is not None:
+            result[axis_name].add(code_number)
+    return result
+
+
+def unmodelled_source_flow_mask(
+    flows: pd.Series,
+    workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> pd.Series:
+    """Return rows whose flow belongs to an enabled unmodelled source code."""
+    excluded_codes = load_unmodelled_source_codes(workbook_path).get("sector", set())
+    if not excluded_codes:
+        return pd.Series(False, index=flows.index)
+    leading_codes = flows.map(leading_code_number)
+    return leading_codes.isin(excluded_codes)
+
+
+def filter_unmodelled_source_rows(
+    source_df: pd.DataFrame,
+    flow_column: str = "esto_flow",
+    workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+) -> pd.DataFrame:
+    """Remove enabled unmodelled source flows from a normalized source table."""
+    if source_df.empty or flow_column not in source_df.columns:
+        return source_df.copy()
+    excluded_mask = unmodelled_source_flow_mask(source_df[flow_column], workbook_path)
+    return source_df.loc[~excluded_mask].copy()
 
 
 @lru_cache(maxsize=None)
