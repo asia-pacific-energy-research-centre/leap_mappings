@@ -95,8 +95,8 @@ Add a configuration-owned early source-data preflight and adjustment step. It
 must run after raw LEAP values are parsed but before `apply_source_rollups`,
 conversion, or Common ESTO application.
 
-Create a clearly named CSV configuration file for alternative branches. Seed
-it with these reviewed pairs:
+Create `config/source_branch_fallback_rules.csv` for alternative branches.
+Seed it with these reviewed pairs:
 
 | Standard branch | Interim branch | Action when both are non-zero |
 | --- | --- | --- |
@@ -117,8 +117,9 @@ so Power receives one branch of each alternative pair.
 ## Part C — `All demand aggregated` warning and declared components
 
 `All demand aggregated` is an interim-style source branch but does not use the
-automatic zeroing policy. Create a separate configuration CSV that explicitly
-records which LEAP demand sectors are currently included in its aggregation.
+automatic zeroing policy. Create
+`config/all_demand_aggregated_components.csv`, which explicitly records which
+LEAP demand sectors are currently included in its aggregation.
 
 Seed/document the intended sector list through configuration rather than
 hard-coding it. It must support the source branches represented by the current
