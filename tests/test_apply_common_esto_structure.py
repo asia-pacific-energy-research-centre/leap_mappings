@@ -8,8 +8,26 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     build_unmapped_leap_branch_evidence,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
+    normalise_source_columns,
     should_ignore_missing_common_map_flow,
 )
+
+
+def test_normalise_source_columns_uses_one_economy_code_for_compact_and_underscored_inputs() -> None:
+    source_df = pd.DataFrame(
+        [
+            {"economy": "20USA", "esto_flow": "F", "esto_product": "P", "value": 1},
+            {"economy": "20_USA", "esto_flow": "F", "esto_product": "P", "value": 2},
+        ]
+    )
+
+    result = normalise_source_columns(
+        source_df,
+        default_source_system="ESTO",
+        default_economy="20_USA",
+    )
+
+    assert result["economy"].tolist() == ["20_USA", "20_USA"]
 
 
 def test_source_coverage_check_expands_preaggregated_source_totals_by_scope() -> None:

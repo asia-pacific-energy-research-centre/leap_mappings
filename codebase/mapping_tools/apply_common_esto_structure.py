@@ -144,6 +144,14 @@ def normalise_label(value: object) -> str:
     return " ".join(str(value).strip().split())
 
 
+def normalise_economy_code(value: object) -> str:
+    """Return the underscore economy code used by LEAP and 9th source data."""
+    economy = normalise_label(value).upper().replace("_", "")
+    if len(economy) >= 3 and economy[:2].isdigit() and economy[2:].isalpha():
+        return f"{economy[:2]}_{economy[2:]}"
+    return economy
+
+
 def should_ignore_missing_common_map_flow(esto_flow: object) -> bool:
     """Return True for missing-map diagnostic flows that are intentionally ignored."""
     return row_is_allowed(
@@ -182,6 +190,7 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
         working_df["source_system"] = default_source_system
     if "economy" not in working_df.columns:
         working_df["economy"] = default_economy
+    working_df["economy"] = working_df["economy"].map(normalise_economy_code)
     for column in ["scenario", "year"]:
         if column not in working_df.columns:
             working_df[column] = ""
@@ -1372,7 +1381,7 @@ def economy_filter_aliases(economies: list[str]) -> dict[str, str]:
     """Return acceptable cached economy-code variants mapped to requested codes."""
     alias_lookup: dict[str, str] = {}
     for economy in economies:
-        canonical = str(economy).strip()
+        canonical = normalise_economy_code(economy)
         if not canonical:
             continue
         variants = {
