@@ -87,6 +87,12 @@ The system should usually resolve detail mismatches by rolling up. Final compari
 - `data/merged_file_energy_ALL_20251106.csv`
 - `data/leap balances exports/`
 
+Raw LEAP balance exports are owned by the sibling `leap_initialisation` repo at
+`../leap_initialisation/data/leap balances exports/`. Mapping outputs are written
+to this repository's `results/`; the local path above is legacy/reference only
+and is not selected by the pipeline. Set `LEAP_BALANCE_EXPORTS_ROOT` only for a
+non-standard checkout layout.
+
 `config/leap_mappings.xlsx` and `config/master_config.xlsx` are legacy reference
 workbooks. New mapping pipeline work should use `config/outlook_mappings_master.xlsx`
 unless a script is explicitly documented as legacy.

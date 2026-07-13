@@ -34,6 +34,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.utilities.leap_balance_export_resolver import resolve_balance_exports_root
+
 def _find_repo_root() -> Path:
     here = Path(__file__).resolve()
     for parent in [here, *here.parents]:
@@ -330,20 +332,13 @@ def parse_leap_balance_dir(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    LEAP_EXPORT_DIR = REPO_ROOT / "data" / "leap balances exports" / "20_USA"
+    LEAP_EXPORT_DIR = resolve_balance_exports_root() / "20_USA"
     OUTPUT_PATH = REPO_ROOT / "results" / "mapping_relationships" / "raw_leap_results.csv"
 
     if not LEAP_EXPORT_DIR.exists():
-        # Try leap_initialisation repo
-        init_repo = REPO_ROOT.parent / "leap_initialisation"
-        candidate = init_repo / "data" / "leap balances exports" / "20_USA"
-        if candidate.exists():
-            LEAP_EXPORT_DIR = candidate
-        else:
-            raise FileNotFoundError(
-                f"LEAP export directory not found. "
-                f"Set LEAP_EXPORT_DIR at the bottom of this script."
-            )
+        raise FileNotFoundError(
+            f"No 20_USA LEAP export directory found under the canonical root: {LEAP_EXPORT_DIR}"
+        )
 
     print(f"Parsing LEAP balance exports from: {LEAP_EXPORT_DIR}")
     parse_leap_balance_dir(LEAP_EXPORT_DIR, OUTPUT_PATH)

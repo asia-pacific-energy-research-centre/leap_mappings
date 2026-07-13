@@ -10,7 +10,11 @@ from typing import Iterable, Sequence
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BALANCE_EXPORTS_ROOT = REPO_ROOT / "data" / "leap balances exports"
+BALANCE_EXPORTS_ROOT_ENV_VAR = "LEAP_BALANCE_EXPORTS_ROOT"
+CANONICAL_BALANCE_EXPORTS_ROOT = (
+    REPO_ROOT.parent / "leap_initialisation" / "data" / "leap balances exports"
+)
+DEFAULT_BALANCE_EXPORTS_ROOT = CANONICAL_BALANCE_EXPORTS_ROOT
 
 
 SCENARIO_CODE_ALIASES = {
@@ -55,6 +59,35 @@ def _resolve_path(path: Path | str) -> Path:
         return Path(f"/mnt/{drive}/{rest}")
     candidate = Path(raw)
     return candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
+
+
+def resolve_balance_exports_root(
+    exports_root: Path | str | None = None,
+    *,
+    require_exists: bool = True,
+) -> Path:
+    """Return the canonical raw-export directory used by mapping workflows.
+
+    The default is the sibling ``leap_initialisation`` repository.  An explicit
+    path or ``LEAP_BALANCE_EXPORTS_ROOT`` may be used for an unusual checkout
+    layout, but local ``leap_mappings/data`` copies are never selected
+    implicitly.
+    """
+    configured = exports_root
+    if configured is None:
+        configured = os.environ.get(BALANCE_EXPORTS_ROOT_ENV_VAR)
+    root = (
+        _resolve_path(configured)
+        if configured is not None and str(configured).strip()
+        else CANONICAL_BALANCE_EXPORTS_ROOT
+    )
+    if require_exists and not root.is_dir():
+        raise FileNotFoundError(
+            "Canonical LEAP balance-export directory is missing: "
+            f"{root}. Expected raw exports under the sibling leap_initialisation "
+            f"repository, or set {BALANCE_EXPORTS_ROOT_ENV_VAR} for a different layout."
+        )
+    return root
 
 
 def _parse_balance_export_date_id(date_id: str) -> date | None:
@@ -121,6 +154,49 @@ def _iter_balance_export_workbooks(
         )
 
 
+def discover_balance_export_workbooks(
+    *,
+    economies: Sequence[str],
+    scenarios: Sequence[str] = ("REF", "TGT"),
+    exports_root: Path | str | None = None,
+) -> dict[tuple[str, str], list[Path]]:
+    """Discover raw workbooks and retain missing economy/scenario combinations.
+
+    The returned keys are ``(economy, normalized_scenario)`` and values are
+    sorted workbook paths.  Empty lists are intentional and support concise
+    validation/reporting for future economies such as ``02_BD``.
+    """
+    root = resolve_balance_exports_root(exports_root)
+    discovery: dict[tuple[str, str], list[Path]] = {}
+    for economy in economies:
+        economy_text = str(economy).strip()
+        for scenario in scenarios:
+            scenario_code = normalize_balance_scenario_code(scenario)
+            discovery[(economy_text, scenario_code)] = sorted(
+                item.path
+                for item in _iter_balance_export_workbooks(
+                    root / economy_text,
+                    economy=economy_text,
+                    scenario_code=scenario_code,
+                )
+            )
+    return discovery
+
+
+def format_balance_export_discovery_report(
+    discovery: dict[tuple[str, str], list[Path]],
+) -> str:
+    """Format a human-readable discovered/missing economy-scenario report."""
+    lines = ["LEAP balance-export discovery (canonical raw-input directory):"]
+    for (economy, scenario), paths in sorted(discovery.items()):
+        if paths:
+            lines.append(f"- {economy} {scenario}: {len(paths)} workbook(s)")
+            lines.extend(f"  - {path.name}" for path in paths)
+        else:
+            lines.append(f"- {economy} {scenario}: MISSING")
+    return "\n".join(lines)
+
+
 def resolve_balance_export_workbook(
     *,
     economy: str,
@@ -133,7 +209,7 @@ def resolve_balance_export_workbook(
     if not economy_text:
         raise ValueError("Balance-export economy cannot be blank.")
     scenario_code = normalize_balance_scenario_code(scenario)
-    export_dir = _resolve_path(exports_root) / economy_text
+    export_dir = resolve_balance_exports_root(exports_root) / economy_text
     candidates = list(
         _iter_balance_export_workbooks(
             export_dir,

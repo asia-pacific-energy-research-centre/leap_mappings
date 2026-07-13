@@ -52,6 +52,12 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
+    discover_balance_export_workbooks,
+    format_balance_export_discovery_report,
+    resolve_balance_exports_root,
+)
+
 # ---------------------------------------------------------------------------
 # Default paths
 # ---------------------------------------------------------------------------
@@ -79,17 +85,9 @@ ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_li
 # from their reviewed additive frontiers.
 ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 
-# LEAP export directory — check both this repo and leap_initialisation
-def _default_leap_export_dir() -> Path:
-    local = REPO_ROOT / "data" / "leap balances exports" / "20_USA"
-    if local.exists():
-        return local
-    sibling = REPO_ROOT.parent / "leap_initialisation" / "data" / "leap balances exports" / "20_USA"
-    if sibling.exists():
-        return sibling
-    return local  # return local even if it doesn't exist; error will surface in stage
-
-LEAP_EXPORT_DIR = _default_leap_export_dir()
+# Raw LEAP workbooks are owned by the sibling leap_initialisation repository.
+LEAP_EXPORTS_ROOT = resolve_balance_exports_root()
+LEAP_EXPORT_DIR = LEAP_EXPORTS_ROOT / "20_USA"
 
 # ---------------------------------------------------------------------------
 # Output logging
@@ -203,9 +201,17 @@ def run_leap_parse() -> None:
     print("\n" + "=" * 60)
     print("LEAP PARSE  Parse LEAP balance exports")
     print("=" * 60)
+    print(
+        format_balance_export_discovery_report(
+            discover_balance_export_workbooks(
+                economies=["20_USA", "02_BD"],
+                exports_root=LEAP_EXPORTS_ROOT,
+            )
+        )
+    )
     if not LEAP_EXPORT_DIR.exists():
-        print(f"  WARNING: LEAP export directory not found: {LEAP_EXPORT_DIR}")
-        print("  Skipping LEAP parse. Set LEAP_EXPORT_DIR in run_mapping_pipeline.py")
+        print(f"  WARNING: no 20_USA raw LEAP exports found at {LEAP_EXPORT_DIR}")
+        print("  The canonical directory is valid; this economy has no source files.")
         return
 
     from codebase.mapping_tools.parse_leap_balance_export import parse_leap_balance_dir
@@ -598,12 +604,32 @@ def run_stage_3() -> None:
                 load_unmodelled_source_codes,
             )
             unmodelled_source_codes = load_unmodelled_source_codes()
+
+            # Full-scale anchor validation checks every year for every source
+            # system; that is most of its 260k+ row output and multi-minute
+            # runtime. The mapping structure being validated is economy/year-
+            # independent (see validate_source_parent_anchors docstring), so a
+            # base-year-plus-decade slice exercises the same anchors without
+            # the near-duplicate rows for every intervening year.
+            raw_anchor_years = pd.to_numeric(raw_anchor_source["year"], errors="coerce")
+            esto_base_year = int(raw_anchor_years[raw_anchor_source["source_system"] == "ESTO"].max())
+            anchor_target_years = {esto_base_year} | set(range(2030, 2071, 10))
+            anchor_years_by_system = {
+                system: set(
+                    raw_anchor_years[raw_anchor_source["source_system"] == system]
+                    .dropna().astype(int)
+                ) & anchor_target_years
+                for system in raw_anchor_source["source_system"].unique()
+            }
+            print(f"  Anchor validation year slice: {anchor_years_by_system}")
+
             anchor_t0 = time.perf_counter()
             anchor_detail = validate_source_parent_anchors(
                 source_df=raw_anchor_source,
                 source_tree_df=validation_tree,
                 source_mapping_df=source_mapping,
                 common_rows_df=common_rows,
+                years_by_system=anchor_years_by_system,
                 comparison_df=comparison_data,
                 unmodelled_source_codes=unmodelled_source_codes,
             )
