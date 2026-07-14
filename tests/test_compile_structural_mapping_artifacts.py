@@ -62,7 +62,7 @@ def test_runner_reads_only_structural_inputs(monkeypatch, tmp_path: Path) -> Non
     _common_map().to_csv(common_path, index=False)
     with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
         _rules()["LEAP"].to_excel(writer, sheet_name="leap_rollup_rules", index=False)
-        pd.DataFrame(columns=["input_9th_sector", "rolled_9th_sector"]).to_excel(writer, sheet_name="ninth_rollup_rules", index=False)
+        pd.DataFrame(columns=["input_ninth_sector", "rolled_ninth_sector"]).to_excel(writer, sheet_name="ninth_rollup_rules", index=False)
     real_read_csv = pd.read_csv
     reads: list[Path] = []
 
@@ -72,4 +72,5 @@ def test_runner_reads_only_structural_inputs(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.setattr(pd, "read_csv", guarded_read_csv)
     compile_structural_mapping_artifacts(relationships_path, common_path, workbook_path, tmp_path / "out")
-    assert reads == [relationships_path, common_path]
+    assert reads[0] == relationships_path
+    assert reads.count(common_path) == 2

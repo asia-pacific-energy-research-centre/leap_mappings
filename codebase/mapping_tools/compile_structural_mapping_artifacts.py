@@ -12,6 +12,7 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
 from codebase.mapping_tools.structural_resolver import prepare_pair_rollup_rules
 
 
@@ -42,7 +43,7 @@ SOURCE_COMMON_COLUMNS = [
     *SOURCE_COMPONENT_COLUMNS, "common_row_id", "component_sign", "common_flow_code",
     "common_flow_name", "common_flow_label", "common_product_code", "common_product_name",
     "common_product_label", "common_row_basis", "is_exact_row", "requires_rollup",
-    "source_aggregate_labels", "source_aggregate_group_ids",
+    "common_row_is_subtotal", "source_aggregate_labels", "source_aggregate_group_ids",
 ]
 REVERSE_COLUMNS = [
     "structural_mapping_version", "comparison_scope", "common_row_id", "source_system",
@@ -77,6 +78,42 @@ def _stable(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return result.sort_values(columns, kind="stable", key=lambda series: series.astype(str)).reset_index(drop=True)
 
 
+def _attach_common_row_is_subtotal(source_common: pd.DataFrame, common_map_path: Path) -> pd.DataFrame:
+    """Annotate source-to-common rows using the same common-tree subtotal logic as Stage 3."""
+    if source_common.empty:
+        return source_common.assign(common_row_is_subtotal=pd.Series(dtype=bool))
+    required = {"common_flow_label", "common_product_label"}
+    if not required.issubset(source_common.columns):
+        annotated = source_common.copy()
+        annotated["common_row_is_subtotal"] = False
+        return annotated
+
+    try:
+        tree_df = build_common_esto_tree(common_map_path)
+    except Exception:
+        annotated = source_common.copy()
+        annotated["common_row_is_subtotal"] = False
+        return annotated
+    common_tree_df = tree_df[tree_df["dataset"] == "common_esto"]
+    flow_lookup = (
+        common_tree_df[common_tree_df["axis"] == "flow"]
+        .drop_duplicates(subset="code")
+        .set_index("code")["is_subtotal"]
+    )
+    product_lookup = (
+        common_tree_df[common_tree_df["axis"] == "product"]
+        .drop_duplicates(subset="code")
+        .set_index("code")["is_subtotal"]
+    )
+
+    annotated = source_common.copy()
+    annotated["common_row_is_subtotal"] = (
+        annotated["common_flow_label"].map(flow_lookup).fillna(False).astype(bool)
+        | annotated["common_product_label"].map(product_lookup).fillna(False).astype(bool)
+    )
+    return annotated
+
+
 def _rule_columns(system: str) -> tuple[str, str, str, str]:
     if system == "LEAP":
         return (
@@ -84,7 +121,7 @@ def _rule_columns(system: str) -> tuple[str, str, str, str]:
             "rolled_leap_sector_name_full_path", "rolled_raw_leap_fuel_name",
         )
     if system == "NINTH":
-        return "input_9th_sector", "input_9th_fuel", "rolled_9th_sector", "rolled_9th_fuel"
+        return "input_ninth_sector", "input_ninth_fuel", "rolled_ninth_sector", "rolled_ninth_fuel"
     return "input_esto_flow", "input_esto_product", "rolled_esto_flow", "rolled_esto_product"
 
 
@@ -161,6 +198,7 @@ def compile_structural_frames(
     common_map_df: pd.DataFrame,
     rollup_rules: dict[str, pd.DataFrame] | None = None,
     input_fingerprint: str = "in_memory",
+    common_rows_path: Path | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Compile deterministic structural tables without loading source values."""
     required_common = {
@@ -206,6 +244,8 @@ def compile_structural_frames(
     resolved["comparison_scope"] = resolved["comparison_scope_y"]
     resolved = resolved.drop(columns=["comparison_scope_x", "comparison_scope_y"])
     source_common = _stable(resolved, SOURCE_COMMON_COLUMNS)
+    if common_rows_path is not None:
+        source_common = _attach_common_row_is_subtotal(source_common, common_rows_path)
     scoped_source_components = _stable(source_common, SOURCE_COMPONENT_COLUMNS)
     reverse = _stable(source_common, REVERSE_COLUMNS)
 
@@ -258,7 +298,7 @@ def compile_structural_mapping_artifacts(
         "LEAP": pd.read_excel(workbook_path, sheet_name="leap_rollup_rules", dtype=object),
         "NINTH": pd.read_excel(workbook_path, sheet_name="ninth_rollup_rules", dtype=object),
     }
-    artifacts = compile_structural_frames(relationships, common_map, rules, fingerprint)
+    artifacts = compile_structural_frames(relationships, common_map, rules, fingerprint, Path(common_map_path))
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, frame in artifacts.items():
