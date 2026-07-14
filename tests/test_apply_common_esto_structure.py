@@ -46,7 +46,7 @@ def test_source_coverage_check_expands_preaggregated_source_totals_by_scope() ->
     comparison_df = pd.DataFrame(
         [
             {
-                "comparison_scope": "leap_vs_esto",
+                "comparison_scope": "esto_leap",
                 "source_system": "ESTO",
                 "economy": "20_USA",
                 "scenario": "historical",
@@ -58,7 +58,7 @@ def test_source_coverage_check_expands_preaggregated_source_totals_by_scope() ->
 
     check_df = build_source_coverage_check(source_totals_df, comparison_df)
 
-    assert check_df.loc[0, "comparison_scope"] == "leap_vs_esto"
+    assert check_df.loc[0, "comparison_scope"] == "esto_leap"
     assert check_df.loc[0, "source_total"] == 10.0
     assert check_df.loc[0, "common_total"] == 8.0
     assert check_df.loc[0, "difference"] == -2.0
@@ -81,7 +81,7 @@ def test_apply_common_structure_retains_generated_total_label() -> None:
     common_rows_df = pd.DataFrame(
         [
             {
-                "comparison_scope": "leap_vs_esto",
+                "comparison_scope": "esto_leap",
                 "component_esto_flow": "14 Industry sector",
                 "component_esto_product": "08.01 Natural gas",
                 "common_row_id": "common_total_final_consumption",
@@ -398,8 +398,8 @@ def test_nonzero_unmapped_leap_branch_can_infer_relevance_through_ninth_crosswal
     ninth_esto_df = pd.DataFrame(
         [
             {
-                "9th_sector": "N1",
-                "9th_fuel": "NF1",
+                "ninth_sector": "N1",
+                "ninth_fuel": "NF1",
                 "esto_flow": "F1",
                 "esto_product": "P1",
             }

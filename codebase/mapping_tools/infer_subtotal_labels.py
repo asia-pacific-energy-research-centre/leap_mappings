@@ -205,7 +205,7 @@ def build_rollup_subtotal_lookup(wb: Any) -> dict[str, dict[str, bool | str]]:
     Returns:
         {
             "esto":  {rolled_esto_flow: True/False/"MIXED", ...},
-            "ninth": {rolled_9th_sector: True/False/"MIXED", ...},
+            "ninth": {rolled_ninth_sector: True/False/"MIXED", ...},
             "leap":  {rolled_leap_sector_name_full_path: True/False/"MIXED", ...},
         }
 
@@ -215,7 +215,7 @@ def build_rollup_subtotal_lookup(wb: Any) -> dict[str, dict[str, bool | str]]:
     """
     configs = [
         ("esto_rollup_rules",  "rolled_esto_flow",                  "esto"),
-        ("ninth_rollup_rules", "rolled_9th_sector",                  "ninth"),
+        ("ninth_rollup_rules", "rolled_ninth_sector",                  "ninth"),
         ("leap_rollup_rules",  "rolled_leap_sector_name_full_path",  "leap"),
     ]
     result: dict[str, dict[str, bool | str]] = {}
@@ -314,10 +314,10 @@ def analyze_rollup_consistency(
         ),
         (
             "ninth_rollup_rules",
-            "input_9th_sector", ninth_sec_lkp,
-            "input_9th_fuel",   ninth_fuel_lkp,
-            "rolled_9th_sector", ninth_sec_lkp,
-            "rolled_9th_fuel",   ninth_fuel_lkp,
+            "input_ninth_sector", ninth_sec_lkp,
+            "input_ninth_fuel",   ninth_fuel_lkp,
+            "rolled_ninth_sector", ninth_sec_lkp,
+            "rolled_ninth_fuel",   ninth_fuel_lkp,
         ),
     ]
 
@@ -511,7 +511,7 @@ def generate_ninth_pair_draft(
 
     for sheet_name, sec_col, fuel_col, sub_col in [
         ("leap_combined_ninth",       "ninth_sector", "ninth_fuel", "ninth_pair_is_subtotal"),
-        ("ninth_pairs_to_esto_pairs", "9th_sector",   "9th_fuel",  "ninth_pair_is_subtotal"),
+        ("ninth_pairs_to_esto_pairs", "ninth_sector",   "ninth_fuel",  "ninth_pair_is_subtotal"),
     ]:
         _, rows = _read_sheet_as_dicts(wb, sheet_name)
         for row in rows:

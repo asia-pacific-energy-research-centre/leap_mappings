@@ -2,7 +2,13 @@
 
 import pandas as pd
 
-from codebase.mapping_tools.build_common_esto_structure import build_manual_override_edges
+from codebase.mapping_tools.build_common_esto_structure import (
+    COMPARISON_SCOPES,
+    DEFAULT_ENABLED_COMPARISON_SCOPES,
+    build_manual_override_edges,
+    build_source_aggregate_edges,
+    included_esto_relationships,
+)
 
 
 def test_blank_product_override_rolls_shared_products_only() -> None:
@@ -29,7 +35,7 @@ def test_blank_product_override_rolls_shared_products_only() -> None:
 
     edges, aggregate_groups = build_manual_override_edges(
         overrides_df=overrides,
-        comparison_scope="leap_vs_esto_vs_ninth",
+        comparison_scope="esto_leap_ninth",
         required_components_df=required_components,
     )
 
@@ -76,7 +82,7 @@ def test_override_with_multiple_shared_products_never_links_products() -> None:
 
     edges, aggregate_groups = build_manual_override_edges(
         overrides_df=overrides,
-        comparison_scope="leap_vs_esto",
+        comparison_scope="esto_leap",
         required_components_df=required_components,
     )
 
@@ -92,3 +98,54 @@ def test_override_with_multiple_shared_products_never_links_products() -> None:
         ),
     ]
     assert len(aggregate_groups) == 2
+
+
+def test_esto_leap_scope_excludes_ninth_relationships_and_aggregate_edges() -> None:
+    relationships_df = pd.DataFrame(
+        [
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "LEAP branch",
+                "source_product": "Fuel",
+                "target_flow": "F1",
+                "target_product": "P1",
+                "esto_pair_is_subtotal": False,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            },
+            {
+                "include_in_use_case": True,
+                "use_case": "ninth_to_esto_balance_conversion",
+                "source_system": "NINTH",
+                "target_system": "ESTO",
+                "source_flow": "Ninth sector",
+                "source_product": "Fuel",
+                "target_flow": "F2",
+                "target_product": "P2",
+                "esto_pair_is_subtotal": False,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            },
+        ]
+    )
+
+    scope_config = COMPARISON_SCOPES["esto_leap"]
+    included_df, excluded_df = included_esto_relationships(
+        relationships_df,
+        pd.DataFrame(),
+        "esto_leap",
+        scope_config["use_cases"],
+    )
+    edges, _, _ = build_source_aggregate_edges(
+        included_df,
+        "esto_leap",
+        scope_config["aggregate_source_systems"],
+    )
+
+    assert DEFAULT_ENABLED_COMPARISON_SCOPES == ["esto_leap_ninth", "esto_leap"]
+    assert included_df["source_system"].tolist() == ["LEAP"]
+    assert excluded_df.empty
+    assert edges == []

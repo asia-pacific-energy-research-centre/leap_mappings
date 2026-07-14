@@ -1,7 +1,0 @@
-aggregated_branch,component_branch,include,note
-All demand aggregated,Buildings,True,Declared as included in All demand aggregated. If Buildings is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.
-All demand aggregated,Freight road,True,Declared as included in All demand aggregated. If Freight road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.
-All demand aggregated,Industry,True,Declared as included in All demand aggregated. If Industry is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.
-All demand aggregated,Other sector,True,Declared as included in All demand aggregated. If Other sector is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.
-All demand aggregated,Passenger road,True,Declared as included in All demand aggregated. If Passenger road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.
-All demand aggregated,Transport non road,True,Declared as included in All demand aggregated. If Transport non road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.

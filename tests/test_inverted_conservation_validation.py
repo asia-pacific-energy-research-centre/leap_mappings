@@ -17,7 +17,7 @@ def _structural() -> pd.DataFrame:
 
     def add(system, flow, product, common_row):
         rows.append({
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": system,
             "original_source_flow": flow,
             "original_source_product": product,
@@ -66,14 +66,14 @@ def _raw() -> pd.DataFrame:
 
 def _run():
     edges, source_gaps, target_gaps = compose_direction_edges(
-        _structural(), "ESTO", "LEAP", "leap_vs_esto"
+        _structural(), "ESTO", "LEAP", "esto_leap"
     )
     contributions, summary = validate_direction_partition(
         _raw(), edges, _tree(), "ESTO", "LEAP", "ESTO_TO_LEAP"
     )
     audit = build_no_counterpart_audit(
         _raw(), source_gaps, target_gaps, "ESTO_TO_LEAP", "ESTO", "LEAP",
-        "leap_vs_esto",
+        "esto_leap",
     )
     return contributions, summary, audit
 
@@ -154,7 +154,7 @@ def test_subtotal_exception_uses_existing_tree_validation_result():
 
     verified = build_no_counterpart_audit(
         raw, source_gap, target_gap, "NINTH_TO_LEAP", "NINTH", "LEAP",
-        "leap_vs_esto_vs_ninth", tree, pd.DataFrame(),
+        "esto_leap_ninth", tree, pd.DataFrame(),
     ).iloc[0]
     assert verified["exception_classification"] == "verified_subtotal_represented_by_children"
 
@@ -165,7 +165,7 @@ def test_subtotal_exception_uses_existing_tree_validation_result():
     }])
     mismatch = build_no_counterpart_audit(
         raw, source_gap, target_gap, "NINTH_TO_LEAP", "NINTH", "LEAP",
-        "leap_vs_esto_vs_ninth", tree, mismatch_validation,
+        "esto_leap_ninth", tree, mismatch_validation,
     ).iloc[0]
     assert mismatch["exception_classification"] == "subtotal_children_mismatch"
     assert mismatch["subtotal_validation_difference"] == 12.5
@@ -173,7 +173,7 @@ def test_subtotal_exception_uses_existing_tree_validation_result():
 
 def test_alternative_target_variants_are_checked_separately_and_not_summed():
     edges, _, _ = compose_direction_edges(
-        _structural(), "ESTO", "LEAP", "leap_vs_esto"
+        _structural(), "ESTO", "LEAP", "esto_leap"
     )
     config = {
         "target_system": "LEAP",
@@ -211,28 +211,28 @@ def test_alternative_target_variants_are_checked_separately_and_not_summed():
 def test_placeholder_alias_buckets_can_collapse_to_one_canonical_target():
     structural = pd.DataFrame([
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.01 Production A",
             "original_source_product": "06.01 Fuel A",
             "common_row_id": "common_alias",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.02 Production B",
             "original_source_product": "06.02 Fuel B",
             "common_row_id": "common_alias",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plant interim/Heat plant interim",
             "original_source_product": "Electricity",
             "common_row_id": "common_alias",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plants",
             "original_source_product": "Electricity",
@@ -275,7 +275,7 @@ def test_placeholder_alias_buckets_can_collapse_to_one_canonical_target():
     })
 
     edges, _, _ = compose_direction_edges(
-        structural, "ESTO", "LEAP", "leap_vs_esto", alias_map
+        structural, "ESTO", "LEAP", "esto_leap", alias_map
     )
     contributions, summary = validate_direction_partition(
         raw, edges, tree, "ESTO", "LEAP", "ESTO_TO_LEAP", alias_map=alias_map
@@ -316,56 +316,56 @@ def test_flow_level_wildcard_alias_collapses_every_product_not_just_one():
     narrower config happened to list."""
     structural = pd.DataFrame([
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.01 Production A",
             "original_source_product": "06.01 Fuel A",
             "common_row_id": "common_electricity",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.02 Production B",
             "original_source_product": "06.01 Fuel A",
             "common_row_id": "common_electricity",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plant interim/Heat plant interim",
             "original_source_product": "Electricity",
             "common_row_id": "common_electricity",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plants",
             "original_source_product": "Electricity",
             "common_row_id": "common_electricity",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.01 Production A",
             "original_source_product": "06.02 Fuel B",
             "common_row_id": "common_peat",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "ESTO",
             "original_source_flow": "01.02 Production B",
             "original_source_product": "06.02 Fuel B",
             "common_row_id": "common_peat",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plant interim/Heat plant interim",
             "original_source_product": "Peat",
             "common_row_id": "common_peat",
         },
         {
-            "comparison_scope": "leap_vs_esto",
+            "comparison_scope": "esto_leap",
             "source_system": "LEAP",
             "original_source_flow": "Heat plants",
             "original_source_product": "Peat",
@@ -414,7 +414,7 @@ def test_flow_level_wildcard_alias_collapses_every_product_not_just_one():
     })
 
     edges, _, _ = compose_direction_edges(
-        structural, "ESTO", "LEAP", "leap_vs_esto", alias_map
+        structural, "ESTO", "LEAP", "esto_leap", alias_map
     )
     contributions, _ = validate_direction_partition(
         raw, edges, tree, "ESTO", "LEAP", "ESTO_TO_LEAP", alias_map=alias_map

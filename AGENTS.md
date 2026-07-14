@@ -2,6 +2,13 @@
 
 These are project-level instructions for Codex (and similar agents).
 
+## Economy-code reminder
+
+- `02_BD` means **Brunei Darussalam**. It does not mean Bangladesh.
+- `20_USA` means **United States of America**.
+- The complete dashboard economy code/name list is maintained in the sibling repository at `C:\Users\Work\github\leap_dashboard\config\common_esto_dashboard\series_config.json`.
+- That dashboard file uses compact keys (`02BD`, `20USA`); workflow/data inputs commonly use underscore-normalized codes (`02_BD`, `20_USA`).
+
 ## Repository routing
 
 - This repo is the active home for LEAP mapping maintenance.
@@ -33,6 +40,11 @@ Active documentation being developed:
 
 - `docs/mappings_system.md` — the canonical reference for the mappings system design, pipeline stages, rollup rules, graph partitioning, and naming conventions.
 - `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
+
+## Prompt docs workflow
+
+- Multi-step agent prompts (plan-first implementation tasks, investigation prompts, prompt packs) live in `docs/prompts/`.
+- Once the work a prompt describes is complete (implemented, tested, and committed), move that prompt file out of `docs/prompts/` into `docs/archive/` — see `docs/archive/common_esto_lineage_validation/` for the pattern (a prompt pack archived together with its own status/findings/TODO notes once superseded or finished). Do not leave completed prompts in `docs/prompts/`; that folder should only contain active or pending work.
 
 ## When editing draw.io diagrams
 

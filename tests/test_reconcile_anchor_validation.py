@@ -42,8 +42,8 @@ def _tree() -> pd.DataFrame:
 
 
 def _structural() -> pd.DataFrame:
-    """source_pair_to_common_row rows for LEAP under its leap_vs_esto scope."""
-    base = {"source_system": "LEAP", "comparison_scope": "leap_vs_esto"}
+    """source_pair_to_common_row rows for LEAP under its esto_leap scope."""
+    base = {"source_system": "LEAP", "comparison_scope": "esto_leap"}
     return pd.DataFrame([
         # Road descendants -> exact ESTO rows, owned only by Road's children.
         {**base, "original_source_flow": "Passenger road", "original_source_product": "Gasoline",
@@ -193,7 +193,7 @@ def test_slice_matches_in_memory_reference():
 def test_ninth_and_esto_reconcile_on_both_axes():
     for system, dataset in [("NINTH", "ninth"), ("ESTO", "esto")]:
         flow_axis, fuel_axis = ("sector", "fuel") if dataset in {"leap", "ninth"} else ("flow", "product")
-        scope = {"NINTH": "leap_vs_esto_vs_ninth", "ESTO": "esto_only"}[system]
+        scope = {"NINTH": "esto_leap_ninth", "ESTO": "esto_only"}[system]
         tree = pd.DataFrame([
             {"dataset": dataset, "axis": flow_axis, "code": "P", "parent_code": ""},
             {"dataset": dataset, "axis": flow_axis, "code": "P_child", "parent_code": "P"},

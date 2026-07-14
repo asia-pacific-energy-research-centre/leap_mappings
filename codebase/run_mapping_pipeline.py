@@ -66,7 +66,7 @@ WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 SOURCE_BRANCH_FALLBACK_RULES_PATH = REPO_ROOT / "config" / "source_branch_fallback_rules.csv"
-ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregated_components.csv"
+ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregated_components.json"
 
 REL_DIR             = REPO_ROOT / "results" / "mapping_relationships"
 COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
@@ -172,7 +172,7 @@ def run_stage_1() -> None:
 # Stage 2 — Common ESTO structure
 # ---------------------------------------------------------------------------
 
-def run_stage_2() -> None:
+def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
     print("\n" + "=" * 60)
     print("STAGE 2  Build common ESTO structure")
     print("=" * 60)
@@ -180,6 +180,7 @@ def run_stage_2() -> None:
         COMMON_ESTO_LABEL_OVERRIDES_PATH,
         COMMON_ESTO_OVERRIDES_PATH,
         COVERAGE_EXCLUSIONS_PATH,
+        DEFAULT_ENABLED_COMPARISON_SCOPES,
         OUTPUT_DIR,
         OUTLOOK_MAPPINGS_PATH,
         RELATIONSHIPS_PATH as STAGE_2_RELATIONSHIPS_PATH,
@@ -192,6 +193,11 @@ def run_stage_2() -> None:
         common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
         outlook_mappings_path=OUTLOOK_MAPPINGS_PATH,
         output_dir=OUTPUT_DIR,
+        enabled_scopes=(
+            DEFAULT_ENABLED_COMPARISON_SCOPES
+            if enabled_scopes is None
+            else enabled_scopes
+        ),
     )
 
 

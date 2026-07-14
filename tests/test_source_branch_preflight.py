@@ -5,6 +5,8 @@ import pandas as pd
 from codebase.mapping_tools.source_branch_preflight import (
     apply_source_branch_fallbacks,
     check_all_demand_aggregated_overlap,
+    get_demand_sectors_without_detail,
+    resolve_components_for_economy,
 )
 
 
@@ -83,8 +85,8 @@ class TestScenario6AllDemandWarning:
     def _components(self) -> pd.DataFrame:
         return pd.DataFrame(
             [
-                {"aggregated_branch": "All demand aggregated", "component_branch": "Industry", "include": "True", "note": ""},
-                {"aggregated_branch": "All demand aggregated", "component_branch": "Buildings", "include": "True", "note": ""},
+                {"economy": "", "aggregated_branch": "All demand aggregated", "component_branch": "Industry", "include": "True", "note": ""},
+                {"economy": "", "aggregated_branch": "All demand aggregated", "component_branch": "Buildings", "include": "True", "note": ""},
             ]
         )
 
@@ -120,3 +122,31 @@ class TestScenario6AllDemandWarning:
         )
         warnings = check_all_demand_aggregated_overlap(leap_df, self._components())
         assert warnings.empty
+
+
+class TestEconomyScopedComponents:
+    def _components(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                # Wildcard default: every economy lacks Buildings/Industry detail...
+                {"economy": "", "aggregated_branch": "All demand aggregated", "component_branch": "Buildings", "include": "True", "note": ""},
+                {"economy": "", "aggregated_branch": "All demand aggregated", "component_branch": "Industry", "include": "True", "note": ""},
+                # ...except 20_USA, which now has detailed Industry data.
+                {"economy": "20_USA", "aggregated_branch": "All demand aggregated", "component_branch": "Industry", "include": "False", "note": "Detailed Industry data added 2026-07-14."},
+            ]
+        )
+
+    def test_wildcard_applies_when_no_economy_override(self) -> None:
+        resolved = resolve_components_for_economy(self._components(), "02_BD")
+        assert set(resolved["component_branch"]) == {"Buildings", "Industry"}
+
+    def test_economy_override_replaces_wildcard_for_that_pair_only(self) -> None:
+        resolved = resolve_components_for_economy(self._components(), "20_USA")
+        # Industry is overridden away (include=False for 20_USA); Buildings still
+        # falls back to the wildcard default.
+        assert set(resolved["component_branch"]) == {"Buildings"}
+
+    def test_get_demand_sectors_without_detail_is_economy_scoped(self) -> None:
+        components_df = self._components()
+        assert get_demand_sectors_without_detail(components_df, "02_BD") == ["Buildings", "Industry"]
+        assert get_demand_sectors_without_detail(components_df, "20_USA") == ["Buildings"]

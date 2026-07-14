@@ -17,9 +17,9 @@ from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pa
 
 
 COMPARISON_SCOPE_SYSTEMS = {
-    "leap_vs_esto": {"LEAP", "ESTO"},
+    "esto_leap": {"LEAP", "ESTO"},
     "leap_vs_ninth": {"LEAP", "NINTH"},
-    "leap_vs_esto_vs_ninth": {"LEAP", "NINTH", "ESTO"},
+    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
     "esto_only": {"ESTO"},
 }
 
@@ -541,15 +541,15 @@ def load_raw_source_anchor_inputs(
         pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
     )
     sector_lookup = ninth[["source_flow"] + sector_columns].copy()
-    sector_lookup["9th_sector"] = _resolve_most_specific(sector_lookup, sector_columns)
-    sector_lookup = sector_lookup[["9th_sector", "source_flow"]].drop_duplicates()
+    sector_lookup["ninth_sector"] = _resolve_most_specific(sector_lookup, sector_columns)
+    sector_lookup = sector_lookup[["ninth_sector", "source_flow"]].drop_duplicates()
     fuel_lookup = ninth[["source_product", "fuels", "subfuels"]].copy()
     subfuels_clean = fuel_lookup["subfuels"].astype(str).str.strip()
     valid_subfuels = ~subfuels_clean.isin(["", "x", "nan"])
     fuels_clean = fuel_lookup["fuels"].astype(str).str.strip()
-    fuel_lookup["9th_fuel"] = np.where(valid_subfuels, subfuels_clean, fuels_clean)
-    fuel_lookup = fuel_lookup[["9th_fuel", "source_product"]].drop_duplicates()
-    ninth_map = ninth_map.merge(sector_lookup, on="9th_sector", how="left").merge(fuel_lookup, on="9th_fuel", how="left")
+    fuel_lookup["ninth_fuel"] = np.where(valid_subfuels, subfuels_clean, fuels_clean)
+    fuel_lookup = fuel_lookup[["ninth_fuel", "source_product"]].drop_duplicates()
+    ninth_map = ninth_map.merge(sector_lookup, on="ninth_sector", how="left").merge(fuel_lookup, on="ninth_fuel", how="left")
     ninth_map = ninth_map.rename(columns={"esto_flow": "component_esto_flow", "esto_product": "component_esto_product"})
     ninth_map["source_system"] = "NINTH"
     mapping_frames.append(ninth_map[["source_system", "source_flow", "source_product", "component_esto_flow", "component_esto_product"]].dropna())

@@ -682,7 +682,7 @@ Rollups and graph partitioning solve related but different problems.
 
 Do not assume every category mismatch needs a hand-written rollup. Use explicit rollups for known comparison boundaries. Let graph partitioning generate common categories where overlapping source aggregates define the necessary comparison structure.
 
-Graph partitioning is applied identically in all four comparison scopes (`esto_only`, `leap_vs_esto`, `leap_vs_ninth`, `leap_vs_esto_vs_ninth`), using the combined aggregate constraints from both LEAP and NINTH. A product/flow's common row is therefore the same, globally least-detailed rollup in every scope -- a category is never left as an exact row in one scope only because that scope's comparison happens not to include the dataset whose aggregate required the rollup elsewhere.
+Graph partitioning is scope-specific. The active `esto_leap` scope uses only LEAP-to-ESTO relationships and LEAP aggregate constraints, while `esto_leap_ninth` additionally uses NINTH-to-ESTO relationships and NINTH aggregate constraints. This keeps the LEAP–ESTO comparison at the finest detail both systems support; ESTO pairs reached only through NINTH are intentionally not required by `esto_leap`. Inactive scope definitions remain selectable for explicit future use.
 
 ### What graph partitioning means here
 
@@ -718,6 +718,8 @@ These sheets are also not totally inclusive. For example, `ninth_pairs_to_esto_p
 ## Subtotal handling
 
 Subtotals are aggregate rows where the value is the sum of child rows rather than an independent measured value. Any row that is not at the leaf end of a branch hierarchy is treated as a subtotal. The system assumes consistent aggregation — child rows should sum to their parent subtotal.
+
+**Fuel/product axis vs sector/flow axis.** As a general mapping convention, we avoid mapping fuel subtotals and instead map fuels by their leaves only, to avoid adding unnecessary complexity to the mapping sheets. On the sector/flow axis, however, mapping to subtotals is allowed and reasonably common, since that axis generally has more levels than the fuel axis and its subtotals often represent useful comparison groupings in their own right (e.g. sector- or sub-sector-level totals).
 
 Each source dataset flags subtotals differently:
 
@@ -996,9 +998,9 @@ The common ESTO structure is built separately for each comparison scope:
 
 | Scope | What it covers |
 | --- | --- |
-| `leap_vs_esto` | LEAP and ESTO only |
+| `esto_leap` | LEAP and ESTO only (enabled by default) |
 | `leap_vs_ninth` | LEAP and 9th Outlook, bridged via ESTO |
-| `leap_vs_esto_vs_ninth` | LEAP, ESTO, and 9th Outlook |
+| `esto_leap_ninth` | LEAP, ESTO, and 9th Outlook (enabled by default) |
 | `esto_only` | ESTO reference only |
 
 Common row labels are generated mechanically from compressed component codes and a useful parent name where possible:

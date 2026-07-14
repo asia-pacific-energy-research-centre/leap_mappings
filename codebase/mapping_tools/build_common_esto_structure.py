@@ -24,31 +24,23 @@ CONVERSION_USE_CASES = [
     "leap_to_esto_balance_conversion",
     "ninth_to_esto_balance_conversion",
 ]
-# All four scopes share one structural partition. `aggregate_source_systems`
-# and `use_cases` are intentionally identical across scopes so that every
-# scope resolves a common row to the same, globally least-detailed rollup
-# found across LEAP and NINTH's aggregate constraints -- a product/flow must
-# never be an exact row in one scope and part of a rolled-up common row in
-# another just because a given scope's comparison happens not to include the
-# system that required the rollup. `systems` still documents which datasets
-# actually participate in that scope's comparison.
 _ALL_USE_CASES = ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"]
 _ALL_AGGREGATE_SOURCE_SYSTEMS = ["LEAP", "NINTH"]
 COMPARISON_SCOPES = {
-    "leap_vs_esto": {
-        "systems": ["LEAP", "ESTO"],
+    "esto_leap_ninth": {
+        "systems": ["ESTO", "LEAP", "NINTH"],
         "use_cases": _ALL_USE_CASES,
         "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
+    },
+    "esto_leap": {
+        "systems": ["ESTO", "LEAP"],
+        "use_cases": ["leap_to_esto_balance_conversion"],
+        "aggregate_source_systems": ["LEAP"],
     },
     "leap_vs_ninth": {
         "systems": ["LEAP", "NINTH"],
-        "use_cases": _ALL_USE_CASES,
-        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
-    },
-    "leap_vs_esto_vs_ninth": {
-        "systems": ["LEAP", "ESTO", "NINTH"],
-        "use_cases": _ALL_USE_CASES,
-        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
+        "use_cases": ["ninth_to_esto_balance_conversion"],
+        "aggregate_source_systems": ["NINTH"],
     },
     "esto_only": {
         "systems": ["ESTO"],
@@ -56,6 +48,9 @@ COMPARISON_SCOPES = {
         "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
     },
 }
+# The pipeline builds only the scopes used by current downstream comparisons.
+# Other definitions remain available for a deliberate future selection.
+DEFAULT_ENABLED_COMPARISON_SCOPES = ["esto_leap_ninth", "esto_leap"]
 COMMON_ROW_COLUMNS = [
     "comparison_scope",
     "common_structure_version",
@@ -1116,6 +1111,43 @@ def apply_configured_axis_label_overrides(
     return adjusted_df
 
 
+def preferred_label_for_partition(
+    partition_components: list[str],
+    preferred_partition_labels: dict[frozenset[str], str],
+) -> str:
+    """Return the manual-override display label applicable to a final partition.
+
+    An exact component-set match always wins. Otherwise an override still
+    applies when closure only grew its group by descendants of its own flows
+    (e.g. a NINTH-defined aggregate adding 09.06.02.01/09.06.02.02 alongside
+    09.06.02): the extra members change granularity, not meaning. Overrides
+    whose extras include unrelated flows do not apply, and if several distinct
+    labels remain applicable the compressed label is kept.
+    """
+    partition_set = frozenset(partition_components)
+    exact_label = preferred_partition_labels.get(partition_set, "")
+    if exact_label:
+        return exact_label
+
+    applicable_labels: set[str] = set()
+    for override_components, label in preferred_partition_labels.items():
+        if not override_components or not override_components <= partition_set:
+            continue
+        override_codes = [split_code_name(component)[0] for component in override_components]
+        extra_components = partition_set - override_components
+        if all(
+            any(
+                override_code and split_code_name(extra)[0].startswith(f"{override_code}.")
+                for override_code in override_codes
+            )
+            for extra in extra_components
+        ):
+            applicable_labels.add(label)
+    if len(applicable_labels) == 1:
+        return next(iter(applicable_labels))
+    return ""
+
+
 def build_axis_partition_lookup(
     common_rows_df: pd.DataFrame,
     axis: str,
@@ -1169,7 +1201,7 @@ def build_axis_partition_lookup(
         partition_label = make_label(partition_code, partition_name)
         partition_created_by = "axis_partition_closure" if len(partition_components) > 1 else "exact_axis_component"
         if preferred_partition_labels:
-            preferred_label = preferred_partition_labels.get(frozenset(partition_components), "")
+            preferred_label = preferred_label_for_partition(partition_components, preferred_partition_labels)
             if preferred_label:
                 partition_label = preferred_label
                 partition_created_by = "manual_override_preferred_label"
@@ -1603,8 +1635,23 @@ def run_common_esto_structure_workflow(
     common_esto_label_overrides_path: Path,
     outlook_mappings_path: Path,
     output_dir: Path,
+    enabled_scopes: list[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
-    """Build the common ESTO structure and QA outputs."""
+    """Build the selected common ESTO structures and QA outputs.
+
+    ``None`` retains the library behaviour of building every defined scope.
+    Pipeline callers pass ``DEFAULT_ENABLED_COMPARISON_SCOPES`` so inactive
+    definitions are not emitted accidentally.
+    """
+    selected_scopes = list(COMPARISON_SCOPES) if enabled_scopes is None else list(enabled_scopes)
+    unknown_scopes = sorted(set(selected_scopes) - set(COMPARISON_SCOPES))
+    if unknown_scopes:
+        raise ValueError(
+            f"Unknown comparison scope(s): {unknown_scopes}. "
+            f"Choose from: {sorted(COMPARISON_SCOPES)}"
+        )
+    if not selected_scopes:
+        raise ValueError("enabled_scopes must contain at least one comparison scope.")
     relationships_df = pd.read_csv(relationships_path, low_memory=False)
     exclusions_df = read_table_if_exists(coverage_exclusions_path, COVERAGE_EXCLUSION_COLUMNS)
     overrides_df = read_table_if_exists(common_esto_overrides_path, OVERRIDE_COLUMNS)
@@ -1634,7 +1681,8 @@ def run_common_esto_structure_workflow(
     common_frames: list[pd.DataFrame] = []
     map_frames: list[pd.DataFrame] = []
     qa_frames: dict[str, list[pd.DataFrame]] = {}
-    for comparison_scope, scope_config in COMPARISON_SCOPES.items():
+    for comparison_scope in selected_scopes:
+        scope_config = COMPARISON_SCOPES[comparison_scope]
         scope_common_df, scope_map_df, scope_qa_outputs = build_common_esto_for_scope(
             comparison_scope=comparison_scope,
             scope_config=scope_config,
@@ -1707,6 +1755,7 @@ if __name__ == "__main__":
                 common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
                 outlook_mappings_path=OUTLOOK_MAPPINGS_PATH,
                 output_dir=OUTPUT_DIR,
+                enabled_scopes=DEFAULT_ENABLED_COMPARISON_SCOPES,
             )
     except Exception as exc:
         print("Common ESTO structure build failed.")

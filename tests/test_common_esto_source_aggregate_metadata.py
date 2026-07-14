@@ -32,7 +32,7 @@ def test_source_aggregate_membership_links_separate_parent_and_rollup_rows() -> 
         label_overrides_df=pd.DataFrame(),
         flow_code_to_name={"09": "Total transformation sector"},
         product_code_to_name={"09": "Nuclear"},
-        comparison_scope="leap_vs_esto_vs_ninth",
+        comparison_scope="esto_leap_ninth",
     )
 
     assert set(common_rows["source_aggregate_labels"]) == {
@@ -60,7 +60,7 @@ def test_stage3_output_preserves_common_row_identity_and_aggregate_membership() 
     common_rows_df = pd.DataFrame(
         [
             {
-                "comparison_scope": "leap_vs_esto_vs_ninth",
+                "comparison_scope": "esto_leap_ninth",
                 "component_esto_flow": "09.01.01 Electricity plants",
                 "component_esto_product": "09 Nuclear",
                 "common_row_id": "common_rollup_nuclear",
@@ -88,4 +88,3 @@ def test_stage3_output_preserves_common_row_identity_and_aggregate_membership() 
     assert row["common_row_basis"] == "connected_component_rollup"
     assert bool(row["requires_rollup"])
     assert row["source_aggregate_labels"] == "Total transformation - no transfers"
-

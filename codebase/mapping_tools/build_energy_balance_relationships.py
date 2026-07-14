@@ -1157,7 +1157,7 @@ def build_default_coverage_exclusions() -> pd.DataFrame:
         [
             {
                 "use_case": "leap_to_esto_balance_conversion",
-                "comparison_scope": "leap_vs_esto",
+                "comparison_scope": "esto_leap",
                 "source_system": "LEAP",
                 "target_system": "ESTO",
                 "target_flow": "06 Stock changes",

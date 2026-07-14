@@ -330,8 +330,8 @@ class TemplateBalanceExtractor:
         codebook = read_config_table(self.codebook_path, sheet_name="code_to_name", dtype=str).fillna("")
         for _, row in codebook.iterrows():
             name = _normalize_text(row.get("name", ""))
-            ninth_label = str(row.get("9th_label", "")).strip()
-            ninth_column = _normalize_text(row.get("9th_column", ""))
+            ninth_label = str(row.get("ninth_label", "")).strip()
+            ninth_column = _normalize_text(row.get("ninth_column", ""))
             esto_label = str(row.get("esto_label", "")).strip()
             esto_column = _normalize_text(row.get("esto_column", ""))
             if not name:
@@ -356,8 +356,8 @@ class TemplateBalanceExtractor:
         if not self.explicit_pair_mappings_only:
             pairs = read_config_table(self.mapping_pairs_path, dtype=str).fillna("")
             for _, row in pairs.iterrows():
-                sector = str(row.get("9th_sector", "")).strip()
-                fuel = str(row.get("9th_fuel", "")).strip()
+                sector = str(row.get("ninth_sector", "")).strip()
+                fuel = str(row.get("ninth_fuel", "")).strip()
                 flow = str(row.get("esto_flow", "")).strip()
                 product = str(row.get("esto_product", "")).strip()
                 if not (sector and fuel and flow and product):
@@ -497,11 +497,11 @@ class TemplateBalanceExtractor:
                 except Exception:
                     continue
                 sector_col = next(
-                    (col for col in ["ninth_sector", "9th_sector", "sector", "sectors"] if col in subtotals.columns),
+                    (col for col in ["ninth_sector", "ninth_sector", "sector", "sectors"] if col in subtotals.columns),
                     "",
                 )
                 fuel_col = next(
-                    (col for col in ["ninth_fuel", "9th_fuel", "fuel", "fuels", "subfuels"] if col in subtotals.columns),
+                    (col for col in ["ninth_fuel", "ninth_fuel", "fuel", "fuels", "subfuels"] if col in subtotals.columns),
                     "",
                 )
                 subtotal_col = next(

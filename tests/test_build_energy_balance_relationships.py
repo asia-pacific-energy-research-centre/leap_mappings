@@ -14,10 +14,14 @@ from codebase.mapping_tools.build_energy_balance_relationships import (
     RELATIONSHIP_COLUMNS,
     SHEET_CONFIGS,
     _apply_leap_rollup_rules,
+    _apply_ninth_rollup_rules,
+    _build_rolled_ninth_sector_to_components,
     build_relationship_rows,
     build_unknown_esto_target_qa,
+    build_unknown_ninth_target_qa,
     expand_combined_esto_targets,
     expand_esto_rollup_targets,
+    expand_ninth_rollup_targets,
     parse_esto_pair_is_subtotal,
 )
 
@@ -122,8 +126,8 @@ _NINTH_SHEET_CONFIG = next(
 def _make_ninth_source_df(rows: list[dict[str, Any]]) -> pd.DataFrame:
     """Minimal DataFrame mimicking a ninth_pairs_to_esto_pairs sheet slice."""
     base = {
-        "9th_sector": "12_total_final_consumption",
-        "9th_fuel": "15_solid_biomass",
+        "ninth_sector": "12_total_final_consumption",
+        "ninth_fuel": "15_solid_biomass",
         "esto_flow": "12 Total final consumption",
         "esto_product": "15 Solid biomass",
         "esto_pair_is_subtotal": False,
@@ -215,6 +219,55 @@ def _make_leap_row(
         relationship_id=f"id::{source_flow}::{target_flow}",
         relationship_key=f"id::{source_flow}::{target_flow}::use_case",
         use_case="use_case",
+    )
+    return row
+
+
+def _make_leap_to_ninth_row(
+    source_flow: str = "Transformation/Power sector",
+    target_flow: str = "09_01-09_02,09_x Power sector",
+    target_product: str = "17_electricity",
+) -> dict[str, Any]:
+    row = {c: "" for c in RELATIONSHIP_COLUMNS}
+    row.update(
+        source_system="LEAP",
+        source_flow=source_flow,
+        source_product=target_product,
+        source_sector_path=source_flow,
+        source_fuel=target_product,
+        target_system="NINTH",
+        target_flow=target_flow,
+        target_product=target_product,
+        is_rollup_derived=False,
+        include_in_use_case=True,
+        relationship_id=f"id::{source_flow}::{target_flow}",
+        relationship_key=f"id::{source_flow}::{target_flow}::leap_to_ninth_comparison",
+        use_case="leap_to_ninth_comparison",
+        source_sheet="leap_combined_ninth",
+    )
+    return row
+
+
+def _make_ninth_source_row(
+    source_flow: str,
+    target_flow: str,
+    source_product: str = "17_electricity",
+) -> dict[str, Any]:
+    row = {c: "" for c in RELATIONSHIP_COLUMNS}
+    row.update(
+        source_system="NINTH",
+        source_flow=source_flow,
+        source_product=source_product,
+        source_sector_path=source_flow,
+        source_fuel=source_product,
+        target_system="ESTO",
+        target_flow=target_flow,
+        target_product=source_product,
+        is_rollup_derived=False,
+        include_in_use_case=True,
+        relationship_id=f"id::{source_flow}::{target_flow}",
+        relationship_key=f"id::{source_flow}::{target_flow}::ninth_to_esto_balance_conversion",
+        use_case="ninth_to_esto_balance_conversion",
     )
     return row
 
@@ -384,3 +437,176 @@ class TestRegisteredEstoRollupTargets:
         )
 
         assert qa_df.empty
+
+
+class TestNinthRollupTargetExpansion:
+    """NINTH target rollups in leap_combined_ninth expand to real NINTH sectors."""
+
+    def test_build_rolled_ninth_sector_to_components_skips_fuel_specific_rules(self) -> None:
+        rules = pd.DataFrame(
+            [
+                {
+                    "input_ninth_sector": "09_01_01_electricity_plants",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_01-09_02,09_x Power sector",
+                    "rolled_ninth_fuel": "",
+                },
+                {
+                    "input_ninth_sector": "09_01_01_electricity_plants",
+                    "input_ninth_fuel": "17_electricity",
+                    "rolled_ninth_sector": "fuel_specific_rollup",
+                    "rolled_ninth_fuel": "17_electricity",
+                },
+            ]
+        )
+
+        result = _build_rolled_ninth_sector_to_components(rules)
+
+        assert result == {
+            "09_01-09_02,09_x Power sector": ["09_01_01_electricity_plants"]
+        }
+
+    def test_parent_own_use_rollup_uses_child_frontier_when_available(self) -> None:
+        rules = pd.DataFrame(
+            [
+                {
+                    "input_ninth_sector": "09_08_coal_transformation",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_coal_transformation_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09 Total transformation sector",
+                },
+                {
+                    "input_ninth_sector": "10_01_05_coke_ovens",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_coal_transformation_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09 Total transformation sector",
+                },
+                {
+                    "input_ninth_sector": "09_08_01_coke_ovens",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_01_coke_ovens_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09_08_coal_transformation_incl_own_use",
+                },
+                {
+                    "input_ninth_sector": "10_01_05_coke_ovens",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_01_coke_ovens_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09_08_coal_transformation_incl_own_use",
+                },
+                {
+                    "input_ninth_sector": "09_08_02_blast_furnaces",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_02_blast_furnaces_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09_08_coal_transformation_incl_own_use",
+                },
+                {
+                    "input_ninth_sector": "10_01_07_blast_furnaces",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_08_02_blast_furnaces_incl_own_use",
+                    "rolled_ninth_fuel": "",
+                    "parent_flow_label": "09_08_coal_transformation_incl_own_use",
+                },
+            ]
+        )
+
+        result = _build_rolled_ninth_sector_to_components(rules)
+
+        assert result["09_08_coal_transformation_incl_own_use"] == [
+            "09_08_01_coke_ovens_incl_own_use",
+            "09_08_02_blast_furnaces_incl_own_use",
+        ]
+
+    def test_ninth_target_rollup_expands_to_component_sectors(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_leap_to_ninth_row()],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        result = expand_ninth_rollup_targets(
+            relationship_df,
+            {
+                "09_01-09_02,09_x Power sector": [
+                    "09_01_01_electricity_plants",
+                    "09_02_01_electricity_plants",
+                ]
+            },
+        )
+
+        assert len(result) == 2
+        assert set(result["target_flow"]) == {
+            "09_01_01_electricity_plants",
+            "09_02_01_electricity_plants",
+        }
+        assert set(result["target_product"]) == {"17_electricity"}
+        assert result["notes"].str.contains(
+            "expanded_from_ninth_rollup: 09_01-09_02,09_x Power sector",
+            regex=False,
+        ).all()
+        assert result["relationship_id"].nunique() == 2
+
+    def test_ninth_target_rollup_supports_nested_rules(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_leap_to_ninth_row(target_flow="nested_power")],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        result = expand_ninth_rollup_targets(
+            relationship_df,
+            {
+                "nested_power": ["09_01-09_02,09_x Power sector"],
+                "09_01-09_02,09_x Power sector": [
+                    "09_01_01_electricity_plants",
+                    "09_02_01_electricity_plants",
+                ],
+            },
+        )
+
+        assert set(result["target_flow"]) == {
+            "09_01_01_electricity_plants",
+            "09_02_01_electricity_plants",
+        }
+
+    def test_unknown_ninth_target_qa_flags_only_non_real_targets_after_expansion(self) -> None:
+        relationship_df = pd.DataFrame(
+            [
+                _make_leap_to_ninth_row(target_flow="09_01_01_electricity_plants"),
+                _make_leap_to_ninth_row(target_flow="future_placeholder"),
+            ],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+
+        qa_df = build_unknown_ninth_target_qa(
+            relationship_df,
+            known_ninth_sectors={"09_01_01_electricity_plants"},
+        )
+
+        assert qa_df["target_flow"].tolist() == ["future_placeholder"]
+        assert qa_df["qa_status"].tolist() == ["ninth_target_sector_has_no_ninth_data"]
+
+    def test_source_side_ninth_rollup_mechanics_remain_duplicate_up(self) -> None:
+        relationship_df = pd.DataFrame(
+            [_make_ninth_source_row("09_01_01_electricity_plants", "09.01.01 Electricity plants")],
+            columns=RELATIONSHIP_COLUMNS,
+        )
+        ninth_rules = pd.DataFrame(
+            [
+                {
+                    "input_ninth_sector": "09_01_01_electricity_plants",
+                    "input_ninth_fuel": "",
+                    "rolled_ninth_sector": "09_01-09_02,09_x Power sector",
+                    "rolled_ninth_fuel": "",
+                }
+            ]
+        )
+
+        result = _apply_ninth_rollup_rules(relationship_df, ninth_rules)
+
+        assert len(result) == 1
+        assert result.iloc[0]["source_flow"] == "09_01-09_02,09_x Power sector"
+        assert result.iloc[0]["target_flow"] == "09.01.01 Electricity plants"
+        assert result.iloc[0]["is_rollup_derived"] == True  # noqa: E712

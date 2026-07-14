@@ -35,8 +35,8 @@ OVERRIDE_HEADERS = [
     "raw_leap_fuel_name",
     "ninth_sector",
     "ninth_fuel",
-    "9th_sector",
-    "9th_fuel",
+    "ninth_sector",
+    "ninth_fuel",
     "esto_flow",
     "esto_product",
     "leap_is_subtotal",
@@ -55,7 +55,7 @@ SHEET_CONFIGS = {
         "subtotal_columns": ("leap_is_subtotal", "esto_pair_is_subtotal"),
     },
     "ninth_pairs_to_esto_pairs": {
-        "keys": ("9th_sector", "9th_fuel", "esto_flow", "esto_product"),
+        "keys": ("ninth_sector", "ninth_fuel", "esto_flow", "esto_product"),
         "subtotal_columns": ("ninth_pair_is_subtotal", "esto_pair_is_subtotal"),
     },
 }

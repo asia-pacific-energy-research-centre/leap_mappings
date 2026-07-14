@@ -150,7 +150,7 @@ def _active_ninth_mappings(mapping_workbook_path: Path) -> pd.DataFrame:
         sheet_name="ninth_pairs_to_esto_pairs",
         dtype=object,
     ).fillna("")
-    required = ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+    required = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     missing = [column for column in required if column not in mappings.columns]
     if missing:
         raise ValueError(f"ninth_pairs_to_esto_pairs is missing columns: {missing}")
@@ -161,8 +161,8 @@ def _active_ninth_mappings(mapping_workbook_path: Path) -> pd.DataFrame:
     mappings["flow_code"] = mappings["esto_flow"].map(extract_simple_esto_code)
     mappings["product_code"] = mappings["esto_product"].map(extract_simple_esto_code)
     mappings = mappings[mappings["flow_code"].ne("") & mappings["product_code"].ne("")].copy()
-    mappings["9th_sector"] = mappings["9th_sector"].map(_normalise_text)
-    mappings["9th_fuel"] = mappings["9th_fuel"].map(_normalise_text)
+    mappings["ninth_sector"] = mappings["ninth_sector"].map(_normalise_text)
+    mappings["ninth_fuel"] = mappings["ninth_fuel"].map(_normalise_text)
     return mappings
 
 
@@ -186,20 +186,20 @@ def _read_ninth_nonzero_evidence_and_pairs(
     values = ninth[year_columns].apply(pd.to_numeric, errors="coerce").fillna(0.0).abs()
     ninth = ninth[values.gt(0).any(axis=1)].copy()
 
-    ninth["9th_sector"] = ""
+    ninth["ninth_sector"] = ""
     for column in NINTH_SECTOR_COLUMNS:
         values = ninth[column].map(_normalise_text)
         usable = values.ne("") & values.ne("x")
-        ninth.loc[usable, "9th_sector"] = values[usable]
+        ninth.loc[usable, "ninth_sector"] = values[usable]
 
-    ninth["9th_fuel"] = ninth["fuels"].map(_normalise_text)
+    ninth["ninth_fuel"] = ninth["fuels"].map(_normalise_text)
     subfuel = ninth["subfuels"].map(_normalise_text)
     usable_subfuel = subfuel.ne("") & subfuel.ne("x")
-    ninth.loc[usable_subfuel, "9th_fuel"] = subfuel[usable_subfuel]
+    ninth.loc[usable_subfuel, "ninth_fuel"] = subfuel[usable_subfuel]
     ninth["economy_key"] = ninth["economy"].map(_normalise_economy)
 
     economy_evidence = (
-        ninth[["economy_key", "9th_sector", "9th_fuel"]]
+        ninth[["economy_key", "ninth_sector", "ninth_fuel"]]
         .drop_duplicates()
         .reset_index(drop=True)
     )
@@ -212,8 +212,8 @@ def _read_ninth_nonzero_evidence_and_pairs(
             map(
                 tuple,
                 pd.DataFrame({
-                    "9th_sector": sectors[usable],
-                    "9th_fuel": ninth.loc[usable, "9th_fuel"],
+                    "ninth_sector": sectors[usable],
+                    "ninth_fuel": ninth.loc[usable, "ninth_fuel"],
                 }).drop_duplicates().itertuples(index=False, name=None),
             )
         )
@@ -240,8 +240,8 @@ def _read_ninth_nonzero_sector_fuel_pairs(ninth_csv_path: Path) -> set[tuple[str
 def _product_to_ninth_fuel_profile(mappings: pd.DataFrame) -> pd.DataFrame:
     """Rank reviewed Ninth fuel candidates for each ESTO product code."""
     profile = (
-        mappings[mappings["9th_fuel"].ne("")]
-        .groupby(["product_code", "9th_fuel"], as_index=False)
+        mappings[mappings["ninth_fuel"].ne("")]
+        .groupby(["product_code", "ninth_fuel"], as_index=False)
         .size()
         .rename(columns={"size": "mapping_support_count"})
     )
@@ -290,11 +290,11 @@ def build_reviewed_flow_product_filter_audit(
     for flow, product_code, proposed_product in sorted(set(proposed)):
         sector = sector_by_flow[flow]
         candidates = profile[profile["product_code"].eq(product_code)].sort_values(
-            ["is_best_candidate", "mapping_support_count", "9th_fuel"],
+            ["is_best_candidate", "mapping_support_count", "ninth_fuel"],
             ascending=[False, False, True],
         )
-        all_fuels = candidates["9th_fuel"].astype(str).tolist()
-        best_fuels = candidates.loc[candidates["is_best_candidate"], "9th_fuel"].astype(str).tolist()
+        all_fuels = candidates["ninth_fuel"].astype(str).tolist()
+        best_fuels = candidates.loc[candidates["is_best_candidate"], "ninth_fuel"].astype(str).tolist()
         nonzero_best = [fuel for fuel in best_fuels if (sector, fuel) in nonzero_ninth_pairs]
         if not best_fuels:
             status = "unmapped_product"
@@ -414,7 +414,7 @@ def _required_candidates(
     ]
     evidenced = reviewed_mappings.merge(
         ninth_nonzero,
-        on=["9th_sector", "9th_fuel"],
+        on=["ninth_sector", "ninth_fuel"],
         how="inner",
     )
     for _, row in evidenced.iterrows():
@@ -430,8 +430,8 @@ def _required_candidates(
             is_subtotal=_truthy(row.get("esto_pair_is_subtotal", False)),
             requirement_source="ninth_driven",
             reason="Reviewed mapped ESTO category has non-zero Ninth data",
-            source_ninth_sector=row["9th_sector"],
-            source_ninth_fuel=row["9th_fuel"],
+            source_ninth_sector=row["ninth_sector"],
+            source_ninth_fuel=row["ninth_fuel"],
         ))
 
     # 3. Completion rows use the same exact Ninth sector/fuel eligibility rule.

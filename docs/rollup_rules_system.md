@@ -227,8 +227,17 @@ handled by automatically zeroing it: it may legitimately represent only the
 demand sectors not yet modelled elsewhere.
 
 The implementation maintains
-`config/all_demand_aggregated_components.csv`, a human-owned record of exactly
+`config/all_demand_aggregated_components.json`, a human-owned record of exactly
 which LEAP demand sectors are currently included in `All demand aggregated`.
+Each component has an `include_by_default` flag applied to every economy plus
+an optional `economy_overrides` map keyed by economy code, so a specific
+economy can be marked as no longer aggregate-only once it gains detailed
+source data without affecting other economies.
+`get_demand_sectors_without_detail(components_df, economy)` exposes the
+resolved per-economy list to downstream consumers — the Common ESTO dashboard
+workflow uses it to skip rendering demand-sector pages (Buildings, Industry,
+Transport, Other demand) that would otherwise show no LEAP detail for that
+economy.
 At the same early raw-source stage, it checks every economy/scenario/year. If
 `All demand aggregated` and any configured included sector are both non-zero,
 it writes a warning to

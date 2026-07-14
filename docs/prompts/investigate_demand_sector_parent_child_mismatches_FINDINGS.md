@@ -62,7 +62,7 @@ of parent). Missing children: `14.03.07 Food, beverages and tobacco`, `14.03.09 
 products`, `14.03.10 Textiles and leather`, `14.03.11 Non-specified industry`.
 
 Checked `ninth_pairs_to_esto_pairs` for `esto_product = 07.12 White spirit SBP`: rows for
-`14.03.07` and `14.03.10` have the `9th_fuel` set to `07_12_white_spirit_SBP` but **`9th_sector`
+`14.03.07` and `14.03.10` have the `ninth_fuel` set to `07_12_white_spirit_SBP` but **`ninth_sector`
 is blank** (rows 1817, 1952) — they never attribute to any sector. `14.03.09` has **no row at
 all** for this product. `14.03.11` does have a valid row (`14_03_11_nonspecified_industry` →
 `07_x_other_petroleum_products`), so its absence there is closer to cosmetic (the raw NINTH value
@@ -81,9 +81,9 @@ enabled | axis | parent_code           | source_system | description
 true    | flow | 14.03 Manufacturing   | NINTH         | 9th Outlook's own sub2sector detail does not sum to its reported 14.03 Manufacturing sub1sector aggregate for some (economy, year, fuel) combinations; already flagged confirmed_inherited by validate_ninth_sector_recursive_sums, not a mapping defect.
 ```
 
-**Mapping-bug fix (do not apply)**: in `ninth_pairs_to_esto_pairs`, for `9th_fuel =
-07_12_white_spirit_SBP` (and any other `9th_fuel` codes feeding the "07.12-07.17" combined ESTO
-product), add the missing `9th_sector` values for rows currently blank
+**Mapping-bug fix (do not apply)**: in `ninth_pairs_to_esto_pairs`, for `ninth_fuel =
+07_12_white_spirit_SBP` (and any other `ninth_fuel` codes feeding the "07.12-07.17" combined ESTO
+product), add the missing `ninth_sector` values for rows currently blank
 (`14_03_07_food_beverages_and_tobacco`, `14_03_10_textiles_and_leather`) and add the missing row
 for `14_03_09_wood_and_wood_products`, mirroring the pattern already used for `14_03_11` and for
 sibling sectors 14.03.01/.02/.03/.04/.05/.06/.08 on this same product.
@@ -233,7 +233,7 @@ transport`, `15.06 Non-specified transport` (these genuinely have ~zero gasoline
 use, consistent with the product being jet fuel).
 
 Cause, confirmed in `ninth_pairs_to_esto_pairs`: the 9th Outlook does not split jet fuel into
-gasoline-type vs kerosene-type (single raw `9th_fuel = 07_x_jet_fuel`). For
+gasoline-type vs kerosene-type (single raw `ninth_fuel = 07_x_jet_fuel`). For
 `15_01_domestic_air_transport`, this single fuel is mapped to **both** `07.04 Gasoline type jet
 fuel` **and** `07.05 Kerosene type jet fuel` (two separate rows, same source). Both targets fold
 into the same combined `common_product_label` ("07.04-07.05 Gasoline type jet fuel"), so the
@@ -262,7 +262,7 @@ convention is picked.
 
 | parent_code | source_system | verdict | dominant cause |
 |---|---|---|---|
-| 14.03 Manufacturing | NINTH | mixed | 97% confirmed_inherited (9th internal sector-hierarchy inconsistency, out of scope); 3% missing/blank 9th_sector rows for 14.03.07/.09/.10 on 07.12-07.17 product family |
+| 14.03 Manufacturing | NINTH | mixed | 97% confirmed_inherited (9th internal sector-hierarchy inconsistency, out of scope); 3% missing/blank ninth_sector rows for 14.03.07/.09/.10 on 07.12-07.17 product family |
 | 14 Industry sector | LEAP | mapping-bug | `_apply_leap_rollup_rules` clones "Industry"'s target onto rollup-derived "Total final consumption"/"Total final energy consumption" source rows, injecting whole-economy totals into the sector |
 | 15 Transport sector | LEAP | mapping-bug | same function clones Pipeline/Non-specified transport's targets onto the rolled "Transport" source, double-adding the parent-level rolled total into those two children (exact 2x) |
 | 14 Industry sector | NINTH | mapping-bug | missing `14_03_manufacturing → 14.03 Manufacturing` row for motor gasoline (74% of failures); missing `14.02 Construction` rows for 07.12-07.17 product family (19%) |

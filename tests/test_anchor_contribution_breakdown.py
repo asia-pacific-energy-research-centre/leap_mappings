@@ -129,7 +129,7 @@ def _ninth_tree() -> pd.DataFrame:
 
 
 def _ninth_structural() -> pd.DataFrame:
-    base = {"source_system": "NINTH", "comparison_scope": "leap_vs_esto_vs_ninth", "is_exact_row": "True"}
+    base = {"source_system": "NINTH", "comparison_scope": "esto_leap_ninth", "is_exact_row": "True"}
     # S1 fans out to three components; S2 is a clean 1:1.
     edges = [
         ("08_transfers", "06_02_ngl", "08 Transfers", "06.02 NGL"),

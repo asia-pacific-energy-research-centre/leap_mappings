@@ -24,6 +24,7 @@ from codebase.mapping_issue_exceptions import (
     filter_unmodelled_source_rows,
     row_is_allowed,
 )
+from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
 from codebase.mapping_tools.mapping_candidate_generation import (
     collapsed_path,
     generate_partial_coverage_mapping_candidates,
@@ -85,7 +86,7 @@ COMPARISON_INTERNAL_COLUMNS = [
     "common_flow_component_count",
     "common_product_component_count",
 ]
-WIDE_OUTPUT_ID_COLUMNS = ["economy", "scenario", "product", "flow"]
+WIDE_OUTPUT_ID_COLUMNS = ["comparison_scope", "economy", "scenario", "product", "flow"]
 SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "value"]
 SOURCE_VALUE_SCOPE_COLUMNS = ["comparison_scope"] + SOURCE_VALUE_COLUMNS
 TOTAL_GROUP_COLUMNS = ["comparison_scope", "source_system", "economy", "scenario", "year"]
@@ -121,9 +122,9 @@ COMPONENT_RELEVANCE_COLUMNS = [
     "relevance_reasons",
 ]
 COMPARISON_SCOPE_SYSTEMS = {
-    "leap_vs_esto": {"LEAP", "ESTO"},
+    "esto_leap": {"LEAP", "ESTO"},
     "leap_vs_ninth": {"LEAP", "NINTH"},
-    "leap_vs_esto_vs_ninth": {"LEAP", "NINTH", "ESTO"},
+    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
     "esto_only": {"ESTO"},
 }
 
@@ -1201,14 +1202,20 @@ def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataF
     return check_df.sort_values(SOURCE_COVERAGE_GROUP_COLUMNS).reset_index(drop=True)
 
 
-def build_wide_year_output(comparison_df: pd.DataFrame) -> pd.DataFrame:
-    """Create economy/scenario/product/flow rows with year columns.
+def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) -> pd.DataFrame:
+    """Create scope/economy/scenario/product/flow rows with year columns.
 
     The wide file intentionally has no source_system column, so source_system is
     folded into scenario to avoid summing LEAP, 9th, and ESTO rows together.
+    comparison_scope is kept as an id column because the same source series can
+    appear in several scopes at different product granularity (e.g. exact ESTO
+    detail in esto_leap vs NINTH-lumped unions in esto_leap_ninth); flattening
+    scopes together would double count those rows.
+    An is_subtotal flag marks rows whose flow or product has children in the
+    common ESTO tree hierarchy (from build_common_esto_tree, not label text).
     """
     if comparison_df.empty:
-        return pd.DataFrame(columns=WIDE_OUTPUT_ID_COLUMNS)
+        return pd.DataFrame(columns=WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"])
 
     working_df = comparison_df.copy()
     working_df["product"] = working_df["common_product_label"]
@@ -1234,7 +1241,23 @@ def build_wide_year_output(comparison_df: pd.DataFrame) -> pd.DataFrame:
         [column for column in wide_df.columns if column not in WIDE_OUTPUT_ID_COLUMNS],
         key=lambda value: int(value) if value.isdigit() else value,
     )
-    return wide_df[WIDE_OUTPUT_ID_COLUMNS + year_columns]
+    tree_df = build_common_esto_tree(common_rows_path)
+    common_tree_df = tree_df[tree_df["dataset"] == "common_esto"]
+    flow_lookup = (
+        common_tree_df[common_tree_df["axis"] == "flow"]
+        .drop_duplicates(subset="code")
+        .set_index("code")["is_subtotal"]
+    )
+    product_lookup = (
+        common_tree_df[common_tree_df["axis"] == "product"]
+        .drop_duplicates(subset="code")
+        .set_index("code")["is_subtotal"]
+    )
+    wide_df["is_subtotal"] = (
+        wide_df["flow"].map(flow_lookup).fillna(False).astype(bool)
+        | wide_df["product"].map(product_lookup).fillna(False).astype(bool)
+    )
+    return wide_df[WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"] + year_columns]
 
 
 def drop_internal_common_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -1479,7 +1502,7 @@ def run_common_esto_comparison_fast_path(
     )
     comparison_df, missing_map_df, _ = apply_common_structure(active_source_df, adjusted_common_rows_df)
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
-    wide_year_df = build_wide_year_output(comparison_df)
+    wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
     save_fast_path_outputs(
         comparison_df=comparison_df,
         wide_year_df=wide_year_df,
@@ -1654,7 +1677,7 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {broad_warning_message}")
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
-    wide_year_df = build_wide_year_output(comparison_df)
+    wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
     total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
     source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
     save_outputs(

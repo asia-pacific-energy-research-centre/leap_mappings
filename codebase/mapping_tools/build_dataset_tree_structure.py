@@ -925,8 +925,8 @@ def validate_ninth_recursive_sums(
     pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
     source_targets = _mapping_targets(
         pairs,
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
     )
@@ -1112,13 +1112,13 @@ def validate_ninth_sector_recursive_sums(
     if parent_df.empty or child_df.empty:
         return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
 
-    # Build ESTO flow lookup: 9th_sector -> set of esto_flow labels
+    # Build ESTO flow lookup: ninth_sector -> set of esto_flow labels
     pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
     sector_to_flows: dict[str, set[str]] = {}
     sector_fuel_to_products: dict[tuple[str, str], set[str]] = {}
     for _, row in pairs.iterrows():
-        sector  = _str(row.get("9th_sector", ""))
-        fuel    = _str(row.get("9th_fuel", ""))
+        sector  = _str(row.get("ninth_sector", ""))
+        fuel    = _str(row.get("ninth_fuel", ""))
         flow    = _str(row.get("esto_flow", ""))
         product = _str(row.get("esto_product", ""))
         if sector and flow:
@@ -1128,11 +1128,11 @@ def validate_ninth_sector_recursive_sums(
 
     # Build partition label lookup: (common_flow_label, component_esto_product)
     # -> common_product_label, so Stage A output matches Stage B's partition labels.
-    # Use only scopes that include Ninth data: leap_vs_esto uses ESTO-only product
+    # Use only scopes that include Ninth data: esto_leap uses ESTO-only product
     # codes (no Ninth-driven partitions) and would overwrite partition labels with
     # individual codes, breaking the Stage A → Stage B key match.
     common_rows = pd.read_csv(common_rows_path, dtype=object)
-    ninth_scopes = {"leap_vs_esto_vs_ninth", "leap_vs_ninth"}
+    ninth_scopes = {"esto_leap_ninth", "leap_vs_ninth"}
     scope_rows = common_rows[common_rows["comparison_scope"].astype(str).isin(ninth_scopes)]
     partition_lookup: dict[tuple[str, str], str] = {}
     for _, row in scope_rows.iterrows():
@@ -1266,8 +1266,8 @@ def validate_ninth_fuel_recursive_sums(
     pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
     source_targets = _mapping_targets(
         pairs,
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
     )
@@ -1276,7 +1276,7 @@ def validate_ninth_fuel_recursive_sums(
     # -> common_product_label so Stage A output matches Stage B's product-axis partition labels.
     # Use only scopes that include Ninth data.
     common_rows = pd.read_csv(common_rows_path, dtype=object)
-    ninth_scopes = {"leap_vs_esto_vs_ninth", "leap_vs_ninth"}
+    ninth_scopes = {"esto_leap_ninth", "leap_vs_ninth"}
     scope_rows = common_rows[common_rows["comparison_scope"].astype(str).isin(ninth_scopes)]
     partition_lookup: dict[tuple[str, str], str] = {}
     for _, row in scope_rows.iterrows():

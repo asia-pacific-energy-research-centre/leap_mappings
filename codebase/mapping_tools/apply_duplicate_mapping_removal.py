@@ -12,7 +12,7 @@ same sheet:
                               -> (esto_flow, esto_product)
   leap_combined_ninth         (leap_sector_name_full_path, raw_leap_fuel_name)
                               -> (ninth_sector, ninth_fuel)
-  ninth_pairs_to_esto_pairs   (9th_sector, 9th_fuel) -> (esto_flow, esto_product)
+  ninth_pairs_to_esto_pairs   (ninth_sector, ninth_fuel) -> (esto_flow, esto_product)
 
 Counterpart to the duplicate_mappings.csv report produced by
 codebase/archive/outlook_mapping_maintenance_workflow.py. Because the removed rows are
@@ -70,7 +70,7 @@ SHEET_KEY_CONFIG: dict[str, list[str]] = {
         "leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel",
     ],
     "ninth_pairs_to_esto_pairs": [
-        "9th_sector", "9th_fuel", "esto_flow", "esto_product",
+        "ninth_sector", "ninth_fuel", "esto_flow", "esto_product",
     ],
 }
 

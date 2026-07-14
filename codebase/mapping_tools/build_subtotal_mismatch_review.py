@@ -40,7 +40,7 @@ SHEET_CONFIGS = {
         "target_system": "esto",
     },
     "ninth_pairs_to_esto_pairs": {
-        "source_keys": ("9th_sector", "9th_fuel"),
+        "source_keys": ("ninth_sector", "ninth_fuel"),
         "target_keys": ("esto_flow", "esto_product"),
         "source_subtotal": "ninth_pair_is_subtotal",
         "target_subtotal": "esto_pair_is_subtotal",

@@ -32,10 +32,10 @@ OUTPUT_SOURCE_PATH = FOR_COLLEAGUES_ROOT / "source_pair_to_common_row.csv"
 KEEP_COLUMNS = [
     "comparison_scope",
     "source_system",
-    "effective_source_flow",
-    "effective_source_product",
-    "common_flow_name",
-    "common_product_name",
+    "source_flow",
+    "source_product",
+    "common_flow",
+    "common_product",
     "common_row_is_subtotal",
     "source_row_is_subtotal",
 ]
@@ -58,20 +58,33 @@ def _resolve(path: str | Path) -> Path:
     return resolved
 
 
+def write_csv_with_locked_fallback(df: pd.DataFrame, output_path: Path) -> Path:
+    """Write a CSV, falling back to a rebuilt filename if the target is locked."""
+    try:
+        df.to_csv(output_path, index=False)
+        return output_path
+    except PermissionError:
+        fallback_path = output_path.with_name(f"{output_path.stem}_rebuilt{output_path.suffix}")
+        print(f"Could not overwrite locked CSV: {output_path}")
+        print(f"Writing rebuilt CSV instead: {fallback_path}")
+        df.to_csv(fallback_path, index=False)
+        return fallback_path
+
+
 def _load_source_row_is_subtotal_lookup() -> pd.DataFrame:
     """Build a compact source-level subtotal lookup for LEAP and ESTO rows."""
     leap = pd.read_excel(MAPPING_WORKBOOK_PATH, sheet_name="leap_combined_esto", dtype=object)
     leap_lookup = leap.rename(
         columns={
-            "leap_sector_name_full_path": "effective_source_flow",
-            "raw_leap_fuel_name": "effective_source_product",
+            "leap_sector_name_full_path": "source_flow",
+            "raw_leap_fuel_name": "source_product",
         }
     )
     if "leap_is_subtotal" not in leap_lookup.columns:
         leap_lookup["leap_is_subtotal"] = False
     leap_lookup = leap_lookup[[
-        "effective_source_flow",
-        "effective_source_product",
+        "source_flow",
+        "source_product",
         "leap_is_subtotal",
     ]].copy()
     leap_lookup["source_system"] = "LEAP"
@@ -81,20 +94,20 @@ def _load_source_row_is_subtotal_lookup() -> pd.DataFrame:
     if "is_subtotal" not in esto.columns:
         esto["is_subtotal"] = False
     esto_lookup = esto.rename(
-        columns={"flows": "effective_source_flow", "products": "effective_source_product"}
-    )[["effective_source_flow", "effective_source_product", "is_subtotal"]].copy()
+        columns={"flows": "source_flow", "products": "source_product"}
+    )[["source_flow", "source_product", "is_subtotal"]].copy()
     esto_lookup["source_system"] = "ESTO"
     esto_lookup["source_row_is_subtotal"] = esto_lookup["is_subtotal"].map(_truthy)
 
     lookup = pd.concat(
         [
-            leap_lookup[["source_system", "effective_source_flow", "effective_source_product", "source_row_is_subtotal"]],
-            esto_lookup[["source_system", "effective_source_flow", "effective_source_product", "source_row_is_subtotal"]],
+            leap_lookup[["source_system", "source_flow", "source_product", "source_row_is_subtotal"]],
+            esto_lookup[["source_system", "source_flow", "source_product", "source_row_is_subtotal"]],
         ],
         ignore_index=True,
     )
     lookup = lookup.drop_duplicates(
-        subset=["source_system", "effective_source_flow", "effective_source_product"],
+        subset=["source_system", "source_flow", "source_product"],
         keep="first",
     )
     return lookup
@@ -108,25 +121,36 @@ def build_for_colleagues_export() -> dict[str, Path]:
     wide_lookup = wide_df[["flow", "product", "is_subtotal"]].copy()
     wide_lookup = wide_lookup.rename(
         columns={
-            "flow": "common_flow_label",
-            "product": "common_product_label",
+            "flow": "common_flow",
+            "product": "common_product",
             "is_subtotal": "common_row_is_subtotal",
         }
     ).drop_duplicates()
-    wide_df.to_csv(OUTPUT_WIDE_PATH, index=False)
+    wide_output_path = write_csv_with_locked_fallback(wide_df, OUTPUT_WIDE_PATH)
 
     source_df = pd.read_csv(_resolve(SOURCE_COMMON_PATH), dtype=object)
-    source_df = source_df[source_df["comparison_scope"].astype(str).eq("leap_vs_esto")].copy()
+    source_df = source_df[
+        source_df["comparison_scope"].astype(str).eq("leap_vs_esto")
+        & source_df["source_system"].astype(str).isin(["LEAP", "ESTO"])
+    ].copy()
+    source_df = source_df.rename(
+        columns={
+            "effective_source_flow": "source_flow",
+            "effective_source_product": "source_product",
+            "common_flow_label": "common_flow",
+            "common_product_label": "common_product",
+        }
+    )
 
     lookup = _load_source_row_is_subtotal_lookup()
     source_df = source_df.merge(
         lookup,
-        on=["source_system", "effective_source_flow", "effective_source_product"],
+        on=["source_system", "source_flow", "source_product"],
         how="left",
     )
     source_df = source_df.merge(
         wide_lookup,
-        on=["common_flow_label", "common_product_label"],
+        on=["common_flow", "common_product"],
         how="left",
     )
     source_df["common_row_is_subtotal"] = source_df["common_row_is_subtotal"].fillna(False).map(_truthy)
@@ -134,14 +158,14 @@ def build_for_colleagues_export() -> dict[str, Path]:
 
     output = source_df[KEEP_COLUMNS].copy()
     output = output.sort_values(
-        ["source_system", "effective_source_flow", "effective_source_product", "common_flow_name", "common_product_name"],
+        ["source_system", "source_flow", "source_product", "common_flow", "common_product"],
         kind="stable",
     ).reset_index(drop=True)
-    output.to_csv(OUTPUT_SOURCE_PATH, index=False)
+    output_path = write_csv_with_locked_fallback(output, OUTPUT_SOURCE_PATH)
 
     return {
-        "common_esto_comparison_wide": OUTPUT_WIDE_PATH,
-        "source_pair_to_common_row": OUTPUT_SOURCE_PATH,
+        "common_esto_comparison_wide": wide_output_path,
+        "source_pair_to_common_row": output_path,
     }
 
 

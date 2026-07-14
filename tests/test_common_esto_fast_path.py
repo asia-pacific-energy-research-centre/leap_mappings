@@ -64,7 +64,7 @@ def test_fast_path_writes_final_outputs_without_qa_artifacts(tmp_path: Path) -> 
         common_rows_path,
         [
             {
-                "comparison_scope": "leap_vs_esto_vs_ninth",
+                "comparison_scope": "esto_leap_ninth",
                 "component_esto_flow": "F1",
                 "component_esto_product": "P1",
                 "common_row_id": "common_f1_p1",
@@ -77,7 +77,7 @@ def test_fast_path_writes_final_outputs_without_qa_artifacts(tmp_path: Path) -> 
                 "component_sign": 1,
             },
             {
-                "comparison_scope": "leap_vs_esto_vs_ninth",
+                "comparison_scope": "esto_leap_ninth",
                 "component_esto_flow": "F2",
                 "component_esto_product": "P2",
                 "common_row_id": "common_f2_p2",
@@ -158,7 +158,7 @@ def test_fast_path_can_filter_to_one_economy(tmp_path: Path) -> None:
         common_rows_path,
         [
             {
-                "comparison_scope": "leap_vs_esto_vs_ninth",
+                "comparison_scope": "esto_leap_ninth",
                 "component_esto_flow": "F1",
                 "component_esto_product": "P1",
                 "common_row_id": "common_f1_p1",

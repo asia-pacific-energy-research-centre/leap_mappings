@@ -219,10 +219,10 @@ def test_scope_without_anchorable_boundary_is_skipped() -> None:
     # Add a second scope that ESTO participates in but whose common rows do NOT
     # cover P.1/P.2 -> frontier resolves to no common_row_id -> skipped.
     common = pd.concat([common, pd.DataFrame([
-        {"comparison_scope": "leap_vs_esto", "component_esto_flow": "F", "component_esto_product": "OTHER", "common_row_id": "cX"},
+        {"comparison_scope": "esto_leap", "component_esto_flow": "F", "component_esto_product": "OTHER", "common_row_id": "cX"},
     ])], ignore_index=True)
     detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
     by_scope = {r["comparison_scope"]: r for _, r in detail.iterrows()}
     assert by_scope["esto_only"]["status"] == "passed"
-    assert by_scope["leap_vs_esto"]["status"] == "skipped"
-    assert by_scope["leap_vs_esto"]["reason"] == "no_anchorable_common_esto_boundary"
+    assert by_scope["esto_leap"]["status"] == "skipped"
+    assert by_scope["esto_leap"]["reason"] == "no_anchorable_common_esto_boundary"

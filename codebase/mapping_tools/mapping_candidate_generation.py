@@ -33,8 +33,8 @@ CANDIDATE_OUTPUT_COLUMNS = [
     "common_row_id",
     "leap_sector_name_full_path",
     "raw_leap_fuel_name",
-    "9th_sector",
-    "9th_fuel",
+    "ninth_sector",
+    "ninth_fuel",
     "esto_flow",
     "esto_product",
     "source_pair_nonzero",
@@ -341,8 +341,8 @@ def generate_partial_coverage_candidates_for_system(
                 output["leap_sector_name_full_path"] = source_flow
                 output["raw_leap_fuel_name"] = source_product
             else:
-                output["9th_sector"] = source_flow
-                output["9th_fuel"] = source_product
+                output["ninth_sector"] = source_flow
+                output["ninth_fuel"] = source_product
             minimum_support = int(min(candidate["flow_axis_support_count"], candidate["product_axis_support_count"]))
             confidence = candidate_confidence_label(
                 float(candidate["flow_axis_confidence"]),
@@ -410,8 +410,8 @@ def generate_partial_coverage_mapping_candidates(
             issues_df=issues_df[issues_df["source_system"].astype(str).str.upper() == "NINTH"],
             active_source_pairs_df=active_ninth_pairs_df,
             mapping_df=ninth_esto_df,
-            source_flow_column="9th_sector",
-            source_product_column="9th_fuel",
+            source_flow_column="ninth_sector",
+            source_product_column="ninth_fuel",
             mapping_sheet="ninth_pairs_to_esto_pairs",
             max_candidates_per_issue=max_candidates_per_issue,
         ),
@@ -427,8 +427,8 @@ def generate_partial_coverage_mapping_candidates(
         "mapping_sheet",
         "leap_sector_name_full_path",
         "raw_leap_fuel_name",
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
     ]
@@ -640,7 +640,7 @@ def select_highly_recommended_candidates(candidate_df: pd.DataFrame) -> pd.DataF
                 "into leap_combined_esto; then rerun maintenance and Stages 1-3."
             ),
             "ninth_pairs_to_esto_pairs": (
-                "Paste 9th_sector, 9th_fuel, esto_flow, and esto_product into "
+                "Paste ninth_sector, ninth_fuel, esto_flow, and esto_product into "
                 "ninth_pairs_to_esto_pairs; then rerun maintenance and Stages 1-3."
             ),
         }
@@ -649,8 +649,8 @@ def select_highly_recommended_candidates(candidate_df: pd.DataFrame) -> pd.DataF
         "mapping_sheet",
         "leap_sector_name_full_path",
         "raw_leap_fuel_name",
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
     ]

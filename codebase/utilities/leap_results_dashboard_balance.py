@@ -611,9 +611,9 @@ def _load_codebook_name_maps(codebook_path: Path) -> tuple[dict[str, str], dict[
     flow_map: dict[str, str] = {}
     fuel_map: dict[str, str] = {}
     for _, row in codebook.iterrows():
-        ninth_label = _clean_token(row.get("9th_label", ""))
+        ninth_label = _clean_token(row.get("ninth_label", ""))
         name = _clean_token(row.get("name", ""))
-        ninth_column = _normalize_text(row.get("9th_column", ""))
+        ninth_column = _normalize_text(row.get("ninth_column", ""))
         if not ninth_label or not name:
             continue
         if ninth_column in {"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"}:
@@ -3517,8 +3517,8 @@ def write_ninth_mapping_data_coverage(
     sector_cols = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
     fuel_cols = ["fuels", "subfuels"]
     output_cols = [
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
         "sector_path",
@@ -3535,10 +3535,10 @@ def write_ninth_mapping_data_coverage(
         "covering_mapping_pairs",
     ]
     hierarchy_output_cols = [
-        "9th_sector",
-        "9th_sector_level",
-        "9th_fuel",
-        "9th_fuel_level",
+        "ninth_sector",
+        "ninth_sector_level",
+        "ninth_fuel",
+        "ninth_fuel_level",
         "esto_flow",
         "esto_product",
         "source_sector_paths",
@@ -3609,26 +3609,26 @@ def write_ninth_mapping_data_coverage(
             all_data = pd.DataFrame(columns=output_cols)
             all_hierarchy = pd.DataFrame(columns=hierarchy_output_cols)
         else:
-            working["9th_sector"] = working.apply(lambda row: deepest(row, sector_cols), axis=1)
-            working["9th_fuel"] = working.apply(lambda row: deepest(row, fuel_cols), axis=1)
+            working["ninth_sector"] = working.apply(lambda row: deepest(row, sector_cols), axis=1)
+            working["ninth_fuel"] = working.apply(lambda row: deepest(row, fuel_cols), axis=1)
             working["sector_path"] = working.apply(lambda row: join_path(row, sector_cols), axis=1)
             working["fuel_path"] = working.apply(lambda row: join_path(row, fuel_cols), axis=1)
             working["value_abs_sum"] = values.abs().sum(axis=1)
             working["value_sum"] = values.sum(axis=1)
-            working = working[working["9th_sector"].ne("") & working["9th_fuel"].ne("")].copy()
+            working = working[working["ninth_sector"].ne("") & working["ninth_fuel"].ne("")].copy()
 
             scen_col = "scenarios" if "scenarios" in working.columns else None
-            group_cols = ["9th_sector", "9th_fuel", "sector_path", "fuel_path"]
+            group_cols = ["ninth_sector", "ninth_fuel", "sector_path", "fuel_path"]
             grouped = (
                 working.groupby(group_cols, dropna=False)
                 .agg(
-                    scenario_count=(scen_col, "nunique") if scen_col else ("9th_sector", "size"),
+                    scenario_count=(scen_col, "nunique") if scen_col else ("ninth_sector", "size"),
                     scenarios=(scen_col, lambda values: "|".join(sorted(set(str(v).strip() for v in values if str(v).strip()))))
                     if scen_col
-                    else ("9th_sector", lambda _: ""),
+                    else ("ninth_sector", lambda _: ""),
                     value_abs_sum=("value_abs_sum", "sum"),
                     value_sum=("value_sum", "sum"),
-                    source_rows=("9th_sector", "size"),
+                    source_rows=("ninth_sector", "size"),
                 )
                 .reset_index()
             )
@@ -3646,10 +3646,10 @@ def write_ninth_mapping_data_coverage(
                     for fuel_level, fuel_code in fuel_values:
                         hierarchy_rows.append(
                             {
-                                "9th_sector": sector_code,
-                                "9th_sector_level": sector_level,
-                                "9th_fuel": fuel_code,
-                                "9th_fuel_level": fuel_level,
+                                "ninth_sector": sector_code,
+                                "ninth_sector_level": sector_level,
+                                "ninth_fuel": fuel_code,
+                                "ninth_fuel_level": fuel_level,
                                 "sector_path": row["sector_path"],
                                 "fuel_path": row["fuel_path"],
                                 "scenario": row.get("scenarios", ""),
@@ -3665,7 +3665,7 @@ def write_ninth_mapping_data_coverage(
 
                 all_hierarchy = (
                     hierarchy_raw.groupby(
-                        ["9th_sector", "9th_sector_level", "9th_fuel", "9th_fuel_level"],
+                        ["ninth_sector", "ninth_sector_level", "ninth_fuel", "ninth_fuel_level"],
                         dropna=False,
                     )
                     .agg(
@@ -3675,7 +3675,7 @@ def write_ninth_mapping_data_coverage(
                         scenarios=("scenario", join_unique),
                         value_abs_sum=("value_abs_sum", "sum"),
                         value_sum=("value_sum", "sum"),
-                        source_rows=("9th_sector", "size"),
+                        source_rows=("ninth_sector", "size"),
                     )
                     .reset_index()
                 )
@@ -3687,8 +3687,6 @@ def write_ninth_mapping_data_coverage(
     pairs = pd.DataFrame() if ninth_mapping_pairs is None else ninth_mapping_pairs.copy()
     pairs = pairs.rename(
         columns={
-            "ninth_sector": "9th_sector",
-            "ninth_fuel": "9th_fuel",
             "leap_sector_name_full_path": "leap_mapping_sector",
             "raw_leap_fuel_name": "leap_mapping_fuel",
         }
@@ -3698,23 +3696,23 @@ def write_ninth_mapping_data_coverage(
             {"1", "true", "yes", "y", "on", "t"}
         )
         pairs = pairs.loc[~remove_mask].copy()
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product", "leap_mapping_sector", "leap_mapping_fuel"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product", "leap_mapping_sector", "leap_mapping_fuel"]:
         if col not in pairs.columns:
             pairs[col] = ""
         pairs[col] = pairs[col].fillna("").astype(str).str.strip()
-    pairs = pairs[pairs["9th_sector"].ne("") & pairs["9th_fuel"].ne("")].copy()
-    exact_pairs = {(norm(row["9th_sector"]), norm(row["9th_fuel"])) for _, row in pairs.iterrows()}
+    pairs = pairs[pairs["ninth_sector"].ne("") & pairs["ninth_fuel"].ne("")].copy()
+    exact_pairs = {(norm(row["ninth_sector"]), norm(row["ninth_fuel"])) for _, row in pairs.iterrows()}
     mapped_pairs_by_norm: dict[tuple[str, str], list[str]] = defaultdict(list)
     for _, row in pairs.iterrows():
-        key = (norm(row["9th_sector"]), norm(row["9th_fuel"]))
+        key = (norm(row["ninth_sector"]), norm(row["ninth_fuel"]))
         if clean(row["leap_mapping_sector"]) or clean(row["leap_mapping_fuel"]):
             target = (
                 f"{clean(row['leap_mapping_sector'])} + {clean(row['leap_mapping_fuel'])} "
-                f"-> {clean(row['9th_sector'])} + {clean(row['9th_fuel'])}"
+                f"-> {clean(row['ninth_sector'])} + {clean(row['ninth_fuel'])}"
             )
         else:
             target = (
-                f"{clean(row['9th_sector'])} + {clean(row['9th_fuel'])} "
+                f"{clean(row['ninth_sector'])} + {clean(row['ninth_fuel'])} "
                 f"-> {clean(row['esto_flow'])} + {clean(row['esto_product'])}"
             )
         if target not in mapped_pairs_by_norm[key]:
@@ -3733,7 +3731,7 @@ def write_ninth_mapping_data_coverage(
             hits = sorted(set(hits))
             return bool(hits), " | ".join(hits)
 
-        exact = all_data.apply(lambda row: (norm(row["9th_sector"]), norm(row["9th_fuel"])) in exact_pairs, axis=1)
+        exact = all_data.apply(lambda row: (norm(row["ninth_sector"]), norm(row["ninth_fuel"])) in exact_pairs, axis=1)
         coverage_result = all_data.apply(coverage, axis=1)
         all_data["exact_mapping_found"] = exact.astype(bool)
         all_data["covered_by_parent_mapping"] = coverage_result.map(lambda item: item[0]).astype(bool)
@@ -3741,7 +3739,7 @@ def write_ninth_mapping_data_coverage(
         all_data["esto_flow"] = ""
         all_data["esto_product"] = ""
         all_data = all_data[output_cols].sort_values(
-            ["exact_mapping_found", "covered_by_parent_mapping", "value_abs_sum", "9th_sector", "9th_fuel"],
+            ["exact_mapping_found", "covered_by_parent_mapping", "value_abs_sum", "ninth_sector", "ninth_fuel"],
             ascending=[True, True, False, True, True],
             kind="mergesort",
         )
@@ -3750,19 +3748,19 @@ def write_ninth_mapping_data_coverage(
         all_hierarchy = pd.DataFrame(columns=hierarchy_output_cols)
     else:
         all_hierarchy["exact_mapping_found"] = all_hierarchy.apply(
-            lambda row: (norm(row["9th_sector"]), norm(row["9th_fuel"])) in exact_pairs,
+            lambda row: (norm(row["ninth_sector"]), norm(row["ninth_fuel"])) in exact_pairs,
             axis=1,
         ).astype(bool)
         all_hierarchy["target_mapping_pairs"] = all_hierarchy.apply(
             lambda row: " | ".join(
-                sorted(set(mapped_pairs_by_norm.get((norm(row["9th_sector"]), norm(row["9th_fuel"])), [])))
+                sorted(set(mapped_pairs_by_norm.get((norm(row["ninth_sector"]), norm(row["ninth_fuel"])), [])))
             ),
             axis=1,
         )
         all_hierarchy["esto_flow"] = ""
         all_hierarchy["esto_product"] = ""
         all_hierarchy = all_hierarchy[hierarchy_output_cols].sort_values(
-            ["exact_mapping_found", "value_abs_sum", "9th_sector", "9th_fuel"],
+            ["exact_mapping_found", "value_abs_sum", "ninth_sector", "ninth_fuel"],
             ascending=[True, False, True, True],
             kind="mergesort",
         )
@@ -8646,8 +8644,6 @@ def build_balance_comparison_esto_axis(
         and not canonical_pairs.empty
     ):
         _cp = canonical_pairs.copy()
-        _rename = {"9th_sector": "ninth_sector", "9th_fuel": "ninth_fuel"}
-        _cp = _cp.rename(columns={k: v for k, v in _rename.items() if k in _cp.columns and v not in _cp.columns})
         for _col in ("esto_flow", "esto_product", "ninth_sector", "ninth_fuel"):
             if _col not in _cp.columns:
                 _cp[_col] = ""

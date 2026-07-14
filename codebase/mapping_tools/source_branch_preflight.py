@@ -13,15 +13,27 @@ Two configuration-owned checks:
    an audit row is written. The parsed raw input file is never altered.
    Interim-only periods are retained unchanged.
 
-2. ``config/all_demand_aggregated_components.csv`` — the human-owned record of
+2. ``config/all_demand_aggregated_components.json`` — the human-owned record of
    which LEAP demand sectors are included in ``All demand aggregated``. When
    the aggregate and any configured included sector are both non-zero in the
    same period, a highly visible warning is recorded without changing values.
+   Each component has an ``include_by_default`` flag applied to every economy,
+   plus an optional ``economy_overrides`` map keyed by economy code
+   (``{"include": bool, "note": str}``) that overrides the default for that
+   economy only, so a specific economy can be marked as no longer
+   aggregate-only once it gains detailed source data.
+   ``load_all_demand_aggregated_components()`` flattens this into the same
+   long-form table used internally (columns: economy, aggregated_branch,
+   component_branch, include, note), with ``economy == ""`` meaning the
+   wildcard default row. ``get_demand_sectors_without_detail()`` exposes the
+   resolved per-economy list to downstream consumers (e.g. the dashboard
+   workflow, to skip rendering demand-sector pages that have no LEAP detail).
 """
 
 #%%
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +59,7 @@ FALLBACK_AUDIT_COLUMNS = [
     "interim_rows_zeroed",
 ]
 
-ALL_DEMAND_COMPONENT_COLUMNS = ["aggregated_branch", "component_branch", "include", "note"]
+ALL_DEMAND_COMPONENT_COLUMNS = ["economy", "aggregated_branch", "component_branch", "include", "note"]
 ALL_DEMAND_WARNING_COLUMNS = [
     "economy",
     "scenario",
@@ -63,7 +75,7 @@ ALL_DEMAND_WARNING_COLUMNS = [
 
 ALL_DEMAND_REMINDER = (
     "All demand aggregated and a configured included demand sector are both non-zero. "
-    "Confirm config/all_demand_aggregated_components.csv still reflects which values "
+    "Confirm config/all_demand_aggregated_components.json still reflects which values "
     "are actually attributed to All demand aggregated; values were NOT changed."
 )
 
@@ -204,15 +216,92 @@ def apply_source_branch_fallbacks(
 
 
 def load_all_demand_aggregated_components(path: Path) -> pd.DataFrame:
-    """Load the configured component sectors of ``All demand aggregated``."""
-    if not Path(path).exists():
+    """Load and flatten ``config/all_demand_aggregated_components.json``.
+
+    The JSON groups each component branch's default and per-economy override
+    settings together for human editing; this flattens it into the long-form
+    table used internally by ``resolve_components_for_economy`` (columns:
+    economy, aggregated_branch, component_branch, include, note), with
+    ``economy == ""`` marking the wildcard default row. Rows are returned
+    unfiltered by ``include`` — an economy override with ``include: false`` is
+    a live override that cancels the wildcard default for that economy, so it
+    must survive loading; ``include`` filtering happens once resolution is
+    complete.
+    """
+    path = Path(path)
+    if not path.exists():
         return pd.DataFrame(columns=ALL_DEMAND_COMPONENT_COLUMNS)
-    components_df = pd.read_csv(path, dtype=object).fillna("")
-    missing = [column for column in ALL_DEMAND_COMPONENT_COLUMNS if column not in components_df.columns]
-    if missing:
-        raise ValueError(f"all_demand_aggregated_components is missing columns: {missing}")
-    components_df = components_df[components_df["include"].map(_truthy)].reset_index(drop=True)
-    return components_df[ALL_DEMAND_COMPONENT_COLUMNS]
+    config = json.loads(path.read_text(encoding="utf-8"))
+    aggregated_branch = _str(config.get("aggregated_branch"))
+    rows: list[dict[str, Any]] = []
+    for component in config.get("components", []):
+        component_branch = _str(component.get("component_branch"))
+        if not component_branch:
+            continue
+        rows.append(
+            {
+                "economy": "",
+                "aggregated_branch": aggregated_branch,
+                "component_branch": component_branch,
+                "include": bool(component.get("include_by_default", True)),
+                "note": _str(component.get("note")),
+            }
+        )
+        for economy, override in component.get("economy_overrides", {}).items():
+            rows.append(
+                {
+                    "economy": _str(economy),
+                    "aggregated_branch": aggregated_branch,
+                    "component_branch": component_branch,
+                    "include": bool(override.get("include", True)),
+                    "note": _str(override.get("note")),
+                }
+            )
+    return pd.DataFrame(rows, columns=ALL_DEMAND_COMPONENT_COLUMNS)
+
+
+def resolve_components_for_economy(components_df: pd.DataFrame, economy: str) -> pd.DataFrame:
+    """Resolve the effective, ``include``-filtered component rows for one economy.
+
+    A blank ``economy`` in the config is a wildcard default applied to every
+    economy. A row with an explicit economy code overrides the wildcard for
+    that same (aggregated_branch, component_branch) pair only — including an
+    ``include=False`` override, which cancels the wildcard for that economy
+    (e.g. once it gains detailed source data) without affecting others.
+    """
+    if components_df is None or components_df.empty:
+        return pd.DataFrame(columns=ALL_DEMAND_COMPONENT_COLUMNS)
+    economy = _str(economy)
+    scoped_df = components_df[components_df["economy"].map(_str) == economy]
+    wildcard_df = components_df[components_df["economy"].map(_str) == ""]
+    overridden_keys = set(
+        zip(scoped_df["aggregated_branch"].map(_str), scoped_df["component_branch"].map(_str))
+    )
+    wildcard_df = wildcard_df[
+        ~wildcard_df.apply(
+            lambda row: (_str(row["aggregated_branch"]), _str(row["component_branch"])) in overridden_keys,
+            axis=1,
+        )
+    ]
+    resolved = pd.concat([scoped_df, wildcard_df], ignore_index=True)
+    resolved = resolved[resolved["include"].map(_truthy)].reset_index(drop=True)
+    return resolved[ALL_DEMAND_COMPONENT_COLUMNS]
+
+
+def get_demand_sectors_without_detail(components_df: pd.DataFrame, economy: str) -> list[str]:
+    """Return LEAP demand branch names still only available via the aggregate.
+
+    These are the ``component_branch`` values configured (for this economy,
+    resolving any economy-specific override over the wildcard default) as
+    included in ``All demand aggregated`` — i.e. sectors with no separately
+    modelled LEAP detail yet. Downstream consumers (e.g. the dashboard
+    workflow) can use this to skip rendering demand-sector pages that would
+    otherwise be empty of LEAP data.
+    """
+    resolved = resolve_components_for_economy(components_df, economy)
+    if resolved.empty:
+        return []
+    return sorted({_str(branch) for branch in resolved["component_branch"] if _str(branch)})
 
 
 def check_all_demand_aggregated_overlap(
@@ -223,7 +312,9 @@ def check_all_demand_aggregated_overlap(
 
     This is a review warning only; no values are changed. One row is written
     per period and non-zero configured component so each observed sector total
-    is visible beside the aggregate total.
+    is visible beside the aggregate total. Configured components are resolved
+    per economy (see ``resolve_components_for_economy``) before comparing
+    against that economy's rows.
     """
     if (
         leap_df is None
@@ -234,56 +325,60 @@ def check_all_demand_aggregated_overlap(
         return pd.DataFrame(columns=ALL_DEMAND_WARNING_COLUMNS)
 
     warning_rows: list[dict[str, Any]] = []
-    flows = leap_df["leap_flow"]
-    for aggregated_branch, group_df in components_df.groupby("aggregated_branch", dropna=False):
-        aggregated_branch = _str(aggregated_branch)
-        if not aggregated_branch:
+    for economy, economy_leap_df in leap_df.groupby("economy", dropna=False):
+        economy_components_df = resolve_components_for_economy(components_df, economy)
+        if economy_components_df.empty:
             continue
-        configured = [
-            _str(component)
-            for component in group_df["component_branch"]
-            if _str(component)
-        ]
-        configured_text = "; ".join(configured)
-        aggregate_periods = _nonzero_periods(leap_df, branch_mask(flows, aggregated_branch))
-        active_aggregate = {
-            tuple(row[column] for column in PERIOD_COLUMNS): row["total"]
-            for _, row in aggregate_periods.iterrows()
-            if row["any_nonzero"]
-        }
-        if not active_aggregate:
-            continue
-        component_periods: dict[str, pd.DataFrame] = {
-            component: _nonzero_periods(leap_df, branch_mask(flows, component))
-            for component in configured
-        }
-        nonzero_components_by_period: dict[tuple[Any, ...], list[tuple[str, float]]] = {}
-        for component, periods in component_periods.items():
-            for _, row in periods.iterrows():
-                if not row["any_nonzero"]:
-                    continue
-                key = tuple(row[column] for column in PERIOD_COLUMNS)
-                if key in active_aggregate:
-                    nonzero_components_by_period.setdefault(key, []).append(
-                        (component, float(row["total"]))
+        flows = economy_leap_df["leap_flow"]
+        for aggregated_branch, group_df in economy_components_df.groupby("aggregated_branch", dropna=False):
+            aggregated_branch = _str(aggregated_branch)
+            if not aggregated_branch:
+                continue
+            configured = [
+                _str(component)
+                for component in group_df["component_branch"]
+                if _str(component)
+            ]
+            configured_text = "; ".join(configured)
+            aggregate_periods = _nonzero_periods(economy_leap_df, branch_mask(flows, aggregated_branch))
+            active_aggregate = {
+                tuple(row[column] for column in PERIOD_COLUMNS): row["total"]
+                for _, row in aggregate_periods.iterrows()
+                if row["any_nonzero"]
+            }
+            if not active_aggregate:
+                continue
+            component_periods: dict[str, pd.DataFrame] = {
+                component: _nonzero_periods(economy_leap_df, branch_mask(flows, component))
+                for component in configured
+            }
+            nonzero_components_by_period: dict[tuple[Any, ...], list[tuple[str, float]]] = {}
+            for component, periods in component_periods.items():
+                for _, row in periods.iterrows():
+                    if not row["any_nonzero"]:
+                        continue
+                    key = tuple(row[column] for column in PERIOD_COLUMNS)
+                    if key in active_aggregate:
+                        nonzero_components_by_period.setdefault(key, []).append(
+                            (component, float(row["total"]))
+                        )
+            for key, observed in sorted(nonzero_components_by_period.items(), key=lambda item: str(item[0])):
+                nonzero_names = "; ".join(name for name, _ in observed)
+                for component, component_total in observed:
+                    warning_rows.append(
+                        {
+                            "economy": key[0],
+                            "scenario": key[1],
+                            "year": key[2],
+                            "aggregated_branch": aggregated_branch,
+                            "aggregated_total": float(active_aggregate[key]),
+                            "component_branch": component,
+                            "component_total": component_total,
+                            "nonzero_configured_components": nonzero_names,
+                            "configured_components": configured_text,
+                            "reminder": ALL_DEMAND_REMINDER,
+                        }
                     )
-        for key, observed in sorted(nonzero_components_by_period.items(), key=lambda item: str(item[0])):
-            nonzero_names = "; ".join(name for name, _ in observed)
-            for component, component_total in observed:
-                warning_rows.append(
-                    {
-                        "economy": key[0],
-                        "scenario": key[1],
-                        "year": key[2],
-                        "aggregated_branch": aggregated_branch,
-                        "aggregated_total": float(active_aggregate[key]),
-                        "component_branch": component,
-                        "component_total": component_total,
-                        "nonzero_configured_components": nonzero_names,
-                        "configured_components": configured_text,
-                        "reminder": ALL_DEMAND_REMINDER,
-                    }
-                )
     return pd.DataFrame(warning_rows, columns=ALL_DEMAND_WARNING_COLUMNS)
 
 
@@ -329,7 +424,7 @@ def run_leap_source_branch_preflight(
         print(
             "WARNING: 'All demand aggregated' overlaps a configured included demand "
             f"sector in {len(periods):,} periods. No values were changed. "
-            "Confirm config/all_demand_aggregated_components.csv reflects the model. "
+            "Confirm config/all_demand_aggregated_components.json reflects the model. "
             "See leap_all_demand_aggregated_overlap_warnings.csv"
         )
         for _, row in all_demand_warnings_df.head(10).iterrows():

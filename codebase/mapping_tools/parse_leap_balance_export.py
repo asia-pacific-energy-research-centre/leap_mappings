@@ -67,12 +67,22 @@ _DROP_FUEL_COLS = {
 # Header parsing
 # ---------------------------------------------------------------------------
 
-def _parse_header(raw: pd.DataFrame) -> tuple[str, str, int]:
+# Values are normalised to Petajoule; LEAP exports vary in the unit they use.
+_UNIT_FACTORS_TO_PJ = {
+    "petajoule": 1.0,
+    "thousand petajoule": 1000.0,
+}
+
+
+def _parse_header(raw: pd.DataFrame) -> tuple[str, str, int, float]:
     """
-    Extract (economy, scenario, year) from rows 0-1 of a LEAP export.
+    Extract (economy, scenario, year, unit_factor) from rows 0-1 of a LEAP export.
 
     Row 0: 'Energy Balance for Area "USA - ..."'
     Row 1: 'Scenario: Reference, Year: 2060, Units: Petajoule'
+
+    unit_factor converts the sheet's values to Petajoule. Unknown units raise
+    instead of being silently treated as Petajoule.
     """
     title = str(raw.iloc[0, 0] or "")
     meta  = str(raw.iloc[1, 0] or "")
@@ -83,11 +93,20 @@ def _parse_header(raw: pd.DataFrame) -> tuple[str, str, int]:
 
     scenario_match = re.search(r"Scenario:\s*([^,]+)", meta)
     year_match     = re.search(r"Year:\s*(\d+)", meta)
+    unit_match     = re.search(r"Units:\s*(.+?)\s*$", meta)
 
     scenario = scenario_match.group(1).strip() if scenario_match else ""
     year     = int(year_match.group(1))        if year_match     else 0
 
-    return economy, scenario, year
+    unit_text = unit_match.group(1).strip() if unit_match else ""
+    unit_factor = _UNIT_FACTORS_TO_PJ.get(unit_text.casefold())
+    if unit_factor is None:
+        raise ValueError(
+            f"Unrecognised LEAP export units {unit_text!r} in sheet header {meta!r}. "
+            f"Known units: {sorted(_UNIT_FACTORS_TO_PJ)}"
+        )
+
+    return economy, scenario, year, unit_factor
 
 
 def _fuel_columns(raw: pd.DataFrame) -> list[str]:
@@ -198,7 +217,7 @@ def _parse_single_sheet(
     economy_override: str | None = None,
 ) -> pd.DataFrame:
     """Parse one sheet of a LEAP balance export into long-format rows."""
-    economy_raw, scenario, year = _parse_header(raw)
+    economy_raw, scenario, year, unit_factor = _parse_header(raw)
     economy = economy_override or economy_raw
 
     fuel_names_norm = _fuel_columns(raw)
@@ -227,7 +246,7 @@ def _parse_single_sheet(
             if fuel_name is None:
                 continue
             try:
-                value = float(raw_v)
+                value = float(raw_v) * unit_factor
             except (TypeError, ValueError):
                 continue
             records.append({

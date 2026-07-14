@@ -40,7 +40,7 @@ def _archive(path: Path) -> Path:
 SHEET_KEYS = {
     "leap_combined_esto": ("leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"),
     "leap_combined_ninth": ("leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"),
-    "ninth_pairs_to_esto_pairs": ("9th_sector", "9th_fuel", "esto_flow", "esto_product"),
+    "ninth_pairs_to_esto_pairs": ("ninth_sector", "ninth_fuel", "esto_flow", "esto_product"),
 }
 SOURCE_COLUMN = {
     "leap_combined_esto": "leap_is_subtotal",

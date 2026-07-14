@@ -1,0 +1,42 @@
+{
+  "_note": "Human-owned record of which LEAP demand sectors are included in 'All demand aggregated' (i.e. have no separately modelled LEAP detail yet). Consumed by codebase/mapping_tools/source_branch_preflight.py: check_all_demand_aggregated_overlap() warns when the aggregate and a still-configured included sector are both non-zero for the same economy/period; get_demand_sectors_without_detail() exposes the resolved per-economy list to downstream consumers such as the dashboard workflow, which skips rendering demand-sector pages that would otherwise show no LEAP detail.",
+  "aggregated_branch": "All demand aggregated",
+  "components": [
+    {
+      "component_branch": "Buildings",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Buildings is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "Freight road",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Freight road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "Industry",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Industry is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "Other sector",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Other sector is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "Passenger road",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Passenger road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "Transport non road",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. If Transport non road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    }
+  ]
+}

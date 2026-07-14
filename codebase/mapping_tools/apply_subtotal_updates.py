@@ -71,8 +71,8 @@ APPROVAL_COL = "CAN BE INSERTED INTO MAPPINGS"
 #    col 6  ninth_pair_is_subtotal    <-- ninth draft target
 #
 #  ninth_pairs_to_esto_pairs
-#    col 1  9th_sector
-#    col 2  9th_fuel
+#    col 1  ninth_sector
+#    col 2  ninth_fuel
 #    col 3  esto_flow
 #    col 4  esto_product
 #    col 5  ninth_pair_is_subtotal    <-- ninth draft target

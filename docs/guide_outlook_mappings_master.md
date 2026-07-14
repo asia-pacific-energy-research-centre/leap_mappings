@@ -101,7 +101,7 @@ registered as tree nodes.
 **Every group must list ALL of its real components.** The own-use groups once listed only the
 `10.01.x` flow (the `09.x` input rows had been dropped in a sheet restructure): expansion then
 sent LEAP values *only* to own-use, the merge never formed, no `(including own use)` row
-appeared, and the main transformation flows silently vanished from `leap_vs_esto`. If a group
+appeared, and the main transformation flows silently vanished from `esto_leap`. If a group
 is meant to be "X plus its own use", it needs both the X row and the 10.01.x row.
 
 Nested rollups are allowed (a component may itself be a rolled name; resolution recurses,
@@ -218,7 +218,7 @@ Restrictions:
   receives one branch of each pair, not their accidental sum. `Power` stays a
   `NON_EXPANDING_ROLLUP`; its interim contributors are governed by that
   configuration, and `All demand aggregated` overlap is governed by
-  `config/all_demand_aggregated_components.csv` (warning only).
+  `config/all_demand_aggregated_components.json` (warning only).
 - After editing, rerun the pipeline and check
   `results/mapping_relationships/qa_non_expanding_rollup_unresolved.csv`,
   `results/common_esto/qa_common_esto_non_expanding_rollups.csv`, and

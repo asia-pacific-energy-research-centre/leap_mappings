@@ -51,10 +51,10 @@ def load_nonzero_esto_pairs(esto_csv_path: Path = ESTO_CSV_PATH) -> set[tuple[st
 
 
 def load_nonzero_ninth_pairs(ninth_csv_path: Path = NINTH_CSV_PATH) -> set[tuple[str, str]]:
-    """(9th_sector, 9th_fuel) pairs with non-zero data in any economy, scenario, or year."""
+    """(ninth_sector, ninth_fuel) pairs with non-zero data in any economy, scenario, or year."""
     ninth_df = pd.read_csv(ninth_csv_path, dtype=str, low_memory=False)
     ninth_df = add_ninth_pair_columns(ninth_df)
-    return _nonzero_key_pairs(ninth_df, ["9th_sector", "9th_fuel"])
+    return _nonzero_key_pairs(ninth_df, ["ninth_sector", "ninth_fuel"])
 
 
 #%%
@@ -98,7 +98,7 @@ def flag_ninth_pairs_to_esto(
     workbook_path: Path = WORKBOOK_PATH,
 ) -> pd.DataFrame:
     df = _load_mapping_sheet("ninth_pairs_to_esto_pairs", workbook_path)
-    ninth_keys = df[["9th_sector", "9th_fuel"]].apply(lambda s: s.str.strip())
+    ninth_keys = df[["ninth_sector", "ninth_fuel"]].apply(lambda s: s.str.strip())
     esto_keys = df[["esto_flow", "esto_product"]].apply(lambda s: s.str.strip())
     df["ninth_side_has_data"] = list(map(tuple, ninth_keys.values))
     df["ninth_side_has_data"] = df["ninth_side_has_data"].isin(nonzero_ninth_pairs)

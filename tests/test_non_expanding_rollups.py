@@ -178,7 +178,7 @@ class TestScenario2NormalRollupStillUnions:
                 {"component_esto_flow": "09.02.01 Electricity plants", "component_esto_product": "01.05 Lignite"},
             ]
         )
-        edges, groups = build_manual_override_edges(overrides, "leap_vs_esto", required)
+        edges, groups = build_manual_override_edges(overrides, "esto_leap", required)
         assert edges == [
             (
                 ("09.01.01 Electricity plants", "01.05 Lignite"),
@@ -199,7 +199,7 @@ class TestScenario3FrontierCheck:
         )
         labels = {"16.03-16.04 Agriculture and fishing": "nonexp_16_03_16_04_agriculture_and_fishing"}
         children = {"16.03-16.04 Agriculture and fishing": ["16.03 Agriculture", "16.04 Fishing"]}
-        result = build_non_expanding_frontier_check(common_rows, labels, children, "leap_vs_esto")
+        result = build_non_expanding_frontier_check(common_rows, labels, children, "esto_leap")
         assert list(result["check_status"]) == ["ok"]
 
     def test_subtotal_sharing_row_with_child_is_violation(self) -> None:
@@ -211,7 +211,7 @@ class TestScenario3FrontierCheck:
         )
         labels = {"16.03-16.04 Agriculture and fishing": "nonexp_16_03_16_04_agriculture_and_fishing"}
         children = {"16.03-16.04 Agriculture and fishing": ["16.03 Agriculture", "16.04 Fishing"]}
-        result = build_non_expanding_frontier_check(common_rows, labels, children, "leap_vs_esto")
+        result = build_non_expanding_frontier_check(common_rows, labels, children, "esto_leap")
         row = result.iloc[0]
         assert row["check_status"] == "violation"
         assert "subtotal_shares_common_row_with_declared_child" in row["violation_reason"]
@@ -275,7 +275,7 @@ class TestScenario7SuppressedEdges:
     def test_rollup_derived_rows_do_not_create_edges_and_are_published(self) -> None:
         edges, aggregates, suppressed = build_source_aggregate_edges(
             self._relationships(),
-            comparison_scope="leap_vs_esto",
+            comparison_scope="esto_leap",
             aggregate_source_systems=["LEAP", "NINTH"],
         )
         assert edges == []

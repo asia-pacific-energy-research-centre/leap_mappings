@@ -39,13 +39,13 @@ DIRECTION_CONFIG = {
     "ESTO_TO_LEAP": {
         "source_system": "ESTO",
         "target_system": "LEAP",
-        "comparison_scope": "leap_vs_esto",
+        "comparison_scope": "esto_leap",
         "source_scenario": "historical",
     },
     "NINTH_TO_LEAP": {
         "source_system": "NINTH",
         "target_system": "LEAP",
-        "comparison_scope": "leap_vs_esto_vs_ninth",
+        "comparison_scope": "esto_leap_ninth",
         "source_scenario": None,
     },
 }

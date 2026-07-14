@@ -27,7 +27,7 @@ def _write_mapping_workbook(
     """Write the two mapping sheets required by Stage A tests."""
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         pd.DataFrame(ninth_rows or [], columns=[
-            "9th_sector", "9th_fuel", "esto_flow", "esto_product",
+            "ninth_sector", "ninth_fuel", "esto_flow", "esto_product",
         ]).to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs", index=False)
         pd.DataFrame(leap_rows or [], columns=[
             "leap_sector_name_full_path", "raw_leap_fuel_name",
@@ -187,9 +187,9 @@ def test_ninth_validation_is_projection_only_and_preserves_exact_context(tmp_pat
     _write_mapping_workbook(
         workbook_path,
         ninth_rows=[
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_others", "esto_flow": "12 Total final consumption", "esto_product": "16 Others"},
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_01_biogas", "esto_flow": "12 Total final consumption", "esto_product": "16.01 Biogas"},
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_02_waste", "esto_flow": "12 Total final consumption", "esto_product": "16.02 Industrial waste"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_others", "esto_flow": "12 Total final consumption", "esto_product": "16 Others"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_01_biogas", "esto_flow": "12 Total final consumption", "esto_product": "16.01 Biogas"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_02_waste", "esto_flow": "12 Total final consumption", "esto_product": "16.02 Industrial waste"},
         ],
     )
 
@@ -220,9 +220,9 @@ def test_ninth_ambiguous_parent_mapping_is_not_confirmed(tmp_path: Path) -> None
     _write_mapping_workbook(
         workbook_path,
         ninth_rows=[
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_others", "esto_flow": "12 Total final consumption", "esto_product": "16 Others"},
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_others", "esto_flow": "13 Total final energy consumption", "esto_product": "16 Others"},
-            {"9th_sector": "12_total_final_consumption", "9th_fuel": "16_01_biogas", "esto_flow": "12 Total final consumption", "esto_product": "16.01 Biogas"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_others", "esto_flow": "12 Total final consumption", "esto_product": "16 Others"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_others", "esto_flow": "13 Total final energy consumption", "esto_product": "16 Others"},
+            {"ninth_sector": "12_total_final_consumption", "ninth_fuel": "16_01_biogas", "esto_flow": "12 Total final consumption", "esto_product": "16.01 Biogas"},
         ],
     )
 

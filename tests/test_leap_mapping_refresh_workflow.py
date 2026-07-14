@@ -134,8 +134,8 @@ def test_crosswalk_target_conflicts_reports_different_active_target() -> None:
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             }
@@ -181,8 +181,8 @@ def test_crosswalk_target_conflicts_labels_non_strict_cardinality_review() -> No
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             }
@@ -219,7 +219,7 @@ def test_implied_missing_crosswalk_pairs_reports_candidate_to_add() -> None:
         ]
     )
     ninth_to_esto_pairs = pd.DataFrame(
-        columns=["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+        columns=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     )
 
     candidates = _build_implied_missing_crosswalk_pairs(esto, ninth, ninth_to_esto_pairs)
@@ -254,14 +254,14 @@ def test_implied_missing_crosswalk_pairs_labels_many_to_many_candidate() -> None
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             },
             {
-                "9th_sector": "16_other_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "16_other_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.02 LPG",
             },

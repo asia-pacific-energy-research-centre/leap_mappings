@@ -68,8 +68,8 @@ VALIDATION_MODES = {"structural", "slice", "full"}
 # comparison scope that carries that system's full component mapping (verified by
 # overlap against the converted target pairs) is fixed here.
 SYSTEM_SCOPE = {
-    "LEAP": "leap_vs_esto",
-    "NINTH": "leap_vs_esto_vs_ninth",
+    "LEAP": "esto_leap",
+    "NINTH": "esto_leap_ninth",
     "ESTO": "esto_only",
 }
 SOURCE_SYSTEMS = ("LEAP", "NINTH", "ESTO")

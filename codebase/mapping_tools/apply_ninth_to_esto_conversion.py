@@ -49,7 +49,7 @@ def read_table(path: Path) -> pd.DataFrame:
 
 def prepare_ninth_long_format(
     ninth_csv_path: Path,
-    scenario_filter: str = "reference",
+    scenario_filter: str | list[str] | None = None,
     mapped_pairs: set[tuple[str, str]] | None = None,
 ) -> pd.DataFrame:
     """
@@ -58,6 +58,11 @@ def prepare_ninth_long_format(
 
     ninth_sector = the most specific available sector hierarchy level
     ninth_fuel   = subfuels value, or fuels where subfuels == 'x'
+
+    ``scenario_filter`` optionally restricts rows to one or more scenario
+    values (case-insensitive). Leave as ``None`` (the default) to pass through
+    every scenario present in the source data (e.g. both "reference" and
+    "target").
 
     ``mapped_pairs`` optionally restricts the wide frame to
     ``(ninth_sector, ninth_fuel)`` pairs that have an included ESTO mapping
@@ -69,9 +74,10 @@ def prepare_ninth_long_format(
     """
     df = pd.read_csv(ninth_csv_path, dtype=object)
 
-    # Filter to reference scenario (or as specified)
     if "scenarios" in df.columns and scenario_filter:
-        df = df[df["scenarios"].str.lower() == scenario_filter.lower()]
+        allowed = {scenario_filter} if isinstance(scenario_filter, str) else set(scenario_filter)
+        allowed = {value.lower() for value in allowed}
+        df = df[df["scenarios"].str.lower().isin(allowed)]
 
     df = df.copy()
     # Resolve ninth_sector to the most specific hierarchy level present.
