@@ -1,0 +1,4 @@
+rule_id,standard_branch,interim_branch,action,include,note
+SBF-001,Electricity Generation,Electricity interim,warn_and_zero_interim,True,Alternative model structures: when both branches are non-zero for an economy/scenario/year the interim branch is zeroed in working data so the Power non-expanding rollup receives one branch of the pair. Raw parsed input is never altered.
+SBF-002,CHP plants,CHP interim,warn_and_zero_interim,True,Alternative model structures: when both branches are non-zero for an economy/scenario/year the interim branch is zeroed in working data so the Power non-expanding rollup receives one branch of the pair. Raw parsed input is never altered.
+SBF-003,Heat plants,Heat plant interim,warn_and_zero_interim,True,Alternative model structures: when both branches are non-zero for an economy/scenario/year the interim branch is zeroed in working data so the Power non-expanding rollup receives one branch of the pair. Raw parsed input is never altered.

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mapping_tools.source_branch_preflight import run_leap_source_branch_preflight
 from codebase.mapping_tools.source_rollups import apply_source_rollups
 from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
 
@@ -173,10 +174,24 @@ def run_conversion(
     rollup_audit_path: Path | None = None,
     target_values_path: Path | None = None,
     lineage_output_path: Path | None = None,
+    source_branch_fallback_rules_path: Path | None = None,
+    all_demand_components_path: Path | None = None,
+    preflight_audit_dir: Path | None = None,
 ) -> pd.DataFrame:
     """Run LEAP-to-ESTO conversion."""
     leap_results_df = read_table(leap_results_path)
     raw_row_count = len(leap_results_df)
+    if source_branch_fallback_rules_path is not None or all_demand_components_path is not None:
+        # Configuration-owned source preflight: interim-branch fallback zeroing
+        # and the All-demand-aggregated overlap warning must run on the parsed
+        # working data before any source rollup, conversion, or Common ESTO
+        # application. The parsed raw input file itself is never modified.
+        leap_results_df, _, _ = run_leap_source_branch_preflight(
+            leap_results_df,
+            fallback_rules_path=source_branch_fallback_rules_path,
+            all_demand_components_path=all_demand_components_path,
+            audit_output_dir=preflight_audit_dir if preflight_audit_dir is not None else output_path.parent,
+        )
     relationships_df = load_leap_to_esto_relationships(relationships_path)
     rollup_rules_df = None
     rollup_audit_df = None

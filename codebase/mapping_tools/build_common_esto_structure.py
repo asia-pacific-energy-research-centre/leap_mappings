@@ -24,26 +24,36 @@ CONVERSION_USE_CASES = [
     "leap_to_esto_balance_conversion",
     "ninth_to_esto_balance_conversion",
 ]
+# All four scopes share one structural partition. `aggregate_source_systems`
+# and `use_cases` are intentionally identical across scopes so that every
+# scope resolves a common row to the same, globally least-detailed rollup
+# found across LEAP and NINTH's aggregate constraints -- a product/flow must
+# never be an exact row in one scope and part of a rolled-up common row in
+# another just because a given scope's comparison happens not to include the
+# system that required the rollup. `systems` still documents which datasets
+# actually participate in that scope's comparison.
+_ALL_USE_CASES = ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"]
+_ALL_AGGREGATE_SOURCE_SYSTEMS = ["LEAP", "NINTH"]
 COMPARISON_SCOPES = {
     "leap_vs_esto": {
         "systems": ["LEAP", "ESTO"],
-        "use_cases": ["leap_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["LEAP"],
+        "use_cases": _ALL_USE_CASES,
+        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
     },
     "leap_vs_ninth": {
         "systems": ["LEAP", "NINTH"],
-        "use_cases": ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["LEAP", "NINTH"],
+        "use_cases": _ALL_USE_CASES,
+        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
     },
     "leap_vs_esto_vs_ninth": {
         "systems": ["LEAP", "ESTO", "NINTH"],
-        "use_cases": ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["LEAP", "NINTH"],
+        "use_cases": _ALL_USE_CASES,
+        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
     },
     "esto_only": {
         "systems": ["ESTO"],
-        "use_cases": ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"],
-        "aggregate_source_systems": [],
+        "use_cases": _ALL_USE_CASES,
+        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
     },
 }
 COMMON_ROW_COLUMNS = [
@@ -65,6 +75,8 @@ COMMON_ROW_COLUMNS = [
     "component_sign",
     "is_exact_row",
     "requires_rollup",
+    "is_non_expanding_rollup",
+    "non_expanding_rollup_id",
     "common_row_basis",
     "aggregate_group_source",
     "aggregate_group_source_id",
@@ -93,9 +105,13 @@ OVERRIDE_COLUMNS = [
     "notes",
 ]
 LABEL_OVERRIDE_COLUMNS = [
+    "enabled",
+    "comparison_scope",
     "common_row_id",
     "auto_common_flow_label",
     "auto_common_product_label",
+    "component_esto_flows",
+    "component_esto_products",
     "preferred_common_flow_label",
     "preferred_common_product_label",
     "notes",
@@ -148,7 +164,8 @@ def split_code_name(label: Any) -> tuple[str, str]:
     text = normalise_text(label)
     if not text:
         return "", ""
-    match = re.match(r"^([0-9][0-9A-Za-z_.-]*(?:\.[0-9A-Za-z_.-]+)*)\s+(.+)$", text)
+    code_token = r"[0-9][0-9A-Za-z_.-]*(?:\.[0-9A-Za-z_.-]+)*"
+    match = re.match(rf"^({code_token}(?:,{code_token})*)\s+(.+)$", text)
     if not match:
         return text, text
     return match.group(1).strip(), match.group(2).strip()
@@ -201,6 +218,8 @@ def common_row_id_for_components(component_pairs: list[tuple[str, str]]) -> str:
 
 def make_label(code: str, name: str) -> str:
     """Combine code and name while tolerating missing names."""
+    if code and name and normalise_text(code) == normalise_text(name):
+        return normalise_text(code)
     if code and name:
         return f"{code} {name}"
     return code or name
@@ -230,8 +249,14 @@ def load_code_name_lookups(outlook_mappings_path: Path) -> tuple[dict[str, str],
     flow_lookup: dict[str, str] = {}
     product_lookup: dict[str, str] = {}
     try:
+        # No USED_IN_LEAP_INITIALISATION filter here: this table is a pure
+        # code->name lookup for synthesizing rollup labels (e.g. parent
+        # category names), not a set of directly usable mapping targets.
+        # Several parent categories (e.g. "07 Petroleum products") are
+        # flagged False for direct use but still need to supply their name
+        # when a rollup's components share their code prefix.
         labels_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_display_names", dtype=object)
-        labels_df = filter_used_in_leap_initialisation(labels_df).fillna("")
+        labels_df = labels_df.fillna("")
     except Exception:
         return flow_lookup, product_lookup
     for _, row in labels_df.iterrows():
@@ -353,11 +378,25 @@ def allocation_allows_split(group_df: pd.DataFrame) -> bool:
     return bool(methods - {"", "direct", "none"})
 
 
+SUPPRESSED_EDGE_COLUMNS = [
+    "comparison_scope",
+    "use_case",
+    "source_system",
+    "source_flow",
+    "source_product",
+    "suppressed_component_flow",
+    "suppressed_component_product",
+    "exclusion_reason",
+    "retained_edge_component_count",
+    "group_component_count",
+]
+
+
 def build_source_aggregate_edges(
     relationships_df: pd.DataFrame,
     comparison_scope: str,
     aggregate_source_systems: list[str],
-) -> tuple[list[tuple[tuple[str, str], tuple[str, str]]], pd.DataFrame]:
+) -> tuple[list[tuple[tuple[str, str], tuple[str, str]]], pd.DataFrame, pd.DataFrame]:
     """Build graph edges from source rows that map to multiple ESTO components.
 
     When a single source row (identified by use_case + source_system +
@@ -392,12 +431,14 @@ def build_source_aggregate_edges(
 
     The full set of component pairs (including subtotals and rollup-derived
     rows) is still recorded in the aggregate-group metadata for diagnostic
-    purposes.
+    purposes, and every graph edge suppressed by the exclusion is published in
+    the suppressed-edge QA frame so new structural risks stay reviewable.
     """
     edges: list[tuple[tuple[str, str], tuple[str, str]]] = []
     aggregate_rows: list[dict[str, Any]] = []
+    suppressed_rows: list[dict[str, Any]] = []
     if not aggregate_source_systems:
-        return edges, pd.DataFrame()
+        return edges, pd.DataFrame(), pd.DataFrame(columns=SUPPRESSED_EDGE_COLUMNS)
     relationships_df = relationships_df[relationships_df["source_system"].isin(aggregate_source_systems)].copy()
     # Relationships with no source_flow are unspecified-sector catch-alls that must not
     # create connected-component edges — doing so would merge unrelated ESTO flows.
@@ -408,7 +449,37 @@ def build_source_aggregate_edges(
     group_columns = ["use_case", "source_system", "source_flow", "source_product"]
     for group_values, group_df in relationships_df.groupby(group_columns, dropna=False):
         all_pairs = sorted({component_pair(row) for _, row in group_df.iterrows()})
-        edge_pairs = sorted({component_pair(row) for _, row in group_df[~exclude_mask.reindex(group_df.index, fill_value=False)].iterrows()})
+        group_exclude_mask = exclude_mask.reindex(group_df.index, fill_value=False)
+        edge_pairs = sorted({component_pair(row) for _, row in group_df[~group_exclude_mask].iterrows()})
+        if len(all_pairs) > 1 and not allocation_allows_split(group_df):
+            # Pairs reachable only through excluded rows would have drawn merge
+            # edges; record them with their exclusion provenance.
+            edge_pair_set = set(edge_pairs)
+            pair_reasons: dict[tuple[str, str], set[str]] = {}
+            for index, row in group_df[group_exclude_mask].iterrows():
+                pair = component_pair(row)
+                if pair in edge_pair_set:
+                    continue
+                reasons = pair_reasons.setdefault(pair, set())
+                if bool(rollup_derived_mask.get(index, False)):
+                    reasons.add("is_rollup_derived")
+                if bool(subtotal_mask.get(index, False)):
+                    reasons.add("esto_pair_is_subtotal")
+            for pair, reasons in sorted(pair_reasons.items()):
+                suppressed_rows.append(
+                    {
+                        "comparison_scope": comparison_scope,
+                        "use_case": group_values[0],
+                        "source_system": group_values[1],
+                        "source_flow": group_values[2],
+                        "source_product": group_values[3],
+                        "suppressed_component_flow": pair[0],
+                        "suppressed_component_product": pair[1],
+                        "exclusion_reason": "|".join(sorted(reasons)),
+                        "retained_edge_component_count": len(edge_pairs),
+                        "group_component_count": len(all_pairs),
+                    }
+                )
         if len(edge_pairs) <= 1 or allocation_allows_split(group_df):
             continue
         for pair in edge_pairs[1:]:
@@ -427,7 +498,7 @@ def build_source_aggregate_edges(
                 "aggregation_reason": f"{str(group_values[1]).lower()}_defined_aggregate",
             }
         )
-    return edges, pd.DataFrame(aggregate_rows)
+    return edges, pd.DataFrame(aggregate_rows), pd.DataFrame(suppressed_rows, columns=SUPPRESSED_EDGE_COLUMNS)
 
 
 def build_manual_override_edges(
@@ -483,20 +554,29 @@ def build_manual_override_edges(
                 if product in products_by_flow.get(flow, set())
             }
         )
-        if len(component_pairs) <= 1:
-            continue
-        for pair in component_pairs[1:]:
-            edges.append((component_pairs[0], pair))
-        rows.append(
-            {
-                "comparison_scope": comparison_scope,
-                "aggregate_group_source": "manual_override",
-                "aggregate_group_source_id": normalise_text(override_group_id),
-                "component_count": len(component_pairs),
-                "component_pairs": "|".join(f"{flow} :: {product}" for flow, product in component_pairs),
-                "aggregation_reason": "manual_override",
-            }
-        )
+        # Edges are drawn per product: a flow-level override merges its flows
+        # within each shared product, never across products. A single star over
+        # all (flow, product) combinations would chain unlike products into one
+        # common row and, through axis-partition closure, fuse unrelated product
+        # families into one giant partition.
+        pairs_by_product: dict[str, list[tuple[str, str]]] = {}
+        for pair in component_pairs:
+            pairs_by_product.setdefault(pair[1], []).append(pair)
+        for product, product_pairs in sorted(pairs_by_product.items()):
+            if len(product_pairs) <= 1:
+                continue
+            for pair in product_pairs[1:]:
+                edges.append((product_pairs[0], pair))
+            rows.append(
+                {
+                    "comparison_scope": comparison_scope,
+                    "aggregate_group_source": "manual_override",
+                    "aggregate_group_source_id": normalise_text(override_group_id),
+                    "component_count": len(product_pairs),
+                    "component_pairs": "|".join(f"{flow} :: {product}" for flow, product in product_pairs),
+                    "aggregation_reason": "manual_override",
+                }
+            )
     return edges, pd.DataFrame(rows)
 
 
@@ -664,6 +744,8 @@ def build_common_rows(
                     "component_sign": 1,
                     "is_exact_row": is_exact_row,
                     "requires_rollup": not is_exact_row,
+                    "is_non_expanding_rollup": False,
+                    "non_expanding_rollup_id": "",
                     "common_row_basis": "exact_esto_row" if is_exact_row else "connected_component_rollup",
                     "aggregate_group_source": aggregate_source,
                     "aggregate_group_source_id": aggregate_source_id,
@@ -676,6 +758,169 @@ def build_common_rows(
     return pd.DataFrame(output_rows, columns=COMMON_ROW_COLUMNS).sort_values(
         ["common_flow_code", "common_product_code", "component_esto_flow", "component_esto_product"]
     )
+
+
+def apply_non_expanding_flags(
+    common_rows_df: pd.DataFrame,
+    non_expanding_labels: dict[str, str],
+) -> pd.DataFrame:
+    """Flag common rows whose component is a named non-expanding subtotal label."""
+    if common_rows_df.empty or not non_expanding_labels:
+        return common_rows_df
+    adjusted_df = common_rows_df.copy()
+    component_flows = adjusted_df["component_esto_flow"].astype(str).map(normalise_text)
+    flagged_ids = component_flows.map(lambda label: non_expanding_labels.get(label, ""))
+    # The flag applies to the whole common row: a non-expanding subtotal must
+    # stay a standalone row, so any row containing the label is marked.
+    row_ids_by_common: dict[str, str] = {}
+    for common_row_id, rollup_id in zip(adjusted_df["common_row_id"], flagged_ids):
+        if rollup_id:
+            row_ids_by_common.setdefault(str(common_row_id), rollup_id)
+    if not row_ids_by_common:
+        return common_rows_df
+    mapped_ids = adjusted_df["common_row_id"].astype(str).map(lambda value: row_ids_by_common.get(value, ""))
+    adjusted_df["non_expanding_rollup_id"] = mapped_ids
+    adjusted_df["is_non_expanding_rollup"] = mapped_ids.ne("")
+    adjusted_df.loc[adjusted_df["is_non_expanding_rollup"], "common_row_basis"] = "non_expanding_rollup"
+    return adjusted_df
+
+
+NON_EXPANDING_QA_COLUMNS = [
+    "comparison_scope",
+    "non_expanding_rollup_id",
+    "rolled_flow_label",
+    "rule_sheets",
+    "mapped_source_systems",
+    "contributor_inputs",
+    "observed_products",
+    "observed_product_count",
+    "common_row_ids",
+]
+
+NON_EXPANDING_FRONTIER_COLUMNS = [
+    "comparison_scope",
+    "non_expanding_rollup_id",
+    "rolled_flow_label",
+    "declared_child_flow_labels",
+    "check_status",
+    "violation_reason",
+    "violating_common_row_ids",
+]
+
+
+def build_non_expanding_rollup_qa(
+    common_rows_df: pd.DataFrame,
+    included_df: pd.DataFrame,
+    non_expanding_labels: dict[str, str],
+    catalogue_df: pd.DataFrame,
+    comparison_scope: str,
+) -> pd.DataFrame:
+    """One QA row per configured non-expanding rollup for this scope."""
+    if not non_expanding_labels:
+        return pd.DataFrame(columns=NON_EXPANDING_QA_COLUMNS)
+    catalogue_df = catalogue_df if catalogue_df is not None else pd.DataFrame()
+    rows: list[dict[str, Any]] = []
+    component_flows = (
+        common_rows_df["component_esto_flow"].astype(str).map(normalise_text)
+        if not common_rows_df.empty
+        else pd.Series(dtype=str)
+    )
+    target_flows = (
+        included_df["target_flow"].astype(str).map(normalise_text)
+        if not included_df.empty
+        else pd.Series(dtype=str)
+    )
+    for label, rollup_id in sorted(non_expanding_labels.items()):
+        label_rows = common_rows_df[component_flows.eq(label)] if not common_rows_df.empty else pd.DataFrame()
+        mapping_rows = included_df[target_flows.eq(label)] if not included_df.empty else pd.DataFrame()
+        mapped_systems = (
+            sorted(set(mapping_rows["source_system"].astype(str))) if not mapping_rows.empty else []
+        )
+        rule_sheets: list[str] = []
+        contributor_inputs: list[str] = []
+        if not catalogue_df.empty:
+            catalogue_rows = catalogue_df[
+                catalogue_df["rolled_flow_label"].astype(str).map(normalise_text).eq(label)
+            ]
+            rule_sheets = sorted(set(catalogue_rows["rule_sheet"].astype(str)))
+            contributor_inputs = sorted(
+                {
+                    f"{row['source_system']}: {row['input_flow']}"
+                    + (f" / {row['input_product']}" if str(row["input_product"]).strip() else "")
+                    for _, row in catalogue_rows.iterrows()
+                    if str(row["input_flow"]).strip()
+                }
+            )
+            if any(sheet == "esto_rollup_rules" for sheet in rule_sheets):
+                mapped_systems = sorted(set(mapped_systems) | {"ESTO (derived subtotal rows)"})
+        observed_products = (
+            sorted(set(label_rows["component_esto_product"].astype(str))) if not label_rows.empty else []
+        )
+        rows.append(
+            {
+                "comparison_scope": comparison_scope,
+                "non_expanding_rollup_id": rollup_id,
+                "rolled_flow_label": label,
+                "rule_sheets": "|".join(rule_sheets),
+                "mapped_source_systems": "|".join(mapped_systems),
+                "contributor_inputs": "|".join(contributor_inputs),
+                "observed_products": "|".join(observed_products),
+                "observed_product_count": len(observed_products),
+                "common_row_ids": "|".join(sorted(set(label_rows["common_row_id"].astype(str)))) if not label_rows.empty else "",
+            }
+        )
+    return pd.DataFrame(rows, columns=NON_EXPANDING_QA_COLUMNS)
+
+
+def build_non_expanding_frontier_check(
+    common_rows_df: pd.DataFrame,
+    non_expanding_labels: dict[str, str],
+    children_by_label: dict[str, list[str]],
+    comparison_scope: str,
+) -> pd.DataFrame:
+    """Check that no non-expanding subtotal joins an additive frontier with its children.
+
+    A named non-expanding subtotal must remain a standalone common row: sharing
+    a common row with any other component — especially one of its declared
+    children — would let additive consumers sum the subtotal together with its
+    contributors.
+    """
+    if not non_expanding_labels:
+        return pd.DataFrame(columns=NON_EXPANDING_FRONTIER_COLUMNS)
+    rows: list[dict[str, Any]] = []
+    components_by_common: dict[str, set[str]] = {}
+    if not common_rows_df.empty:
+        for common_row_id, group_df in common_rows_df.groupby("common_row_id", dropna=False):
+            components_by_common[str(common_row_id)] = {
+                normalise_text(value) for value in group_df["component_esto_flow"]
+            }
+    for label, rollup_id in sorted(non_expanding_labels.items()):
+        declared_children = [normalise_text(child) for child in children_by_label.get(label, []) if normalise_text(child)]
+        violating_ids: set[str] = set()
+        reasons: set[str] = set()
+        for common_row_id, components in components_by_common.items():
+            if label not in components:
+                continue
+            other_components = components - {label}
+            if not other_components:
+                continue
+            violating_ids.add(common_row_id)
+            if other_components & set(declared_children):
+                reasons.add("subtotal_shares_common_row_with_declared_child")
+            else:
+                reasons.add("subtotal_shares_common_row_with_other_components")
+        rows.append(
+            {
+                "comparison_scope": comparison_scope,
+                "non_expanding_rollup_id": rollup_id,
+                "rolled_flow_label": label,
+                "declared_child_flow_labels": "; ".join(declared_children),
+                "check_status": "violation" if violating_ids else "ok",
+                "violation_reason": "|".join(sorted(reasons)),
+                "violating_common_row_ids": "|".join(sorted(violating_ids)),
+            }
+        )
+    return pd.DataFrame(rows, columns=NON_EXPANDING_FRONTIER_COLUMNS)
 
 
 def axis_settings(axis: str) -> dict[str, str]:
@@ -815,6 +1060,60 @@ def build_preferred_flow_partition_labels(
         if len(flows) > 1 and len(labels) == 1:
             result[flows] = next(iter(labels))
     return result
+
+
+def _enabled_label_override(value: Any) -> bool:
+    """Return whether a config label override is enabled."""
+    return normalise_text(value).casefold() in {"1", "true", "yes"}
+
+
+def apply_configured_axis_label_overrides(
+    partition_lookup_df: pd.DataFrame,
+    label_overrides_df: pd.DataFrame,
+    axis: str,
+    comparison_scope: str,
+) -> pd.DataFrame:
+    """Apply config-owned display labels to final common-axis partitions.
+
+    Labels are applied to the completed partition rather than to source mapping
+    rows.  This preserves component membership, common-row IDs, and values.
+    Optional component lists protect against a future auto-label referring to a
+    different set of ESTO components.
+    """
+    if partition_lookup_df.empty or label_overrides_df.empty:
+        return partition_lookup_df
+
+    auto_label_column = f"auto_common_{axis}_label"
+    preferred_label_column = f"preferred_common_{axis}_label"
+    component_list_column = f"component_esto_{axis}s"
+    if auto_label_column not in label_overrides_df or preferred_label_column not in label_overrides_df:
+        return partition_lookup_df
+
+    adjusted_df = partition_lookup_df.copy()
+    scoped_overrides_df = label_overrides_df[
+        label_overrides_df["enabled"].map(_enabled_label_override)
+        & label_overrides_df["comparison_scope"].astype(str).map(normalise_text).isin(
+            {"", normalise_text(comparison_scope)}
+        )
+    ]
+    for _, override in scoped_overrides_df.iterrows():
+        auto_label = normalise_text(override.get(auto_label_column, ""))
+        preferred_label = normalise_text(override.get(preferred_label_column, ""))
+        expected_components = normalise_text(override.get(component_list_column, ""))
+        if not auto_label or not preferred_label:
+            continue
+
+        matches = adjusted_df["partition_label"].astype(str).map(normalise_text).eq(auto_label)
+        if expected_components:
+            matches &= adjusted_df["partition_components"].astype(str).map(normalise_text).eq(expected_components)
+        if not matches.any():
+            raise ValueError(
+                f"Enabled {axis} label override did not match a final partition: "
+                f"{auto_label!r} ({expected_components or 'any components'})."
+            )
+        adjusted_df.loc[matches, "partition_label"] = preferred_label
+        adjusted_df.loc[matches, "partition_created_by"] = "config_label_override"
+    return adjusted_df
 
 
 def build_axis_partition_lookup(
@@ -1163,8 +1462,13 @@ def build_common_esto_for_scope(
     label_overrides_df: pd.DataFrame,
     flow_code_to_name: dict[str, str],
     product_code_to_name: dict[str, str],
+    non_expanding_labels: dict[str, str] | None = None,
+    non_expanding_catalogue_df: pd.DataFrame | None = None,
+    non_expanding_children: dict[str, list[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build common ESTO rows, map rows, and QA outputs for one comparison scope."""
+    non_expanding_labels = non_expanding_labels or {}
+    non_expanding_children = non_expanding_children or {}
     included_df, excluded_components_df = included_esto_relationships(
         relationships_df,
         exclusions_df,
@@ -1172,7 +1476,7 @@ def build_common_esto_for_scope(
         use_cases=scope_config["use_cases"],
     )
     required_components_df = build_required_components(included_df)
-    source_edges, source_aggregates_df = build_source_aggregate_edges(
+    source_edges, source_aggregates_df, suppressed_edges_df = build_source_aggregate_edges(
         included_df,
         comparison_scope=comparison_scope,
         aggregate_source_systems=scope_config["aggregate_source_systems"],
@@ -1192,6 +1496,7 @@ def build_common_esto_for_scope(
         product_code_to_name,
         comparison_scope=comparison_scope,
     )
+    common_rows_df = apply_non_expanding_flags(common_rows_df, non_expanding_labels)
     if common_rows_df.empty:
         map_df = build_map_table(common_rows_df)
         qa_outputs = {
@@ -1202,6 +1507,9 @@ def build_common_esto_for_scope(
             "qa_common_esto_rollup_explanations": pd.DataFrame(),
             "qa_common_esto_unresolved_partial_coverage": pd.DataFrame(),
             "qa_common_esto_structural_partial_coverage": pd.DataFrame(),
+            "qa_common_esto_suppressed_graph_edges": suppressed_edges_df,
+            "qa_common_esto_non_expanding_rollups": pd.DataFrame(columns=NON_EXPANDING_QA_COLUMNS),
+            "qa_common_esto_non_expanding_frontier_check": pd.DataFrame(columns=NON_EXPANDING_FRONTIER_COLUMNS),
         }
         return common_rows_df, map_df, qa_outputs
 
@@ -1215,6 +1523,18 @@ def build_common_esto_for_scope(
         axis="flow",
         code_to_name=flow_code_to_name,
         preferred_partition_labels=build_preferred_flow_partition_labels(overrides_df, comparison_scope),
+    )
+    product_partition_lookup_df = apply_configured_axis_label_overrides(
+        product_partition_lookup_df,
+        label_overrides_df,
+        axis="product",
+        comparison_scope=comparison_scope,
+    )
+    flow_partition_lookup_df = apply_configured_axis_label_overrides(
+        flow_partition_lookup_df,
+        label_overrides_df,
+        axis="flow",
+        comparison_scope=comparison_scope,
     )
     common_rows_df = apply_axis_partition_labels(
         common_rows_df,
@@ -1258,6 +1578,20 @@ def build_common_esto_for_scope(
             ignore_index=True,
         ).assign(comparison_scope=comparison_scope),
         "qa_common_esto_excluded_components": excluded_components_df,
+        "qa_common_esto_suppressed_graph_edges": suppressed_edges_df,
+        "qa_common_esto_non_expanding_rollups": build_non_expanding_rollup_qa(
+            common_rows_df,
+            included_df,
+            non_expanding_labels,
+            non_expanding_catalogue_df,
+            comparison_scope,
+        ),
+        "qa_common_esto_non_expanding_frontier_check": build_non_expanding_frontier_check(
+            common_rows_df,
+            non_expanding_labels,
+            non_expanding_children,
+            comparison_scope,
+        ),
     }
     return common_rows_df, map_df, qa_outputs
 
@@ -1277,6 +1611,26 @@ def run_common_esto_structure_workflow(
     label_overrides_df = read_table_if_exists(common_esto_label_overrides_path, LABEL_OVERRIDE_COLUMNS)
     flow_code_to_name, product_code_to_name = load_code_name_lookups(outlook_mappings_path)
 
+    from codebase.mapping_tools.non_expanding_rollups import load_non_expanding_flow_labels
+
+    non_expanding_labels = load_non_expanding_flow_labels(outlook_mappings_path)
+    non_expanding_catalogue_df = read_table_if_exists(
+        Path(relationships_path).parent / "non_expanding_rollups.csv"
+    )
+    non_expanding_children: dict[str, list[str]] = {}
+    if not non_expanding_catalogue_df.empty:
+        for _, entry in non_expanding_catalogue_df.iterrows():
+            label = normalise_text(entry.get("rolled_flow_label", ""))
+            children_text = str(entry.get("child_flow_labels", "") or "")
+            if not label:
+                continue
+            children = [child.strip() for child in children_text.split(";") if child.strip()]
+            if children:
+                existing = non_expanding_children.setdefault(label, [])
+                for child in children:
+                    if child not in existing:
+                        existing.append(child)
+
     common_frames: list[pd.DataFrame] = []
     map_frames: list[pd.DataFrame] = []
     qa_frames: dict[str, list[pd.DataFrame]] = {}
@@ -1290,6 +1644,9 @@ def run_common_esto_structure_workflow(
             label_overrides_df=label_overrides_df,
             flow_code_to_name=flow_code_to_name,
             product_code_to_name=product_code_to_name,
+            non_expanding_labels=non_expanding_labels,
+            non_expanding_catalogue_df=non_expanding_catalogue_df,
+            non_expanding_children=non_expanding_children,
         )
         common_frames.append(scope_common_df)
         map_frames.append(scope_map_df)
@@ -1307,6 +1664,19 @@ def run_common_esto_structure_workflow(
     summary_df = qa_outputs.get("qa_common_esto_structure_summary", pd.DataFrame())
     for _, row in summary_df.iterrows():
         print(f"{row['comparison_scope']} {row['metric']}: {row['value']}")
+    frontier_df = qa_outputs.get("qa_common_esto_non_expanding_frontier_check", pd.DataFrame())
+    if not frontier_df.empty:
+        violations = frontier_df[frontier_df["check_status"] == "violation"]
+        if not violations.empty:
+            print(
+                f"WARNING: {len(violations):,} non-expanding subtotals share a common row with other "
+                "components. See qa_common_esto_non_expanding_frontier_check.csv"
+            )
+        else:
+            print(
+                f"Non-expanding frontier check: {frontier_df['non_expanding_rollup_id'].nunique()} subtotals, "
+                "no subtotal shares a common row with its children."
+            )
     print("before/after total differences: run apply_common_esto_structure.py with source data")
     print(f"Wrote common ESTO structure to: {output_dir}")
     return common_rows_df, map_df, qa_outputs
@@ -1320,7 +1690,7 @@ RELATIONSHIP_DIR = REPO_ROOT / "results" / "mapping_relationships"
 RELATIONSHIPS_PATH = RELATIONSHIP_DIR / "energy_balance_relationships.csv"
 COVERAGE_EXCLUSIONS_PATH = RELATIONSHIP_DIR / "coverage_exclusions.csv"
 COMMON_ESTO_OVERRIDES_PATH = RELATIONSHIP_DIR / "common_esto_overrides.csv"
-COMMON_ESTO_LABEL_OVERRIDES_PATH = RELATIONSHIP_DIR / "common_esto_label_overrides.csv"
+COMMON_ESTO_LABEL_OVERRIDES_PATH = REPO_ROOT / "config" / "common_esto_label_overrides.csv"
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 

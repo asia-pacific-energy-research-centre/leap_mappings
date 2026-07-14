@@ -49,6 +49,8 @@ OUTPUT_COLUMNS = [
     "common_row_basis",
     "is_exact_row",
     "requires_rollup",
+    "is_non_expanding_rollup",
+    "non_expanding_rollup_id",
     "source_aggregate_labels",
     "source_aggregate_group_ids",
     "value",
@@ -71,6 +73,8 @@ ESTO_COMPONENT_LINEAGE_COLUMNS = [
     "common_row_basis",
     "is_exact_row",
     "requires_rollup",
+    "is_non_expanding_rollup",
+    "non_expanding_rollup_id",
     "source_aggregate_labels",
     "source_aggregate_group_ids",
     "component_sign",
@@ -239,7 +243,10 @@ def split_code_name(label: object) -> tuple[str, str]:
     parts = text.split(" ", 1)
     if len(parts) == 1:
         return text, text
-    return parts[0].strip(), parts[1].strip()
+    code, name = parts[0].strip(), parts[1].strip()
+    if re.fullmatch(r"[0-9][0-9A-Za-z_.-]*(?:\.[0-9A-Za-z_.-]+)*(?:,[0-9][0-9A-Za-z_.-]*(?:\.[0-9A-Za-z_.-]+)*)*", code):
+        return code, name
+    return text, text
 
 
 def code_sort_key(code: str) -> tuple[object, ...]:
@@ -284,6 +291,8 @@ def compress_codes(codes: list[str]) -> str:
 
 def make_label(code: str, name: str) -> str:
     """Combine code and name while tolerating missing names."""
+    if code and name and str(code).strip() == str(name).strip():
+        return str(code).strip()
     if code and name:
         return f"{code} {name}"
     return code or name
@@ -522,7 +531,7 @@ def build_unmapped_leap_branch_evidence(
     for column in ["leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"]:
         leap_ninth[column] = clean_text(leap_ninth[column])
     ninth_esto = ninth_esto_df.copy()
-    for column in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for column in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         ninth_esto[column] = clean_text(ninth_esto[column])
 
     audit_df = unmapped_df.merge(
@@ -531,9 +540,9 @@ def build_unmapped_leap_branch_evidence(
         right_on=["leap_sector_name_full_path", "raw_leap_fuel_name"],
         how="left",
     ).merge(
-        ninth_esto[["9th_sector", "9th_fuel", "esto_flow", "esto_product"]],
+        ninth_esto[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]],
         left_on=["ninth_sector", "ninth_fuel"],
-        right_on=["9th_sector", "9th_fuel"],
+        right_on=["ninth_sector", "ninth_fuel"],
         how="left",
     )
     audit_df["indirect_esto_flow"] = clean_text(audit_df["esto_flow"])
@@ -654,7 +663,7 @@ def filter_partial_coverage_by_relevance(
             elif source_system == "NINTH":
                 output_row["mapping_action"] = "review_or_add_ninth_to_esto_mapping"
                 output_row["mapping_sheet_to_review"] = "ninth_pairs_to_esto_pairs"
-                output_row["mapping_source_columns"] = "9th_sector|9th_fuel"
+                output_row["mapping_source_columns"] = "ninth_sector|ninth_fuel"
             else:
                 output_row["mapping_action"] = "review_common_structure_or_coverage_configuration"
                 output_row["mapping_sheet_to_review"] = ""
@@ -769,6 +778,8 @@ def apply_common_structure(
         "common_row_basis": "",
         "is_exact_row": False,
         "requires_rollup": False,
+        "is_non_expanding_rollup": False,
+        "non_expanding_rollup_id": "",
         "source_aggregate_labels": "",
         "source_aggregate_group_ids": "",
     }
@@ -790,6 +801,8 @@ def apply_common_structure(
         "common_row_basis",
         "is_exact_row",
         "requires_rollup",
+        "is_non_expanding_rollup",
+        "non_expanding_rollup_id",
         "source_aggregate_labels",
         "source_aggregate_group_ids",
         "component_sign",

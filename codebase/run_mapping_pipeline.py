@@ -65,6 +65,8 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
 WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+SOURCE_BRANCH_FALLBACK_RULES_PATH = REPO_ROOT / "config" / "source_branch_fallback_rules.csv"
+ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregated_components.csv"
 
 REL_DIR             = REPO_ROOT / "results" / "mapping_relationships"
 COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
@@ -238,6 +240,9 @@ def run_leap_to_esto() -> None:
         rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
         target_values_path=ESTO_ROWS_PATH,
         lineage_output_path=LEAP_SOURCE_LINEAGE_PATH,
+        source_branch_fallback_rules_path=SOURCE_BRANCH_FALLBACK_RULES_PATH,
+        all_demand_components_path=ALL_DEMAND_COMPONENTS_PATH,
+        preflight_audit_dir=REL_DIR,
     )
 
 
@@ -377,6 +382,23 @@ def run_esto_exact_rows() -> None:
         retained_rollup_labels=ESTO_REFERENCE_ROLLUP_LABELS,
     )
     del relationships_df, leap_rollup_rules_df
+
+    # Derived non-expanding subtotal rows are built from the full ESTO frame
+    # (contributors may be real parent flows such as "09.06 Gas processing
+    # plants" that the leaf filter below removes).
+    from codebase.mapping_tools.non_expanding_rollups import (
+        build_esto_non_expanding_subtotal_rows,
+        load_non_expanding_rollup_rules,
+    )
+    esto_non_expanding_rules = load_non_expanding_rollup_rules(WORKBOOK_PATH).get(
+        "esto_rollup_rules", pd.DataFrame()
+    )
+    non_expanding_rows_df = build_esto_non_expanding_subtotal_rows(
+        df,
+        esto_non_expanding_rules,
+        year_columns=year_cols,
+    )
+
     df_leaf = select_esto_comparison_rows(df, reference_pairs)
     del df
     gc.collect()
@@ -394,9 +416,15 @@ def run_esto_exact_rows() -> None:
     long_df["scenario"] = "historical"
     long_df["year"] = long_df["year"].astype(int)
 
+    exact_row_count = len(long_df)
+    if not non_expanding_rows_df.empty:
+        long_df["non_expanding_rollup_id"] = ""
+        long_df = pd.concat([long_df, non_expanding_rows_df], ignore_index=True)
+
     ESTO_ROWS_PATH.parent.mkdir(parents=True, exist_ok=True)
     long_df.to_csv(ESTO_ROWS_PATH, index=False)
-    print(f"  ESTO exact rows: {len(long_df):,} -> {ESTO_ROWS_PATH.relative_to(REPO_ROOT)}")
+    print(f"  ESTO exact rows: {exact_row_count:,} -> {ESTO_ROWS_PATH.relative_to(REPO_ROOT)}")
+    print(f"  Derived non-expanding subtotal rows appended: {len(non_expanding_rows_df):,}")
     print(f"  Configured rollup reference pairs retained: {len(reference_pairs):,}")
 
 

@@ -15,6 +15,7 @@ This document explains how the APERC Outlook mappings system works, why it is st
 - [Keep base mappings simple](#keep-base-mappings-simple)
 - [Cardinality](#cardinality)
 - [Rollups](#rollups)
+- [Rollup rules system](rollup_rules_system.md)
 - [Naming conventions for generated aggregate categories](#naming-conventions-for-generated-aggregate-categories)
 - [Explicit rollups and graph partitioning](#explicit-rollups-and-graph-partitioning)
 
@@ -320,6 +321,8 @@ Subtotal columns are updated by the mapping maintenance workflow, not maintained
 
 > **Editing the workbook?** See [guide_outlook_mappings_master.md](guide_outlook_mappings_master.md) for the hands-on editor's guide to registered hierarchy rollups, fallback fan-out/allocation-share mechanics, the parent-vs-leaf double-counting trap, and the checklist for adding a rollup group safely.
 
+> **Maintaining rollup rules?** See [rollup_rules_system.md](rollup_rules_system.md) for the Stage 1/2 mechanics, target-side expansion rules, source-side duplicate-up rules, and unknown-target QA interpretation.
+
 Rollups are used when detailed categories in one dataset cannot be matched one-to-one with detailed categories in another. Instead of forcing an exact match, a rollup creates an effective comparison view that both sides can reliably support.
 
 **A rollup does not delete the original row.** The original detailed rows are preserved for traceability, QA, and detailed diagnostic outputs. When result data are rolled up, all rows assigned to the same rolled category are summed.
@@ -331,6 +334,41 @@ flow trees for Stage 3 parent/child validation. Fallback expansion with `allocat
 for rolled ESTO targets that do not yet have a declared hierarchy position.
 
 Detailed outputs and rolled comparison outputs are separate views. Do not show both original detailed rows and the rolled row in the same additive total unless that is explicitly intended.
+
+### Normal graph rollups vs named non-expanding subtotals
+
+There are two different kinds of "rolled" comparison row, and they must not be
+confused:
+
+- **A normal graph rollup** participates in the Common ESTO graph. Its mapped
+  ESTO components form graph edges, so graph partitioning merges them into one
+  indivisible common comparison row. Use this only when the mapping itself
+  proves the components are one common comparison category (a genuinely
+  indivisible source aggregate).
+- **A named non-expanding subtotal** (`rollup_reason = NON_EXPANDING_ROLLUP`,
+  or a truthy `NON_EXPANDING_ROLLUP` workbook column) is a displayed derived
+  subtotal. Its contributors are summed into one stable, named Common ESTO row
+  (`is_non_expanding_rollup = True`, `non_expanding_rollup_id = nonexp_*`,
+  `common_row_basis = non_expanding_rollup`), but the rule adds **no graph
+  edges**: the detailed contributor rows remain separately comparable. For
+  these rules `parent_flow_label` and `child_flow_labels` are display/tree
+  metadata only — they are **not** graph-edge instructions, and validation and
+  presentation code must never add a non-expanding subtotal to its declared
+  children in one additive total. The subtotal and its children are alternative
+  views.
+
+Full mechanics live in [rollup_rules_system.md](rollup_rules_system.md). The
+dedicated QA outputs are:
+
+| File | Location | Contents |
+| --- | --- | --- |
+| `non_expanding_rollups.csv` | `results/mapping_relationships/` | Compiled catalogue: every enabled non-expanding rule, its rolled identity, sheet, source system, and contributor inputs |
+| `qa_non_expanding_rollup_unresolved.csv` | `results/mapping_relationships/` | Non-expanding rules whose expected contributor mapping cannot be resolved (missing direct mapping for the rolled label, unmapped contributor, or unknown ESTO contributor flow) |
+| `qa_common_esto_non_expanding_rollups.csv` | `results/common_esto/` | Per scope and subtotal: rule sheets, mapped source systems, contributors, observed products, and output common-row IDs |
+| `qa_common_esto_non_expanding_frontier_check.csv` | `results/common_esto/` | Check that no non-expanding subtotal shares a common row with any other component (especially a declared child) |
+| `qa_common_esto_suppressed_graph_edges.csv` | `results/common_esto/` | Graph edges that `is_rollup_derived` / `esto_pair_is_subtotal` rows would have created but were deliberately suppressed, with source provenance |
+| `leap_source_branch_fallback_audit.csv` | `results/mapping_relationships/` | Interim-branch fallback preflight audit (`warn_and_zero_interim`): standard total, original/suppressed/retained interim totals, action, rule ID |
+| `leap_all_demand_aggregated_overlap_warnings.csv` | `results/mapping_relationships/` | Periods where `All demand aggregated` and a configured included demand sector are both non-zero (review warning; values unchanged) |
 
 ### Rollup rule sheets
 
@@ -359,10 +397,26 @@ Each rule should be explainable from its columns:
 - A blank input fuel/product means the rule applies to all fuels or products for that input sector or flow.
 - A blank rolled fuel/product means keep the original fuel or product label.
 
-Current implementation note: Stage 2 reads common-row label overrides from
-`results/mapping_relationships/common_esto_label_overrides.csv` if that file
-exists. The workbook `rollup_label_overrides` sheet is reserved but is not
-currently wired into Stage 2.
+### Common comparison display-label overrides
+
+`config/common_esto_label_overrides.csv` is the human-maintained source for
+display-only replacements of generated Common ESTO flow or product labels. It
+is applied only after Stage 2 has formed the final, global axis partitions.
+Consequently, it changes neither source mappings, component membership,
+`common_row_id`, nor values.
+
+Each enabled row supplies the generated `auto_common_*_label` and its
+`preferred_common_*_label`. `comparison_scope` is optional. The optional
+pipe-separated `component_esto_flows` or `component_esto_products` fields make
+the override apply only to the expected final partition. An enabled row that
+does not match fails the Stage 2 build rather than silently applying to a new
+structure.
+
+Use `esto_to_common_esto_map.csv` and
+`esto_component_to_common_row_lineage.csv` to inspect or reverse the real
+component mapping. Labels are presentation fields, not mapping keys. The
+workbook `rollup_label_overrides` sheet remains reserved; it is not an input to
+this display-label mechanism.
 
 ### Rollup reason/type
 
@@ -628,7 +682,7 @@ Rollups and graph partitioning solve related but different problems.
 
 Do not assume every category mismatch needs a hand-written rollup. Use explicit rollups for known comparison boundaries. Let graph partitioning generate common categories where overlapping source aggregates define the necessary comparison structure.
 
-Graph partitioning is only applied in the `leap_vs_esto_vs_ninth` comparison scope. The `leap_vs_esto` scope uses only explicit rollup rules, since there is no third dataset whose aggregate constraints require automatic common-category generation.
+Graph partitioning is applied identically in all four comparison scopes (`esto_only`, `leap_vs_esto`, `leap_vs_ninth`, `leap_vs_esto_vs_ninth`), using the combined aggregate constraints from both LEAP and NINTH. A product/flow's common row is therefore the same, globally least-detailed rollup in every scope -- a category is never left as an exact row in one scope only because that scope's comparison happens not to include the dataset whose aggregate required the rollup elsewhere.
 
 ### What graph partitioning means here
 
@@ -649,7 +703,7 @@ If 9th Outlook has one aggregate row that maps to `B + C`, add edge `B--C`.
 
 The connected component is `A--B--C`, so the safe common comparison row is `A + B + C`. `D` remains separate.
 
-Graph partitioning finds the most detailed set of common comparison rows that does not split any source aggregate. This allows LEAP vs ESTO to remain more detailed where possible, while LEAP vs ESTO vs 9th may roll up more categories only where the third dataset requires it.
+Graph partitioning finds the most detailed set of common comparison rows that does not split any source aggregate, using the union of LEAP's and NINTH's aggregate edges. That partition is then reused for every comparison scope, so LEAP vs ESTO rolls up `B + C` the same way LEAP vs ESTO vs 9th does, even though 9th is not part of that comparison -- the goal is one consistent common category per product/flow, not the finest detail each individual scope could otherwise support.
 
 The final common comparison dataset should remain close to ESTO style, with mechanically transparent generated categories where needed.
 
@@ -1318,7 +1372,7 @@ attribute or correct the fan-out (Options B/C) is a separate, reviewed decision.
 
 The mapping sheets are category-level, not scenario-level. Adding a new LEAP scenario does not require any changes to `outlook_mappings_master.xlsx`.
 
-However, the current 9th-to-ESTO conversion path in `codebase/run_mapping_pipeline.py` calls `prepare_ninth_long_format()` with its default `scenario_filter="reference"`. A new LEAP scenario such as EED has no automatic 9th Outlook counterpart, so it can only participate in LEAP vs ESTO comparisons unless the conversion and dashboard scenario pairing are explicitly extended. LEAP vs 9th and three-way comparisons will not be available for it by default.
+The 9th-to-ESTO conversion path in `codebase/run_mapping_pipeline.py` calls `prepare_ninth_long_format()` with its default `scenario_filter=None`, which passes through every scenario present in the raw 9th Outlook source (currently `reference` and `target`). A new LEAP scenario such as EED has no automatic 9th Outlook counterpart, so it can only participate in LEAP vs ESTO comparisons unless the conversion and dashboard scenario pairing are explicitly extended. LEAP vs 9th and three-way comparisons will not be available for it by default.
 
 To include a new LEAP scenario in comparisons:
 
@@ -1608,7 +1662,7 @@ The actionable partial-coverage output contains one missing pair per row. Its ev
 Candidate rows deliberately include the canonical copy columns:
 
 - `leap_combined_esto`: `leap_sector_name_full_path`, `raw_leap_fuel_name`, `esto_flow`, `esto_product`.
-- `ninth_pairs_to_esto_pairs`: `9th_sector`, `9th_fuel`, `esto_flow`, `esto_product`.
+- `ninth_pairs_to_esto_pairs`: `ninth_sector`, `ninth_fuel`, `esto_flow`, `esto_product`.
 
 Rows in `highly_recommended_mapping_candidates.csv` have `paste_ready = True` and a sheet-specific `paste_instruction`. They may be copied into the named mapping sheet because the source pair is non-zero and both axes reproduce patterns already present in reviewed mappings. The required pipeline rerun remains part of applying the row. Medium-confidence, zero-only, incomplete, or source-pair-already-mapped suggestions are excluded from all candidate files rather than mixed with recommended rows.
 

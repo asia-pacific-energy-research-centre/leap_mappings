@@ -183,6 +183,49 @@ one dedicated common row and **no finer source mapping competes** for those flow
 registered hierarchy rollups, so mapping rows targeting the rolled labels stay whole rather than
 being fan-out split.
 
+## 5b. Non-expanding rollups (`rollup_reason = NON_EXPANDING_ROLLUP`)
+
+Set `rollup_reason = NON_EXPANDING_ROLLUP` on every row of a rule group to turn
+its rolled label into a **named derived subtotal** instead of a graph rollup.
+(The pipeline also honours a truthy `NON_EXPANDING_ROLLUP` column, which the
+workbook currently uses; prefer `rollup_reason` going forward and keep the two
+markers consistent within a group.)
+
+What it changes:
+
+- The group's contributors are summed into one stable, named Common ESTO row
+  (`nonexp_*` ID) — but **no graph edges** are drawn between them, so the
+  detailed contributor rows stay separately comparable. The subtotal and its
+  children are alternative views; never sum both in one total.
+- `parent_flow_label` / `child_flow_labels` stay display/tree metadata; for a
+  non-expanding group they are never graph instructions.
+- Products are automatic: the subtotal covers exactly the products present in
+  its contributors. Do not maintain a manual product list.
+- LEAP/NINTH groups still need a direct mapping row for the rolled label (that
+  is how the summed source value reaches its ESTO target). ESTO groups get a
+  derived ESTO subtotal row summed from the declared contributor flows.
+- Mark the related LEAP, ESTO, and NINTH rule groups consistently and keep one
+  stable rolled identity per subtotal.
+
+Restrictions:
+
+- Use it for retained-detail hierarchy bridges, **not** to hide an ordinary
+  mapping problem. If one source observation genuinely spans several target
+  components with no defensible detailed comparison, keep a normal graph
+  rollup.
+- Power-like alternative source branches (standard vs interim) additionally
+  require rows in `config/source_branch_fallback_rules.csv` so the subtotal
+  receives one branch of each pair, not their accidental sum. `Power` stays a
+  `NON_EXPANDING_ROLLUP`; its interim contributors are governed by that
+  configuration, and `All demand aggregated` overlap is governed by
+  `config/all_demand_aggregated_components.csv` (warning only).
+- After editing, rerun the pipeline and check
+  `results/mapping_relationships/qa_non_expanding_rollup_unresolved.csv`,
+  `results/common_esto/qa_common_esto_non_expanding_rollups.csv`, and
+  `results/common_esto/qa_common_esto_non_expanding_frontier_check.csv` — the
+  expected result is that detailed children stay separate and every subtotal
+  is standalone (`check_status = ok`).
+
 ## 6. Checklist for adding or editing a rollup group
 
 1. List **all** real components as `input_*` rows — for "(including own use)" groups that

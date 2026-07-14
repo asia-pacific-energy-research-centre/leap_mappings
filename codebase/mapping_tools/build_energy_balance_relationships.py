@@ -16,6 +16,12 @@ from typing import Any
 import pandas as pd
 
 from codebase.mapping_issue_exceptions import EXCEPTION_WORKBOOK_PATH, split_allowed_rows
+from codebase.mapping_tools.non_expanding_rollups import (
+    build_non_expanding_rollup_catalogue,
+    build_unresolved_non_expanding_qa,
+    non_expanding_rolled_labels,
+    split_non_expanding_rules,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -42,8 +48,8 @@ SHEET_CONFIGS = [
         "sheet_name": "ninth_pairs_to_esto_pairs",
         "source_system": "NINTH",
         "target_system": "ESTO",
-        "source_flow_candidates": ["9th_sector", "ninth_sector"],
-        "source_product_candidates": ["9th_fuel", "ninth_fuel"],
+        "source_flow_candidates": ["ninth_sector", "ninth_sector"],
+        "source_product_candidates": ["ninth_fuel", "ninth_fuel"],
         "target_flow_candidates": ["esto_flow"],
         "target_product_candidates": ["esto_product"],
         "use_cases": ["ninth_to_esto_balance_conversion", "mapping_review"],
@@ -197,6 +203,7 @@ QA_FILENAMES = {
     "leap_to_esto_parent_child_risks": "leap_to_esto_parent_child_risks.csv",
     "leap_to_esto_coverage_summary": "leap_to_esto_coverage_summary.csv",
     "leap_to_esto_excluded_source_audit": "leap_to_esto_excluded_source_audit.csv",
+    "unknown_ninth_target_flows": "qa_unknown_ninth_target_flows.csv",
 }
 
 QA_SHEET_NAMES = {
@@ -1382,6 +1389,44 @@ def _resolve_rolled_flow_components(
     return resolved
 
 
+def _build_rolled_ninth_sector_to_components(ninth_rules: pd.DataFrame) -> dict[str, list[str]]:
+    """Map rolled NINTH sector labels to real input sector components.
+
+    Target-side NINTH expansion replaces synthetic sector labels in
+    ``leap_combined_ninth`` with real NINTH sector rows. Fuel-specific rollup
+    rules are source-side rules in the current workbook contract: this expansion
+    keeps the mapping row's target fuel unchanged and only expands sector labels.
+    """
+    if ninth_rules.empty or "rolled_ninth_sector" not in ninth_rules.columns:
+        return {}
+    result: dict[str, list[str]] = {}
+    child_rollups_by_parent: dict[str, list[str]] = {}
+    for _, rule in ninth_rules.iterrows():
+        input_fuel = _str(rule.get("input_ninth_fuel"))
+        rolled_fuel = _str(rule.get("rolled_ninth_fuel"))
+        if input_fuel or rolled_fuel:
+            continue
+        rolled = _str(rule.get("rolled_ninth_sector"))
+        component = _str(rule.get("input_ninth_sector"))
+        if not rolled or not component or component == rolled:
+            continue
+        parent_label = _str(rule.get("parent_flow_label"))
+        if parent_label and parent_label != rolled:
+            parent_children = child_rollups_by_parent.setdefault(parent_label, [])
+            if rolled not in parent_children:
+                parent_children.append(rolled)
+        components = result.setdefault(rolled, [])
+        if component not in components:
+            components.append(component)
+    for parent_rollup, child_rollups in child_rollups_by_parent.items():
+        if parent_rollup in result and len(child_rollups) > 1:
+            # Parent-level own-use rollups must be derived from a non-overlapping
+            # child frontier. If child inclusive rollups exist, use them instead
+            # of the overlapping raw parent + own-use component rows.
+            result[parent_rollup] = child_rollups
+    return result
+
+
 def expand_esto_rollup_targets(
     relationship_df: pd.DataFrame,
     rolled_flow_to_components: dict[str, list[str]],
@@ -1448,6 +1493,53 @@ def expand_esto_rollup_targets(
     return pd.DataFrame(normal_rows + expanded_rows, columns=relationship_df.columns).reset_index(drop=True)
 
 
+def expand_ninth_rollup_targets(
+    relationship_df: pd.DataFrame,
+    rolled_sector_to_components: dict[str, list[str]],
+) -> pd.DataFrame:
+    """Expand relationship rows whose NINTH target is a ninth_rollup_rules sector.
+
+    ``leap_combined_ninth`` can point ``ninth_sector`` at a synthetic rolled
+    label such as ``09_01-09_02,09_x Power sector``. Those labels do not exist
+    in the raw 9th Outlook table, so each relationship row is expanded to real
+    component sectors while preserving the mapped target fuel.
+    """
+    if not rolled_sector_to_components:
+        return relationship_df
+    normal_rows: list[dict[str, Any]] = []
+    expanded_rows: list[dict[str, Any]] = []
+    for _, row in relationship_df.iterrows():
+        target_flow = _str(row.get("target_flow", ""))
+        if _str(row.get("target_system")) == "NINTH" and target_flow in rolled_sector_to_components:
+            component_sectors = _resolve_rolled_flow_components(target_flow, rolled_sector_to_components)
+            for component_sector in component_sectors:
+                new_row = row.to_dict()
+                new_row["target_flow"] = component_sector
+                new_row["relationship_type"] = infer_relationship_type(component_sector, "NINTH")
+                new_row["relationship_level"] = infer_relationship_level(
+                    component_sector, row.get("source_sector_path", ""), "NINTH"
+                )
+                existing_notes = _str(row.get("notes", ""))
+                rollup_note = f"expanded_from_ninth_rollup: {target_flow}"
+                new_row["notes"] = f"{existing_notes}; {rollup_note}" if existing_notes else rollup_note
+                new_row["relationship_id"] = make_relationship_id(
+                    _str(row["source_system"]),
+                    _str(row["source_flow"]),
+                    _str(row["source_product"]),
+                    _str(row["target_system"]),
+                    component_sector,
+                    _str(row["target_product"]),
+                )
+                new_row["relationship_key"] = f"{new_row['relationship_id']}::{_str(row['use_case'])}"
+                expanded_rows.append(new_row)
+        else:
+            normal_rows.append(row.to_dict())
+
+    if not expanded_rows:
+        return relationship_df
+    return pd.DataFrame(normal_rows + expanded_rows, columns=relationship_df.columns).reset_index(drop=True)
+
+
 def _load_known_esto_flows(workbook_path: Path) -> set[str]:
     """Load real ESTO flow labels from the 'ESTO unique flows and products' sheet."""
     try:
@@ -1461,7 +1553,34 @@ def _load_known_esto_flows(workbook_path: Path) -> set[str]:
         _, esto_rules, _ = load_rollup_rules(workbook_path)
     except Exception:
         return known_flows
-    return known_flows | _build_registered_rollup_flow_set(esto_rules)
+    _, esto_non_expanding = split_non_expanding_rules(esto_rules)
+    return (
+        known_flows
+        | _build_registered_rollup_flow_set(esto_rules)
+        | set(non_expanding_rolled_labels(esto_non_expanding, "rolled_esto_flow"))
+    )
+
+
+def _load_known_ninth_sectors(workbook_path: Path) -> set[str]:
+    """Load real NINTH sector labels from every sector column in the workbook reference sheet."""
+    try:
+        df = pd.read_excel(workbook_path, sheet_name="NINTH unique sectors and fuels", dtype=object)
+    except Exception:
+        return set()
+    sector_columns = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
+    known_sectors: set[str] = set()
+    for column in sector_columns:
+        if column not in df.columns:
+            continue
+        known_sectors.update(_str(value) for value in df[column] if _str(value) and _str(value) != "x")
+    try:
+        _, _, ninth_rules = load_rollup_rules(workbook_path)
+    except Exception:
+        return known_sectors
+    _, ninth_non_expanding = split_non_expanding_rules(ninth_rules)
+    # Non-expanding rolled NINTH labels stay whole as named subtotal targets;
+    # they are known comparison labels even though no raw 9th row carries them.
+    return known_sectors | set(non_expanding_rolled_labels(ninth_non_expanding, "rolled_ninth_sector"))
 
 
 def build_unknown_esto_target_qa(relationship_df: pd.DataFrame, known_esto_flows: set[str]) -> pd.DataFrame:
@@ -1479,6 +1598,24 @@ def build_unknown_esto_target_qa(relationship_df: pd.DataFrame, known_esto_flows
         .reset_index(drop=True)
     )
     qa_df["qa_status"] = "esto_target_flow_has_no_esto_data"
+    return qa_df
+
+
+def build_unknown_ninth_target_qa(relationship_df: pd.DataFrame, known_ninth_sectors: set[str]) -> pd.DataFrame:
+    """List NINTH target sectors that match no real NINTH sector data row."""
+    ninth_rows = relationship_df[relationship_df["target_system"].astype(str).str.strip() == "NINTH"]
+    target_flows = ninth_rows["target_flow"].astype(str).str.strip()
+    unknown_rows = ninth_rows[target_flows.ne("") & ~target_flows.isin(known_ninth_sectors)]
+    if unknown_rows.empty:
+        return pd.DataFrame(columns=["target_flow", "source_sheet", "relationship_row_count", "qa_status"])
+    qa_df = (
+        unknown_rows.groupby(["target_flow", "source_sheet"], dropna=False)
+        .size()
+        .reset_index(name="relationship_row_count")
+        .sort_values(["target_flow", "source_sheet"])
+        .reset_index(drop=True)
+    )
+    qa_df["qa_status"] = "ninth_target_sector_has_no_ninth_data"
     return qa_df
 
 
@@ -1576,10 +1713,10 @@ def _apply_ninth_rollup_rules(
 
     new_rows: list[dict[str, Any]] = []
     for _, rule in ninth_rules.iterrows():
-        input_sector = _str(rule.get("input_9th_sector"))
-        input_fuel = _str(rule.get("input_9th_fuel"))
-        rolled_sector = _str(rule.get("rolled_9th_sector"))
-        rolled_fuel = _str(rule.get("rolled_9th_fuel"))
+        input_sector = _str(rule.get("input_ninth_sector"))
+        input_fuel = _str(rule.get("input_ninth_fuel"))
+        rolled_sector = _str(rule.get("rolled_ninth_sector"))
+        rolled_fuel = _str(rule.get("rolled_ninth_fuel"))
         if not input_sector or not rolled_sector:
             continue
 
@@ -1731,8 +1868,18 @@ def run_relationship_workflow(
     base_df = pd.concat(relationship_frames, ignore_index=True)
 
     leap_rules, esto_rules, ninth_rules = load_rollup_rules(mapping_workbook_path)
-    rolled_flow_to_components = _build_rolled_flow_to_components(esto_rules)
-    registered_rollup_flows = _build_registered_rollup_flow_set(esto_rules)
+    # Non-expanding rules declare named derived subtotals. They must not fan
+    # out mapping targets, duplicate source relationships upward, or emit
+    # common_esto_overrides edges, so only the ordinary subsets feed those
+    # mechanisms below.
+    leap_ordinary_rules, leap_non_expanding_rules = split_non_expanding_rules(leap_rules)
+    esto_ordinary_rules, esto_non_expanding_rules = split_non_expanding_rules(esto_rules)
+    ninth_ordinary_rules, ninth_non_expanding_rules = split_non_expanding_rules(ninth_rules)
+    rolled_flow_to_components = _build_rolled_flow_to_components(esto_ordinary_rules)
+    rolled_ninth_sector_to_components = _build_rolled_ninth_sector_to_components(ninth_ordinary_rules)
+    registered_rollup_flows = _build_registered_rollup_flow_set(esto_rules) | set(
+        non_expanding_rolled_labels(esto_non_expanding_rules, "rolled_esto_flow")
+    )
 
     # Expand combined ESTO targets and apply rollup rules
     flow_prefix_to_label = _build_flow_prefix_to_label(mapping_workbook_path)
@@ -1741,9 +1888,13 @@ def run_relationship_workflow(
     base_df = expand_esto_rollup_targets(base_df, rolled_flow_to_components, registered_rollup_flows)
     if len(base_df) != rows_before_rollup_expansion:
         print(f"ESTO rollup target expansion: {rows_before_rollup_expansion:,} -> {len(base_df):,} rows")
-    leap_rollup_df = _apply_leap_rollup_rules(base_df, leap_rules)
-    ninth_rollup_df = _apply_ninth_rollup_rules(base_df, ninth_rules)
-    esto_overrides_df = build_esto_overrides(esto_rules)
+    rows_before_ninth_rollup_expansion = len(base_df)
+    base_df = expand_ninth_rollup_targets(base_df, rolled_ninth_sector_to_components)
+    if len(base_df) != rows_before_ninth_rollup_expansion:
+        print(f"NINTH rollup target expansion: {rows_before_ninth_rollup_expansion:,} -> {len(base_df):,} rows")
+    leap_rollup_df = _apply_leap_rollup_rules(base_df, leap_ordinary_rules)
+    ninth_rollup_df = _apply_ninth_rollup_rules(base_df, ninth_ordinary_rules)
+    esto_overrides_df = build_esto_overrides(esto_ordinary_rules)
 
     all_frames = [base_df]
     if not leap_rollup_df.empty:
@@ -1771,6 +1922,44 @@ def run_relationship_workflow(
                 "esto_rollup_rules rollup; their comparisons will have no ESTO data. "
                 "See qa_unknown_esto_target_flows.csv"
             )
+
+    known_ninth_sectors = _load_known_ninth_sectors(mapping_workbook_path)
+    if known_ninth_sectors:
+        unknown_ninth_qa_df = build_unknown_ninth_target_qa(relationship_df, known_ninth_sectors)
+        qa_dir.mkdir(parents=True, exist_ok=True)
+        unknown_ninth_qa_df.to_csv(qa_dir / "qa_unknown_ninth_target_flows.csv", index=False)
+        if not unknown_ninth_qa_df.empty:
+            unknown_count = unknown_ninth_qa_df["target_flow"].nunique()
+            print(
+                f"WARNING: {unknown_count} NINTH target sector labels match no real NINTH sector and no "
+                "ninth_rollup_rules target expansion; their direct LEAP-to-NINTH comparisons will have no "
+                "NINTH data. See qa_unknown_ninth_target_flows.csv"
+            )
+
+    non_expanding_catalogue_df = build_non_expanding_rollup_catalogue(
+        {
+            "leap_rollup_rules": leap_non_expanding_rules,
+            "esto_rollup_rules": esto_non_expanding_rules,
+            "ninth_rollup_rules": ninth_non_expanding_rules,
+        }
+    )
+    non_expanding_unresolved_df = build_unresolved_non_expanding_qa(
+        catalogue_df=non_expanding_catalogue_df,
+        relationships_df=relationship_df,
+        known_esto_flows=known_esto_flows,
+    )
+    qa_dir.mkdir(parents=True, exist_ok=True)
+    non_expanding_catalogue_df.to_csv(qa_dir / "non_expanding_rollups.csv", index=False)
+    non_expanding_unresolved_df.to_csv(qa_dir / "qa_non_expanding_rollup_unresolved.csv", index=False)
+    print(
+        f"Non-expanding rollup rules: {len(non_expanding_catalogue_df):,} contributor rows across "
+        f"{non_expanding_catalogue_df['non_expanding_rollup_id'].nunique() if not non_expanding_catalogue_df.empty else 0} subtotals"
+    )
+    if not non_expanding_unresolved_df.empty:
+        print(
+            f"WARNING: {len(non_expanding_unresolved_df):,} non-expanding rollup contributor rows could not be "
+            "resolved to included mappings. See qa_non_expanding_rollup_unresolved.csv"
+        )
 
     relationship_catalogue_df = build_relationship_catalogue(relationship_df)
     compact_catalogue_df = build_compact_relationship_catalogue(relationship_df)

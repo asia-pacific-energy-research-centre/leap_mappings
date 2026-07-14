@@ -33,24 +33,22 @@ Reviewed on 2026-07-13.
 | `investigate_demand_sector_parent_child_mismatches.md` | Investigation | Complete; archive pending | Report-only diagnosis of demand-sector parent/child mismatches. Companion findings file now contains detailed verdicts and proposed fixes/exceptions. | Do not rerun as-is unless the findings are challenged by newer outputs. Archive this prompt with `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` after preserving the current uncommitted findings edits. |
 | `investigate_demand_sector_parent_child_mismatches_FINDINGS.md` | Findings report | Complete; archive pending | Contains the completed analysis for 14 Industry, 14.03 Manufacturing, and 15 Transport parent/child mismatch families. | File had pre-existing uncommitted edits at review time, so it was not moved by this guide update. Use it as context for follow-up implementation prompts. |
 | `regen_common_esto_comparison_fast_path_prompt.md` | Implementation | Partially stale, still useful | Core fast-path workflow exists in `codebase/regen_common_esto_comparison_fast_path_workflow.py`, with coverage in `tests/test_common_esto_fast_path.py`. | Commits `352e6e2` and `e868330` show the main work is complete. The optional dashboard hook names `codebase/common_esto_dashboard_workflow.py`, which does not exist in this repo; rewrite or archive after deciding whether any follow-up remains. |
-| `implement_non_expanding_rollups_and_source_fallbacks_prompt.md` | Implementation | Active | Adds `NON_EXPANDING_ROLLUP`, interim-source fallback suppression, All-demand overlap warnings, QA, tests, and documentation. | Preserve the `is_rollup_derived` graph-edge exclusion; this prompt does not authorize workbook edits. |
 | `run_mapping_pipeline_future_prompt.md` | Long-running execution | Valid, active | Reusable procedure for running `codebase/run_mapping_pipeline.py`, preserving workbook safety, logs, polling cadence, QA reporting, and output links. | Use only when the user actually wants a current pipeline run. Check whether Stage 0 writes the workbook before launching. |
 
 ## Recommended Tackling Order
 
-1. `implement_non_expanding_rollups_and_source_fallbacks_prompt.md`
-   - Complete before reclassifying hierarchy-bridge rollups in the workbook.
-2. `run_mapping_pipeline_future_prompt.md`
+1. `run_mapping_pipeline_future_prompt.md`
    - Run after code/workbook changes that justify refreshed outputs, including the
      `esto_rollup_rules` fix proposed in the archived
      `buildings_ninth_counterpart_gap_FINDINGS.md`, once reviewed.
-3. `regen_common_esto_comparison_fast_path_prompt.md`
+2. `regen_common_esto_comparison_fast_path_prompt.md`
    - Do not rerun as a full implementation prompt. Rewrite or archive after deciding whether the optional dashboard hook is real.
-4. `investigate_demand_sector_parent_child_mismatches.md`
+3. `investigate_demand_sector_parent_child_mismatches.md`
    - Do not tackle as an active prompt; use the findings report to create narrower follow-up fix prompts.
 
 ## Recently Archived
 
+- `implement_non_expanding_rollups_and_source_fallbacks_prompt.md` - implemented and verified 2026-07-13: non-expanding rollups (no graph edges, flagged subtotal common rows, derived ESTO subtotal rows), `config/source_branch_fallback_rules.csv` interim preflight, `config/all_demand_aggregated_components.csv` overlap warning, suppressed-edge QA, focused tests, and Stage 1-3 pipeline run.
 - `register_rollup_groups_as_tree_nodes_prompt.md` - completed and verified by commits `802858a`, `3ff2684`, and the later handoff update `23d9865`.
 - `explore_parent_level_own_use_comparison_rows.md` and `explore_parent_level_own_use_comparison_rows_FINDINGS.md` - report-only design exploration completed 2026-07-10.
 - `unify_rollup_rules_prompt.md` - completed and verified by the full mapping pipeline run on 2026-07-12; NINTH unknown target QA is clean and legacy rolled target counts are zero.
