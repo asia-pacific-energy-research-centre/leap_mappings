@@ -82,6 +82,7 @@ def test_common_esto_subtotal_status_uses_the_new_tree_not_esto_prefixes(tmp_pat
     tree = build_common_esto_tree(common_rows_path, tmp_path / "missing_workbook.xlsx")
     flows = tree[tree["axis"].eq("flow")].set_index("code")
 
+    assert "is_leaf" not in tree.columns
     assert not bool(flows.loc["09.01.01,09.02.01 Electricity plants", "is_subtotal"])
     assert bool(flows.loc["16 Other sector", "is_subtotal"])
 

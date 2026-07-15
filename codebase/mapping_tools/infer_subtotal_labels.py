@@ -169,7 +169,7 @@ def _load_tree(dataset: str) -> pd.DataFrame:
     if not path.exists():
         print(f"  [WARN] Tree file not found: {path}  -- run build_dataset_tree_structure.py first")
         return pd.DataFrame(columns=["dataset", "axis", "code", "label", "level",
-                                     "parent_code", "is_leaf", "is_subtotal"])
+                                     "parent_code", "is_subtotal"])
     return pd.read_csv(path)
 
 

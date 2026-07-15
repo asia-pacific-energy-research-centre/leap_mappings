@@ -26,7 +26,7 @@ distinguishing gaps that already existed in the source from gaps introduced by
 the mapping.
 
 Tree CSV columns:
-    dataset, axis, code, label, level, parent_code, is_leaf, is_subtotal
+    dataset, axis, code, label, level, parent_code, is_subtotal
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ COMMON_ESTO_COMPARISON_PATH = REPO_ROOT / "results" / "common_esto" / "common_es
 TREE_OUTPUT_DIR       = REPO_ROOT / "results" / "tree_structure"
 LEAP_VAR_BASE_YEAR    = 2022
 
-TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_leaf", "is_subtotal"]
+TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_subtotal"]
 
 
 def combine_dataset_trees(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -546,7 +546,7 @@ def build_common_esto_tree(
     flow_tree = _build_esto_axis_tree(flow_labels, "flow", "common_esto", set(), rollup_hierarchy)
     prod_tree = _build_esto_axis_tree(prod_labels, "product", "common_esto", set())
     for tree in (flow_tree, prod_tree):
-        tree["is_subtotal"] = ~tree["is_leaf"].astype(bool)
+        tree["is_subtotal"] = tree["code"].isin(tree["parent_code"].dropna())
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
 
@@ -2153,7 +2153,7 @@ def run_tree_structure_workflow(
 def _write_tree(df: pd.DataFrame, path: Path, label: str) -> None:
     df.to_csv(path, index=False)
     n_nodes = len(df)
-    n_leaves = int(df["is_leaf"].sum()) if "is_leaf" in df.columns else 0
+    n_leaves = int((~df["code"].isin(df["parent_code"].dropna())).sum())
     print(f"  {label}: {n_nodes} nodes, {n_leaves} leaves -> {path.relative_to(REPO_ROOT)}")
 
 
