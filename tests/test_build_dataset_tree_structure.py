@@ -10,6 +10,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     OUTLOOK_MAPPINGS_PATH,
     _build_esto_axis_tree,
     _build_source_inconsistency_lookup,
+    build_common_esto_tree,
     _load_rollup_hierarchy,
     validate_common_esto_recursive_sums,
     validate_leap_recursive_sums,
@@ -64,6 +65,25 @@ def test_esto_axis_tree_splices_synthetic_rollup_node() -> None:
     assert parent_by_code["16.02 Residential"] == "16.01-16.02 Buildings"
     assert parent_by_code["16.03 Agriculture"] == "16 Other sector"
     assert bool(tree.set_index("code").loc["16.01-16.02 Buildings", "is_subtotal"])
+
+
+def test_common_esto_subtotal_status_uses_the_new_tree_not_esto_prefixes(tmp_path: Path) -> None:
+    """A graph-generated Common ESTO leaf is not a subtotal by source-code shape."""
+    common_rows_path = tmp_path / "common_esto_rows.csv"
+    pd.DataFrame({
+        "common_flow_label": [
+            "16 Other sector",
+            "16.01 Commercial and public services",
+            "09.01.01,09.02.01 Electricity plants",
+        ],
+        "common_product_label": ["01.01 Product", "01.01 Product", "01.01 Product"],
+    }).to_csv(common_rows_path, index=False)
+
+    tree = build_common_esto_tree(common_rows_path, tmp_path / "missing_workbook.xlsx")
+    flows = tree[tree["axis"].eq("flow")].set_index("code")
+
+    assert not bool(flows.loc["09.01.01,09.02.01 Electricity plants", "is_subtotal"])
+    assert bool(flows.loc["16 Other sector", "is_subtotal"])
 
 
 def test_load_rollup_hierarchy_keeps_declared_parent_and_children(tmp_path: Path) -> None:

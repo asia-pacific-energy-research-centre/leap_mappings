@@ -157,8 +157,24 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
 
     rows = []
     for c in codes:
+        # Synthetic rollup nodes are added below with their declared parent;
+        # do not first treat their hyphenated label as an unparented leaf.
+        if c in synthetic_nodes:
+            continue
         p = _extract_esto_prefix(c)
         if p is None:
+            # Common ESTO can contain graph-generated labels whose composite
+            # code is not a single ESTO dot-prefix.  They are valid nodes in
+            # the new structure and, absent an explicit tree edge, are leaves.
+            rows.append({
+                "dataset": dataset,
+                "axis": axis,
+                "code": c,
+                "label": c,
+                "level": 0,
+                "parent_code": "",
+                "is_subtotal": False,
+            })
             continue
         parent_p = _parent_prefix(p)
         parent_code = prefix_map.get(parent_p, "") if parent_p else ""
@@ -522,26 +538,15 @@ def build_common_esto_tree(
     flow_labels = sorted(df["common_flow_label"].dropna().unique())
     prod_labels = sorted(df["common_product_label"].dropna().unique())
 
-    # Determine which are subtotals from the original ESTO data if present,
-    # otherwise infer from tree structure (same as ESTO build_esto_tree).
-    all_flow_prefixes = {_extract_esto_prefix(f) for f in flow_labels if _extract_esto_prefix(f)}
-    subtotal_flows: set[str] = {
-        f for f in flow_labels
-        if (p := _extract_esto_prefix(f)) and any(
-            op.startswith(p + ".") for op in all_flow_prefixes if op != p
-        )
-    }
-    all_prod_prefixes = {_extract_esto_prefix(p) for p in prod_labels if _extract_esto_prefix(p)}
-    subtotal_prods: set[str] = {
-        p for p in prod_labels
-        if (pp := _extract_esto_prefix(p)) and any(
-            op.startswith(pp + ".") for op in all_prod_prefixes if op != pp
-        )
-    }
-
     rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
-    flow_tree = _build_esto_axis_tree(flow_labels, "flow", "common_esto", subtotal_flows, rollup_hierarchy)
-    prod_tree = _build_esto_axis_tree(prod_labels, "product", "common_esto", subtotal_prods)
+    # Common ESTO subtotal status belongs to the *new* comparison hierarchy.
+    # Do not inherit it from an ESTO numeric prefix: a graph-generated label can
+    # look like an ESTO descendant while being a leaf after the common structure
+    # has been assembled (for example 09.01.01,09.02.01 Electricity plants).
+    flow_tree = _build_esto_axis_tree(flow_labels, "flow", "common_esto", set(), rollup_hierarchy)
+    prod_tree = _build_esto_axis_tree(prod_labels, "product", "common_esto", set())
+    for tree in (flow_tree, prod_tree):
+        tree["is_subtotal"] = ~tree["is_leaf"].astype(bool)
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
 
