@@ -1848,89 +1848,104 @@ def _validate_common_esto_axis_recursive_sums(
         return _empty_common_esto_validation()
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
-    group_cols = ["comparison_scope", "source_system", "economy", "scenario", other_axis_col, "year"]
     children_map = _common_esto_validation_children_map(tree_df, axis)
     source_inconsistencies = source_inconsistencies or {}
-    all_data_codes: set[str] = set(data[axis_col].dropna().unique())
+    # Presence of an intermediate subtotal is a *per-source* property: a source
+    # emits either an aggregate label or only its leaves, consistently across
+    # economies/years. Resolving against a global code set lets one source's
+    # aggregate (e.g. LEAP's "09.01-09.02 Power sector") mask another source's
+    # need to expand to the leaves it actually emits (NINTH's
+    # "09.01.01,09.02.01 Electricity plants"), leaving that source's value
+    # unsummed. Resolve against each source system's own emitted labels instead.
+    data_codes_by_system: dict[str, set[str]] = {
+        str(system): set(group[axis_col].dropna().astype(str).unique())
+        for system, group in data.groupby("source_system", dropna=False)
+    }
+    # Grouping is per source system explicitly, so the remaining axes suffice.
+    sub_group_cols = ["comparison_scope", "economy", "scenario", other_axis_col, "year"]
     checks = []
 
     for parent_code, children in children_map.items():
-        parent_rows = data[data[axis_col] == parent_code]
-        if parent_rows.empty:
-            continue
-        # Resolve: any direct child absent from the comparison data but present
-        # in the tree as an intermediate subtotal is expanded to its own
-        # descendants (recursively), so the children sum correctly accounts for
-        # flows that were filtered from the comparison set (e.g. 09.06).
-        resolved = _resolve_to_comparison_data(children, all_data_codes, children_map)
-        if not resolved:
-            continue
-        children_rows = data[data[axis_col].isin(resolved)]
-        if children_rows.empty:
-            continue
-
-        parent_sum = parent_rows.groupby(group_cols, dropna=False)["value"].sum()
-        children_sum = children_rows.groupby(group_cols, dropna=False)["value"].sum()
-        child_presence = children_rows.groupby(group_cols, dropna=False)[axis_col].agg(
-            lambda values: set(values.astype(str))
-        )
-        common_idx = parent_sum.index
-
-        for idx in common_idx:
-            pv = float(parent_sum.loc[idx])
-            present_children = child_presence.get(idx, set())
-            missing_children = sorted(set(resolved).difference(present_children))
-            cv = float(children_sum.get(idx, 0.0))
-            err = abs(pv - cv)
-            # Missing children alone are not a failure: a child label absent
-            # from the comparison data while parent and children sums still
-            # agree contributes nothing to reconcile.
-            failed = err > tolerance * max(abs(pv), 1)
-            if not record_all_checks and not failed:
+        for source_system, sys_codes in data_codes_by_system.items():
+            sys_data = data[data["source_system"].astype(str) == source_system]
+            parent_rows = sys_data[sys_data[axis_col] == parent_code]
+            if parent_rows.empty:
                 continue
-            scope, source_system, economy, scenario, other_axis_value, year = idx
-            lookup_key = (
-                _str(source_system).casefold(),
-                _str(economy),
-                _str(scenario).casefold(),
-                _str(year),
-                axis,
-                _str(parent_code),
-                _str(other_axis_value),
+            # Resolve against THIS source's emitted labels: an aggregate this
+            # source did not emit expands to the descendants it did (e.g. 09.06,
+            # or Power sector -> its electricity/CHP/heat leaves). Keeping the
+            # aggregate for a source that does emit it avoids double counting the
+            # same value as both the aggregate and its leaves.
+            resolved = _resolve_to_comparison_data(children, sys_codes, children_map)
+            if not resolved:
+                continue
+            children_rows = sys_data[sys_data[axis_col].isin(resolved)]
+
+            parent_sum = parent_rows.groupby(sub_group_cols, dropna=False)["value"].sum()
+            children_sum = children_rows.groupby(sub_group_cols, dropna=False)["value"].sum()
+            child_presence = (
+                children_rows.groupby(sub_group_cols, dropna=False)[axis_col].agg(
+                    lambda values: set(values.astype(str))
+                )
+                if not children_rows.empty
+                else pd.Series(dtype=object)
             )
-            source_record = source_inconsistencies.get(lookup_key, {})
-            source_status = source_record.get("status", "not_attributed")
-            diff = pv - cv
-            prop_err = diff / pv if abs(pv) > tolerance else None
-            checks.append({
-                "validation_axis": axis,
-                "comparison_scope": scope,
-                "source_system": source_system,
-                "economy": economy,
-                "scenario": scenario,
-                "other_axis_value": other_axis_value,
-                "parent_code": parent_code,
-                "child_count": len(children),
-                "frontier_row_count": len(present_children),
-                "missing_expected_children": _join_sorted(missing_children),
-                "year": year,
-                "parent_value": pv,
-                "children_sum": cv,
-                "difference": diff,
-                "abs_error": err,
-                "proportional_error": prop_err,
-                "status": "failed" if failed else "passed",
-                "reason": (
-                    ("missing_expected_children" if missing_children else "difference_exceeds_tolerance")
-                    if failed
-                    else ("missing_children_within_tolerance" if missing_children else "within_tolerance")
-                ),
-                "source_inconsistency_status": source_status,
-                "sector_hierarchy_status": source_record.get("sector_hierarchy_status", ""),
-                "fuel_hierarchy_status": source_record.get("fuel_hierarchy_status", ""),
-                "source_issue_ids": source_record.get("source_issue_ids", ""),
-                "inherited_source_inconsistency": source_status == "confirmed_inherited",
-            })
+
+            for idx in parent_sum.index:
+                pv = float(parent_sum.loc[idx])
+                present_children = child_presence.get(idx, set())
+                missing_children = sorted(set(resolved).difference(present_children))
+                cv = float(children_sum.get(idx, 0.0))
+                err = abs(pv - cv)
+                # Missing children alone are not a failure: a child label absent
+                # from the comparison data while parent and children sums still
+                # agree contributes nothing to reconcile.
+                failed = err > tolerance * max(abs(pv), 1)
+                if not record_all_checks and not failed:
+                    continue
+                scope, economy, scenario, other_axis_value, year = idx
+                lookup_key = (
+                    _str(source_system).casefold(),
+                    _str(economy),
+                    _str(scenario).casefold(),
+                    _str(year),
+                    axis,
+                    _str(parent_code),
+                    _str(other_axis_value),
+                )
+                source_record = source_inconsistencies.get(lookup_key, {})
+                source_status = source_record.get("status", "not_attributed")
+                diff = pv - cv
+                prop_err = diff / pv if abs(pv) > tolerance else None
+                checks.append({
+                    "validation_axis": axis,
+                    "comparison_scope": scope,
+                    "source_system": source_system,
+                    "economy": economy,
+                    "scenario": scenario,
+                    "other_axis_value": other_axis_value,
+                    "parent_code": parent_code,
+                    "child_count": len(children),
+                    "frontier_row_count": len(present_children),
+                    "missing_expected_children": _join_sorted(missing_children),
+                    "year": year,
+                    "parent_value": pv,
+                    "children_sum": cv,
+                    "difference": diff,
+                    "abs_error": err,
+                    "proportional_error": prop_err,
+                    "status": "failed" if failed else "passed",
+                    "reason": (
+                        ("missing_expected_children" if missing_children else "difference_exceeds_tolerance")
+                        if failed
+                        else ("missing_children_within_tolerance" if missing_children else "within_tolerance")
+                    ),
+                    "source_inconsistency_status": source_status,
+                    "sector_hierarchy_status": source_record.get("sector_hierarchy_status", ""),
+                    "fuel_hierarchy_status": source_record.get("fuel_hierarchy_status", ""),
+                    "source_issue_ids": source_record.get("source_issue_ids", ""),
+                    "inherited_source_inconsistency": source_status == "confirmed_inherited",
+                })
 
     result = pd.DataFrame(checks)
     if result.empty:

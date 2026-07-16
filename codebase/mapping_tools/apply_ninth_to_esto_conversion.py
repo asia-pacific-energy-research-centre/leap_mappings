@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mapping_tools.source_rollups import apply_source_rollups
 from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
 
 #%%
@@ -160,11 +161,43 @@ def convert_ninth_results_to_esto(
     relationships_df: pd.DataFrame,
     target_values_df: pd.DataFrame | None = None,
     return_lineage: bool = False,
+    rollup_rules_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
-    """Join raw 9th rows to ESTO targets and aggregate values."""
+    """Join raw 9th rows to ESTO targets and aggregate values.
+
+    ``rollup_rules_df`` must contain only the NON_EXPANDING subset of
+    ``ninth_rollup_rules``. Non-expanding rolled NINTH labels (for example
+    ``09_01-09_02,09_x Power sector``) exist in the mapping sheets but not in
+    the raw 9th table, so their direct mappings match no data unless derived
+    rows summing the declared component sectors are created here first —
+    mirroring the LEAP converter's source-rollup step. Ordinary rollup rules
+    must NOT be passed: their aggregates are assembled downstream from
+    component ESTO flows via common_esto_overrides, so data-side rows for
+    them would double-count.
+    """
     missing_columns = [column for column in REQUIRED_NINTH_COLUMNS if column not in ninth_results_df.columns]
     if missing_columns:
         raise ValueError(f"9th results are missing required columns: {missing_columns}")
+
+    if rollup_rules_df is not None and not rollup_rules_df.empty:
+        allowed_pairs = set(
+            relationships_df[["source_flow", "source_product"]]
+            .fillna("")
+            .astype(str)
+            .apply(lambda row: (row.iloc[0].strip(), row.iloc[1].strip()), axis=1)
+        )
+        ninth_results_df, _ = apply_source_rollups(
+            source_df=ninth_results_df,
+            rules_df=rollup_rules_df,
+            source_flow_column="ninth_sector",
+            source_product_column="ninth_fuel",
+            value_column="value",
+            input_flow_column="input_ninth_sector",
+            input_product_column="input_ninth_fuel",
+            rolled_flow_column="rolled_ninth_sector",
+            rolled_product_column="rolled_ninth_fuel",
+            allowed_rolled_pairs=allowed_pairs,
+        )
 
     merged_df = ninth_results_df.merge(
         relationships_df,
@@ -205,16 +238,33 @@ def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> b
     ).any()
 
 
+def load_non_expanding_ninth_rollup_rules(mapping_workbook_path: Path) -> pd.DataFrame:
+    """Load the NON_EXPANDING subset of ninth_rollup_rules for data-side rollups."""
+    from codebase.mapping_tools.non_expanding_rollups import split_non_expanding_rules
+
+    rules_df = pd.read_excel(
+        mapping_workbook_path,
+        sheet_name="ninth_rollup_rules",
+        dtype=object,
+    ).fillna("")
+    _, non_expanding_rules_df = split_non_expanding_rules(rules_df)
+    return non_expanding_rules_df
+
+
 def run_conversion(
     ninth_results_path: Path,
     relationships_path: Path,
     output_path: Path,
     target_values_path: Path | None = None,
     lineage_output_path: Path | None = None,
+    mapping_workbook_path: Path | None = None,
 ) -> pd.DataFrame:
     """Run 9th-to-ESTO conversion."""
     ninth_results_df = read_table(ninth_results_path)
     relationships_df = load_ninth_to_esto_relationships(relationships_path)
+    rollup_rules_df = None
+    if mapping_workbook_path is not None:
+        rollup_rules_df = load_non_expanding_ninth_rollup_rules(mapping_workbook_path)
     target_values_df = None
     if target_values_path is not None and relationships_need_target_dataset_share(relationships_df):
         target_values_df = read_table(target_values_path)
@@ -224,9 +274,15 @@ def run_conversion(
             relationships_df,
             target_values_df,
             return_lineage=True,
+            rollup_rules_df=rollup_rules_df,
         )
     else:
-        converted_df = convert_ninth_results_to_esto(ninth_results_df, relationships_df, target_values_df)
+        converted_df = convert_ninth_results_to_esto(
+            ninth_results_df,
+            relationships_df,
+            target_values_df,
+            rollup_rules_df=rollup_rules_df,
+        )
         lineage_df = None
     output_path.parent.mkdir(parents=True, exist_ok=True)
     converted_df.to_csv(output_path, index=False)

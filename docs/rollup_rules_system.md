@@ -166,6 +166,16 @@ graph evidence.
   existing source rollup + direct-mapping path: `apply_source_rollups` builds
   the rolled source row (e.g. `Power`) from its contributors and the rolled
   label's own direct mapping row delivers it to its named ESTO target. The
+  LEAP converter applies the whole `leap_rollup_rules` sheet; the NINTH
+  converter (`apply_ninth_to_esto_conversion.py`, added 2026-07-15) applies
+  only the **non-expanding subset** of `ninth_rollup_rules`, because ordinary
+  NINTH rollups (e.g. `09_07_oil_refineries_incl_own_use`) are assembled
+  downstream from their component ESTO flows via `common_esto_overrides` —
+  giving those rolled labels data rows as well would double-count. This is
+  also why `09_01-09_02,09_x Power sector` must stay marked
+  `NON_EXPANDING_ROLLUP = True`: as an ordinary rule its duplicate-up clones
+  (rolled label → leaf targets) would both double the leaf values once the
+  rolled data rows exist and draw aggregate↔leaf graph edges. The
   ESTO-side subtotal has no raw row, so the data-convert step derives it:
   `build_esto_non_expanding_subtotal_rows` sums the raw ESTO rows of exactly
   the declared contributor flows per economy/product/year and appends the

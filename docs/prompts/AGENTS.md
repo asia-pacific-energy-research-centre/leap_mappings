@@ -48,6 +48,7 @@ Reviewed on 2026-07-13.
 
 ## Recently Archived
 
+- `fix_ninth_power_sector_rollup_emission_prompt.md` - implemented 2026-07-16: `apply_ninth_to_esto_conversion.py` now applies the NON_EXPANDING subset of `ninth_rollup_rules` via `apply_source_rollups` before the ESTO merge, so NINTH emits the `09.01-09.02 Power sector` aggregate (37,928 rows, was 0). Verified against `common_esto_validation.csv`: the flow no longer appears in `missing_expected_children` for the PRC/coal case, and the parent-vs-children residual is ≈-2,950 (matches the documented post-Fix-B target, not the pre-fix ≈-180,058 gap). Full pipeline re-run and dashboard spot-check (acceptance items 3 and 5) were not re-verified after this commit.
 - `implement_non_expanding_rollups_and_source_fallbacks_prompt.md` - implemented and verified 2026-07-13: non-expanding rollups (no graph edges, flagged subtotal common rows, derived ESTO subtotal rows), `config/source_branch_fallback_rules.csv` interim preflight, `config/all_demand_aggregated_components.csv` overlap warning, suppressed-edge QA, focused tests, and Stage 1-3 pipeline run.
 - `register_rollup_groups_as_tree_nodes_prompt.md` - completed and verified by commits `802858a`, `3ff2684`, and the later handoff update `23d9865`.
 - `explore_parent_level_own_use_comparison_rows.md` and `explore_parent_level_own_use_comparison_rows_FINDINGS.md` - report-only design exploration completed 2026-07-10.

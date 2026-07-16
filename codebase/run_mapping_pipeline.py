@@ -264,12 +264,14 @@ def run_ninth_to_esto() -> None:
     from codebase.mapping_tools.apply_ninth_to_esto_conversion import (
         prepare_ninth_long_format,
         load_ninth_to_esto_relationships,
+        load_non_expanding_ninth_rollup_rules,
         convert_ninth_results_to_esto,
         relationships_need_target_dataset_share,
     )
     # Load the mapping first so the wide 9th frame can be filtered to only
     # sector/fuel pairs with an included ESTO mapping *before* the year melt.
     relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
+    ninth_rollup_rules_df = load_non_expanding_ninth_rollup_rules(WORKBOOK_PATH)
     mapped_pairs = set(
         zip(
             relationships_df["source_flow"].astype(str),
@@ -292,6 +294,7 @@ def run_ninth_to_esto() -> None:
         relationships_df,
         target_values_df,
         return_lineage=True,
+        rollup_rules_df=ninth_rollup_rules_df,
     )
 
     NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
