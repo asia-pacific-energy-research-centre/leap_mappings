@@ -15,6 +15,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     validate_common_esto_recursive_sums,
     validate_leap_recursive_sums,
     validate_ninth_recursive_sums,
+    validate_ninth_sector_recursive_sums,
 )
 from codebase.mapping_tools.structural_resolver import build_tree_index
 
@@ -252,6 +253,70 @@ def test_ninth_ambiguous_parent_mapping_is_not_confirmed(tmp_path: Path) -> None
     assert len(result) == 1
     assert result.iloc[0]["mapping_status"] == "ambiguous_parent_mapping"
     assert not bool(result.iloc[0]["inheritance_eligible"])
+
+
+def test_ninth_sector_validation_uses_mapped_direct_child_frontier(tmp_path: Path) -> None:
+    """Do not add sub3 detail to a mapped sub2 subtotal a second time."""
+    workbook_path = tmp_path / "mappings.xlsx"
+    common_rows_path = tmp_path / "common_rows.csv"
+    rows = [
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "01_coal", "subfuels": "01_x_thermal_coal",
+            "subtotal_results": True, "2023": 100.0,
+        },
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_01_iron_and_steel", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "01_coal", "subfuels": "01_x_thermal_coal",
+            "subtotal_results": False, "2023": 95.0,
+        },
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_02_chemical_incl_petrochemical", "sub3sectors": "01_fs", "sub4sectors": "x",
+            "fuels": "01_coal", "subfuels": "01_x_thermal_coal",
+            "subtotal_results": False, "2023": 5.0,
+        },
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_02_chemical_incl_petrochemical", "sub3sectors": "02_ccs", "sub4sectors": "x",
+            "fuels": "01_coal", "subfuels": "01_x_thermal_coal",
+            "subtotal_results": False, "2023": 0.0,
+        },
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_02_chemical_incl_petrochemical", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "01_coal", "subfuels": "01_x_thermal_coal",
+            "subtotal_results": True, "2023": 5.0,
+        },
+    ]
+    pd.DataFrame(rows).to_csv(tmp_path / "ninth.csv", index=False)
+    _write_mapping_workbook(
+        workbook_path,
+        ninth_rows=[
+            {"ninth_sector": "14_03_manufacturing", "ninth_fuel": "01_x_thermal_coal", "esto_flow": "14.03 Manufacturing", "esto_product": "01.02 Other bituminous coal"},
+            {"ninth_sector": "14_03_01_iron_and_steel", "ninth_fuel": "01_x_thermal_coal", "esto_flow": "14.03.01 Iron and steel", "esto_product": "01.02 Other bituminous coal"},
+            {"ninth_sector": "14_03_02_chemical_incl_petrochemical", "ninth_fuel": "01_x_thermal_coal", "esto_flow": "14.03.02 Chemical", "esto_product": "01.02 Other bituminous coal"},
+        ],
+    )
+    pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "common_flow_label": "14.03 Manufacturing", "component_esto_product": "01.02 Other bituminous coal", "common_product_label": "01.02 Other bituminous coal"},
+    ]).to_csv(common_rows_path, index=False)
+
+    result = validate_ninth_sector_recursive_sums(
+        data_csv_path=tmp_path / "ninth.csv",
+        workbook_path=workbook_path,
+        common_rows_path=common_rows_path,
+        leap_var_base_year=2022,
+    )
+
+    assert result.empty
 
 
 #%%

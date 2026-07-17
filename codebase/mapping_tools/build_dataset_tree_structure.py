@@ -1114,6 +1114,14 @@ def validate_ninth_sector_recursive_sums(
     parent_df = df[has_sub1 & (df["sub2sectors"].astype(str).str.strip() == "x")].copy()
     child_df  = df[has_sub1 & (df["sub2sectors"].astype(str).str.strip() != "x")].copy()
 
+    # Validate at the mapped direct-child frontier.  Rows below sub2 can be
+    # deliberately unmapped detail, while the sub2 row is the source subtotal
+    # representing that detail.  Including both levels double-counts values
+    # (for example, 14_03_02_chemical_incl_petrochemical and its sub3 rows).
+    child_df = child_df[
+        child_df["sub3sectors"].astype(str).str.strip() == "x"
+    ].copy()
+
     if parent_df.empty or child_df.empty:
         return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
 
@@ -1177,6 +1185,20 @@ def validate_ninth_sector_recursive_sums(
             continue  # No common-ESTO row covers this (sector, fuel) combination
 
         child_sector_codes = sorted({_str(v) for v in children["sub2sectors"].unique()})
+
+        # If mappings do not cover the complete direct-child frontier, do not
+        # compare the parent with only a partial mapped subset.  That would
+        # manufacture a mismatch; coverage QA should report the omitted
+        # direct children separately.
+        mapped_child_codes = {
+            child_code
+            for child_code in child_sector_codes
+            if sector_fuel_to_products.get((child_code, ninth_fuel))
+        }
+        if mapped_child_codes != set(child_sector_codes):
+            # A mapped parent with incomplete direct-child coverage has no
+            # valid reconciliation frontier for this check.
+            continue
 
         for yr in year_cols:
             pv = pd.to_numeric(parent_group[yr], errors="coerce").sum()
