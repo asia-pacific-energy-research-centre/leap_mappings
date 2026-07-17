@@ -82,12 +82,15 @@ def prepare_ninth_long_format(
 
     df = df.copy()
     # Resolve ninth_sector to the most specific hierarchy level present.
-    sub2 = df["sub2sectors"].astype(str).str.strip()
-    sub1 = df["sub1sectors"].astype(str).str.strip()
-    sectors = df["sectors"].astype(str).str.strip()
-    df["ninth_sector"] = sectors
-    df.loc[sub1 != "x", "ninth_sector"] = sub1[sub1 != "x"]
-    df.loc[sub2 != "x", "ninth_sector"] = sub2[sub2 != "x"]
+    # This is important because mappings intentionally stop at a subtotal
+    # frontier: a deeper detail row must not be relabelled as its mapped parent
+    # and then added to that parent's subtotal a second time.
+    sector_columns = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
+    df["ninth_sector"] = df["sectors"].astype(str).str.strip()
+    for column in sector_columns[1:]:
+        values = df[column].astype(str).str.strip()
+        mask = values != "x"
+        df.loc[mask, "ninth_sector"] = values[mask]
 
     # Resolve fuel: subfuels if not 'x', else fuels
     df["ninth_fuel"] = df["subfuels"].astype(str).str.strip()

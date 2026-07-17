@@ -1,6 +1,9 @@
 import pandas as pd
 
-from codebase.mapping_tools.apply_ninth_to_esto_conversion import convert_ninth_results_to_esto
+from codebase.mapping_tools.apply_ninth_to_esto_conversion import (
+    convert_ninth_results_to_esto,
+    prepare_ninth_long_format,
+)
 
 
 def _relationship_rows() -> pd.DataFrame:
@@ -80,3 +83,31 @@ def test_ninth_lineage_sums_to_aggregated_values_and_keeps_allocation_share() ->
         "Component B": 0.3,
     }
     assert set(lineage_df["relationship_id"]) == {"rel-combined-source"}
+
+
+def test_ninth_preparation_keeps_deeper_sector_detail_separate(tmp_path) -> None:
+    """A sub3 row must not be relabelled as its mapped sub2 subtotal."""
+    path = tmp_path / "ninth.csv"
+    pd.DataFrame([
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_02_chemical_incl_petrochemical",
+            "sub3sectors": "x", "sub4sectors": "x", "fuels": "01_coal",
+            "subfuels": "01_x_thermal_coal", "2023": 5.0,
+        },
+        {
+            "scenarios": "reference", "economy": "20_USA",
+            "sectors": "14_industry_sector", "sub1sectors": "14_03_manufacturing",
+            "sub2sectors": "14_03_02_chemical_incl_petrochemical",
+            "sub3sectors": "14_03_02_01_fs", "sub4sectors": "x", "fuels": "01_coal",
+            "subfuels": "01_x_thermal_coal", "2023": 5.0,
+        },
+    ]).to_csv(path, index=False)
+
+    result = prepare_ninth_long_format(path)
+
+    assert set(result["ninth_sector"]) == {
+        "14_03_02_chemical_incl_petrochemical",
+        "14_03_02_01_fs",
+    }
