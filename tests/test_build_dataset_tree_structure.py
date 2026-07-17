@@ -89,7 +89,7 @@ def test_common_esto_subtotal_status_uses_the_new_tree_not_esto_prefixes(tmp_pat
 
 
 def test_load_rollup_hierarchy_keeps_declared_parent_and_children(tmp_path: Path) -> None:
-    """The workbook loader dedupes rolled labels and ignores blank hierarchy rows."""
+    """The workbook loader keeps declared and standalone rollup boundaries."""
     workbook_path = tmp_path / "mappings.xlsx"
     pd.DataFrame([
         {
@@ -108,17 +108,48 @@ def test_load_rollup_hierarchy_keeps_declared_parent_and_children(tmp_path: Path
             "include": True,
             "rolled_esto_flow": "Blank hierarchy",
             "parent_flow_label": "",
-            "child_flow_labels": "",
+            "child_flow_labels": "10.01.11 Oil refineries",
         },
     ]).to_excel(workbook_path, sheet_name="esto_rollup_rules", index=False)
 
     hierarchy = _load_rollup_hierarchy(workbook_path)
 
-    assert list(hierarchy) == ["16.01-16.02 Buildings"]
+    assert list(hierarchy) == ["16.01-16.02 Buildings", "Blank hierarchy"]
     assert hierarchy["16.01-16.02 Buildings"] == {
         "parent_label": "16 Other sector",
         "children": ["16.01 Commercial and public services", "16.02 Residential"],
     }
+    assert hierarchy["Blank hierarchy"] == {
+        "parent_label": "",
+        "children": ["10.01.11 Oil refineries"],
+    }
+
+
+def test_standalone_rollup_label_does_not_become_numeric_tree_child() -> None:
+    """A standalone inclusive row is not a second child of its base parent."""
+    hierarchy = {
+        "09.07 Oil refineries (including own use)": {
+            "parent_label": "",
+            "children": ["10.01.11 Oil refineries"],
+        },
+    }
+    tree = _build_esto_axis_tree(
+        [
+            "09 Total transformation sector",
+            "09.07 Oil refineries",
+            "09.07 Oil refineries (including own use)",
+            "10.01.11 Oil refineries",
+        ],
+        "flow",
+        "common_esto",
+        set(),
+        hierarchy,
+    )
+    flows = tree[tree["axis"].eq("flow")].set_index("code")
+
+    assert flows.loc["09.07 Oil refineries", "parent_code"] == "09 Total transformation sector"
+    assert flows.loc["09.07 Oil refineries (including own use)", "parent_code"] == ""
+    assert flows.loc["10.01.11 Oil refineries", "parent_code"] == "09.07 Oil refineries (including own use)"
 
 
 def test_in_scope_real_rollup_hierarchy_has_no_tree_index_issues() -> None:

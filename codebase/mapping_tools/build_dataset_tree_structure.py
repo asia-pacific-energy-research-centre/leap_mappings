@@ -117,7 +117,12 @@ def _load_rollup_hierarchy(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> dict[
         rules = pd.read_excel(workbook_path, sheet_name="esto_rollup_rules", dtype=object)
     except Exception:
         return {}
-    required = {"rolled_esto_flow", "parent_flow_label", "child_flow_labels"}
+    # ``parent_flow_label`` is optional.  Some comparison-boundary rollups are
+    # deliberately standalone nodes: their rolled label must not be inferred
+    # back into the numeric hierarchy merely because it starts with a code such
+    # as ``09.07``.  They can still declare contributors through
+    # ``child_flow_labels``.
+    required = {"rolled_esto_flow", "child_flow_labels"}
     if not required.issubset(rules.columns):
         return {}
     if "include" in rules.columns:
@@ -129,7 +134,7 @@ def _load_rollup_hierarchy(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> dict[
         rolled_flow = _str(rule.get("rolled_esto_flow"))
         parent_label = _str(rule.get("parent_flow_label"))
         child_labels = _str(rule.get("child_flow_labels"))
-        if not rolled_flow or not parent_label or not child_labels:
+        if not rolled_flow or not child_labels:
             continue
         if rolled_flow in hierarchy:
             continue
@@ -1829,6 +1834,7 @@ def _validate_common_esto_axis_recursive_sums(
     ] | None = None,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     record_all_checks: bool = False,
+    source_frontier: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -1871,6 +1877,17 @@ def _validate_common_esto_axis_recursive_sums(
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
     children_map = _common_esto_validation_children_map(tree_df, axis)
+    frontier_lookup: dict[tuple[str, str], set[str]] = {}
+    if source_frontier is not None and not source_frontier.empty and axis == "flow":
+        comparable = source_frontier[
+            source_frontier["frontier_status"].astype(str).eq("comparable")
+        ]
+        for (source_system, parent_code), group in comparable.groupby(
+            ["source_system", "parent_code"], dropna=False
+        ):
+            frontier_lookup[(str(source_system), str(parent_code))] = set(
+                group["child_code"].astype(str)
+            )
     source_inconsistencies = source_inconsistencies or {}
     # Presence of an intermediate subtotal is a *per-source* property: a source
     # emits either an aggregate label or only its leaves, consistently across
@@ -1893,12 +1910,19 @@ def _validate_common_esto_axis_recursive_sums(
             parent_rows = sys_data[sys_data[axis_col] == parent_code]
             if parent_rows.empty:
                 continue
+            expected_children = children
+            if source_frontier is not None and axis == "flow":
+                frontier_children = frontier_lookup.get((str(source_system), str(parent_code)), set())
+                expected_children = [child for child in children if child in frontier_children]
+                expected_children.extend(sorted(frontier_children.difference(children)))
+                if not expected_children:
+                    continue
             # Resolve against THIS source's emitted labels: an aggregate this
             # source did not emit expands to the descendants it did (e.g. 09.06,
             # or Power sector -> its electricity/CHP/heat leaves). Keeping the
             # aggregate for a source that does emit it avoids double counting the
             # same value as both the aggregate and its leaves.
-            resolved = _resolve_to_comparison_data(children, sys_codes, children_map)
+            resolved = _resolve_to_comparison_data(expected_children, sys_codes, children_map)
             if not resolved:
                 continue
             children_rows = sys_data[sys_data[axis_col].isin(resolved)]
@@ -1947,7 +1971,7 @@ def _validate_common_esto_axis_recursive_sums(
                     "scenario": scenario,
                     "other_axis_value": other_axis_value,
                     "parent_code": parent_code,
-                    "child_count": len(children),
+                    "child_count": len(expected_children),
                     "frontier_row_count": len(present_children),
                     "missing_expected_children": _join_sorted(missing_children),
                     "year": year,
@@ -1992,6 +2016,7 @@ def validate_common_esto_recursive_sums(
         tuple[str, str, str, str, str, str, str], dict[str, str]
     ] | None = None,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
+    source_frontier: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Validate Common ESTO product and flow subtotals when comparison data exists.
@@ -2007,6 +2032,7 @@ def validate_common_esto_recursive_sums(
                 tolerance,
                 source_inconsistencies,
                 leap_var_base_year,
+                source_frontier=source_frontier,
             ),
             _validate_common_esto_axis_recursive_sums(
                 tree_df,
@@ -2015,6 +2041,7 @@ def validate_common_esto_recursive_sums(
                 tolerance,
                 source_inconsistencies,
                 leap_var_base_year,
+                source_frontier=source_frontier,
             ),
         ],
         ignore_index=True,
