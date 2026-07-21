@@ -163,3 +163,13 @@ containing, per parent × source_system:
 - Implementing the `parent_child_mismatch_allowed` sheet or its validator hook.
 - Re-running the full pipeline (query existing outputs; if the comparison data is stale relative
   to the code, say so in the report rather than rerunning).
+
+## Next job after this
+
+Once Transport (and the rest of this cluster) is diagnosed and its fix decided,
+the planned follow-on is the **source-parent anchor validation methodology (4a)**:
+`docs/prompts/investigate_anchor_validation_methodology.md`. That task depends on
+this one — the comparison-level pattern Transport establishes (where a source's
+detailed leaves land in the comparison data, and at what level the three datasets
+are genuinely comparable) is the design input for reworking the anchor validator.
+Do not start 4a before this is done.
