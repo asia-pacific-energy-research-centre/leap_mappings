@@ -105,8 +105,23 @@ def apply_target_dataset_allocation(
     source_group_columns = ["economy", "scenario", "year", "source_flow", "source_product"]
     source_group_columns = [column for column in source_group_columns if column in rows.columns]
     rows["_source_group_key"] = _string_key_columns(rows, source_group_columns)
-    rows["_target_basis_total"] = rows.groupby("_source_group_key")["target_basis"].transform("sum")
-    rows["_row_count"] = rows.groupby("_source_group_key")["target_basis"].transform("size")
+    # Source rollups can produce several rows for the same source pair before
+    # the mapping join. Count each target pair once; otherwise the same target
+    # basis is included once per derived source row and shares become too small.
+    pair_basis = rows[
+        ["_source_group_key", "target_flow", "target_product", "target_basis"]
+    ].drop_duplicates(
+        subset=["_source_group_key", "target_flow", "target_product"]
+    )
+    pair_totals = pair_basis.groupby("_source_group_key")["target_basis"].agg(
+        _target_basis_total="sum",
+        _row_count="size",
+    ).reset_index()
+    rows = rows.drop(columns=["_target_basis_total", "_row_count"], errors="ignore").merge(
+        pair_totals,
+        on="_source_group_key",
+        how="left",
+    )
     equal_share = _equal_share_for_group(rows["_row_count"])
     rows["_computed_allocation_share"] = rows["target_basis"] / rows["_target_basis_total"]
     rows.loc[rows["_target_basis_total"].le(0), "_computed_allocation_share"] = equal_share[

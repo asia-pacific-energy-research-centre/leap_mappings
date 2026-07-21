@@ -112,6 +112,27 @@ def test_target_dataset_share_falls_back_to_equal_when_basis_is_zero() -> None:
     assert result["allocation_share"].tolist() == [0.5, 0.5]
 
 
+def test_target_dataset_share_counts_unique_targets_when_source_rows_repeat() -> None:
+    merged = pd.DataFrame([
+        {
+            "economy": "01_AUS", "scenario": "reference", "year": 2023,
+            "source_flow": "rolled_source", "source_product": "fuel",
+            "target_flow": "Component A", "target_product": "Fuel",
+            "allocation_source": "target_dataset_share", "allocation_share": "",
+        },
+        {
+            "economy": "01_AUS", "scenario": "reference", "year": 2023,
+            "source_flow": "rolled_source", "source_product": "fuel",
+            "target_flow": "Component B", "target_product": "Fuel",
+            "allocation_source": "target_dataset_share", "allocation_share": "",
+        },
+    ] * 3)
+
+    result = apply_target_dataset_allocation(merged, _target_values(70, 30))
+
+    assert result["allocation_share"].round(6).tolist() == [0.7, 0.3] * 3
+
+
 def test_ninth_converter_applies_target_dataset_share() -> None:
     ninth_results = pd.DataFrame([
         {
@@ -133,4 +154,3 @@ def test_ninth_converter_applies_target_dataset_share() -> None:
 
     values = result.set_index("target_flow")["value"].to_dict()
     assert values == {"Component A": 70.0, "Component B": 30.0}
-
