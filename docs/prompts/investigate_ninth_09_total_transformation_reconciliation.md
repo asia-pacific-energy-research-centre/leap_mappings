@@ -19,12 +19,15 @@ resolved (commit `4042d5e`, see
 docs/prompts/investigate_standalone_rollup_validation.md and the memory note
 `project_standalone_rollup_validation`). Do **not** re-open that rollup work.
 
-A full Stages 1-3 verification run for the rollup change may still be finishing
-when you start. Before launching your own Stages 1-3 run, confirm no other
-`run_mapping_pipeline.py` process is active and that
-`results/common_esto/common_esto_comparison_data.csv` is from a completed run
-(check the newest `logs/codex_stages_1_3_*` log ends with `Pipeline complete.`).
-Two concurrent runs will clobber each other's `results/` outputs.
+The rollup-change verification run is **complete**: a full Stages 1-3 run
+finished cleanly on 2026-07-21 (`Pipeline complete.`, Stage 3 ~24 min,
+`run_id common_esto_20260721T014101`; log
+`logs/codex_stages_1_3_20260721_103752_rollup_exclusion.out.log`). The
+`results/` outputs referenced below are from that run, so you can inspect them
+immediately and are free to launch your own Stages 1-3 run whenever you need to
+test a change. Standard hygiene still applies: only run one
+`run_mapping_pipeline.py` at a time — two concurrent runs clobber each other's
+`results/` outputs.
 
 ## Objective
 
