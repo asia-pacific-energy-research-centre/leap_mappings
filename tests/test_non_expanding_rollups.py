@@ -14,6 +14,7 @@ from codebase.mapping_tools.non_expanding_rollups import (
     build_non_expanding_rollup_catalogue,
     build_unresolved_non_expanding_qa,
     is_non_expanding_rule_row,
+    get_rollup_mode,
     non_expanding_rollup_id,
     split_non_expanding_rules,
 )
@@ -78,6 +79,11 @@ def _esto_rules(non_expanding_marker: dict[str, object]) -> pd.DataFrame:
 
 
 class TestRuleMarkers:
+    def test_explicit_rollup_modes(self) -> None:
+        assert get_rollup_mode({"ROLLUP_MODE": "EXPANDING"}) == "EXPANDING"
+        assert get_rollup_mode({"ROLLUP_MODE": "NON_EXPANDING"}) == "NON_EXPANDING"
+        assert get_rollup_mode({"ROLLUP_MODE": "DETACHED"}) == "DETACHED"
+
     def test_rollup_reason_marker(self) -> None:
         assert is_non_expanding_rule_row({"rollup_reason": "NON_EXPANDING_ROLLUP"})
         assert is_non_expanding_rule_row({"rollup_reason": "non_expanding_rollup"})

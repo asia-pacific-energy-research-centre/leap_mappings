@@ -791,19 +791,34 @@ def _tree_children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[s
     return children_map
 
 
-def _common_esto_validation_children_map(tree_df: pd.DataFrame, axis: str) -> dict[str, list[str]]:
+def _common_esto_validation_children_map(
+    tree_df: pd.DataFrame,
+    axis: str,
+    exclude_parents: set[str] | None = None,
+) -> dict[str, list[str]]:
     """
     Return Common ESTO parent/child edges that are also present in the ESTO tree.
 
     Common ESTO can contain generated or projection-only labels such as
     datacentres. Their numeric prefixes may look hierarchical, but they are not
     valid subtotal checks unless the same edge exists in the source ESTO tree.
+
+    ``exclude_parents`` drops labels that must never be validated as ordinary
+    additive parents. Named non-expanding / detached rollup subtotals (e.g.
+    ``09.07 Oil refineries (including own use)``) are registered as tree nodes so
+    they display with their sub-parts, but summing them against those declared
+    children is the forbidden "add a non-expanding subtotal to its children in
+    one additive total" operation. Their contributor reconciliation is handled by
+    the dedicated rollup validator instead.
     """
+    exclude_parents = exclude_parents or set()
     common_map = _tree_children_map(tree_df, "common_esto", axis)
     esto_map = _tree_children_map(tree_df, "esto", axis)
     esto_child_sets = {parent: set(children) for parent, children in esto_map.items()}
     filtered: dict[str, list[str]] = {}
     for parent, children in common_map.items():
+        if parent in exclude_parents:
+            continue
         valid_children = [child for child in children if child in esto_child_sets.get(parent, set())]
         if valid_children:
             filtered[parent] = valid_children
@@ -1835,6 +1850,7 @@ def _validate_common_esto_axis_recursive_sums(
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     record_all_checks: bool = False,
     source_frontier: pd.DataFrame | None = None,
+    exclude_parents: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -1876,7 +1892,7 @@ def _validate_common_esto_axis_recursive_sums(
         return _empty_common_esto_validation()
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
-    children_map = _common_esto_validation_children_map(tree_df, axis)
+    children_map = _common_esto_validation_children_map(tree_df, axis, exclude_parents)
     frontier_lookup: dict[tuple[str, str], set[str]] = {}
     if source_frontier is not None and not source_frontier.empty and axis == "flow":
         comparable = source_frontier[
@@ -2017,11 +2033,14 @@ def validate_common_esto_recursive_sums(
     ] | None = None,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     source_frontier: pd.DataFrame | None = None,
+    exclude_parents: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Validate Common ESTO product and flow subtotals when comparison data exists.
 
     ``source_inconsistencies`` is passed through to the per-axis validator.
+    ``exclude_parents`` drops non-expanding / detached rollup labels from the
+    ordinary additive parent/child validation.
     """
     result = pd.concat(
         [
@@ -2033,6 +2052,7 @@ def validate_common_esto_recursive_sums(
                 source_inconsistencies,
                 leap_var_base_year,
                 source_frontier=source_frontier,
+                exclude_parents=exclude_parents,
             ),
             _validate_common_esto_axis_recursive_sums(
                 tree_df,
@@ -2042,6 +2062,7 @@ def validate_common_esto_recursive_sums(
                 source_inconsistencies,
                 leap_var_base_year,
                 source_frontier=source_frontier,
+                exclude_parents=exclude_parents,
             ),
         ],
         ignore_index=True,
@@ -2184,11 +2205,30 @@ def run_tree_structure_workflow(
         print(f"Stage B — Skipping Common ESTO validation (not found: {common_comparison_path.name})")
     else:
         print("Stage B — Common ESTO recursive sum validation …")
+        # Named non-expanding / detached rollup subtotals are registered tree
+        # nodes for display but are not additive sums of their tree children;
+        # exclude them from the ordinary recursive validator (matching the Stage 3
+        # orchestration).
+        try:
+            from codebase.mapping_tools.non_expanding_rollups import (
+                DETACHED_MODE,
+                NON_EXPANDING_MODE,
+                load_rollup_mode_labels,
+            )
+
+            rollup_parents = {
+                label
+                for label, mode in load_rollup_mode_labels(Path(outlook_mappings_path)).items()
+                if mode in {NON_EXPANDING_MODE, DETACHED_MODE}
+            }
+        except Exception:
+            rollup_parents = set()
         common_validation = validate_common_esto_recursive_sums(
             all_trees,
             common_comparison_path,
             source_inconsistencies=source_inconsistencies,
             leap_var_base_year=leap_var_base_year,
+            exclude_parents=rollup_parents,
         )
         common_validation.to_csv(common_val_path, index=False)
         if common_validation.empty:

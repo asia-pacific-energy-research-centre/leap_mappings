@@ -1,15 +1,16 @@
 #%%
-"""Non-expanding rollup rule handling.
+"""Explicit rollup-mode rule handling.
 
 A ``NON_EXPANDING_ROLLUP`` rule declares a named derived subtotal: its
 contributors are summed into one stable comparison row, but the rule must not
 create Common ESTO graph edges between those contributors, and its
 ``parent_flow_label`` / ``child_flow_labels`` are display/tree metadata only.
 
-Rules are marked either with ``rollup_reason = NON_EXPANDING_ROLLUP`` or with a
-truthy value in the workbook's ``NON_EXPANDING_ROLLUP`` column. Both markers
-are honoured because the maintained workbook currently uses the boolean column
-while the documented contract is the ``rollup_reason`` value.
+The workbook's ``ROLLUP_MODE`` column is the primary marker.  ``EXPANDING``
+creates ordinary graph rollups, ``NON_EXPANDING`` creates the existing opaque
+subtotal, and ``DETACHED`` creates that subtotal while retaining its source
+contributors in the ordinary ESTO hierarchy.  Legacy ``rollup_reason`` and
+``NON_EXPANDING_ROLLUP`` values remain readable during the migration.
 """
 
 #%%
@@ -24,6 +25,11 @@ import pandas as pd
 #%%
 NON_EXPANDING_REASON = "NON_EXPANDING_ROLLUP"
 NON_EXPANDING_FLAG_COLUMN = "NON_EXPANDING_ROLLUP"
+ROLLUP_MODE_COLUMN = "ROLLUP_MODE"
+EXPANDING_MODE = "EXPANDING"
+NON_EXPANDING_MODE = "NON_EXPANDING"
+DETACHED_MODE = "DETACHED"
+ROLLUP_MODES = {EXPANDING_MODE, NON_EXPANDING_MODE, DETACHED_MODE}
 
 ROLLUP_SHEET_CONFIGS = {
     "leap_rollup_rules": {
@@ -52,6 +58,7 @@ ROLLUP_SHEET_CONFIGS = {
 CATALOGUE_COLUMNS = [
     "rule_sheet",
     "source_system",
+    "rollup_mode",
     "non_expanding_rollup_id",
     "rolled_flow_label",
     "rolled_product_label",
@@ -85,22 +92,44 @@ def _truthy(value: Any) -> bool:
     return _str(value).casefold() in {"true", "1", "yes", "y"}
 
 
-def is_non_expanding_rule_row(row: pd.Series | dict[str, Any]) -> bool:
-    """Return True when a rollup rule row is marked non-expanding."""
+def get_rollup_mode(row: pd.Series | dict[str, Any]) -> str:
+    """Return the explicit mode, with compatibility for the old boolean column."""
     getter = row.get if hasattr(row, "get") else lambda key, default=None: row[key] if key in row else default
+    explicit = _str(getter(ROLLUP_MODE_COLUMN, "")).upper().replace("-", "_").replace(" ", "_")
+    if explicit:
+        if explicit not in ROLLUP_MODES:
+            raise ValueError(f"Unsupported ROLLUP_MODE: {explicit!r}; expected one of {sorted(ROLLUP_MODES)}")
+        return explicit
     reason = _str(getter("rollup_reason", "")).casefold()
     if reason == NON_EXPANDING_REASON.casefold():
-        return True
-    return _truthy(getter(NON_EXPANDING_FLAG_COLUMN, ""))
+        return NON_EXPANDING_MODE
+    return NON_EXPANDING_MODE if _truthy(getter(NON_EXPANDING_FLAG_COLUMN, "")) else EXPANDING_MODE
+
+
+def is_non_expanding_rule_row(row: pd.Series | dict[str, Any]) -> bool:
+    """Return True for the legacy opaque-subtotal mode."""
+    return get_rollup_mode(row) == NON_EXPANDING_MODE
+
+
+def split_rollup_rules(
+    rules_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split rules into expanding, non-expanding, and detached groups."""
+    if rules_df is None or rules_df.empty:
+        empty = pd.DataFrame(columns=rules_df.columns if rules_df is not None else [])
+        return empty.copy(), empty.copy(), empty.copy()
+    modes = rules_df.apply(get_rollup_mode, axis=1)
+    return (
+        rules_df[modes == EXPANDING_MODE].copy(),
+        rules_df[modes == NON_EXPANDING_MODE].copy(),
+        rules_df[modes == DETACHED_MODE].copy(),
+    )
 
 
 def split_non_expanding_rules(rules_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split rollup rules into (ordinary, non_expanding) frames."""
-    if rules_df is None or rules_df.empty:
-        empty = pd.DataFrame(columns=rules_df.columns if rules_df is not None else [])
-        return empty.copy(), empty.copy()
-    mask = rules_df.apply(is_non_expanding_rule_row, axis=1)
-    return rules_df[~mask].copy(), rules_df[mask].copy()
+    """Legacy split; detached rules are boundary rules like non-expanding ones."""
+    ordinary, non_expanding, detached = split_rollup_rules(rules_df)
+    return ordinary, pd.concat([non_expanding, detached], ignore_index=True)
 
 
 def non_expanding_rollup_id(rolled_flow_label: str, rolled_product_label: str = "") -> str:
@@ -157,6 +186,28 @@ def load_non_expanding_flow_labels(workbook_path: Path) -> dict[str, str]:
     return labels
 
 
+def load_rollup_mode_labels(workbook_path: Path) -> dict[str, str]:
+    """Map generated flow labels to their explicit rollup mode."""
+    labels: dict[str, str] = {}
+    for sheet_name, config in ROLLUP_SHEET_CONFIGS.items():
+        try:
+            rules_df = pd.read_excel(workbook_path, sheet_name=sheet_name, dtype=object).fillna("")
+        except Exception:
+            continue
+        if "include" in rules_df.columns:
+            rules_df = rules_df[rules_df["include"].map(_truthy)]
+        for _, rule in rules_df.iterrows():
+            label = _str(rule.get(config["rolled_flow"], ""))
+            if not label:
+                continue
+            mode = get_rollup_mode(rule)
+            previous = labels.get(label)
+            if previous and previous != mode:
+                raise ValueError(f"Conflicting ROLLUP_MODE values for rolled label {label!r}: {previous}, {mode}")
+            labels[label] = mode
+    return labels
+
+
 def build_non_expanding_rollup_catalogue(rules_by_sheet: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Compile one row per non-expanding rule contributor across all sheets."""
     rows: list[dict[str, Any]] = []
@@ -172,6 +223,7 @@ def build_non_expanding_rollup_catalogue(rules_by_sheet: dict[str, pd.DataFrame]
                 {
                     "rule_sheet": sheet_name,
                     "source_system": config["source_system"],
+                    "rollup_mode": get_rollup_mode(rule),
                     "non_expanding_rollup_id": non_expanding_rollup_id(rolled_flow),
                     "rolled_flow_label": rolled_flow,
                     "rolled_product_label": _str(rule.get(config["rolled_product"])),

@@ -20,6 +20,7 @@ from codebase.mapping_tools.non_expanding_rollups import (
     build_non_expanding_rollup_catalogue,
     build_unresolved_non_expanding_qa,
     non_expanding_rolled_labels,
+    split_rollup_rules,
     split_non_expanding_rules,
 )
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
@@ -1553,11 +1554,12 @@ def _load_known_esto_flows(workbook_path: Path) -> set[str]:
         _, esto_rules, _ = load_rollup_rules(workbook_path)
     except Exception:
         return known_flows
-    _, esto_non_expanding = split_non_expanding_rules(esto_rules)
+    _, esto_non_expanding, esto_detached = split_rollup_rules(esto_rules)
+    esto_boundary = pd.concat([esto_non_expanding, esto_detached], ignore_index=True)
     return (
         known_flows
         | _build_registered_rollup_flow_set(esto_rules)
-        | set(non_expanding_rolled_labels(esto_non_expanding, "rolled_esto_flow"))
+        | set(non_expanding_rolled_labels(esto_boundary, "rolled_esto_flow"))
     )
 
 
@@ -1577,10 +1579,11 @@ def _load_known_ninth_sectors(workbook_path: Path) -> set[str]:
         _, _, ninth_rules = load_rollup_rules(workbook_path)
     except Exception:
         return known_sectors
-    _, ninth_non_expanding = split_non_expanding_rules(ninth_rules)
+    _, ninth_non_expanding, ninth_detached = split_rollup_rules(ninth_rules)
+    ninth_boundary = pd.concat([ninth_non_expanding, ninth_detached], ignore_index=True)
     # Non-expanding rolled NINTH labels stay whole as named subtotal targets;
     # they are known comparison labels even though no raw 9th row carries them.
-    return known_sectors | set(non_expanding_rolled_labels(ninth_non_expanding, "rolled_ninth_sector"))
+    return known_sectors | set(non_expanding_rolled_labels(ninth_boundary, "rolled_ninth_sector"))
 
 
 def build_unknown_esto_target_qa(relationship_df: pd.DataFrame, known_esto_flows: set[str]) -> pd.DataFrame:
@@ -1872,13 +1875,16 @@ def run_relationship_workflow(
     # out mapping targets, duplicate source relationships upward, or emit
     # common_esto_overrides edges, so only the ordinary subsets feed those
     # mechanisms below.
-    leap_ordinary_rules, leap_non_expanding_rules = split_non_expanding_rules(leap_rules)
-    esto_ordinary_rules, esto_non_expanding_rules = split_non_expanding_rules(esto_rules)
-    ninth_ordinary_rules, ninth_non_expanding_rules = split_non_expanding_rules(ninth_rules)
+    leap_ordinary_rules, leap_non_expanding_rules, leap_detached_rules = split_rollup_rules(leap_rules)
+    esto_ordinary_rules, esto_non_expanding_rules, esto_detached_rules = split_rollup_rules(esto_rules)
+    ninth_ordinary_rules, ninth_non_expanding_rules, ninth_detached_rules = split_rollup_rules(ninth_rules)
+    leap_boundary_rules = pd.concat([leap_non_expanding_rules, leap_detached_rules], ignore_index=True)
+    esto_boundary_rules = pd.concat([esto_non_expanding_rules, esto_detached_rules], ignore_index=True)
+    ninth_boundary_rules = pd.concat([ninth_non_expanding_rules, ninth_detached_rules], ignore_index=True)
     rolled_flow_to_components = _build_rolled_flow_to_components(esto_ordinary_rules)
     rolled_ninth_sector_to_components = _build_rolled_ninth_sector_to_components(ninth_ordinary_rules)
     registered_rollup_flows = _build_registered_rollup_flow_set(esto_rules) | set(
-        non_expanding_rolled_labels(esto_non_expanding_rules, "rolled_esto_flow")
+        non_expanding_rolled_labels(esto_boundary_rules, "rolled_esto_flow")
     )
 
     # Expand combined ESTO targets and apply rollup rules
@@ -1938,9 +1944,9 @@ def run_relationship_workflow(
 
     non_expanding_catalogue_df = build_non_expanding_rollup_catalogue(
         {
-            "leap_rollup_rules": leap_non_expanding_rules,
-            "esto_rollup_rules": esto_non_expanding_rules,
-            "ninth_rollup_rules": ninth_non_expanding_rules,
+            "leap_rollup_rules": leap_boundary_rules,
+            "esto_rollup_rules": esto_boundary_rules,
+            "ninth_rollup_rules": ninth_boundary_rules,
         }
     )
     non_expanding_unresolved_df = build_unresolved_non_expanding_qa(

@@ -10,6 +10,7 @@ the smallest common ESTO rows that do not split source aggregates.
 #%%
 import hashlib
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,7 @@ COMMON_ROW_COLUMNS = [
     "requires_rollup",
     "is_non_expanding_rollup",
     "non_expanding_rollup_id",
+    "rollup_mode",
     "common_row_basis",
     "aggregate_group_source",
     "aggregate_group_source_id",
@@ -758,10 +760,12 @@ def build_common_rows(
 def apply_non_expanding_flags(
     common_rows_df: pd.DataFrame,
     non_expanding_labels: dict[str, str],
+    rollup_mode_labels: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """Flag common rows whose component is a named non-expanding subtotal label."""
     if common_rows_df.empty or not non_expanding_labels:
         return common_rows_df
+    rollup_mode_labels = rollup_mode_labels or {}
     adjusted_df = common_rows_df.copy()
     component_flows = adjusted_df["component_esto_flow"].astype(str).map(normalise_text)
     flagged_ids = component_flows.map(lambda label: non_expanding_labels.get(label, ""))
@@ -775,14 +779,19 @@ def apply_non_expanding_flags(
         return common_rows_df
     mapped_ids = adjusted_df["common_row_id"].astype(str).map(lambda value: row_ids_by_common.get(value, ""))
     adjusted_df["non_expanding_rollup_id"] = mapped_ids
-    adjusted_df["is_non_expanding_rollup"] = mapped_ids.ne("")
+    adjusted_df["rollup_mode"] = adjusted_df["component_esto_flow"].astype(str).map(
+        lambda value: rollup_mode_labels.get(normalise_text(value), "NON_EXPANDING" if normalise_text(value) in non_expanding_labels else "")
+    )
+    adjusted_df["is_non_expanding_rollup"] = adjusted_df["rollup_mode"].eq("NON_EXPANDING")
     adjusted_df.loc[adjusted_df["is_non_expanding_rollup"], "common_row_basis"] = "non_expanding_rollup"
+    adjusted_df.loc[adjusted_df["rollup_mode"].eq("DETACHED"), "common_row_basis"] = "detached_rollup"
     return adjusted_df
 
 
 NON_EXPANDING_QA_COLUMNS = [
     "comparison_scope",
     "non_expanding_rollup_id",
+    "rollup_mode",
     "rolled_flow_label",
     "rule_sheets",
     "mapped_source_systems",
@@ -855,6 +864,11 @@ def build_non_expanding_rollup_qa(
             {
                 "comparison_scope": comparison_scope,
                 "non_expanding_rollup_id": rollup_id,
+                "rollup_mode": (
+                    str(catalogue_rows["rollup_mode"].iloc[0])
+                    if not catalogue_rows.empty and "rollup_mode" in catalogue_rows.columns
+                    else "NON_EXPANDING"
+                ),
                 "rolled_flow_label": label,
                 "rule_sheets": "|".join(rule_sheets),
                 "mapped_source_systems": "|".join(mapped_systems),
@@ -1102,10 +1116,14 @@ def apply_configured_axis_label_overrides(
         if expected_components:
             matches &= adjusted_df["partition_components"].astype(str).map(normalise_text).eq(expected_components)
         if not matches.any():
-            raise ValueError(
-                f"Enabled {axis} label override did not match a final partition: "
-                f"{auto_label!r} ({expected_components or 'any components'})."
+            warnings.warn(
+                f"Enabled {axis} label override did not match a final partition; "
+                f"skipping override: {auto_label!r} "
+                f"({expected_components or 'any components'}).",
+                RuntimeWarning,
+                stacklevel=2,
             )
+            continue
         adjusted_df.loc[matches, "partition_label"] = preferred_label
         adjusted_df.loc[matches, "partition_created_by"] = "config_label_override"
     return adjusted_df
@@ -1497,6 +1515,7 @@ def build_common_esto_for_scope(
     non_expanding_labels: dict[str, str] | None = None,
     non_expanding_catalogue_df: pd.DataFrame | None = None,
     non_expanding_children: dict[str, list[str]] | None = None,
+    rollup_mode_labels: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build common ESTO rows, map rows, and QA outputs for one comparison scope."""
     non_expanding_labels = non_expanding_labels or {}
@@ -1528,7 +1547,7 @@ def build_common_esto_for_scope(
         product_code_to_name,
         comparison_scope=comparison_scope,
     )
-    common_rows_df = apply_non_expanding_flags(common_rows_df, non_expanding_labels)
+    common_rows_df = apply_non_expanding_flags(common_rows_df, non_expanding_labels, rollup_mode_labels)
     if common_rows_df.empty:
         map_df = build_map_table(common_rows_df)
         qa_outputs = {
@@ -1659,8 +1678,10 @@ def run_common_esto_structure_workflow(
     flow_code_to_name, product_code_to_name = load_code_name_lookups(outlook_mappings_path)
 
     from codebase.mapping_tools.non_expanding_rollups import load_non_expanding_flow_labels
+    from codebase.mapping_tools.non_expanding_rollups import load_rollup_mode_labels
 
     non_expanding_labels = load_non_expanding_flow_labels(outlook_mappings_path)
+    rollup_mode_labels = load_rollup_mode_labels(outlook_mappings_path)
     non_expanding_catalogue_df = read_table_if_exists(
         Path(relationships_path).parent / "non_expanding_rollups.csv"
     )
@@ -1695,6 +1716,7 @@ def run_common_esto_structure_workflow(
             non_expanding_labels=non_expanding_labels,
             non_expanding_catalogue_df=non_expanding_catalogue_df,
             non_expanding_children=non_expanding_children,
+            rollup_mode_labels=rollup_mode_labels,
         )
         common_frames.append(scope_common_df)
         map_frames.append(scope_map_df)

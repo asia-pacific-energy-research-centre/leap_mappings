@@ -346,6 +346,7 @@ def configured_rollup_reference_pairs(
 def select_esto_comparison_rows(
     esto_df: pd.DataFrame,
     rollup_reference_pairs: set[tuple[str, str]],
+    retained_flow_labels: set[str] | None = None,
 ) -> pd.DataFrame:
     """Keep ESTO leaves plus exact parent pairs required by configured rollups.
 
@@ -353,7 +354,8 @@ def select_esto_comparison_rows(
         needed by LEAP rollup comparisons (e.g. 'Total transformation - no transfers').
     """
     leaf_mask = esto_df["is_subtotal"].astype(str).str.strip().str.lower() == "false"
-    if not rollup_reference_pairs:
+    retained_flow_labels = retained_flow_labels or set()
+    if not rollup_reference_pairs and not retained_flow_labels:
         return esto_df[leaf_mask].copy()
     pair_mask = pd.Series(
         [
@@ -362,7 +364,8 @@ def select_esto_comparison_rows(
         ],
         index=esto_df.index,
     )
-    return esto_df[leaf_mask | pair_mask].copy()
+    flow_mask = esto_df["flows"].astype(str).str.strip().isin(retained_flow_labels)
+    return esto_df[leaf_mask | pair_mask | flow_mask].copy()
 
 
 def run_esto_exact_rows() -> None:
@@ -398,17 +401,26 @@ def run_esto_exact_rows() -> None:
     from codebase.mapping_tools.non_expanding_rollups import (
         build_esto_non_expanding_subtotal_rows,
         load_non_expanding_rollup_rules,
+        split_rollup_rules,
     )
-    esto_non_expanding_rules = load_non_expanding_rollup_rules(WORKBOOK_PATH).get(
+    esto_boundary_rules = load_non_expanding_rollup_rules(WORKBOOK_PATH).get(
         "esto_rollup_rules", pd.DataFrame()
     )
+    _, _, detached_esto_rules = split_rollup_rules(
+        pd.read_excel(WORKBOOK_PATH, sheet_name="esto_rollup_rules", dtype=object).fillna("")
+    )
+    detached_esto_flows = {
+        str(value).strip()
+        for value in detached_esto_rules.get("input_esto_flow", pd.Series(dtype=object))
+        if str(value).strip()
+    }
     non_expanding_rows_df = build_esto_non_expanding_subtotal_rows(
         df,
-        esto_non_expanding_rules,
+        esto_boundary_rules,
         year_columns=year_cols,
     )
 
-    df_leaf = select_esto_comparison_rows(df, reference_pairs)
+    df_leaf = select_esto_comparison_rows(df, reference_pairs, detached_esto_flows)
     del df
     gc.collect()
 
@@ -610,6 +622,7 @@ def run_stage_3() -> None:
         skip_reason=skip_reason,
         source_inconsistencies=source_inconsistencies,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        workbook_path=WORKBOOK_PATH,
     )
     validation_detail_row_count = len(detail_df)
 
@@ -702,12 +715,30 @@ def run_stage_3() -> None:
 
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
     summary_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation_summary.csv"
+    diagnostic_paths = {
+        "common_esto_validation_child_detail": tree_output_dir / "common_esto_validation_child_detail.csv",
+        "common_esto_validation_issue_patterns": tree_output_dir / "common_esto_validation_issue_patterns.csv",
+        "common_esto_validation_rollup_diagnosis": tree_output_dir / "common_esto_validation_rollup_diagnosis.csv",
+    }
     validation_status = validation_summary.copy()
     validation_status["record_type"] = "validation"
     validation_status["artifact_name"] = validation_status["validation_name"]
     validation_status["current_output_file"] = detail_path.name
     validation_status["output_mtime_ns"] = detail_path.stat().st_mtime_ns
     validation_status["validation_summary_path"] = str(summary_path.resolve())
+    diagnostic_status_rows = []
+    for artifact_name, artifact_path in diagnostic_paths.items():
+        if artifact_path.exists():
+            diagnostic_status_rows.append({
+                "run_id": run_id,
+                "run_timestamp_utc": run_timestamp_utc,
+                "record_type": "validation_diagnostic",
+                "artifact_name": artifact_name,
+                "current_output_file": artifact_path.name,
+                "output_mtime_ns": artifact_path.stat().st_mtime_ns,
+                "validation_summary_path": str(summary_path.resolve()),
+            })
+    diagnostic_status = pd.DataFrame(diagnostic_status_rows)
     anchor_status = anchor_summary.copy()
     anchor_status["record_type"] = "validation"
     anchor_status["artifact_name"] = "source_parent_anchor_validation"
@@ -715,7 +746,7 @@ def run_stage_3() -> None:
     anchor_status["output_mtime_ns"] = anchor_detail_path.stat().st_mtime_ns
     anchor_status["validation_summary_path"] = str(anchor_summary_path.resolve())
     combined_status = pd.concat(
-        [stage3_status, validation_status, anchor_status], ignore_index=True, sort=False
+        [stage3_status, validation_status, anchor_status, diagnostic_status], ignore_index=True, sort=False
     )
     combined_status.to_csv(status_path, index=False)
 

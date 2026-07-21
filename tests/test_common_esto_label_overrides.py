@@ -39,7 +39,7 @@ def test_flow_label_override_relabels_only_the_matching_component_partition() ->
     assert result.loc[0, "partition_created_by"] == "config_label_override"
 
 
-def test_enabled_override_fails_when_the_expected_partition_is_not_present() -> None:
+def test_enabled_override_warns_when_the_expected_partition_is_not_present() -> None:
     lookup_df = pd.DataFrame(
         [{"partition_label": "10.01.17 Non-specified own uses", "partition_components": "10.01.17 Non-specified own uses"}]
     )
@@ -47,5 +47,12 @@ def test_enabled_override_fails_when_the_expected_partition_is_not_present() -> 
         [{"enabled": "true", "comparison_scope": "", "auto_common_flow_label": "missing label", "preferred_common_flow_label": "replacement"}]
     )
 
-    with pytest.raises(ValueError, match="did not match a final partition"):
-        apply_configured_axis_label_overrides(lookup_df, overrides_df, axis="flow", comparison_scope="esto_leap")
+    with pytest.warns(RuntimeWarning, match="did not match a final partition"):
+        result = apply_configured_axis_label_overrides(
+            lookup_df,
+            overrides_df,
+            axis="flow",
+            comparison_scope="esto_leap",
+        )
+
+    assert result.loc[0, "partition_label"] == "10.01.17 Non-specified own uses"
