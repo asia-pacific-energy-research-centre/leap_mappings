@@ -1,5 +1,34 @@
 # Resume prompt: standalone inclusive rollup validation
 
+> **Resolution (2026-07-21).** Implemented the step-3 design: named
+> NON_EXPANDING/DETACHED rollup subtotals are excluded from the ordinary
+> recursive Common ESTO validator (they are alternative views, never additive
+> parents of their tree children), and a dedicated contributor-based rollup
+> validator reconciles each inclusive rollup against its declared contributors
+> with source-availability awareness. See commit
+> `4042d5e codex: validate standalone inclusive rollups against contributors`.
+>
+> - `_common_esto_validation_children_map` / the recursive validators take
+>   `exclude_parents`; Stage 3 orchestration and the Stage 0 tree workflow build
+>   the excluded set from the workbook `ROLLUP_MODE` column.
+> - New `validate_non_expanding_rollups` writes
+>   `results/tree_structure/common_esto_rollup_validation.csv` (+ summary) with
+>   statuses passed / failed / incomplete_contributors /
+>   no_contributors_available.
+> - `_diagnose_child_status` now lets presence in the final output win, so an
+>   ordinary child that is a rollup input elsewhere (e.g. 09.07 under 09 Total)
+>   is `present_in_final_output`, not a false `replaced_but_value_present`.
+>
+> Verified on real Stage-2 output: rollup-as-parent failures 0 (was ~3,300),
+> total failed rows 13,666 -> 11,242, ESTO inclusive rollups reconcile to ~0
+> error, and 614 genuine NINTH `09.07 (incl own use)` boundary mismatches are
+> now surfaced by the rollup validator rather than buried in the recursive one.
+>
+> **Out of scope / still open:** the ~4,663 remaining `09 Total transformation
+> sector` failures are a genuine NINTH transformation reconciliation gap (NINTH
+> 09 Total does not equal the sum of its 09.xx children), unrelated to rollup
+> boundaries. Left for a separate investigation.
+
 You are continuing work in C:\Users\Work\github\leap_mappings on the Common ESTO mapping pipeline. Read the repository AGENTS.md files and docs/mappings_system.md before making changes. Start with:
 
     git status --short
