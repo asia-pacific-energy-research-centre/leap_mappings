@@ -29,9 +29,32 @@ for the user to approve.
 > - Transport's missing children are `15.02 Road`, `15.03 Rail`,
 >   `15.04 Domestic navigation`, `15.05 Pipeline transport`, `15.06 Non-specified
 >   transport` — **all of them, in every failing row** (median gap = 100% of
->   parent). That pattern says NINTH emits transport only at the `15` aggregate,
->   or its sub-sector values reach the comparison data under different partition
->   labels. Establish which before proposing a verdict.
+>   parent).
+>
+>   **Do NOT read this as source-unavailability / a frontier gap.** The 9th
+>   Outlook carries the *finest* transport detail of any of the three datasets:
+>   `15 Transport` splits into `15_01_domestic_air_transport`, `15_02_road`,
+>   `15_03_rail`, `15_04_domestic_navigation`, `15_05_pipeline_transport`,
+>   `15_06_nonspecified_transport`, and each of those splits further down to the
+>   5th level. So the NINTH children **exist in the source** — they are simply not
+>   reaching `common_esto_comparison_data.csv` under the ESTO-shaped labels
+>   (`15.02 Road`, …) that the tree's child list expects. This is a
+>   mapping / partition-label / comparison-level problem, not missing source data,
+>   and it will **not** be fixed by marking anything `source_unavailable`.
+>
+>   The decisive first question: **where do NINTH's detailed transport leaf values
+>   actually land in the comparison data?** Trace `15_02_road` (and siblings)
+>   through `ninth_pairs_to_esto_pairs` and
+>   `results/mapping_relationships/energy_balance_relationships.csv` to their ESTO
+>   target, then find that value in `common_esto_comparison_data.csv` for NINTH and
+>   read its `common_flow_label`. Likely findings: (a) the leaves are mapped but
+>   graph partitioning merged them into a coarser generated common label (because
+>   LEAP/ESTO support only a coarser transport level), so the exact `15.02 Road`
+>   string the validator looks for never appears; (b) a mapping gap where some
+>   `15_0x` NINTH sectors have no ESTO `15.0x` target; or (c) the comparison level
+>   for transport is genuinely coarser than `15.0x` and the tree/child-map should
+>   not be asserting those leaves as reconcilable children. Distinguish these
+>   before proposing any verdict or exception row.
 > - `14 Industry` misses `14.03 Manufacturing`, `14.01 Mining and quarrying`,
 >   `14.02 Construction` (~17% short). `14.03 Manufacturing` misses granular
 >   sub-industries (`14.03.09 Wood`, `14.03.10 Textiles`, `14.03.11 Non-specified`,
