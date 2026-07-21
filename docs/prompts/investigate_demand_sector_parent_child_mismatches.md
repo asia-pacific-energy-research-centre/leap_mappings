@@ -1,9 +1,27 @@
 # Investigate demand-sector parent/child mismatches (14 Industry, 14.03 Manufacturing, 15 Transport)
 
 Repo: `C:\Users\Work\github\leap_mappings`. Read `AGENTS.md` first and follow repo conventions.
-This is a **diagnosis task — report only**. Do not edit code, the mapping workbook, or the
-exceptions workbook. The deliverable is a written verdict plus proposed exception rows (as text)
-for the user to approve.
+
+**Diagnose first, then fix if the cause is clear-cut; confirm with the user
+before anything high-blast-radius.** The old report-only framing is lifted: once
+the diagnosis is solid you may implement the fix, verify it, and commit it in a
+focused `codex:` commit. But gate the following behind explicit user confirmation
+rather than proceeding unilaterally:
+
+- **Editing `config/outlook_mappings_master.xlsx`** (mapping rows or rollup
+  rules). Mapping-boundary decisions are the user's call — propose the exact
+  change and get a yes first. The workbook also carries unrelated in-progress
+  edits; do not overwrite or reformat it.
+- **Editing `config/mapping_issue_exception_sets.xlsx`** or creating the proposed
+  `parent_child_mismatch_allowed` sheet — propose the rows, do not add them.
+- **Any verdict that is `mixed` or ambiguous**, or a fix whose blast radius you
+  cannot bound (e.g. a change to graph partitioning or the comparison-level for a
+  whole sector that moves many other rows).
+
+A clear, self-contained **code** fix (e.g. in the tree/child-map, the validator,
+or the frontier) that is obviously correct and well-tested may proceed without
+asking — that is the point of lifting report-only. When in doubt, ask; a wrong
+mapping/boundary change is hard to unwind and distorts comparisons silently.
 
 > **2026-07-21 refresh — this supersedes the stale baseline counts below.** After
 > the standalone-rollup validation work landed (commit `4042d5e`), a fresh full
@@ -131,11 +149,12 @@ NINTH / one economy (e.g. USA), one mid-range year, one product with a large abs
 
 ## Deliverable
 
-A short report (markdown, save to `docs/prompts/` alongside this file with suffix `_FINDINGS.md`)
-containing, per parent × source_system:
+Still produce the written report first (markdown, save to `docs/prompts/` alongside this file with
+suffix `_FINDINGS.md`) — it is the evidence trail whether or not you go on to fix. Per parent ×
+source_system:
 
-1. Verdict: `unmodelled-by-design` / `mapping-bug` / `mixed` / `cosmetic-zero`, with the evidence
-   (one worked example each, with numbers).
+1. Verdict: `unmodelled-by-design` / `mapping-bug` / `comparison-level` / `mixed` / `cosmetic-zero`,
+   with the evidence (one worked example each, with numbers).
 2. The exact child flows responsible for the bulk of the difference, and their share of it.
 3. For every `unmodelled-by-design` verdict: proposed exception rows for a future
    `parent_child_mismatch_allowed` sheet in `config/mapping_issue_exception_sets.xlsx`, in this
@@ -143,8 +162,18 @@ containing, per parent × source_system:
    `enabled | axis | parent_code | source_system | description`
    Parent codes should be the narrowest prefix that covers the issue (e.g. a specific `14.03.xx`
    child family rather than all of `14.03` if only some subsectors are unmodelled).
-4. For every `mapping-bug` verdict: which mapping sheet/row family is wrong or missing, and what a
-   fix would look like (do not apply it).
+4. For every `mapping-bug` / `comparison-level` verdict: which mapping sheet/row family or which
+   piece of code (tree/child-map, validator, frontier, partitioning) is wrong or missing, and what
+   the fix is.
+
+**Then act on the report:**
+
+- Where the fix is a clear, self-contained **code** change (per the top-of-file rule), implement
+  it, add/extend focused tests, run them, verify against a fresh pipeline run, and commit it.
+- Where the fix needs the **mapping workbook** or the **exception sheet**, or the verdict is
+  `mixed`/ambiguous, present the proposed change and **ask the user to confirm before applying**.
+- Keep the `_FINDINGS.md` report and the fix in view together so the reasoning behind the change is
+  auditable.
 
 ## Known pitfalls
 
@@ -157,12 +186,20 @@ containing, per parent × source_system:
   known issue tied to the own-use rollup restructure — **out of scope here**; do not analyse or
   "fix" them.
 
-## Out of scope
+## Scope boundaries
 
-- Any edits to `config/outlook_mappings_master.xlsx` or `config/mapping_issue_exception_sets.xlsx`.
-- Implementing the `parent_child_mismatch_allowed` sheet or its validator hook.
-- Re-running the full pipeline (query existing outputs; if the comparison data is stale relative
-  to the code, say so in the report rather than rerunning).
+- **Confirm before editing** `config/outlook_mappings_master.xlsx` or
+  `config/mapping_issue_exception_sets.xlsx` (see top-of-file rule). Never overwrite or reformat
+  the workbook; it carries unrelated in-progress edits.
+- Implementing the `parent_child_mismatch_allowed` sheet or its validator hook is a larger piece —
+  propose it and confirm scope before building it.
+- **Re-running the full pipeline is now allowed** to verify a fix, but only one
+  `run_mapping_pipeline.py` at a time (concurrent runs clobber `results/`); launch it in the
+  background with redirected logs and check for the `Pipeline complete.` marker. If the comparison
+  data is stale relative to the code and you are only diagnosing, say so rather than rerunning.
+- Do not touch the recursive-validator rollup exclusion / rollup validator from `4042d5e`, or the
+  `09.x` transformation cluster (that is
+  `investigate_ninth_09_total_transformation_reconciliation.md`).
 
 ## Next job after this
 
