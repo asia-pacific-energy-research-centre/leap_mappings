@@ -201,6 +201,7 @@ def mark_unallocated_one_to_many_for_target_share(merged_df: pd.DataFrame) -> pd
         result["allocation_share"] = ""
     if "allocation_source" not in result.columns:
         result["allocation_source"] = ""
+    result["allocation_source"] = result["allocation_source"].astype(object)
     source_group_columns = [
         column
         for column in ["economy", "scenario", "year", "source_flow", "source_product"]

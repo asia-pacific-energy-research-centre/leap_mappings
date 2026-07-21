@@ -788,6 +788,28 @@ _STAGE_RUNNERS = {
 }
 
 
+def expand_requested_stages(requested: list[str], skipped: set[str]) -> list[str]:
+    """Add conversion dependencies to the common abbreviated run sequence.
+
+    ``--stages 1,2,3`` is commonly used as a full mapping refresh, but the
+    historical CLI treated ``data_convert`` as an unrelated stage and reused
+    whatever conversion artifacts happened to be on disk.  Insert the normal
+    LEAP parse and data conversion steps when that exact abbreviated sequence
+    is requested, unless the caller explicitly skips them.
+    """
+    if not {"1", "2", "3"}.issubset(requested):
+        return requested
+
+    expanded: list[str] = []
+    for stage in requested:
+        expanded.append(stage)
+        if stage == "2":
+            for dependency in ["leap_parse", "data_convert"]:
+                if dependency not in skipped and dependency not in requested:
+                    expanded.append(dependency)
+    return expanded
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the LEAP->ESTO mapping pipeline.")
     parser.add_argument(
@@ -813,6 +835,7 @@ def main() -> None:
     requested = [s.strip() for s in args.stages.split(",") if s.strip()]
     skipped   = {s.strip() for s in args.skip.split(",") if s.strip()}
 
+    requested = expand_requested_stages(requested, skipped)
     stages_to_run = [s for s in requested if s not in skipped]
 
     unknown = [s for s in stages_to_run if s not in _STAGE_RUNNERS]
