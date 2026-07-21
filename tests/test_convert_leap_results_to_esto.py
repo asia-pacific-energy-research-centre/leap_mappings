@@ -79,3 +79,54 @@ def test_leap_lineage_sums_to_aggregated_values_and_keeps_allocation_share() -> 
         "Component B": 0.3,
     }
     assert set(lineage_df["relationship_id"]) == {"rel-combined-source"}
+
+
+def test_own_use_or_losses_rows_are_forced_negative() -> None:
+    relationships_df = pd.DataFrame([
+        {
+            "source_system": "LEAP",
+            "source_flow": "own_use_source",
+            "source_product": "fuel",
+            "target_system": "ESTO",
+            "target_flow": "10.01.01 Electricity, CHP and heat plants",
+            "target_product": "Fuel",
+            "relationship_id": "rel-own-use",
+            "allocation_method": "direct",
+            "relationship_type": "own_use_or_losses",
+        },
+        {
+            "source_system": "LEAP",
+            "source_flow": "direct_source",
+            "source_product": "fuel",
+            "target_system": "ESTO",
+            "target_flow": "17 Electricity",
+            "target_product": "Fuel",
+            "relationship_id": "rel-direct",
+            "allocation_method": "direct",
+            "relationship_type": "direct_or_existing_mapping",
+        },
+    ])
+    leap_results_df = pd.DataFrame([
+        {
+            "economy": "20_USA",
+            "scenario": "target",
+            "year": 2022,
+            "leap_flow": "own_use_source",
+            "leap_product": "fuel",
+            "value": 50.0,
+        },
+        {
+            "economy": "20_USA",
+            "scenario": "target",
+            "year": 2022,
+            "leap_flow": "direct_source",
+            "leap_product": "fuel",
+            "value": 30.0,
+        },
+    ])
+
+    converted_df = convert_leap_results_to_esto(leap_results_df, relationships_df)
+
+    converted_values = converted_df.set_index("target_flow")["value"].to_dict()
+    assert converted_values["10.01.01 Electricity, CHP and heat plants"] == -50.0
+    assert converted_values["17 Electricity"] == 30.0

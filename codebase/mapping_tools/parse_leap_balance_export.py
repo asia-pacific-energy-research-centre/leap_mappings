@@ -34,7 +34,16 @@ from typing import Any
 
 import pandas as pd
 
-from codebase.utilities.leap_balance_export_resolver import resolve_balance_exports_root
+from codebase.utilities.leap_balance_export_resolver import (
+    BALANCE_EXPORT_TRUST_FILENAME_SCENARIO,
+    resolve_balance_exports_root,
+    scenario_code_from_balance_export_filename,
+)
+
+# Internal "Scenario:" subtitle text these filename-derived REF/TGT codes
+# should be trusted to mean, when BALANCE_EXPORT_TRUST_FILENAME_SCENARIO
+# overrides a mismatched internal label (see leap_balance_export_resolver.py).
+_SCENARIO_CODE_TO_LABEL = {"REF": "Reference", "TGT": "Target"}
 
 def _find_repo_root() -> Path:
     here = Path(__file__).resolve()
@@ -215,10 +224,31 @@ def _reconstruct_demand_paths(
 def _parse_single_sheet(
     raw: pd.DataFrame,
     economy_override: str | None = None,
+    expected_scenario: str | None = None,
 ) -> pd.DataFrame:
-    """Parse one sheet of a LEAP balance export into long-format rows."""
+    """Parse one sheet of a LEAP balance export into long-format rows.
+
+    ``expected_scenario`` is the Reference/Target label implied by the source
+    filename (see ``scenario_code_from_balance_export_filename``). LEAP
+    occasionally exports a "...REF.xlsx" workbook whose sheets are internally
+    labeled "Scenario: Target" -- when that happens and
+    BALANCE_EXPORT_TRUST_FILENAME_SCENARIO is True, the filename wins.
+    """
     economy_raw, scenario, year, unit_factor = _parse_header(raw)
     economy = economy_override or economy_raw
+
+    if expected_scenario and scenario and scenario != expected_scenario:
+        print(
+            f"[WARN] Sheet's internal Scenario label {scenario!r} disagrees with "
+            f"the filename-implied scenario {expected_scenario!r}. "
+            + (
+                "Trusting the filename (BALANCE_EXPORT_TRUST_FILENAME_SCENARIO=True)."
+                if BALANCE_EXPORT_TRUST_FILENAME_SCENARIO
+                else "Keeping the internal label (BALANCE_EXPORT_TRUST_FILENAME_SCENARIO=False)."
+            )
+        )
+        if BALANCE_EXPORT_TRUST_FILENAME_SCENARIO:
+            scenario = expected_scenario
 
     fuel_names_norm = _fuel_columns(raw)
 
@@ -288,6 +318,9 @@ def parse_leap_balance_xlsx(
     xl = pd.ExcelFile(xlsx_path)
     sheet_names = xl.sheet_names
 
+    expected_scenario_code = scenario_code_from_balance_export_filename(xlsx_path)
+    expected_scenario = _SCENARIO_CODE_TO_LABEL.get(expected_scenario_code, "")
+
     # Detect multi-year workbooks (sheets named like 'EBal|2060' or '2060').
     ebal_sheets = [s for s in sheet_names if re.match(r"^(EBal\|)?\d{4}$", str(s))]
 
@@ -295,7 +328,9 @@ def parse_leap_balance_xlsx(
         frames = []
         for sheet in ebal_sheets:
             raw = xl.parse(sheet, header=None, dtype=object)
-            df = _parse_single_sheet(raw, economy_override=economy_override)
+            df = _parse_single_sheet(
+                raw, economy_override=economy_override, expected_scenario=expected_scenario
+            )
             if not df.empty:
                 frames.append(df)
         if not frames:
@@ -306,7 +341,9 @@ def parse_leap_balance_xlsx(
 
     # Single-sheet workbook: read first (and only) sheet as before
     raw = xl.parse(sheet_names[0], header=None, dtype=object)
-    return _parse_single_sheet(raw, economy_override=economy_override)
+    return _parse_single_sheet(
+        raw, economy_override=economy_override, expected_scenario=expected_scenario
+    )
 
 
 # ---------------------------------------------------------------------------

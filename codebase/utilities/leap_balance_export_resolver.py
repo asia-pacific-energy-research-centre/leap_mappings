@@ -24,6 +24,32 @@ SCENARIO_CODE_ALIASES = {
     "target": "TGT",
 }
 
+BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
+    r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
+
+# LEAP sometimes exports a "...REF.xlsx" balance workbook whose sheets'
+# internal "Scenario: X, Year: Y, Units: Z" subtitle still says "Target" (a
+# LEAP-side export mistake, not a data error) -- both the REF and TGT
+# workbooks for the same run can carry the same internal "Target" label. When
+# True, the filename's REF/TGT token overrides that internal label so
+# Reference data isn't silently dropped from downstream tables/dashboards.
+# Set False to trust the internal label instead, if mislabeled exports start
+# masking real Reference/Target mix-ups.
+BALANCE_EXPORT_TRUST_FILENAME_SCENARIO = True
+
+
+def scenario_code_from_balance_export_filename(path: Path) -> str:
+    """Return the REF/TGT scenario code implied by a balance-export filename, or "" if unrecognized."""
+    match = BALANCE_EXPORT_FILENAME_PATTERN.match(Path(path).name)
+    if not match:
+        return ""
+    try:
+        return normalize_balance_scenario_code(match.group("scenario"))
+    except ValueError:
+        return ""
+
 
 @dataclass(frozen=True)
 class BalanceExportWorkbook:
@@ -130,16 +156,12 @@ def _iter_balance_export_workbooks(
     economy: str,
     scenario_code: str,
 ) -> Iterable[BalanceExportWorkbook]:
-    pattern = re.compile(
-        r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
-        re.IGNORECASE,
-    )
     if not export_dir.exists():
         return
     for path in export_dir.glob("*.xlsx"):
         if path.name.startswith("~$"):
             continue
-        match = pattern.match(path.name)
+        match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
         if not match:
             continue
         if normalize_balance_scenario_code(match.group("scenario")) != scenario_code:

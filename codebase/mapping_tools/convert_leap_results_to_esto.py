@@ -17,6 +17,8 @@ from codebase.mapping_tools.source_rollups import apply_source_rollups
 from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
 
 #%%
+OWN_USE_OR_LOSSES_RELATIONSHIP_TYPE = "own_use_or_losses"
+
 REQUIRED_LEAP_COLUMNS = ["leap_flow", "leap_product", "value"]
 GROUP_COLUMNS = ["economy", "scenario", "year", "target_flow", "target_product"]
 SOURCE_LINEAGE_COLUMNS = [
@@ -94,6 +96,21 @@ def build_source_to_esto_lineage(merged_df: pd.DataFrame, source_system: str) ->
     return mapped_df[SOURCE_LINEAGE_COLUMNS].copy()
 
 
+def apply_own_use_or_loss_sign_convention(values: pd.Series, relationship_types: pd.Series) -> pd.Series:
+    """Force own-use/loss rows negative to match the ESTO/NINTH/balance-table convention.
+
+    LEAP's raw balance export stores own-use/loss rows (target ESTO flow codes
+    10.01/10.02, tagged upstream by ``infer_relationship_type`` as
+    ``own_use_or_losses``) as positive quantities, but ESTO and NINTH represent
+    the same category as negative (energy removed from supply). This forces
+    the sign to negative via ``-abs()`` regardless of the input's current
+    sign, so it is idempotent and safe even if upstream data is already
+    correctly signed.
+    """
+    is_own_use_or_loss = relationship_types.astype(str) == OWN_USE_OR_LOSSES_RELATIONSHIP_TYPE
+    return values.where(~is_own_use_or_loss, -values.abs())
+
+
 def convert_leap_results_to_esto(
     leap_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
@@ -144,6 +161,10 @@ def convert_leap_results_to_esto(
     if "allocation_share" in merged_df.columns:
         allocation_share = pd.to_numeric(merged_df["allocation_share"], errors="coerce").fillna(1.0)
         merged_df["value"] = merged_df["value"] * allocation_share
+    if "relationship_type" in merged_df.columns:
+        merged_df["value"] = apply_own_use_or_loss_sign_convention(
+            merged_df["value"], merged_df["relationship_type"]
+        )
     lineage_df = build_source_to_esto_lineage(merged_df, source_system="LEAP") if return_lineage else None
 
     keep_group_columns = [column for column in GROUP_COLUMNS if column in merged_df.columns]

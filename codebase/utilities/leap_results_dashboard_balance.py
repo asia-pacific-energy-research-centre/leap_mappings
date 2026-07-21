@@ -19,7 +19,10 @@ from typing import Any, Iterable, Sequence
 
 import pandas as pd
 from codebase.mappings.canonical_mapping import ConfigTableRef, split_config_table_ref
-from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook
+from codebase.utilities.leap_balance_export_resolver import (
+    BALANCE_EXPORT_TRUST_FILENAME_SCENARIO,
+    resolve_balance_export_workbook,
+)
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
 from codebase.utilities.energy_balance_template_extractor import TemplateBalanceExtractor
@@ -1402,7 +1405,8 @@ def build_mapping_lineage_audit_table(
       LEAP          — a pre-aggregation LEAP balance row that mapped to an ESTO pair.
                       The leap_sector_name_full_path and raw_leap_fuel_name columns show
                       exactly which LEAP workbook row contributed to the aggregated value.
-                      is_subtotal and esto_pair_is_subtotal flag subtotal relationships.
+                      is_subtotal and esto_pair_is_subtotal flag the source mapping's
+                      subtotal relationships.
       LEAP_unmapped — a LEAP balance row that could not be matched to any ESTO pair.
                       esto_flow / esto_product are empty; the row appears here so you can
                       see what data was silently excluded from comparisons.
@@ -1654,6 +1658,7 @@ def build_mapping_lineage_audit_table(
     combined["value_pj"] = pd.to_numeric(combined["value_pj"], errors="coerce")
     for bool_col in ["is_subtotal", "esto_pair_is_subtotal", "ninth_pair_is_subtotal", "remove_row"]:
         combined[bool_col] = combined[bool_col].fillna(False).astype(bool)
+
     for str_col in [
         "dataset", "scenario", "esto_flow", "esto_product", "source_sector", "source_fuel",
         "remove_row_reason", "pair_mapping_cardinality", "subtotal_alignment",
@@ -3801,6 +3806,7 @@ def _extract_balance_workbook(
     codebook_path: Path,
     explicit_pair_mappings_only: bool = False,
     allow_descendant_mapping_expansion: bool = True,
+    expected_scenario: str | None = None,
 ) -> dict[str, Any]:
     chosen_template = _pick_template_sheet(workbook_path, template_sheet)
     extractor = TemplateBalanceExtractor(
@@ -3821,6 +3827,25 @@ def _extract_balance_workbook(
         sheet_name_filter=selected_sheets,
         convert_units_to_petajoule=True,
     )
+    if expected_scenario:
+        for frame in (raw_long, mapped_long):
+            if frame.empty or "scenario" not in frame.columns:
+                continue
+            mismatched = frame["scenario"].map(_normalize_scenario).ne(expected_scenario)
+            if mismatched.any():
+                mismatched_labels = sorted(frame.loc[mismatched, "scenario"].astype(str).unique())
+                print(
+                    f"[WARN] {workbook_path.name}: {int(mismatched.sum())} row(s) carry an internal "
+                    f"Scenario label {mismatched_labels} that disagrees with this workbook's "
+                    f"REF/TGT identity ({expected_scenario}). "
+                    + (
+                        "Trusting the workbook identity (BALANCE_EXPORT_TRUST_FILENAME_SCENARIO=True)."
+                        if BALANCE_EXPORT_TRUST_FILENAME_SCENARIO
+                        else "Keeping the internal label (BALANCE_EXPORT_TRUST_FILENAME_SCENARIO=False)."
+                    )
+                )
+                if BALANCE_EXPORT_TRUST_FILENAME_SCENARIO:
+                    frame.loc[mismatched, "scenario"] = expected_scenario
     return {
         "template_sheet": chosen_template,
         "raw_long": raw_long,
