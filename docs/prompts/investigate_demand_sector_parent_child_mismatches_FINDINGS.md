@@ -267,3 +267,28 @@ convention is picked.
 | 15 Transport sector | LEAP | mapping-bug | same function clones Pipeline/Non-specified transport's targets onto the rolled "Transport" source, double-adding the parent-level rolled total into those two children (exact 2x) |
 | 14 Industry sector | NINTH | mapping-bug | missing `14_03_manufacturing → 14.03 Manufacturing` row for motor gasoline (74% of failures); missing `14.02 Construction` rows for 07.12-07.17 product family (19%) |
 | 15 Transport sector | NINTH | mapping-bug | `15_01_domestic_air_transport` maps one undifferentiated 9th fuel to both halves of a combined product bucket, doubling the child vs. the parent's single mapping (exact 2x, all economies) |
+
+---
+
+## 2026-07-21 refresh — Transport verification
+
+The fresh Stage 1–3 output changes the presentation, but not the Transport
+diagnosis. NINTH's detailed `15_0x` sectors are present in the source and reach
+the expected Common ESTO labels: the source frontier marks all six direct
+children comparable, and `ninth_pairs_to_esto_pairs` has active mappings such
+as `15_02_road -> 15.02 Road` (rows 1811–1826).
+
+In `common_esto_20260721T022306466013Z`, Australia / reference / 2023 /
+`07.04-07.05 Petroleum products` has parent 150.581352 PJ and children
+301.162703 PJ. `15.01 Domestic air transport` alone is 301.157560 PJ. This is
+the same unallocated one-to-many jet-fuel mapping described above: the 150.581
+PJ `15_01_domestic_air_transport × 07_x_jet_fuel` source value is emitted once
+to each half of the common jet-fuel product bucket, then summed.
+
+An uncommitted converter change already in the workspace applies equal default
+source-conserving shares to unallocated one-to-many NINTH mappings. Its focused
+tests pass (4 passed), and it should reduce this worked child value to the
+parent-equivalent 150.581352 PJ. This investigation did not modify or commit
+those in-progress converter, test, or workbook changes. Re-run Stages 1–3 once
+they are ready before deciding whether any residual Transport rows remain; no
+Transport exception or mapping-workbook change is proposed.
