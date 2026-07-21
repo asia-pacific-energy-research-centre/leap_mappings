@@ -460,6 +460,35 @@ def test_common_validation_excludes_base_year_and_uses_exact_source_key(tmp_path
     assert bool(result.iloc[0]["inherited_source_inconsistency"])
 
 
+def test_common_flow_validation_expands_zero_base_rollup_placeholder(tmp_path: Path) -> None:
+    """A zero base label must not hide a nonzero detailed rollup input."""
+    comparison_path = tmp_path / "comparison.csv"
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "09 Total transformation sector", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "09.06 Gas processing plants", "parent_code": "09 Total transformation sector"},
+        {"dataset": "esto", "axis": "flow", "code": "09.06.02 Liquefaction/regasification plants", "parent_code": "09.06 Gas processing plants"},
+        {"dataset": "common_esto", "axis": "flow", "code": "09 Total transformation sector", "parent_code": ""},
+        {"dataset": "common_esto", "axis": "flow", "code": "09.06 Gas processing plants", "parent_code": "09 Total transformation sector"},
+        {"dataset": "common_esto", "axis": "flow", "code": "09.06.02 Liquefaction/regasification plants", "parent_code": "09.06 Gas processing plants (including own use)"},
+        {"dataset": "common_esto", "axis": "flow", "code": "09.06 Gas processing plants (including own use)", "parent_code": ""},
+    ])
+    pd.DataFrame([
+        {"comparison_scope": "scope", "source_system": "NINTH", "economy": "20_USA", "scenario": "target", "year": 2023, "common_flow_label": "09 Total transformation sector", "common_product_label": "08.01 Natural gas", "value": 100},
+            {"comparison_scope": "scope", "source_system": "NINTH", "economy": "20_USA", "scenario": "target", "year": 2023, "common_flow_label": "09.06 Gas processing plants", "common_product_label": "08.01 Natural gas", "value": 0},
+            {"comparison_scope": "scope", "source_system": "NINTH", "economy": "20_USA", "scenario": "target", "year": 2023, "common_flow_label": "09.06.02 Liquefaction/regasification plants", "common_product_label": "08.01 Natural gas", "value": 100},
+            {"comparison_scope": "scope", "source_system": "NINTH", "economy": "20_USA", "scenario": "target", "year": 2023, "common_flow_label": "09.06 Gas processing plants (including own use)", "common_product_label": "08.01 Natural gas", "value": 0},
+        ]).to_csv(comparison_path, index=False)
+
+    result = validate_common_esto_recursive_sums(
+        tree,
+        comparison_path,
+        leap_var_base_year=2022,
+    )
+
+    total_check = result[result["parent_code"] == "09 Total transformation sector"]
+    assert total_check.empty
+
+
 # Minimal columns used by the lookup for an empty LEAP frame.
 LEAP_LOOKUP_COLUMNS = [
     "source_issue_id", "source_system", "economy", "scenario", "year",

@@ -815,11 +815,38 @@ def _common_esto_validation_children_map(
     common_map = _tree_children_map(tree_df, "common_esto", axis)
     esto_map = _tree_children_map(tree_df, "esto", axis)
     esto_child_sets = {parent: set(children) for parent, children in esto_map.items()}
+    # Synthetic inclusive rollups deliberately re-parent their base inputs
+    # under labels such as ``09.06 ... (including own use)`` for the rollup
+    # view.  Restore the underlying numeric ESTO edge as well for ordinary
+    # parent validation; otherwise a zero-valued base placeholder can hide a
+    # nonzero detailed input from its real base parent.
+    if axis == "flow":
+        common_axis = tree_df[
+            (tree_df["dataset"] == "common_esto") & (tree_df["axis"] == axis)
+        ]
+        common_codes = set(common_axis["code"].astype(str))
+        base_code_by_prefix = {
+            _extract_esto_prefix(code): code
+            for code in common_codes
+            if "(including own use)" not in code and _extract_esto_prefix(code)
+        }
+        for code in common_codes:
+            if "(including own use)" in code:
+                continue
+            prefix = _extract_esto_prefix(code)
+            parent_prefix = _parent_prefix(prefix) if prefix else None
+            if not parent_prefix:
+                continue
+            parent = base_code_by_prefix.get(parent_prefix, "")
+            if parent and parent != code and code in esto_child_sets.get(parent, set()):
+                common_map.setdefault(parent, []).append(code)
     filtered: dict[str, list[str]] = {}
     for parent, children in common_map.items():
         if parent in exclude_parents:
             continue
-        valid_children = [child for child in children if child in esto_child_sets.get(parent, set())]
+        valid_children = _dedupe_preserve_order(
+            [child for child in children if child in esto_child_sets.get(parent, set())]
+        )
         if valid_children:
             filtered[parent] = valid_children
     return filtered
@@ -1905,23 +1932,12 @@ def _validate_common_esto_axis_recursive_sums(
                 group["child_code"].astype(str)
             )
     source_inconsistencies = source_inconsistencies or {}
-    # Presence of an intermediate subtotal is a *per-source* property: a source
-    # emits either an aggregate label or only its leaves, consistently across
-    # economies/years. Resolving against a global code set lets one source's
-    # aggregate (e.g. LEAP's "09.01-09.02 Power sector") mask another source's
-    # need to expand to the leaves it actually emits (NINTH's
-    # "09.01.01,09.02.01 Electricity plants"), leaving that source's value
-    # unsummed. Resolve against each source system's own emitted labels instead.
-    data_codes_by_system: dict[str, set[str]] = {
-        str(system): set(group[axis_col].dropna().astype(str).unique())
-        for system, group in data.groupby("source_system", dropna=False)
-    }
     # Grouping is per source system explicitly, so the remaining axes suffice.
     sub_group_cols = ["comparison_scope", "economy", "scenario", other_axis_col, "year"]
     checks = []
 
     for parent_code, children in children_map.items():
-        for source_system, sys_codes in data_codes_by_system.items():
+        for source_system in data["source_system"].dropna().astype(str).unique():
             sys_data = data[data["source_system"].astype(str) == source_system]
             parent_rows = sys_data[sys_data[axis_col] == parent_code]
             if parent_rows.empty:
@@ -1933,32 +1949,40 @@ def _validate_common_esto_axis_recursive_sums(
                 expected_children.extend(sorted(frontier_children.difference(children)))
                 if not expected_children:
                     continue
-            # Resolve against THIS source's emitted labels: an aggregate this
-            # source did not emit expands to the descendants it did (e.g. 09.06,
-            # or Power sector -> its electricity/CHP/heat leaves). Keeping the
-            # aggregate for a source that does emit it avoids double counting the
-            # same value as both the aggregate and its leaves.
-            resolved = _resolve_to_comparison_data(expected_children, sys_codes, children_map)
-            if not resolved:
-                continue
-            children_rows = sys_data[sys_data[axis_col].isin(resolved)]
-
-            parent_sum = parent_rows.groupby(sub_group_cols, dropna=False)["value"].sum()
-            children_sum = children_rows.groupby(sub_group_cols, dropna=False)["value"].sum()
-            child_presence = (
-                children_rows.groupby(sub_group_cols, dropna=False)[axis_col].agg(
-                    lambda values: set(values.astype(str))
+            parent_groups = parent_rows.groupby(sub_group_cols, dropna=False)
+            for idx, parent_group in parent_groups:
+                # Resolve against the labels with nonzero values in this exact
+                # source/economy/scenario/year slice. A zero-valued aggregate
+                # placeholder must not mask a nonzero detailed base input.
+                group_mask = pd.Series(True, index=sys_data.index)
+                for column, value in zip(sub_group_cols, idx):
+                    group_mask &= sys_data[column].eq(value)
+                group_rows = sys_data[group_mask]
+                sys_codes = set(
+                    group_rows.loc[group_rows["value"].abs() > tolerance, axis_col]
+                    .dropna().astype(str)
                 )
-                if not children_rows.empty
-                else pd.Series(dtype=object)
-            )
-
-            for idx in parent_sum.index:
-                pv = float(parent_sum.loc[idx])
-                present_children = child_presence.get(idx, set())
+                resolved = _resolve_to_comparison_data(expected_children, sys_codes, children_map)
+                if not resolved:
+                    continue
+                children_rows = group_rows[group_rows[axis_col].isin(resolved)]
+                pv = float(parent_group["value"].sum())
+                present_children = set(children_rows[axis_col].astype(str))
                 missing_children = sorted(set(resolved).difference(present_children))
-                cv = float(children_sum.get(idx, 0.0))
+                cv = float(children_rows["value"].sum())
                 err = abs(pv - cv)
+                inclusive_variant = f"{parent_code} (including own use)"
+                if (
+                    axis == "flow"
+                    and abs(pv) <= tolerance
+                    and abs(cv) > tolerance
+                    and inclusive_variant in set(sys_data[axis_col].astype(str))
+                ):
+                    # The base label is a zero placeholder when its nonzero
+                    # inputs are represented through the inclusive rollup.
+                    # Its reconciliation belongs to the dedicated rollup
+                    # check; do not report it as a second mismatch.
+                    continue
                 # Missing children alone are not a failure: a child label absent
                 # from the comparison data while parent and children sums still
                 # agree contributes nothing to reconcile.
