@@ -158,6 +158,31 @@ def test_partitions_do_not_bleed_and_absent_frontier_fails() -> None:
     assert by_key[("E2", 2022)]["reason"] == "frontier_rows_absent"
 
 
+def test_zero_parent_without_source_frontier_is_unanchorable() -> None:
+    source, tree, mappings, common, comparison = _multi_partition_fixture()
+    source = source[(source["economy"] == "E2")].copy()
+    source["value"] = 0.0
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    row = detail.iloc[0]
+    assert row["status"] == "skipped"
+    assert row["reason"] == "no_observed_source_frontier"
+
+
+def test_missing_common_boundary_is_unanchorable_even_when_source_value_is_nonzero() -> None:
+    source, tree, mappings, common, comparison = _fixture()
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "OTHER",
+         "component_esto_product": "OTHER", "common_row_id": "cX"},
+    ])
+    comparison = comparison.iloc[0:0]
+
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+
+    assert row["status"] == "skipped"
+    assert row["reason"] == "no_anchorable_common_esto_boundary"
+
+
 def test_signed_parent_and_frontier_sums() -> None:
     source, tree, mappings, common, comparison = _multi_partition_fixture()
     # Split E1/2022 parent into a positive and a negative row (nets to 10).

@@ -378,23 +378,39 @@ def validate_source_parent_anchors(
                 base["abs_error"].to_numpy()
                 > tolerance * np.maximum(base["parent_value"].abs().to_numpy(), 1.0)
             )
-            # Priority mirrors the original if/elif chain, with one refinement:
+            # Priority mirrors the original if/elif chain, with two refinements:
             # an incomplete frontier (some leaf child unmapped) that still
             # reconciles the parent within tolerance is a pass, not a failure.
             # Unmapped children are typically intentional placeholders (e.g.
             # ``08_gas_unallocated``) that contribute ~0, so when
             # parent == mapped-leaf sum they do not indicate a real problem.
+            # A raw source-tree path with no Common ESTO boundary is instead
+            # unanchorable. It is not evidence of a numeric disagreement: this
+            # validator cannot compare it until the source frontier is resolved
+            # at the real Common ESTO comparison level. Likewise, an absent
+            # source frontier with a zero-valued parent is uninformative and is
+            # skipped rather than reported as a failed Cartesian combination.
             incomplete_reconciles = has_missing & ~tol_exceeded
             incomplete_gap = has_missing & tol_exceeded
-            conditions = [incomplete_reconciles, incomplete_gap, fids_empty, rows_empty, tol_exceeded]
+            zero_parent_without_rows = rows_empty & ~tol_exceeded
+            conditions = [
+                fids_empty,
+                zero_parent_without_rows,
+                incomplete_reconciles,
+                incomplete_gap,
+                rows_empty,
+                tol_exceeded,
+            ]
             base["status"] = np.select(
-                conditions, ["passed", "failed", "skipped", "failed", "failed"], default="passed"
+                conditions,
+                ["skipped", "skipped", "passed", "failed", "failed", "failed"],
+                default="passed",
             )
             base["reason"] = np.select(
                 conditions,
-                ["within_tolerance_incomplete_frontier", "incomplete_frontier",
-                 "no_anchorable_common_esto_boundary", "frontier_rows_absent",
-                 "difference_exceeds_tolerance"],
+                ["no_anchorable_common_esto_boundary", "no_observed_source_frontier",
+                 "within_tolerance_incomplete_frontier", "incomplete_frontier",
+                 "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
             # Drop unmodelled ESTO/9th sectors/fuels (e.g. stock changes,
