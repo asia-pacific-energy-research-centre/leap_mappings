@@ -159,6 +159,72 @@ def build_source_to_esto_lineage(merged_df: pd.DataFrame, source_system: str) ->
     return mapped_df[SOURCE_LINEAGE_COLUMNS].copy()
 
 
+def apply_default_source_conserving_allocation(merged_df: pd.DataFrame) -> pd.DataFrame:
+    """Equally split unallocated one-to-many mappings as a final fallback."""
+    if merged_df.empty or "allocation_share" not in merged_df.columns:
+        return merged_df
+
+    result = merged_df.copy()
+    source_group_columns = [
+        column
+        for column in ["economy", "scenario", "year", "source_flow", "source_product"]
+        if column in result.columns
+    ]
+    if not source_group_columns or not {"target_flow", "target_product"}.issubset(result.columns):
+        return result
+
+    result["allocation_share"] = result["allocation_share"].astype(object)
+    blank_share = result["allocation_share"].fillna("").astype(str).str.strip().eq("")
+    result["_target_pair"] = (
+        result["target_flow"].fillna("").astype(str).str.strip()
+        + "\x1f"
+        + result["target_product"].fillna("").astype(str).str.strip()
+    )
+    target_count = result.groupby(source_group_columns, dropna=False)["_target_pair"].transform("nunique")
+    default_mask = blank_share & target_count.gt(1)
+    result.loc[default_mask, "allocation_share"] = 1.0 / target_count[default_mask]
+    return result.drop(columns="_target_pair")
+
+
+def mark_unallocated_one_to_many_for_target_share(merged_df: pd.DataFrame) -> pd.DataFrame:
+    """Use ESTO target values for wholly-unallocated one-to-many source pairs.
+
+    Explicit shares and explicitly selected allocation methods remain untouched.
+    A later equal-share fallback conserves the source value if ESTO has no usable
+    target basis for a particular economy/year.
+    """
+    if merged_df.empty:
+        return merged_df
+
+    result = merged_df.copy()
+    if "allocation_share" not in result.columns:
+        result["allocation_share"] = ""
+    if "allocation_source" not in result.columns:
+        result["allocation_source"] = ""
+    source_group_columns = [
+        column
+        for column in ["economy", "scenario", "year", "source_flow", "source_product"]
+        if column in result.columns
+    ]
+    if not source_group_columns or not {"target_flow", "target_product"}.issubset(result.columns):
+        return result
+
+    blank_share = result["allocation_share"].fillna("").astype(str).str.strip().eq("")
+    blank_source = result["allocation_source"].fillna("").astype(str).str.strip().eq("")
+    result["_target_pair"] = (
+        result["target_flow"].fillna("").astype(str).str.strip()
+        + "\x1f"
+        + result["target_product"].fillna("").astype(str).str.strip()
+    )
+    target_count = result.groupby(source_group_columns, dropna=False)["_target_pair"].transform("nunique")
+    all_shares_blank = blank_share.groupby(
+        [result[column] for column in source_group_columns], dropna=False
+    ).transform("all")
+    automatic_mask = blank_source & all_shares_blank & target_count.gt(1)
+    result.loc[automatic_mask, "allocation_source"] = "target_dataset_share"
+    return result.drop(columns="_target_pair")
+
+
 def convert_ninth_results_to_esto(
     ninth_results_df: pd.DataFrame,
     relationships_df: pd.DataFrame,
@@ -208,12 +274,14 @@ def convert_ninth_results_to_esto(
         right_on=["source_flow", "source_product"],
         how="left",
     )
+    merged_df = mark_unallocated_one_to_many_for_target_share(merged_df)
     missing_mapping_df = merged_df[merged_df["target_flow"].isna() | merged_df["target_product"].isna()]
     if not missing_mapping_df.empty:
         print(f"Warning: 9th result rows without included ESTO mapping: {len(missing_mapping_df):,}")
 
     if target_values_df is not None:
         merged_df = apply_target_dataset_allocation(merged_df, target_values_df)
+    merged_df = apply_default_source_conserving_allocation(merged_df)
 
     if "allocation_share" in merged_df.columns:
         allocation_share = pd.to_numeric(merged_df["allocation_share"], errors="coerce").fillna(1.0)
@@ -234,11 +302,26 @@ def convert_ninth_results_to_esto(
 
 def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> bool:
     """Return True when conversion needs target ESTO basis values."""
-    if "allocation_source" not in relationships_df.columns:
+    if "allocation_source" in relationships_df.columns and relationships_df[
+        "allocation_source"
+    ].fillna("").astype(str).str.strip().str.casefold().eq("target_dataset_share").any():
+        return True
+    required = {"source_flow", "source_product", "target_flow", "target_product", "allocation_share"}
+    if not required.issubset(relationships_df.columns):
         return False
-    return relationships_df["allocation_source"].fillna("").astype(str).str.strip().str.casefold().eq(
-        "target_dataset_share"
-    ).any()
+    rows = relationships_df.copy()
+    source_group_columns = ["source_flow", "source_product"]
+    blank_share = rows["allocation_share"].fillna("").astype(str).str.strip().eq("")
+    rows["_target_pair"] = (
+        rows["target_flow"].fillna("").astype(str).str.strip()
+        + "\x1f"
+        + rows["target_product"].fillna("").astype(str).str.strip()
+    )
+    target_count = rows.groupby(source_group_columns, dropna=False)["_target_pair"].transform("nunique")
+    all_shares_blank = blank_share.groupby(
+        [rows[column] for column in source_group_columns], dropna=False
+    ).transform("all")
+    return bool((all_shares_blank & target_count.gt(1)).any())
 
 
 def load_non_expanding_ninth_rollup_rules(mapping_workbook_path: Path) -> pd.DataFrame:
