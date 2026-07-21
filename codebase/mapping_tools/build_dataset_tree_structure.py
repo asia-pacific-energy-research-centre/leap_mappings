@@ -1932,16 +1932,31 @@ def _validate_common_esto_axis_recursive_sums(
                 group["child_code"].astype(str)
             )
     source_inconsistencies = source_inconsistencies or {}
-    # Grouping is per source system explicitly, so the remaining axes suffice.
+    # Aggregate once, then validate from exact-slice dictionaries. The prior
+    # implementation rebuilt a boolean mask over the full comparison frame for
+    # every parent and every source slice, which made rollup-aware validation
+    # disproportionately expensive on the full NINTH dataset.
     sub_group_cols = ["comparison_scope", "economy", "scenario", other_axis_col, "year"]
-    checks = []
+    grouped = (
+        data.groupby(["source_system", *sub_group_cols, axis_col], dropna=False, sort=False)["value"]
+        .sum()
+        .reset_index()
+    )
+    parent_codes = set(children_map)
+    groups_by_source_parent: dict[tuple[str, str], list[tuple[tuple[str, ...], dict[str, float], set[str]]]] = {}
+    for group_key, group_rows in grouped.groupby(["source_system", *sub_group_cols], dropna=False, sort=False):
+        source_system = str(group_key[0])
+        idx = tuple(str(value) for value in group_key[1:])
+        values = dict(zip(group_rows[axis_col].astype(str), group_rows["value"].astype(float)))
+        sys_codes = {code for code, value in values.items() if abs(value) > tolerance}
+        for parent_code in parent_codes.intersection(values):
+            groups_by_source_parent.setdefault((source_system, parent_code), []).append(
+                (idx, values, sys_codes)
+            )
 
+    checks = []
     for parent_code, children in children_map.items():
-        for source_system in data["source_system"].dropna().astype(str).unique():
-            sys_data = data[data["source_system"].astype(str) == source_system]
-            parent_rows = sys_data[sys_data[axis_col] == parent_code]
-            if parent_rows.empty:
-                continue
+        for source_system in grouped["source_system"].dropna().astype(str).unique():
             expected_children = children
             if source_frontier is not None and axis == "flow":
                 frontier_children = frontier_lookup.get((str(source_system), str(parent_code)), set())
@@ -1949,34 +1964,23 @@ def _validate_common_esto_axis_recursive_sums(
                 expected_children.extend(sorted(frontier_children.difference(children)))
                 if not expected_children:
                     continue
-            parent_groups = parent_rows.groupby(sub_group_cols, dropna=False)
-            for idx, parent_group in parent_groups:
-                # Resolve against the labels with nonzero values in this exact
-                # source/economy/scenario/year slice. A zero-valued aggregate
-                # placeholder must not mask a nonzero detailed base input.
-                group_mask = pd.Series(True, index=sys_data.index)
-                for column, value in zip(sub_group_cols, idx):
-                    group_mask &= sys_data[column].eq(value)
-                group_rows = sys_data[group_mask]
-                sys_codes = set(
-                    group_rows.loc[group_rows["value"].abs() > tolerance, axis_col]
-                    .dropna().astype(str)
-                )
+            for idx, values, sys_codes in groups_by_source_parent.get((source_system, parent_code), []):
+                # A zero-valued aggregate placeholder must not mask a nonzero
+                # detailed base input in this exact source slice.
                 resolved = _resolve_to_comparison_data(expected_children, sys_codes, children_map)
                 if not resolved:
                     continue
-                children_rows = group_rows[group_rows[axis_col].isin(resolved)]
-                pv = float(parent_group["value"].sum())
-                present_children = set(children_rows[axis_col].astype(str))
+                pv = float(values[parent_code])
+                present_children = set(resolved).intersection(values)
                 missing_children = sorted(set(resolved).difference(present_children))
-                cv = float(children_rows["value"].sum())
+                cv = float(sum(values.get(child, 0.0) for child in resolved))
                 err = abs(pv - cv)
                 inclusive_variant = f"{parent_code} (including own use)"
                 if (
                     axis == "flow"
                     and abs(pv) <= tolerance
                     and abs(cv) > tolerance
-                    and inclusive_variant in set(sys_data[axis_col].astype(str))
+                    and inclusive_variant in values
                 ):
                     # The base label is a zero placeholder when its nonzero
                     # inputs are represented through the inclusive rollup.
