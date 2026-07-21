@@ -5,6 +5,43 @@ This is a **diagnosis task — report only**. Do not edit code, the mapping work
 exceptions workbook. The deliverable is a written verdict plus proposed exception rows (as text)
 for the user to approve.
 
+> **2026-07-21 refresh — this supersedes the stale baseline counts below.** After
+> the standalone-rollup validation work landed (commit `4042d5e`), a fresh full
+> Stages 1-3 run (`run_id common_esto_20260721T014101`) changed this cluster
+> materially:
+>
+> - **LEAP flow validation now PASSES entirely** — the old baseline's LEAP
+>   `14 Industry` (7,493) and LEAP `15 Transport` (1,299) failures are gone.
+>   **Scope this task to NINTH only.**
+> - **NINTH failures now (main recursive validator,
+>   `results/tree_structure/common_esto_validation.csv`, `status == failed`):**
+>
+>   | parent_code | rows | gap vs parent (median) | Σ abs err | shape |
+>   | --- | --- | --- | --- | --- |
+>   | `15 Transport sector` | 1,878 | **100%** (all children absent) | **512,058** | wholesale-missing children |
+>   | `14 Industry sector` | 941 | ~17% | 15,567 | partial; 90 rows are children-present-but-sum-off |
+>   | `14.03 Manufacturing` | 159 | ~7% | 1,931 | granular sub-industries missing |
+>   | `16 Other sector` | 47 | 100% | 651 | tiny |
+>
+> - **~96% of this cluster's error is `15 Transport sector` alone.** Do Transport
+>   first and treat it as the primary deliverable; Industry is a secondary
+>   partial-coverage question; 14.03 / 16 are a small exception-labelling sweep.
+> - Transport's missing children are `15.02 Road`, `15.03 Rail`,
+>   `15.04 Domestic navigation`, `15.05 Pipeline transport`, `15.06 Non-specified
+>   transport` — **all of them, in every failing row** (median gap = 100% of
+>   parent). That pattern says NINTH emits transport only at the `15` aggregate,
+>   or its sub-sector values reach the comparison data under different partition
+>   labels. Establish which before proposing a verdict.
+> - `14 Industry` misses `14.03 Manufacturing`, `14.01 Mining and quarrying`,
+>   `14.02 Construction` (~17% short). `14.03 Manufacturing` misses granular
+>   sub-industries (`14.03.09 Wood`, `14.03.10 Textiles`, `14.03.11 Non-specified`,
+>   `14.03.07 Food/beverages/tobacco`, `14.03.02 Chemical`, …) — the classic
+>   detail-frontier / unmodelled-by-design shape → likely exception candidates.
+>
+> The `09.x` transformation failures are handled separately in
+> `investigate_ninth_09_total_transformation_reconciliation.md` — still out of
+> scope here.
+
 ## Background
 
 Stage 3 of `codebase/run_mapping_pipeline.py` runs an internal Common ESTO parent/child

@@ -46,6 +46,30 @@ Common ESTO comparison data, and fix the mapping/emission (or prove the gap is a
 genuine NINTH source inconsistency that must be recorded as an accepted
 exception rather than silently failed).
 
+### Cover the whole transformation own-use boundary in one pass
+
+Three symptoms almost certainly share one root cause (the own-use boundary
+between `09.xx` transformation and `10.01.xx` energy-industry own use). Treat
+them together, not as separate tasks:
+
+1. **NINTH `09 Total transformation sector`** — 7,159 failed rows, Σabs ≈ 7.06M
+   (the primary symptom above).
+2. **ESTO `09 Total transformation sector`** — 636 failed rows, Σabs ≈ 527K.
+   ESTO's *own* transformation total does not reconcile to the sum of its `09.xx`
+   children in Common ESTO either, even though raw ESTO hierarchy validation is
+   clean. So this is a Common-ESTO-layer boundary issue, not a raw-ESTO one, and
+   is very likely the same mechanism seen ESTO-side. Verify it moves with the
+   NINTH fix.
+3. **NINTH `09.07 Oil refineries (including own use)`** — 614 genuine failures,
+   Σabs ≈ 48K, now isolated in `common_esto_rollup_validation.csv` (status
+   `failed`). This is the inclusive rollup's own contributor reconciliation
+   (`rolled 09.07(incl) != base 09.07 + own-use 10.01.11`). Check whether it is
+   the same own-use accounting and resolves alongside 1 and 2.
+
+Do the residual decomposition (below) for both a NINTH and an ESTO `09 Total`
+failure, and for a failing NINTH `09.07 (incl own use)` rollup row, before
+choosing a fix.
+
 ## What is already known
 
 - Raw NINTH sector and fuel hierarchy validation is clean (0 findings in the
