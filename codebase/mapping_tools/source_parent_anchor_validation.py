@@ -50,7 +50,25 @@ def _normalize_economy(economy: pd.Series) -> pd.Series:
     return economy.astype(str).str.replace("_", "", regex=False)
 
 
-def _children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, list[str]]:
+def _children_map(
+    tree_df: pd.DataFrame,
+    dataset: str,
+    axis: str,
+) -> dict[str, list[str]]:
+    """Return raw source tree parent -> children edges.
+
+    Every parent/child edge in the raw tree is kept here regardless of
+    ``exclude_parents`` (see :func:`validate_source_parent_anchors`): this
+    dict is also used by :func:`_mapped_descendants` to descend *into* a
+    node's children while resolving some *other* ancestor's frontier (e.g.
+    descending into ``09.06 Gas processing plants`` while resolving
+    ``09 Total transformation sector``'s frontier). Dropping an excluded
+    label's entry here would silently make it unresolvable as a frontier
+    component too, not just unvalidated as a parent -- a caller that wants a
+    label excluded from *independent parent validation* must filter
+    ``parents_present`` (the set of codes actually iterated as parents),
+    not this map.
+    """
     selected = tree_df[(tree_df["dataset"] == dataset) & (tree_df["axis"] == axis)]
     result: dict[str, list[str]] = {}
     for row in selected.itertuples(index=False):
@@ -112,6 +130,7 @@ def _mapped_descendants(
     direct_index: dict[tuple[str, str], pd.DataFrame],
     empty_frame: pd.DataFrame,
     cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]],
+    has_data_pairs: set[tuple[str, str]] | None = None,
     visited: frozenset = frozenset(),
 ) -> tuple[pd.DataFrame, list[str]]:
     """Resolve an absent intermediate source node to mapped descendants.
@@ -122,15 +141,47 @@ def _mapped_descendants(
     of the mapping frame. ``visited`` tracks the current ancestor chain purely as
     a cycle backstop; trees are acyclic in practice, so the cached results are
     exact for real data.
+
+    ``has_data_pairs`` is a prebuilt set of
+    ``(component_esto_flow, component_esto_product)`` pairs that actually have
+    at least one real comparison row for the current source system (across the
+    scopes it participates in). A raw source node can have its own direct
+    identity mapping (``direct_index`` hit) while Common ESTO structure
+    building has nonetheless pruned every comparison row for that exact
+    component pair (e.g. a subtotal row whose value is entirely explained by,
+    and de-duplicated against, a single real child, such as ESTO's
+    ``16.01 Commercial and public services`` vs. its only real child
+    ``16.01.99 ... unallocated``). Treating that direct hit as "resolved" would
+    silently contribute zero to the frontier without being flagged missing.
+    When the direct match has no real data and the node still has raw-tree
+    children, descend into them instead so the real, mapped descendant(s) are
+    used -- and anything genuinely absent is still flagged missing/evidenced
+    as before. Nodes whose direct match does have real data (e.g. a
+    NON_EXPANDING rollup subtotal that legitimately differs from the literal
+    sum of its raw-tree children) are unaffected: this only overrides the
+    direct match when that match is confirmed to be numerically inert for
+    every comparison row we have.
     """
     key = (code, other_axis_value)
     cached = cache.get(key)
     if cached is not None:
         return cached
     direct = direct_index.get(key)
-    if direct is not None:
+    direct_has_data = False
+    if direct is not None and has_data_pairs:
+        direct_pairs = set(
+            zip(
+                direct["component_esto_flow"].astype(str),
+                direct["component_esto_product"].astype(str),
+            )
+        )
+        direct_has_data = not direct_pairs.isdisjoint(has_data_pairs)
+    elif direct is not None:
+        direct_has_data = True
+    can_descend = code in children and code not in visited
+    if direct is not None and (direct_has_data or not can_descend):
         result = (direct, [])
-    elif code not in children or code in visited:
+    elif not can_descend:
         # Missing leaf, or a cycle re-entering an ancestor: flag as unresolved.
         result = (empty_frame, [code])
     else:
@@ -139,7 +190,8 @@ def _mapped_descendants(
         next_visited = visited | {code}
         for child in children[code]:
             resolved, child_missing = _mapped_descendants(
-                child, other_axis_value, children, direct_index, empty_frame, cache, next_visited
+                child, other_axis_value, children, direct_index, empty_frame, cache,
+                has_data_pairs, next_visited,
             )
             frames.append(resolved)
             missing.extend(child_missing)
@@ -159,6 +211,7 @@ def validate_source_parent_anchors(
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
     unmodelled_source_codes: dict[str, set[int]] | None = None,
+    exclude_parents: set[str] | None = None,
 ) -> pd.DataFrame:
     """Return one explicit passed/failed/skipped record per raw source parent group.
 
@@ -171,6 +224,19 @@ def validate_source_parent_anchors(
     totals. ``economies`` (normalized codes) and ``years_by_system`` (per source
     system) restrict the source rows to that slice; leaving them ``None`` runs
     the full-scale reconciliation across every economy and year.
+
+    ``exclude_parents`` drops named ``NON_EXPANDING`` / ``DETACHED`` rollup
+    subtotal labels (e.g. ``09.06 Gas processing plants``) from being treated
+    as ordinary additive parents in the raw source tree -- mirroring the
+    Common ESTO recursive validator's ``exclude_parents`` fix. This only
+    removes them from independent parent validation (``parents_present``);
+    they remain fully present in the raw tree's parent/child edges, so they
+    are still reachable as frontier components when *another* ancestor's
+    frontier needs to descend into them. Callers should
+    pass the same rolled-flow-label set built from
+    ``non_expanding_rollups.load_rollup_mode_labels`` (filtered to
+    ``NON_EXPANDING``/``DETACHED`` modes) that they already build for
+    :func:`build_dataset_tree_structure.validate_common_esto_recursive_sums`.
     """
     required_source = {
         "source_system", "economy", "scenario", "year", "source_flow",
@@ -236,6 +302,22 @@ def validate_source_parent_anchors(
             (comparison["source_system"] == source_system)
             & (comparison["comparison_scope"].isin(applicable_scopes))
         ][["comparison_scope", "economy", "scenario", "year", "common_row_id", "value"]]
+        # Component pairs that actually have at least one real comparison row
+        # for this source system, across the scopes it participates in.
+        # Common ESTO structure building can prune a raw node's own literal
+        # comparison row as a duplicate of a child's (see
+        # ``_mapped_descendants``); this lets the frontier resolver tell that
+        # case apart from a node whose direct value is genuinely real, using
+        # actual data availability rather than tree/mapping structure alone.
+        ids_with_data = set(system_comparison["common_row_id"].astype(str))
+        scoped_common_map = common_map[common_map["comparison_scope"].isin(applicable_scopes)]
+        has_data_mask = scoped_common_map["common_row_id"].astype(str).isin(ids_with_data)
+        has_data_pairs = set(
+            zip(
+                scoped_common_map.loc[has_data_mask, "component_esto_flow"].astype(str),
+                scoped_common_map.loc[has_data_mask, "component_esto_product"].astype(str),
+            )
+        )
         for axis, tree_axis in [("flow", "flow"), ("product", "product")]:
             # LEAP and Ninth trees use sector/fuel terminology.
             if dataset in {"leap", "ninth"}:
@@ -298,8 +380,27 @@ def validate_source_parent_anchors(
                 parent_index,
             )
             mapped_pairs = set(zip(system_mappings["source_flow"].astype(str), system_mappings["source_product"].astype(str)))
+            # Raw source hierarchies (notably Ninth) often report the same
+            # numeric total as literal separate rows at multiple depths at
+            # once -- a leaf's "x"-rollup subtotal duplicates the value of an
+            # ancestor's own "x"-rollup subtotal whenever no other sibling
+            # contributes. If an unmapped leaf gets remapped onto such an
+            # ancestor pair, the leaf row and the ancestor's own already-
+            # present literal row land in the same groupby key below and get
+            # summed together, silently doubling the true value. Track the
+            # pairs that already have their own literal row in this axis'
+            # source slice so the remap can be suppressed in that case --
+            # the leaf is left at its own (likely unanchorable) code instead
+            # of being folded into a total that already accounts for it.
+            literal_pairs = set(
+                zip(
+                    axis_source["source_flow"].astype(str),
+                    axis_source["source_product"].astype(str),
+                )
+            )
             pair_remap: dict[tuple[str, str], tuple[str, str]] = {}
             for flow, product in axis_source[["source_flow", "source_product"]].drop_duplicates().itertuples(index=False):
+                original_pair = (str(flow), str(product))
                 resolved = resolve_nearest_mapped_pair(
                     flow, product, mapped_pairs,
                     "product" if other_col == "source_product" else "flow",
@@ -314,9 +415,17 @@ def validate_source_parent_anchors(
                         "product" if other_col == "source_product" else "flow",
                         parent_index,
                     )
-                pair_remap[(str(flow), str(product))] = (
-                    resolved["flow"], resolved["product"]
-                ) if resolved["status"] == "resolved" else (str(flow), str(product))
+                if resolved["status"] == "resolved":
+                    target_pair = (resolved["flow"], resolved["product"])
+                    if target_pair != original_pair and target_pair in literal_pairs:
+                        # The resolved ancestor already has its own literal
+                        # row for this exact (flow, product) key -- remapping
+                        # would double-count against it. Leave unmapped.
+                        pair_remap[original_pair] = original_pair
+                    else:
+                        pair_remap[original_pair] = target_pair
+                else:
+                    pair_remap[original_pair] = original_pair
             remapped = [pair_remap[(str(flow), str(product))] for flow, product in axis_source[["source_flow", "source_product"]].itertuples(index=False)]
             axis_source["source_flow"] = [pair[0] for pair in remapped]
             axis_source["source_product"] = [pair[1] for pair in remapped]
@@ -330,7 +439,7 @@ def validate_source_parent_anchors(
             # positive part, and negative part for every
             # (parent_code, economy, scenario, year, other_axis_value) in one
             # pass instead of re-filtering axis_source per parent. ---
-            parents_present = set(children.keys())
+            parents_present = set(children.keys()) - (exclude_parents or set())
             parent_src = axis_source[axis_source[axis_col].isin(parents_present)]
             if parent_src.empty:
                 continue
@@ -370,7 +479,7 @@ def validate_source_parent_anchors(
                     for child in children.get(pcode, []):
                         resolved, missing = _mapped_descendants(
                             child, oas, children, direct_index,
-                            empty_mapping, descendant_cache,
+                            empty_mapping, descendant_cache, has_data_pairs,
                         )
                         frontier_parts.append(resolved)
                         missing_children.extend(missing)
@@ -455,6 +564,71 @@ def validate_source_parent_anchors(
             base["frontier_negative_sum"] = base["frontier_negative_sum"].fillna(0.0)
             base["frontier_row_count"] = base["frontier_row_count"].fillna(0).astype(int)
             base["_matched"] = base["_matched"].fillna(0)
+
+            # --- Shared-frontier group combination --------------------------
+            # Multiple raw source products can legitimately map onto the SAME
+            # Common ESTO aggregate row for a given comparison scope (e.g. six
+            # distinct raw LEAP petroleum products collapsing onto one shared
+            # "07.12-07.17 Petroleum products" row under esto_leap_ninth,
+            # because Ninth's raw data cannot distinguish the sub-products).
+            # In that case every member's frontier_sum already reflects the
+            # WHOLE shared group's total (each resolves to the identical
+            # common_row_id set), so comparing each raw product's own
+            # individual parent_value against that shared total can only ever
+            # reconcile for a member whose value happens to equal the group's
+            # combined total. Detect (parent_code, other_axis_value) groups
+            # that share an identical, non-empty common_row_id set for a given
+            # comparison_scope, combine their raw values into one primary row
+            # compared against the shared frontier_sum, and mark the rest
+            # ``skipped`` so the detail table does not silently drop rows or
+            # report spurious failures for them.
+            frontier_signatures: dict[tuple[str, str, str], tuple[str, ...]] = {
+                key: tuple(sorted(str(cid) for cid in ids))
+                for key, ids in frontier_ids_cache.items()
+                if ids
+            }
+            group_members: dict[tuple[str, str, tuple[str, ...]], list[str]] = {}
+            for (gpcode, goas, gscope), signature in frontier_signatures.items():
+                group_members.setdefault((gpcode, gscope, signature), []).append(goas)
+            shared_groups = {
+                key: sorted(members)
+                for key, members in group_members.items()
+                if len(members) > 1
+            }
+            skip_rows = pd.Series(False, index=base.index)
+            if shared_groups:
+                group_id_of: dict[tuple[str, str, str], str] = {}
+                primary_of: dict[str, str] = {}
+                label_of: dict[str, str] = {}
+                for (gpcode, gscope, signature), members in shared_groups.items():
+                    group_id = f"{gpcode}||{gscope}||{'|'.join(signature)}"
+                    primary_of[group_id] = members[0]
+                    label_of[group_id] = " + ".join(members)
+                    for member in members:
+                        group_id_of[(gpcode, gscope, member)] = group_id
+                base["_shared_group_id"] = [
+                    group_id_of.get((pc, sc, oa))
+                    for pc, sc, oa in zip(base["parent_code"], base["comparison_scope"], base["_oas"])
+                ]
+                grouped_mask = base["_shared_group_id"].notna()
+                if grouped_mask.any():
+                    is_primary = grouped_mask & (
+                        base["_oas"] == base["_shared_group_id"].map(lambda gid: primary_of.get(gid, ""))
+                    )
+                    combine_cols = ["parent_value", "parent_positive_value", "parent_negative_value"]
+                    group_sums = (
+                        base.loc[grouped_mask]
+                        .groupby(["_shared_group_id", "economy", "scenario", "year"])[combine_cols]
+                        .transform("sum")
+                    )
+                    primary_rows = grouped_mask & is_primary
+                    for col in combine_cols:
+                        base.loc[primary_rows, col] = group_sums.loc[primary_rows, col]
+                    base.loc[primary_rows, "other_axis_value"] = base.loc[
+                        primary_rows, "_shared_group_id"
+                    ].map(label_of)
+                    skip_rows = grouped_mask & ~is_primary
+                base = base.drop(columns=["_shared_group_id"])
 
             pcoa = list(zip(base["parent_code"], base["_oas"]))
             base["missing_expected_children"] = [missing_join_map[k] for k in pcoa]
@@ -543,6 +717,12 @@ def validate_source_parent_anchors(
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
+            if skip_rows.any():
+                # Non-primary members of a shared-frontier group: the primary
+                # row above already carries the combined comparison, so these
+                # are not independent numeric findings.
+                base.loc[skip_rows, "status"] = "skipped"
+                base.loc[skip_rows, "reason"] = "grouped_with_shared_frontier_sibling"
             # Drop unmodelled ESTO/9th sectors/fuels (e.g. stock changes,
             # statistical discrepancy, power-output flows, aggregate fuels): we
             # never reconcile them, so they must not surface as issues at all.

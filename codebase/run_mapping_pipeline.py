@@ -673,6 +673,49 @@ def run_stage_3() -> None:
             }
             print(f"  Anchor validation year slice: {anchor_years_by_system}")
 
+            # Named non-expanding / detached rollup subtotals (e.g. "09.06 Gas
+            # processing plants") are genuine raw-source tree nodes, but their
+            # value is an explicit rollup-rule contributor sum, not a literal
+            # additive total of their declared tree children; exclude them
+            # from ordinary additive-parent validation here, matching the
+            # Common ESTO recursive validator's exclude_parents fix.
+            try:
+                from codebase.mapping_tools.non_expanding_rollups import (
+                    DETACHED_MODE,
+                    NON_EXPANDING_MODE,
+                    load_rollup_mode_labels,
+                )
+
+                anchor_exclude_parents = {
+                    label
+                    for label, mode in load_rollup_mode_labels(WORKBOOK_PATH).items()
+                    if mode in {NON_EXPANDING_MODE, DETACHED_MODE}
+                }
+            except Exception:
+                anchor_exclude_parents = set()
+
+            # LEAP interim branches (e.g. "CHP interim") are an alternative
+            # representation of the same physical total as their standard
+            # sibling ("CHP plants"), not an independent additive total of
+            # their own declared children -- the same "not meant to
+            # reconcile on its own" semantics as a non-expanding rollup
+            # label, just sourced from source_branch_fallback_rules.csv
+            # instead of the workbook. Exclude them from ordinary
+            # additive-parent validation for the same reason.
+            try:
+                from codebase.mapping_tools.source_branch_preflight import (
+                    load_source_branch_fallback_rules,
+                )
+
+                fallback_rules = load_source_branch_fallback_rules(SOURCE_BRANCH_FALLBACK_RULES_PATH)
+                anchor_exclude_parents |= {
+                    str(branch).strip()
+                    for branch in fallback_rules.get("interim_branch", [])
+                    if str(branch).strip()
+                }
+            except Exception:
+                pass
+
             anchor_t0 = time.perf_counter()
             anchor_detail = validate_source_parent_anchors(
                 source_df=raw_anchor_source,
@@ -682,6 +725,7 @@ def run_stage_3() -> None:
                 years_by_system=anchor_years_by_system,
                 comparison_df=comparison_data,
                 unmodelled_source_codes=unmodelled_source_codes,
+                exclude_parents=anchor_exclude_parents,
             )
         except MemoryError as exc:
             print(

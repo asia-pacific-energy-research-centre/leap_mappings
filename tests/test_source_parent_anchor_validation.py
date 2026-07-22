@@ -292,6 +292,280 @@ def test_unmodelled_source_codes_are_dropped() -> None:
     assert not keep.empty
 
 
+def _rollup_child_fixture():
+    """Parent P with an ordinary child P.1 and a rollup-subtotal child NX.
+
+    NX is itself a genuine raw-ESTO tree node with further tree children
+    (NX.1, NX.2), so absent any rollup awareness it is also validated as an
+    additive parent. Its own reported value (10) is intentionally not the sum
+    of its declared ESTO-tree children (NX.1 + NX.2 = 6) -- exactly the
+    NON_EXPANDING/DETACHED semantics, where NX's value comes from an explicit
+    rollup-rule contributor sum rather than literal tree additivity. P's own
+    frontier still correctly resolves NX as one atomic mapped member (10), so
+    P reconciles regardless of the fix.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "NX", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "NX.1", "parent_code": "NX"},
+        {"dataset": "esto", "axis": "product", "code": "NX.2", "parent_code": "NX"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 20},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P.1", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "NX", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "NX.1", "value": 3},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "NX.2", "value": 3},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.1", "component_esto_flow": "F", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "NX", "component_esto_flow": "F", "component_esto_product": "NX"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "NX.1", "component_esto_flow": "F", "component_esto_product": "NX.1"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "NX.2", "component_esto_flow": "F", "component_esto_product": "NX.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "NX", "common_row_id": "c2"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "NX.1", "common_row_id": "c3"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "NX.2", "common_row_id": "c4"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 10},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c2", "value": 10},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c3", "value": 3},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c4", "value": 3},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_non_expanding_rollup_child_not_validated_as_additive_parent() -> None:
+    source, tree, mappings, common, comparison = _rollup_child_fixture()
+
+    # Without rollup awareness, NX is spuriously validated as its own
+    # additive parent (10 != NX.1 + NX.2 == 6) and fails.
+    baseline = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    nx_rows = baseline[baseline["parent_code"] == "NX"]
+    assert len(nx_rows) == 1
+    assert nx_rows.iloc[0]["status"] == "failed"
+    assert nx_rows.iloc[0]["reason"] == "difference_exceeds_tolerance"
+    # P's own additive check is unaffected either way: it resolves NX as one
+    # atomic mapped member (10), so P's frontier (P.1 + NX == 10 + 10 == 20)
+    # already reconciles without the fix.
+    p_row_baseline = baseline[baseline["parent_code"] == "P"].iloc[0]
+    assert p_row_baseline["status"] == "passed"
+    assert p_row_baseline["frontier_sum"] == 20
+
+    # With NX declared as a NON_EXPANDING/DETACHED rollup label, it must no
+    # longer be validated as an additive parent at all.
+    fixed = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, exclude_parents={"NX"},
+    )
+    assert fixed[fixed["parent_code"] == "NX"].empty
+    p_row_fixed = fixed[fixed["parent_code"] == "P"].iloc[0]
+    assert p_row_fixed["status"] == "passed"
+    assert p_row_fixed["frontier_sum"] == 20
+
+
+def test_ordinary_additive_parent_still_fails_when_genuinely_broken() -> None:
+    # Adjacent ordinary-additive case: excluding the unrelated rollup label
+    # "NX" must not mask a genuine parent/child mismatch elsewhere.
+    source, tree, mappings, common, comparison = _rollup_child_fixture()
+    source.loc[source["source_product"] == "P.1", "value"] = 4  # was 10; now P != P.1 + NX
+    comparison.loc[comparison["common_row_id"] == "c1", "value"] = 4
+
+    detail = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, exclude_parents={"NX"},
+    )
+    p_row = detail[detail["parent_code"] == "P"].iloc[0]
+    assert p_row["status"] == "failed"
+    assert p_row["reason"] == "difference_exceeds_tolerance"
+
+
+def _excluded_label_with_no_own_row_fixture():
+    """Grandparent GP -> excluded NON_EXPANDING label NX (no raw row of its
+    own, unlike ``_rollup_child_fixture``'s NX) -> real children NX.1/NX.2.
+
+    Mirrors the real ``16 Other sector`` -> ``16.01-16.02 Buildings`` (never
+    a literal row in the raw ESTO file) -> ``16.01``/``16.02`` shape. GP's
+    frontier can *only* be reconciled by descending through NX into its real
+    children -- if excluding NX from independent parent validation also
+    removes it from the raw tree's parent/child edges (the bug this test
+    guards against), ``_mapped_descendants`` can never reach NX.1/NX.2 at
+    all and GP's frontier silently collapses to empty.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "GP", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "NX", "parent_code": "GP"},
+        {"dataset": "esto", "axis": "product", "code": "NX.1", "parent_code": "NX"},
+        {"dataset": "esto", "axis": "product", "code": "NX.2", "parent_code": "NX"},
+    ])
+    source = pd.DataFrame([
+        # No row for "NX" itself -- it is never a literal raw source row.
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "GP", "value": 6},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "NX.1", "value": 3},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "NX.2", "value": 3},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "NX.1", "component_esto_flow": "F", "component_esto_product": "NX.1"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "NX.2", "component_esto_flow": "F", "component_esto_product": "NX.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "NX.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "NX.2", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 3},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c2", "value": 3},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_excluded_parent_still_descendable_from_a_grandparent() -> None:
+    source, tree, mappings, common, comparison = _excluded_label_with_no_own_row_fixture()
+    detail = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, exclude_parents={"NX"},
+    )
+    # NX itself must not be independently validated as a parent.
+    assert detail[detail["parent_code"] == "NX"].empty
+    # GP must still reconcile by descending through NX into NX.1 + NX.2,
+    # not silently collapse to an empty frontier because NX was excluded.
+    gp_row = detail[detail["parent_code"] == "GP"].iloc[0]
+    assert gp_row["frontier_row_count"] == 2
+    assert gp_row["frontier_sum"] == 6
+    assert gp_row["status"] == "passed"
+
+
+def _duplicated_rollup_value_fixture(plants_leaf_value: float = 10):
+    """Ninth-shaped fixture reproducing a raw source hierarchy that reports the
+    same subtotal as a literal row at two flow depths at once (mirroring the
+    real ``12_solar`` / ``09_01_electricity_plants`` case): a leaf sector
+    ("Solar") and its parent ("Plants") both carry an explicit "x"-rollup row
+    for product "P" with the identical value, because Solar is the only
+    contributor under Plants for this product.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "Total", "parent_code": ""},
+        {"dataset": "ninth", "axis": "sector", "code": "Plants", "parent_code": "Total"},
+        {"dataset": "ninth", "axis": "sector", "code": "Solar", "parent_code": "Plants"},
+        {"dataset": "ninth", "axis": "fuel", "code": "P", "parent_code": ""},
+        {"dataset": "ninth", "axis": "fuel", "code": "P.1", "parent_code": "P"},
+        {"dataset": "ninth", "axis": "fuel", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        # Mapped subfuel detail, literally reported under "Plants".
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Plants", "source_product": "P.1", "value": 4},
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Plants", "source_product": "P.2", "value": 6},
+        # Plants' own "x"-rollup subtotal for P -- a literal row in its own
+        # right, not merely a derived total.
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Plants", "source_product": "P", "value": 10},
+        # Solar (Plants' only child) reports the identical subtotal for P,
+        # since it is the sole contributor -- this is the row that must not
+        # be silently remapped onto Plants' already-present P row above.
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Solar", "source_product": "P", "value": plants_leaf_value},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "NINTH", "source_flow": "Plants", "source_product": "P.1",
+         "component_esto_flow": "F", "component_esto_product": "P.1"},
+        {"source_system": "NINTH", "source_flow": "Plants", "source_product": "P.2",
+         "component_esto_flow": "F", "component_esto_product": "P.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "F",
+         "component_esto_product": "P.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "F",
+         "component_esto_product": "P.2", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E",
+         "scenario": "reference", "year": 2023, "common_row_id": "c1", "value": 4},
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E",
+         "scenario": "reference", "year": 2023, "common_row_id": "c2", "value": 6},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_leaf_remap_onto_ancestor_with_own_literal_row_is_not_double_counted() -> None:
+    source, tree, mappings, common, comparison = _duplicated_rollup_value_fixture()
+    # "Plants" is excluded from being validated as its own additive *flow*
+    # parent here -- irrelevant to this test, which is about the *product*
+    # axis parent "P" -- and sidesteps an unrelated, pre-existing edge case
+    # in resolve_parent_to_mapped_other_axis (structural_resolver.py) that
+    # raises when a flow-axis subtree has zero resolvable other-axis
+    # candidates for a top-level (parentless) product code such as "P".
+    detail = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, exclude_parents={"Plants"},
+    )
+    product_rows = detail[detail["validation_axis"] == "product"]
+
+    plants_row = product_rows[
+        (product_rows["parent_code"] == "P") & (product_rows["other_axis_value"] == "Plants")
+    ].iloc[0]
+    # Before the fix this summed Plants' own row (10) plus the Solar leaf
+    # remapped onto the same (P, Plants) key (10) -> parent_value 20 against
+    # frontier_sum 10 (the exact 0.5 ratio the real 12_solar rows showed).
+    assert plants_row["parent_value"] == 10
+    assert plants_row["frontier_sum"] == 10
+    assert plants_row["status"] == "passed"
+
+    # The Solar leaf must not have been silently folded into Plants' group;
+    # it either forms its own unanchorable group or is absent entirely, but
+    # it must never contribute to a doubled Plants total.
+    solar_rows = product_rows[
+        (product_rows["parent_code"] == "P") & (product_rows["other_axis_value"] == "Solar")
+    ]
+    if not solar_rows.empty:
+        assert solar_rows.iloc[0]["status"] == "skipped"
+
+    assert (product_rows["parent_code"] == "P").sum() <= 2
+
+
+def test_leaf_remap_onto_unmapped_ancestor_still_reconciles() -> None:
+    # Adjacent legitimate case: the ancestor has NO literal row of its own,
+    # so the leaf's remap onto it is the only source of that group's value
+    # and must keep working exactly as before (this is the majority use of
+    # the resolver -- e.g. the passenger-road pattern).
+    source, tree, mappings, common, comparison = _duplicated_rollup_value_fixture()
+    # Drop only Plants' own "x"-rollup row for P -- keep its mapped P.1/P.2
+    # detail rows, so Plants has no literal row of its own for P and must
+    # rely entirely on the Solar leaf's remap to reconcile.
+    source = source[
+        ~((source["source_flow"] == "Plants") & (source["source_product"] == "P"))
+    ].copy()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    product_rows = detail[detail["validation_axis"] == "product"]
+    row = product_rows[
+        (product_rows["parent_code"] == "P") & (product_rows["other_axis_value"] == "Plants")
+    ].iloc[0]
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 10
+    assert row["parent_value"] == 10
+
+
+def test_leaf_remap_onto_ancestor_with_own_row_still_fails_on_real_mismatch() -> None:
+    # A genuine mismatch at the ancestor's own literal row must still be
+    # reported -- suppressing the leaf's remap must not mask real breakage.
+    source, tree, mappings, common, comparison = _duplicated_rollup_value_fixture()
+    source.loc[
+        (source["source_flow"] == "Plants") & (source["source_product"] == "P"), "value"
+    ] = 999
+    detail = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, exclude_parents={"Plants"},
+    )
+    product_rows = detail[detail["validation_axis"] == "product"]
+    plants_row = product_rows[
+        (product_rows["parent_code"] == "P") & (product_rows["other_axis_value"] == "Plants")
+    ].iloc[0]
+    assert plants_row["status"] == "failed"
+    assert plants_row["reason"] == "difference_exceeds_tolerance"
+    assert plants_row["parent_value"] == 999
+    assert plants_row["frontier_sum"] == 10
+
+
 def test_scope_without_anchorable_boundary_is_skipped() -> None:
     source, tree, mappings, common, comparison = _multi_partition_fixture()
     source = source[(source["economy"] == "E1") & (source["year"] == 2022)]
@@ -305,3 +579,153 @@ def test_scope_without_anchorable_boundary_is_skipped() -> None:
     assert by_scope["esto_only"]["status"] == "passed"
     assert by_scope["esto_leap"]["status"] == "skipped"
     assert by_scope["esto_leap"]["reason"] == "no_anchorable_common_esto_boundary"
+
+
+def _pruned_subtotal_fixture():
+    """Mirrors the real ``16.01 Commercial and public services`` case.
+
+    ``16.01`` is a genuine raw-ESTO node with its own explicit subtotal row
+    and its own identity mapping, but Common ESTO structure building has
+    pruned every comparison row for that exact component pair as a duplicate
+    of its only real child, ``16.01.99``, whose own value is numerically
+    identical. ``16.01`` also has a second declared child, ``16.01.01``,
+    that is absent from the raw source entirely (zero/no row). The parent
+    ``16`` must still reconcile by descending past ``16.01``'s dataless
+    direct row into its real child ``16.01.99``.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "16", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "16.01", "parent_code": "16"},
+        {"dataset": "esto", "axis": "product", "code": "16.02", "parent_code": "16"},
+        {"dataset": "esto", "axis": "product", "code": "16.01.01", "parent_code": "16.01"},
+        {"dataset": "esto", "axis": "product", "code": "16.01.99", "parent_code": "16.01"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "source_flow": "F", "source_product": "16", "value": 3287.211173 + 500},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "source_flow": "F", "source_product": "16.01", "value": 3287.211173},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "source_flow": "F", "source_product": "16.01.99", "value": 3287.211173},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "source_flow": "F", "source_product": "16.02", "value": 500},
+        # 16.01.01 is absent entirely -- no raw row at all.
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "16.01", "component_esto_flow": "F", "component_esto_product": "16.01"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "16.01.99", "component_esto_flow": "F", "component_esto_product": "16.01.99"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "16.02", "component_esto_flow": "F", "component_esto_product": "16.02"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "16.01", "common_row_id": "c_1601"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "16.01.99", "common_row_id": "c_160199"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "16.02", "common_row_id": "c_1602"},
+    ])
+    comparison = pd.DataFrame([
+        # No row at all for c_1601 -- Common ESTO pruned it as a duplicate of
+        # 16.01.99's contribution.
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "common_row_id": "c_160199", "value": 3287.211173},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2023, "common_row_id": "c_1602", "value": 500},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_parent_reconciles_through_pruned_direct_subtotal_with_real_child_data() -> None:
+    source, tree, mappings, common, comparison = _pruned_subtotal_fixture()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    row = detail[detail["parent_code"] == "16"].iloc[0]
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 3287.211173 + 500
+    # 16.01.01 (absent, zero source evidence) is still surfaced for lineage.
+    assert row["missing_expected_children"] == "16.01.01"
+
+
+def _shared_frontier_fixture():
+    """Two raw products (other_axis_value A/B) under one parent P.
+
+    Mirrors the real LEAP "Oil Refining" case: at the ``distinct`` scope each
+    raw product maps onto its OWN Common ESTO row (a genuine 1:1 mapping), but
+    at the ``shared`` scope Common ESTO legitimately collapses both products'
+    only child (``P.1``) onto a SINGLE aggregate row (e.g. because the source
+    that scope's raw data comes from cannot distinguish the sub-products).
+    The true combined total (A's 6 + B's 4 == 10) matches the shared row's
+    comparison value exactly, but individually neither 6 nor 4 does.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "A", "source_product": "P", "value": 6},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "A", "source_product": "P.1", "value": 6},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "B", "source_product": "P", "value": 4},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "B", "source_product": "P.1", "value": 4},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "A", "source_product": "P.1", "component_esto_flow": "FA", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "B", "source_product": "P.1", "component_esto_flow": "FB", "component_esto_product": "P.1"},
+    ])
+    common = pd.DataFrame([
+        # distinct scope: each raw product's own exact Common ESTO row.
+        {"comparison_scope": "distinct", "component_esto_flow": "FA", "component_esto_product": "P.1", "common_row_id": "id_a"},
+        {"comparison_scope": "distinct", "component_esto_flow": "FB", "component_esto_product": "P.1", "common_row_id": "id_b"},
+        # shared scope: both products collapse onto one aggregate row.
+        {"comparison_scope": "shared", "component_esto_flow": "FA", "component_esto_product": "P.1", "common_row_id": "id_shared"},
+        {"comparison_scope": "shared", "component_esto_flow": "FB", "component_esto_product": "P.1", "common_row_id": "id_shared"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "distinct", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "id_a", "value": 6},
+        {"comparison_scope": "distinct", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "id_b", "value": 4},
+        {"comparison_scope": "shared", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "id_shared", "value": 10},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_shared_frontier_group_is_combined_not_individually_failed() -> None:
+    source, tree, mappings, common, comparison = _shared_frontier_fixture()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    shared_rows = detail[
+        (detail["comparison_scope"] == "shared") & (detail["parent_code"] == "P")
+    ]
+    # No row is silently dropped -- one combined/primary row plus one skipped.
+    assert len(shared_rows) == 2
+    primary = shared_rows[shared_rows["status"] != "skipped"].iloc[0]
+    skipped = shared_rows[shared_rows["status"] == "skipped"].iloc[0]
+
+    assert primary["status"] == "passed"
+    assert primary["parent_value"] == 10  # combined A (6) + B (4)
+    assert primary["frontier_sum"] == 10
+    assert set(primary["other_axis_value"].split(" + ")) == {"A", "B"}
+
+    assert skipped["reason"] == "grouped_with_shared_frontier_sibling"
+
+
+def test_distinct_frontier_scope_is_unaffected_by_shared_scope_grouping() -> None:
+    # The non-grouped case (each other_axis_value resolves to its own
+    # distinct common_row_id) must reconcile individually and completely
+    # unaffected by the shared-frontier grouping happening in another scope.
+    source, tree, mappings, common, comparison = _shared_frontier_fixture()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    distinct_rows = detail[
+        (detail["comparison_scope"] == "distinct") & (detail["parent_code"] == "P")
+    ]
+    assert len(distinct_rows) == 2
+    by_other = {r["other_axis_value"]: r for _, r in distinct_rows.iterrows()}
+    assert by_other["A"]["status"] == "passed"
+    assert by_other["A"]["parent_value"] == 6
+    assert by_other["A"]["frontier_sum"] == 6
+    assert by_other["B"]["status"] == "passed"
+    assert by_other["B"]["parent_value"] == 4
+    assert by_other["B"]["frontier_sum"] == 4
+
+
+def test_non_expanding_direct_match_with_real_data_is_not_descended() -> None:
+    # Regression guard for the previously-reverted structural heuristic: a
+    # node with its OWN real comparison data must never be discarded in favor
+    # of descending into its children just because a child also has a direct
+    # row -- NON_EXPANDING rollup values are legitimately different from the
+    # literal sum of their raw-tree children by design (see
+    # test_non_expanding_rollup_child_not_validated_as_additive_parent).
+    source, tree, mappings, common, comparison = _rollup_child_fixture()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    p_row = detail[detail["parent_code"] == "P"].iloc[0]
+    # NX resolves to its own real, atomic value (10), not NX.1 + NX.2 (6).
+    assert p_row["frontier_sum"] == 20

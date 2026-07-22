@@ -67,6 +67,23 @@ def test_parent_prefers_deepest_nested_mapped_other_axis() -> None:
     assert result["flow"] == "Electricity plants"
 
 
+def test_parent_with_no_resolvable_children_is_unresolved_not_a_crash() -> None:
+    # Every declared child fails to resolve to any mapped pair, so
+    # ``candidates`` is empty. This must report ``unresolved`` (matching the
+    # empty-candidates branch of the ambiguous/unresolved status choice
+    # below), not fall through to ``max()`` on an empty set.
+    result = resolve_parent_to_mapped_other_axis(
+        "Detailed sector",
+        "Fuel parent",
+        {"Fuel parent": ["Fuel child"]},
+        {("Unrelated flow", "Some other fuel")},
+        "flow",
+        {"Detailed sector": "Electricity plants"},
+    )
+    assert result["status"] == "unresolved"
+    assert result["candidates"] == []
+
+
 def test_ninth_and_esto_ancestry_uses_parent_code() -> None:
     tree = pd.DataFrame([
         {"dataset": "ninth", "axis": "sector", "code": "Transport", "parent_code": ""},

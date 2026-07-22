@@ -192,7 +192,7 @@ def resolve_parent_to_mapped_other_axis(
         return False
 
     ordered_candidates = sorted(candidates)
-    nested_candidates = all(
+    nested_candidates = bool(candidates) and all(
         left == right or _is_ancestor(left, right) or _is_ancestor(right, left)
         for position, left in enumerate(ordered_candidates)
         for right in ordered_candidates[position + 1:]
