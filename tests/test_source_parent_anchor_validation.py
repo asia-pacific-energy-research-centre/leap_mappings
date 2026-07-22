@@ -75,9 +75,23 @@ def test_incomplete_frontier_that_reconciles_is_passed() -> None:
     ])
     row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
     assert row["status"] == "passed"
-    assert row["reason"] == "within_tolerance_incomplete_frontier"
+    assert row["reason"] == "within_tolerance_zero_only_missing_children"
     assert row["missing_expected_children"] == "P.2"  # still reported for lineage
+    assert row["missing_nonzero_child_count"] == 0
     assert row["frontier_sum"] == 4
+
+
+def test_zero_only_missing_child_is_classified_as_source_inconsistency() -> None:
+    source, tree, mappings, common, comparison = _fixture(
+        child_b_value=0,
+        include_child_b_mapping=False,
+    )
+    comparison = comparison[comparison["common_row_id"] == "c1"].copy()
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+    assert row["status"] == "failed"
+    assert row["reason"] == "parent_child_source_inconsistency"
+    assert row["missing_nonzero_child_count"] == 0
+    assert row["missing_zero_or_absent_child_count"] == 1
 
 
 def test_tolerance_boundary_and_summary() -> None:

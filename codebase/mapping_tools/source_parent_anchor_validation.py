@@ -22,6 +22,7 @@ COMPARISON_SCOPE_SYSTEMS = {
     "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
     "esto_only": {"ESTO"},
 }
+NONZERO_SOURCE_EVIDENCE_TOLERANCE = 1e-12
 
 
 ANCHOR_COLUMNS = [
@@ -29,6 +30,8 @@ ANCHOR_COLUMNS = [
     "scenario", "year", "other_axis_value", "parent_code", "status",
     "reason", "parent_value", "frontier_sum", "difference", "abs_error",
     "proportional_error", "frontier_row_count", "missing_expected_children",
+    "missing_expected_child_count", "missing_nonzero_child_count",
+    "missing_nonzero_child_abs", "missing_zero_or_absent_child_count",
     "parent_positive_value", "parent_negative_value", "frontier_positive_sum",
     "frontier_negative_sum",
 ]
@@ -52,6 +55,51 @@ def _children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[str, l
         if parent:
             result.setdefault(parent, []).append(str(row.code).strip())
     return result
+
+
+def _build_source_evidence_lookup(
+    source_df: pd.DataFrame,
+    axis_column: str,
+    other_column: str,
+    other_parent_index: dict[str, str],
+) -> dict[tuple[str, str, str, str, int], float]:
+    """Index absolute source evidence for an axis child and other-axis scope.
+
+    The anchor frontier can be incomplete because a structural child is absent
+    from the mapping, but that child may still be zero in the source data.  Keep
+    an absolute-value lookup (rather than signed sums, which could cancel) and
+    roll the other axis to its explicit ancestors so the evidence matches the
+    validator's mapped ancestor scope.
+    """
+    working = source_df.copy()
+    working[axis_column] = working[axis_column].fillna("").astype(str).str.strip()
+    working[other_column] = working[other_column].fillna("").astype(str).str.strip()
+    working["economy"] = working["economy"].fillna("").astype(str).str.strip()
+    working["scenario"] = working["scenario"].fillna("").astype(str).str.strip()
+    working["year"] = pd.to_numeric(working["year"], errors="coerce")
+    working["_abs_value"] = pd.to_numeric(working["value"], errors="coerce").fillna(0.0).abs()
+    working = working[
+        working[axis_column].ne("")
+        & working[other_column].ne("")
+        & working["year"].notna()
+    ]
+    grouped = (
+        working.groupby(
+            [axis_column, other_column, "economy", "scenario", "year"],
+            dropna=False,
+        )["_abs_value"]
+        .sum()
+    )
+    lookup: dict[tuple[str, str, str, str, int], float] = {}
+    for (axis_value, other_value, economy, scenario, year), amount in grouped.items():
+        current = str(other_value)
+        visited: set[str] = set()
+        while current and current not in visited:
+            visited.add(current)
+            key = (str(axis_value), current, str(economy), str(scenario), int(year))
+            lookup[key] = lookup.get(key, 0.0) + float(amount)
+            current = other_parent_index.get(current, "")
+    return lookup
 
 
 def _mapped_descendants(
@@ -213,6 +261,12 @@ def validate_source_parent_anchors(
                 bad = tree_issues[tree_issues["issue_type"].isin(["ambiguous_parent", "cycle"])]
                 if not bad.empty:
                     raise ValueError(f"Invalid source tree for {dataset}/{other_tree_axis}: {bad.head(10).to_dict('records')}")
+            source_evidence_lookup = _build_source_evidence_lookup(
+                system_source,
+                axis_col,
+                other_col,
+                parent_index,
+            )
             mapped_pairs = set(zip(system_mappings["source_flow"].astype(str), system_mappings["source_product"].astype(str)))
             pair_remap: dict[tuple[str, str], tuple[str, str]] = {}
             for flow, product in axis_source[["source_flow", "source_product"]].drop_duplicates().itertuples(index=False):
@@ -366,6 +420,37 @@ def validate_source_parent_anchors(
             pcoa = list(zip(base["parent_code"], base["_oas"]))
             base["missing_expected_children"] = [missing_join_map[k] for k in pcoa]
             has_missing = np.array([has_missing_map[k] for k in pcoa])
+            missing_child_counts = np.zeros(len(base), dtype=int)
+            missing_nonzero_counts = np.zeros(len(base), dtype=int)
+            missing_nonzero_abs = np.zeros(len(base), dtype=float)
+            missing_rows = base.index[has_missing]
+            evidence_columns = ["missing_expected_children", "_oas", "economy", "scenario", "year"]
+            for row_index, values in base.loc[missing_rows, evidence_columns].iterrows():
+                missing_children = [
+                    child for child in str(values["missing_expected_children"]).split("|") if child
+                ]
+                missing_child_counts[row_index] = len(missing_children)
+                for child in missing_children:
+                    axis_value, other_value = child, str(values["_oas"])
+                    evidence = source_evidence_lookup.get(
+                        (
+                            axis_value,
+                            other_value,
+                            str(values["economy"]),
+                            str(values["scenario"]),
+                            int(values["year"]),
+                        ),
+                        0.0,
+                    )
+                    if evidence > NONZERO_SOURCE_EVIDENCE_TOLERANCE:
+                        missing_nonzero_counts[row_index] += 1
+                        missing_nonzero_abs[row_index] += evidence
+            base["missing_expected_child_count"] = missing_child_counts
+            base["missing_nonzero_child_count"] = missing_nonzero_counts
+            base["missing_nonzero_child_abs"] = missing_nonzero_abs
+            base["missing_zero_or_absent_child_count"] = (
+                missing_child_counts - missing_nonzero_counts
+            )
             fids_empty = np.array([
                 fids_empty_map[(pc, oa, sc)]
                 for pc, oa, sc in zip(base["parent_code"], base["_oas"], base["comparison_scope"])
@@ -391,25 +476,31 @@ def validate_source_parent_anchors(
             # source frontier with a zero-valued parent is uninformative and is
             # skipped rather than reported as a failed Cartesian combination.
             incomplete_reconciles = has_missing & ~tol_exceeded
-            incomplete_gap = has_missing & tol_exceeded
+            nonzero_missing = has_missing & (missing_nonzero_counts > 0)
+            zero_only_missing = has_missing & (missing_nonzero_counts == 0)
+            incomplete_gap = nonzero_missing & tol_exceeded
+            parent_child_inconsistency = zero_only_missing & tol_exceeded
             zero_parent_without_rows = rows_empty & ~tol_exceeded
             conditions = [
                 fids_empty,
                 zero_parent_without_rows,
-                incomplete_reconciles,
+                incomplete_reconciles & nonzero_missing,
+                incomplete_reconciles & zero_only_missing,
+                parent_child_inconsistency,
                 incomplete_gap,
                 rows_empty,
                 tol_exceeded,
             ]
             base["status"] = np.select(
                 conditions,
-                ["skipped", "skipped", "passed", "failed", "failed", "failed"],
+                ["skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
                 default="passed",
             )
             base["reason"] = np.select(
                 conditions,
                 ["no_anchorable_common_esto_boundary", "no_observed_source_frontier",
-                 "within_tolerance_incomplete_frontier", "incomplete_frontier",
+                 "within_tolerance_incomplete_frontier", "within_tolerance_zero_only_missing_children",
+                 "parent_child_source_inconsistency", "incomplete_frontier",
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
