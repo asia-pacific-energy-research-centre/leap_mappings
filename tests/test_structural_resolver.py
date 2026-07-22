@@ -54,6 +54,19 @@ def test_parent_uses_unique_mapped_descendant_to_resolve_other_axis() -> None:
     assert result["product"] == "Fuel parent"
 
 
+def test_parent_prefers_deepest_nested_mapped_other_axis() -> None:
+    result = resolve_parent_to_mapped_other_axis(
+        "Detailed sector",
+        "Fuel parent",
+        {"Fuel parent": ["Fuel child"]},
+        {("Total", "Fuel child"), ("Electricity plants", "Fuel child")},
+        "flow",
+        {"Detailed sector": "Electricity plants", "Electricity plants": "Total"},
+    )
+    assert result["status"] == "resolved"
+    assert result["flow"] == "Electricity plants"
+
+
 def test_ninth_and_esto_ancestry_uses_parent_code() -> None:
     tree = pd.DataFrame([
         {"dataset": "ninth", "axis": "sector", "code": "Transport", "parent_code": ""},

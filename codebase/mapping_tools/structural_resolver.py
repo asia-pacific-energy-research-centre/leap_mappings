@@ -179,15 +179,36 @@ def resolve_parent_to_mapped_other_axis(
             evidence.extend(resolved.get("evidence", []))
         stack.extend(children.get(child, []))
 
-    if len(candidates) != 1:
+    def _is_ancestor(candidate: str, code: str) -> bool:
+        seen = {code}
+        current = code
+        while parent := parent_index.get(current, ""):
+            if parent == candidate:
+                return True
+            if parent in seen:
+                return False
+            seen.add(parent)
+            current = parent
+        return False
+
+    ordered_candidates = sorted(candidates)
+    nested_candidates = all(
+        left == right or _is_ancestor(left, right) or _is_ancestor(right, left)
+        for position, left in enumerate(ordered_candidates)
+        for right in ordered_candidates[position + 1:]
+    )
+    if len(candidates) != 1 and not nested_candidates:
         return {
-            "status": "ambiguous" if len(candidates) > 1 else "unresolved",
+            "status": "ambiguous" if candidates else "unresolved",
             "flow": flow,
             "product": product,
             "candidates": sorted(candidates),
             "evidence": evidence,
         }
-    other_axis = next(iter(candidates))
+    other_axis = max(
+        candidates,
+        key=lambda candidate: len(resolve_ancestry(candidate, parent_index)["ancestors"]),
+    )
     return {
         "status": "resolved",
         "flow": flow if roll_axis == "product" else other_axis,
