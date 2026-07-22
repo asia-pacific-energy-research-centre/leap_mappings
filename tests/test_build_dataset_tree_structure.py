@@ -10,7 +10,9 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     OUTLOOK_MAPPINGS_PATH,
     _build_esto_axis_tree,
     _build_source_inconsistency_lookup,
+    _non_expanding_rollup_hierarchy,
     build_common_esto_tree,
+    build_esto_tree,
     _load_rollup_hierarchy,
     validate_common_esto_recursive_sums,
     validate_leap_recursive_sums,
@@ -118,10 +120,12 @@ def test_load_rollup_hierarchy_keeps_declared_parent_and_children(tmp_path: Path
     assert hierarchy["16.01-16.02 Buildings"] == {
         "parent_label": "16 Other sector",
         "children": ["16.01 Commercial and public services", "16.02 Residential"],
+        "rollup_mode": "",
     }
     assert hierarchy["Blank hierarchy"] == {
         "parent_label": "",
         "children": ["10.01.11 Oil refineries"],
+        "rollup_mode": "",
     }
 
 
@@ -181,6 +185,72 @@ def test_in_scope_real_rollup_hierarchy_has_no_tree_index_issues() -> None:
 
     assert set(hierarchy) == in_scope
     assert issues.empty
+
+
+def test_non_expanding_rollup_hierarchy_drops_only_expanding_entries() -> None:
+    """The EXPANDING/NON_EXPANDING split keeps everything except EXPANDING nodes."""
+    hierarchy = {
+        "09.01-09.02 Power sector": {"parent_label": "09 Total transformation sector", "children": [], "rollup_mode": "EXPANDING"},
+        "09.06 Gas processing plants (including own use)": {"parent_label": "", "children": [], "rollup_mode": "NON_EXPANDING"},
+        "09.08 Coal transformation (including own use)": {"parent_label": "", "children": [], "rollup_mode": "DETACHED"},
+        "Unlabelled rule": {"parent_label": "", "children": [], "rollup_mode": ""},
+    }
+
+    filtered = _non_expanding_rollup_hierarchy(hierarchy)
+
+    assert set(filtered) == {
+        "09.06 Gas processing plants (including own use)",
+        "09.08 Coal transformation (including own use)",
+        "Unlabelled rule",
+    }
+
+
+def test_build_esto_tree_keeps_natural_children_under_an_expanding_rollup_branch(
+    tmp_path: Path,
+) -> None:
+    """An EXPANDING rollup must not orphan the raw branches it cross-cuts.
+
+    ``09.01 Main activity producer`` and ``09.02 Autoproducers`` each keep
+    their own genuine raw ESTO children even though an EXPANDING rollup
+    ("09.01-09.02 Power sector") also declares a cross-branch merge of their
+    plant-type children -- see
+    docs/prompts/anchor_validator_fixes_findings_20260722.md for the real-data
+    bug (both branches went structurally childless, at fixed, unmoved failure
+    counts, before this fix).
+    """
+    data_path = tmp_path / "esto.csv"
+    workbook_path = tmp_path / "mappings.xlsx"
+    pd.DataFrame([
+        {"economy": "20_USA", "flows": "09 Total transformation sector", "products": "01 Coal", "2022": 100},
+        {"economy": "20_USA", "flows": "09.01 Main activity producer", "products": "01 Coal", "2022": 60},
+        {"economy": "20_USA", "flows": "09.01.01 Electricity plants", "products": "01 Coal", "2022": 60},
+        {"economy": "20_USA", "flows": "09.02 Autoproducers", "products": "01 Coal", "2022": 40},
+        {"economy": "20_USA", "flows": "09.02.01 Electricity plants", "products": "01 Coal", "2022": 40},
+    ]).to_csv(data_path, index=False)
+    pd.DataFrame([
+        {
+            "include": True,
+            "rolled_esto_flow": "09.01.01,09.02.01 Electricity plants",
+            "parent_flow_label": "09.01-09.02 Power sector",
+            "child_flow_labels": "09.01.01 Electricity plants; 09.02.01 Electricity plants",
+            "ROLLUP_MODE": "EXPANDING",
+        },
+        {
+            "include": True,
+            "rolled_esto_flow": "09.01-09.02 Power sector",
+            "parent_flow_label": "09 Total transformation sector",
+            "child_flow_labels": "09.01.01,09.02.01 Electricity plants",
+            "ROLLUP_MODE": "EXPANDING",
+        },
+    ]).to_excel(workbook_path, sheet_name="esto_rollup_rules", index=False)
+
+    tree = build_esto_tree(data_path, workbook_path)
+    flows = tree[tree["axis"].eq("flow")].set_index("code")
+
+    assert flows.loc["09.01.01 Electricity plants", "parent_code"] == "09.01 Main activity producer"
+    assert flows.loc["09.02.01 Electricity plants", "parent_code"] == "09.02 Autoproducers"
+    assert "09.01.01,09.02.01 Electricity plants" not in flows.index
+    assert "09.01-09.02 Power sector" not in flows.index
 
 
 def _dedupe_for_test(values: list[str]) -> list[str]:

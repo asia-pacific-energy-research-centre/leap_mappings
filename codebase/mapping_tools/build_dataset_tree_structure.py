@@ -139,8 +139,44 @@ def _load_rollup_hierarchy(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> dict[
         if rolled_flow in hierarchy:
             continue
         children = _dedupe_preserve_order(child_labels.split(";"))
-        hierarchy[rolled_flow] = {"parent_label": parent_label, "children": children}
+        hierarchy[rolled_flow] = {
+            "parent_label": parent_label,
+            "children": children,
+            "rollup_mode": _str(rule.get("ROLLUP_MODE")),
+        }
     return hierarchy
+
+
+def _non_expanding_rollup_hierarchy(
+    hierarchy: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Drop EXPANDING-mode rollup nodes before splicing into the raw ESTO tree.
+
+    EXPANDING rollups (e.g. ``09.01-09.02 Power sector``) declare children
+    that cross-cut two raw branches which each remain independently real and
+    additive on their own (``09.01 Main activity producer`` and
+    ``09.02 Autoproducers`` both still have their own genuine raw totals and
+    real numeric-prefix children). Splicing such a rollup into the *raw* ESTO
+    tree reparents every one of those real leaves away from its natural
+    branch, leaving ``09.01``/``09.02`` structurally childless even though
+    their own raw data and children are perfectly intact -- see
+    docs/prompts/anchor_validator_fixes_findings_20260722.md. The merged
+    labels these rollups introduce are never looked up by ESTO's own identity
+    self-mapping (which always maps a raw pair to itself), so the raw tree
+    never needed them; they still get spliced into the Common ESTO tree
+    (:func:`build_common_esto_tree`, unaffected by this filter), which is
+    where NINTH/LEAP's combined power-sector rows actually resolve onto them.
+
+    NON_EXPANDING/DETACHED rollups (e.g. own-use gas/coal/oil plants
+    reattributed from flow 10 to flow 09) genuinely redefine which branch a
+    leaf's raw value belongs to for comparison purposes, so they must keep
+    splicing into the raw tree exactly as before.
+    """
+    return {
+        code: node
+        for code, node in hierarchy.items()
+        if node.get("rollup_mode") != "EXPANDING"
+    }
 
 
 def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
@@ -268,7 +304,10 @@ def build_esto_tree(
     }
 
     rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
-    flow_tree = _build_esto_axis_tree(flows, "flow", "esto", subtotal_flows, rollup_hierarchy)
+    flow_tree = _build_esto_axis_tree(
+        flows, "flow", "esto", subtotal_flows,
+        _non_expanding_rollup_hierarchy(rollup_hierarchy),
+    )
     prod_tree = _build_esto_axis_tree(prods, "product", "esto", subtotal_prods)
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)

@@ -211,3 +211,81 @@ driving it.
 4. Add the missing log line in `run_stage_3`'s
    `except Exception: anchor_exclude_parents = set()` block before trusting
    any future "this fix had zero impact" result at face value.
+
+## Follow-on session (2026-07-22, continued): the merged-code theory was wrong
+
+Per the test plan above, the `09.01`/`09.02` merged-code mechanism was
+confirmed precisely, a real bug was found and fixed in the tree builder for
+it — **and it did not move `09 Total transformation sector`'s 486 failures at
+all** (confirmed byte-for-byte identical status counts, 486 failed / 403
+passed / 2513 skipped, running `validate_source_parent_anchors` directly
+against real data with the old vs. new tree builder as an explicit A/B
+control). The doc's own contingency in step 3 above was triggered: the
+merged-code theory was the wrong target for `09`'s specific 486 failures,
+even though the underlying tree bug it describes was real.
+
+**The tree bug fixed this session (real, verified, kept):**
+`build_esto_tree`'s flow tree spliced the *entire* `esto_rollup_rules`
+hierarchy (`_load_rollup_hierarchy`) into the raw per-source ESTO tree,
+including `EXPANDING`-mode rows like `09.01-09.02 Power sector`. That
+family's declared children cross-cut two branches (`09.01 Main activity
+producer`'s and `09.02 Autoproducers`' own plant-type leaves) that are each
+independently real and additive on their own. Splicing it into the *raw*
+tree reparented every one of those real leaves onto the merged/rollup nodes,
+leaving `09.01`/`09.02` structurally childless in the raw ESTO tree — even
+though their raw data and real children were completely intact, and even
+though ESTO's own identity self-mapping never looks up the merged labels at
+all (confirmed: they never appear as `component_esto_flow` for
+`source_system == "ESTO"` in `common_esto_rows.csv`; they're only reached
+via LEAP/NINTH's mapping). Fixed by tagging each rollup entry with its
+`ROLLUP_MODE` in `_load_rollup_hierarchy` and adding
+`_non_expanding_rollup_hierarchy()`, which the raw `build_esto_tree` flow
+tree now filters through before splicing — `NON_EXPANDING`/`DETACHED` rows
+(the real cross-branch reattribution cases, e.g. own-use gas/coal/oil plants
+moved from flow `10` to flow `09`, which `exclude_parents` already
+complements) still splice exactly as before; only `EXPANDING` rows are held
+back from the raw tree. `build_common_esto_tree` is untouched and still
+receives the full, unfiltered hierarchy — verified the Common ESTO tree
+still has `09.01-09.02 Power sector` → merged nodes → real leaves intact,
+which is where NINTH/LEAP's combined power-sector rows actually need to
+resolve. New regression tests:
+`test_non_expanding_rollup_hierarchy_drops_only_expanding_entries` and
+`test_build_esto_tree_keeps_natural_children_under_an_expanding_rollup_branch`
+in `tests/test_build_dataset_tree_structure.py`. Full suite (excluding four
+pre-existing, unrelated collection errors caused by this worktree lacking
+the sibling `leap_initialisation` repo, and two pre-existing failures —
+`test_apply_partitioned_common_esto.py::test_chunked_cache_reuse_and_result_equivalence`
+missing `pyarrow`, and
+`test_parse_leap_balance_export.py::test_parse_leap_balance_dir_ignores_excel_lock_files`
+— both confirmed present before this session's changes too, via
+`git stash`): 237 passed.
+
+**The real mechanism behind `09`'s 486 failures, found while tracing one
+concrete row end to end** (economy `01_AUS`, year 2023, scope `esto_leap`,
+product `01.02 Other bituminous coal`): `09 Total transformation sector`
+itself has a real Common ESTO comparison row (`value = -566.185988`), but
+**none of its ~13 declared children (`09.01`–`09.13`) have any
+`common_esto_rows.csv` entry for that exact product at all** — not `09.01`,
+not `09.02`, not `09.06`–`09.08`, not `09.12`/`09.13`. The same pattern
+repeats for `06.01 Crude oil` (-527.4), `08.01 Natural gas` (-464.7), `17
+Electricity` (984.9), `10 Hydro` (-56.8), `12.01 Photovoltaics` (-151.1),
+`14 Wind` (-113.0), and about a dozen other flow-09/product combinations
+just for this one economy/year — the frontier is empty (`frontier_row_count
+= 0`) because **no mapping row exists at all** connecting any of `09`'s
+children to these primary-energy-input/output products, not because the
+tree can't reach real data. This is a **mapping-coverage gap in the
+workbook** (missing `esto_flow`/`esto_product` mapping rows for `09.01`–
+`09.13` against these products), not a code or tree-structure bug — no code
+fix can close it. `missing_expected_children` also consistently flags
+`09.13.01 Electrolysers` / `09.13.02 SMR wo CCS` / `09.13.03 SMR w CCS`
+(hydrogen production) as missing regardless of product, suggesting that
+whole flow branch has zero mapping coverage in `common_esto_rows.csv` yet,
+even though the raw ESTO data already carries real `09.13.x` rows.
+
+**Recommended next step, not done this session:** this needs mapping work
+(new `esto_flow`/`esto_product` rows in the workbook covering `09.01`–
+`09.13` against the primary coal/oil/gas/electricity/renewable products that
+currently have zero coverage), not further anchor-validator or tree-builder
+code changes. Verifying via one economy/year at a time (as done here) is
+far cheaper than a full Stage 3 rerun and should be the default first step
+before assuming any future "still unchanged" result implicates the code.
