@@ -24,7 +24,8 @@ NINTH_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 ESTO_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 OUTPUT_DIR = REPO_ROOT / "results" / "mapping_relationships"
 SCENARIO = "reference"
-NINTH_EVIDENCE_YEARS = tuple(range(1980, 2071))
+# Current review scope: exclude historical-only activity through 2015.
+NINTH_EVIDENCE_YEARS = tuple(range(2016, 2071))
 ESTO_BASE_YEAR = 2022
 NONZERO_TOLERANCE = 1e-12
 
