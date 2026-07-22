@@ -815,6 +815,11 @@ def _common_esto_validation_children_map(
     common_map = _tree_children_map(tree_df, "common_esto", axis)
     esto_map = _tree_children_map(tree_df, "esto", axis)
     esto_child_sets = {parent: set(children) for parent, children in esto_map.items()}
+    esto_codes = set(
+        tree_df.loc[
+            (tree_df["dataset"] == "esto") & (tree_df["axis"] == axis), "code"
+        ].astype(str)
+    )
     # Synthetic inclusive rollups deliberately re-parent their base inputs
     # under labels such as ``09.06 ... (including own use)`` for the rollup
     # view.  Restore the underlying numeric ESTO edge as well for ordinary
@@ -838,8 +843,9 @@ def _common_esto_validation_children_map(
             if not parent_prefix:
                 continue
             parent = base_code_by_prefix.get(parent_prefix, "")
-            if parent and parent != code and code in esto_child_sets.get(parent, set()):
+            if parent and parent != code and code in esto_codes:
                 common_map.setdefault(parent, []).append(code)
+                esto_child_sets.setdefault(parent, set()).add(code)
     filtered: dict[str, list[str]] = {}
     for parent, children in common_map.items():
         if parent in exclude_parents:

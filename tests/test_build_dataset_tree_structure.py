@@ -466,7 +466,7 @@ def test_common_flow_validation_expands_zero_base_rollup_placeholder(tmp_path: P
     tree = pd.DataFrame([
         {"dataset": "esto", "axis": "flow", "code": "09 Total transformation sector", "parent_code": ""},
         {"dataset": "esto", "axis": "flow", "code": "09.06 Gas processing plants", "parent_code": "09 Total transformation sector"},
-        {"dataset": "esto", "axis": "flow", "code": "09.06.02 Liquefaction/regasification plants", "parent_code": "09.06 Gas processing plants"},
+        {"dataset": "esto", "axis": "flow", "code": "09.06.02 Liquefaction/regasification plants", "parent_code": "09.06 Gas processing plants (including own use)"},
         {"dataset": "common_esto", "axis": "flow", "code": "09 Total transformation sector", "parent_code": ""},
         {"dataset": "common_esto", "axis": "flow", "code": "09.06 Gas processing plants", "parent_code": "09 Total transformation sector"},
         {"dataset": "common_esto", "axis": "flow", "code": "09.06.02 Liquefaction/regasification plants", "parent_code": "09.06 Gas processing plants (including own use)"},
