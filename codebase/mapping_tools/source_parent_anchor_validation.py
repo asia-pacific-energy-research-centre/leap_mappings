@@ -477,7 +477,7 @@ def validate_source_parent_anchors(
             # Frontier resolution depends only on (parent_code, other_axis_value),
             # not on economy/scenario/year or scope; cache across groups.
             frontier_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
-            frontier_ids_cache: dict[tuple[str, str, str], tuple[list, list]] = {}
+            frontier_ids_cache: dict[tuple[str, str, str], tuple[list, bool, list]] = {}
             # --- Vectorized parent aggregation (replaces the per-parent /
             # per-group / per-scope Python loop). Sum every parent's value,
             # positive part, and negative part for every
@@ -513,16 +513,23 @@ def validate_source_parent_anchors(
             has_missing_map: dict[tuple[str, str], bool] = {}
             fids_empty_map: dict[tuple[str, str, str], bool] = {}
             fid_rows: list[tuple[str, str, str, str]] = []
-            # A resolved frontier component with no common_row_id registered
-            # for a given scope (Common ESTO structure building never
-            # declared this exact pair as a component of any common row --
-            # e.g. ESTO's own "09.01 Main activity producer" for a product
-            # only NINTH/LEAP can report combined with "09.02 Autoproducers")
-            # still has a real, correct raw value from this same source
-            # system. Track those pairs per (parent_code, other_axis_value,
-            # scope) so their own raw figure can be added into frontier_sum
-            # below instead of the resolved component being silently
-            # dropped for lack of a common-row join key.
+            # A resolved frontier component still has a real, correct raw
+            # value from this same source system even when there is no way
+            # to fetch a converted value for it through common_row_id ->
+            # comparison_df, whether because Common ESTO structure building
+            # never declared this exact pair as a component of any common
+            # row at all (e.g. ESTO's own "09.01 Main activity producer" for
+            # a product only NINTH/LEAP can report combined with
+            # "09.02 Autoproducers"), or because it IS a declared component
+            # but this source system's own comparison-data export has zero
+            # rows for it across every economy/year (``has_data_pairs`` --
+            # e.g. ESTO's "16.01 Biogas" under a flow where NINTH reports a
+            # value but ESTO's own export simply never wrote a row, even
+            # though ESTO's raw figure is real and the true reason the
+            # parent has a nonzero total). Track those pairs per
+            # (parent_code, other_axis_value, scope) so their own raw figure
+            # can be added into frontier_sum below instead of the resolved
+            # component being silently dropped.
             raw_fallback_rows: list[tuple[str, str, str, str, str]] = []
             for pcode, oav in agg[["parent_code", "other_axis_value"]].drop_duplicates().itertuples(index=False):
                 oas = str(oav)
@@ -556,30 +563,43 @@ def validate_source_parent_anchors(
                             on=["component_esto_flow", "component_esto_product"],
                             how="left",
                         )
-                        frontier_ids = merged["common_row_id"].dropna().unique().tolist()
-                        unregistered = merged.loc[
-                            merged["common_row_id"].isna(),
-                            ["source_flow", "source_product"],
+                        has_row_id = merged["common_row_id"].notna()
+                        has_real_data = has_row_id & merged["common_row_id"].astype(str).isin(ids_with_data)
+                        frontier_ids = merged.loc[has_real_data, "common_row_id"].unique().tolist()
+                        # Structural registration (any common_row_id at all,
+                        # data or not) is the gate below; the fallback
+                        # candidates are every component that is NOT
+                        # contributing a real matched value, whether
+                        # unregistered or registered-but-dataless.
+                        structurally_registered = bool(has_row_id.any())
+                        fallback_candidates = merged.loc[
+                            ~has_real_data, ["source_flow", "source_product"]
                         ].drop_duplicates()
-                        cached = (frontier_ids, list(unregistered.itertuples(index=False, name=None)))
+                        cached = (
+                            frontier_ids,
+                            structurally_registered,
+                            list(fallback_candidates.itertuples(index=False, name=None)),
+                        )
                         frontier_ids_cache[ids_key] = cached
-                    frontier_ids, unregistered_pairs = cached
-                    fids_empty_map[ids_key] = (len(frontier_ids) == 0)
+                    frontier_ids, structurally_registered, fallback_candidates = cached
                     for cid in frontier_ids:
                         fid_rows.append((pcode, oas, scope, str(cid)))
-                    # Only fall back to raw values for a sibling gap when this
-                    # exact (parent, other_axis_value, scope) triple already
-                    # has at least one genuine common-row match: that means
-                    # Common ESTO structure building does cover this part of
-                    # the tree for this scope, so an unregistered sibling is a
-                    # real coverage gap worth filling from raw data. When
-                    # NOTHING in the frontier is registered at all, this scope
-                    # may simply not apply to this parent/product at all --
-                    # stay "no_anchorable_common_esto_boundary" rather than
+                    # Only fall back to raw values when this exact (parent,
+                    # other_axis_value, scope) triple has at least one
+                    # component Common ESTO structure building registered at
+                    # all: that means this scope does cover this part of the
+                    # tree, so a component with no real matched value --
+                    # unregistered, or registered but dataless for this
+                    # source system -- is a real coverage gap worth filling
+                    # from raw data. When NOTHING in the frontier is
+                    # registered at all, this scope may simply not apply to
+                    # this parent/product at all -- stay
+                    # "no_anchorable_common_esto_boundary" rather than
                     # guessing from raw data alone (see
                     # test_missing_common_boundary_is_unanchorable_even_when_source_value_is_nonzero).
-                    if frontier_ids:
-                        for sflow, sprod in unregistered_pairs:
+                    fids_empty_map[ids_key] = not (frontier_ids or (structurally_registered and fallback_candidates))
+                    if structurally_registered:
+                        for sflow, sprod in fallback_candidates:
                             raw_fallback_rows.append((pcode, oas, scope, sflow, sprod))
 
             # Cross parent aggregates with the scopes this system serves.
@@ -721,7 +741,7 @@ def validate_source_parent_anchors(
             # report spurious failures for them.
             frontier_signatures: dict[tuple[str, str, str], tuple[str, ...]] = {
                 key: tuple(sorted(str(cid) for cid in ids))
-                for key, (ids, _unregistered) in frontier_ids_cache.items()
+                for key, (ids, _structurally_registered, _fallback_candidates) in frontier_ids_cache.items()
                 if ids
             }
             group_members: dict[tuple[str, str, tuple[str, ...]], list[str]] = {}

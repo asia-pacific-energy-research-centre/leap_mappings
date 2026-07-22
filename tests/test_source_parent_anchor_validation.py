@@ -82,6 +82,39 @@ def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_cover
     assert row["frontier_row_count"] == 2
 
 
+def test_registered_but_dataless_child_falls_back_to_raw_value() -> None:
+    """A common row declared for a component still needs the raw fallback
+    when THIS source system's own comparison-data export has zero rows for
+    it -- mirroring the real "16.01 Biogas" case, where NINTH's export has a
+    value for the shared common row but ESTO's own export never wrote one,
+    even though ESTO's own raw figure is real and exact.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P.1", "value": 10},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.1", "component_esto_flow": "F", "component_esto_product": "P.1"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.1", "common_row_id": "c1"},
+    ])
+    # c1 is a genuine, declared common row -- just with no ESTO comparison
+    # rows for it at all, in any economy/year.
+    comparison = pd.DataFrame(columns=[
+        "comparison_scope", "source_system", "economy", "scenario", "year", "common_row_id", "value",
+    ])
+
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 10
+
+
 def test_parent_anchor_uses_descendant_mapping_to_roll_deep_other_axis() -> None:
     tree = pd.DataFrame([
         {"dataset": "ninth", "axis": "sector", "code": "Road", "parent_code": ""},
