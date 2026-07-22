@@ -1,0 +1,15 @@
+ninth_sector,ninth_fuel,esto_flow,esto_product,ninth_pair_is_subtotal,esto_pair_is_subtotal,duplicate_to_remove
+09_total_transformation_sector,02_coal_products,09 Total transformation sector,02.02 Gas coke,True,True,False
+09_total_transformation_sector,02_coal_products,09 Total transformation sector,02.06 Patent fuel,True,True,False
+09_total_transformation_sector,02_coal_products,09 Total transformation sector,02.07 Coal tar,True,True,False
+09_total_transformation_sector,02_coal_products,09 Total transformation sector,02.08 BKB/PB,True,True,False
+09_06_gas_processing_plants,02_coal_products,09.06 Gas processing plants,02.02 Gas coke,True,True,False
+09_06_gas_processing_plants,02_coal_products,09.06 Gas processing plants,02.04 Blast furnace gas,True,True,False
+09_06_gas_processing_plants,02_coal_products,09.06 Gas processing plants,02.05 Other recovered gases,True,True,False
+09_06_gas_processing_plants,02_coal_products,09.06 Gas processing plants,02.06 Patent fuel,True,True,False
+09_06_gas_processing_plants,02_coal_products,09.06 Gas processing plants,02.08 BKB/PB,True,True,False
+09_06_gas_processing_plants_incl_own_use,02_coal_products,09.06 Gas processing plants (including own use),02.02 Gas coke,True,True,False
+09_06_gas_processing_plants_incl_own_use,02_coal_products,09.06 Gas processing plants (including own use),02.04 Blast furnace gas,True,True,False
+09_06_gas_processing_plants_incl_own_use,02_coal_products,09.06 Gas processing plants (including own use),02.05 Other recovered gases,True,True,False
+09_06_gas_processing_plants_incl_own_use,02_coal_products,09.06 Gas processing plants (including own use),02.06 Patent fuel,True,True,False
+09_06_gas_processing_plants_incl_own_use,02_coal_products,09.06 Gas processing plants (including own use),02.08 BKB/PB,True,True,False
