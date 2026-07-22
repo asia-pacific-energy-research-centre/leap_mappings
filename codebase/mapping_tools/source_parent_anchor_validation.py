@@ -123,6 +123,49 @@ def _build_source_evidence_lookup(
     return lookup
 
 
+def _build_raw_pair_values(source_df: pd.DataFrame) -> pd.DataFrame:
+    """Return a source system's own signed raw value summed by its exact literal pair.
+
+    Unlike :func:`_build_source_evidence_lookup` this keeps the signed value
+    (not its absolute value) and does not roll the other axis up to its
+    ancestors -- it is an exact-match table for one resolved frontier
+    component's own reported figure, used when Common ESTO structure
+    building never registered that exact ``(component_esto_flow,
+    component_esto_product)`` pair as any common row's component for a given
+    scope, so there is no ``common_row_id`` to fetch a converted value
+    through (see the raw-fallback contribution in
+    :func:`validate_source_parent_anchors`). This is the source system's own
+    figure, in its own accounting convention -- exactly the convention
+    ``parent_value`` is already computed in from this same raw frame, so no
+    sign/unit conversion is needed to compare the two directly. ``source_df``
+    must already carry literal ``source_flow``/``source_product`` columns
+    (unlike ``axis_col``/``other_col`` elsewhere in this module, these are
+    never axis-swapped -- ``frontier_components`` and ``direct_index`` key on
+    the same two literal names regardless of which axis is being validated).
+    Output columns: ``source_flow``, ``source_product``, ``economy``,
+    ``scenario``, ``year``, ``value``.
+    """
+    working = source_df[["source_flow", "source_product", "economy", "scenario", "year", "value"]].copy()
+    working["source_flow"] = working["source_flow"].fillna("").astype(str).str.strip()
+    working["source_product"] = working["source_product"].fillna("").astype(str).str.strip()
+    working["economy"] = working["economy"].fillna("").astype(str).str.strip()
+    working["scenario"] = working["scenario"].fillna("").astype(str).str.strip()
+    working["year"] = pd.to_numeric(working["year"], errors="coerce")
+    working["value"] = pd.to_numeric(working["value"], errors="coerce").fillna(0.0)
+    working = working[
+        working["source_flow"].ne("")
+        & working["source_product"].ne("")
+        & working["year"].notna()
+    ]
+    return (
+        working.groupby(
+            ["source_flow", "source_product", "economy", "scenario", "year"],
+            dropna=False, as_index=False,
+        )["value"]
+        .sum()
+    )
+
+
 def _mapped_descendants(
     code: str,
     other_axis_value: str,
@@ -379,6 +422,7 @@ def validate_source_parent_anchors(
                 other_col,
                 parent_index,
             )
+            raw_pair_values = _build_raw_pair_values(axis_source)
             mapped_pairs = set(zip(system_mappings["source_flow"].astype(str), system_mappings["source_product"].astype(str)))
             # Raw source hierarchies (notably Ninth) often report the same
             # numeric total as literal separate rows at multiple depths at
@@ -433,7 +477,7 @@ def validate_source_parent_anchors(
             # Frontier resolution depends only on (parent_code, other_axis_value),
             # not on economy/scenario/year or scope; cache across groups.
             frontier_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
-            frontier_ids_cache: dict[tuple[str, str, str], list] = {}
+            frontier_ids_cache: dict[tuple[str, str, str], tuple[list, list]] = {}
             # --- Vectorized parent aggregation (replaces the per-parent /
             # per-group / per-scope Python loop). Sum every parent's value,
             # positive part, and negative part for every
@@ -469,6 +513,17 @@ def validate_source_parent_anchors(
             has_missing_map: dict[tuple[str, str], bool] = {}
             fids_empty_map: dict[tuple[str, str, str], bool] = {}
             fid_rows: list[tuple[str, str, str, str]] = []
+            # A resolved frontier component with no common_row_id registered
+            # for a given scope (Common ESTO structure building never
+            # declared this exact pair as a component of any common row --
+            # e.g. ESTO's own "09.01 Main activity producer" for a product
+            # only NINTH/LEAP can report combined with "09.02 Autoproducers")
+            # still has a real, correct raw value from this same source
+            # system. Track those pairs per (parent_code, other_axis_value,
+            # scope) so their own raw figure can be added into frontier_sum
+            # below instead of the resolved component being silently
+            # dropped for lack of a common-row join key.
+            raw_fallback_rows: list[tuple[str, str, str, str, str]] = []
             for pcode, oav in agg[["parent_code", "other_axis_value"]].drop_duplicates().itertuples(index=False):
                 oas = str(oav)
                 fk = (pcode, oas)
@@ -494,17 +549,38 @@ def validate_source_parent_anchors(
                 has_missing_map[fk] = bool(missing_children)
                 for scope in applicable_scopes:
                     ids_key = (pcode, oas, scope)
-                    frontier_ids = frontier_ids_cache.get(ids_key)
-                    if frontier_ids is None:
-                        frontier_ids = frontier_components.merge(
+                    cached = frontier_ids_cache.get(ids_key)
+                    if cached is None:
+                        merged = frontier_components.merge(
                             scoped_maps[scope],
                             on=["component_esto_flow", "component_esto_product"],
                             how="left",
-                        )["common_row_id"].dropna().unique().tolist()
-                        frontier_ids_cache[ids_key] = frontier_ids
+                        )
+                        frontier_ids = merged["common_row_id"].dropna().unique().tolist()
+                        unregistered = merged.loc[
+                            merged["common_row_id"].isna(),
+                            ["source_flow", "source_product"],
+                        ].drop_duplicates()
+                        cached = (frontier_ids, list(unregistered.itertuples(index=False, name=None)))
+                        frontier_ids_cache[ids_key] = cached
+                    frontier_ids, unregistered_pairs = cached
                     fids_empty_map[ids_key] = (len(frontier_ids) == 0)
                     for cid in frontier_ids:
                         fid_rows.append((pcode, oas, scope, str(cid)))
+                    # Only fall back to raw values for a sibling gap when this
+                    # exact (parent, other_axis_value, scope) triple already
+                    # has at least one genuine common-row match: that means
+                    # Common ESTO structure building does cover this part of
+                    # the tree for this scope, so an unregistered sibling is a
+                    # real coverage gap worth filling from raw data. When
+                    # NOTHING in the frontier is registered at all, this scope
+                    # may simply not apply to this parent/product at all --
+                    # stay "no_anchorable_common_esto_boundary" rather than
+                    # guessing from raw data alone (see
+                    # test_missing_common_boundary_is_unanchorable_even_when_source_value_is_nonzero).
+                    if frontier_ids:
+                        for sflow, sprod in unregistered_pairs:
+                            raw_fallback_rows.append((pcode, oas, scope, sflow, sprod))
 
             # Cross parent aggregates with the scopes this system serves.
             base = agg.merge(
@@ -565,6 +641,67 @@ def validate_source_parent_anchors(
             base["frontier_row_count"] = base["frontier_row_count"].fillna(0).astype(int)
             base["_matched"] = base["_matched"].fillna(0)
 
+            # --- Raw-fallback frontier contribution --------------------------
+            # Add each unregistered resolved component's own raw value
+            # directly (see raw_fallback_rows above), keyed on the exact
+            # (source_flow, source_product, economy, scenario, year) this
+            # source system actually reported -- the same convention
+            # parent_value is already computed in, so it combines with the
+            # common-row-matched contribution above without any conversion.
+            if raw_fallback_rows:
+                raw_pairs_df = pd.DataFrame(
+                    raw_fallback_rows,
+                    columns=["parent_code", "_oas", "comparison_scope", "source_flow", "source_product"],
+                ).drop_duplicates()
+                raw_exploded = base[
+                    ["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"]
+                ].merge(raw_pairs_df, on=["parent_code", "_oas", "comparison_scope"], how="inner")
+                raw_matched = raw_exploded.merge(
+                    raw_pair_values,
+                    on=["source_flow", "source_product", "economy", "scenario", "year"],
+                    how="inner",
+                )
+            else:
+                raw_matched = base.iloc[0:0].assign(value=pd.Series(dtype=float))
+
+            if not raw_matched.empty:
+                raw_matched = raw_matched.assign(
+                    _rpos=raw_matched["value"].where(raw_matched["value"] > 0, 0.0),
+                    _rneg=raw_matched["value"].where(raw_matched["value"] < 0, 0.0),
+                )
+                raw_fsum = (
+                    raw_matched.groupby(
+                        ["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"],
+                        dropna=False, sort=False,
+                    )
+                    .agg(
+                        raw_fallback_sum=("value", "sum"),
+                        raw_fallback_positive_sum=("_rpos", "sum"),
+                        raw_fallback_negative_sum=("_rneg", "sum"),
+                        raw_fallback_row_count=("value", "size"),
+                    )
+                    .reset_index()
+                )
+                base = base.merge(
+                    raw_fsum,
+                    on=["parent_code", "_oas", "comparison_scope", "economy", "scenario", "year"],
+                    how="left",
+                )
+            else:
+                for col in ["raw_fallback_sum", "raw_fallback_positive_sum",
+                            "raw_fallback_negative_sum", "raw_fallback_row_count"]:
+                    base[col] = 0.0
+
+            base["frontier_sum"] += base["raw_fallback_sum"].fillna(0.0)
+            base["frontier_positive_sum"] += base["raw_fallback_positive_sum"].fillna(0.0)
+            base["frontier_negative_sum"] += base["raw_fallback_negative_sum"].fillna(0.0)
+            base["frontier_row_count"] += base["raw_fallback_row_count"].fillna(0).astype(int)
+            base["_matched"] += base["raw_fallback_row_count"].fillna(0)
+            base = base.drop(columns=[
+                "raw_fallback_sum", "raw_fallback_positive_sum",
+                "raw_fallback_negative_sum", "raw_fallback_row_count",
+            ])
+
             # --- Shared-frontier group combination --------------------------
             # Multiple raw source products can legitimately map onto the SAME
             # Common ESTO aggregate row for a given comparison scope (e.g. six
@@ -584,7 +721,7 @@ def validate_source_parent_anchors(
             # report spurious failures for them.
             frontier_signatures: dict[tuple[str, str, str], tuple[str, ...]] = {
                 key: tuple(sorted(str(cid) for cid in ids))
-                for key, ids in frontier_ids_cache.items()
+                for key, (ids, _unregistered) in frontier_ids_cache.items()
                 if ids
             }
             group_members: dict[tuple[str, str, tuple[str, ...]], list[str]] = {}

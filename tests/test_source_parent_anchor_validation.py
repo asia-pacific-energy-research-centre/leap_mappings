@@ -44,6 +44,44 @@ def test_exact_parent_children_match_without_double_counting() -> None:
     assert row["frontier_row_count"] == 2
 
 
+def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_covers_parent() -> None:
+    """A resolved child with no common_row_id anywhere still counts toward
+    the frontier via its own raw value, as long as a sibling under the same
+    parent/product DOES have a registered common row -- mirroring the real
+    "09.01 Main activity producer" case, which is only ever registered
+    merged into "09.01-09.02 Power sector" because NINTH/LEAP can't report
+    it split, even though its own raw value is exact and real.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P.1", "value": 4},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "F", "source_product": "P.2", "value": 6},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.1", "component_esto_flow": "F", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "F", "source_product": "P.2", "component_esto_flow": "F", "component_esto_product": "P.2"},
+    ])
+    # Only P.1 is ever registered as a component of any Common ESTO row --
+    # P.2 is never modeled at all.
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "F", "component_esto_product": "P.1", "common_row_id": "c1"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 4},
+    ])
+
+    row = validate_source_parent_anchors(source, tree, mappings, common, comparison).iloc[0]
+
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 10
+    assert row["frontier_row_count"] == 2
+
+
 def test_parent_anchor_uses_descendant_mapping_to_roll_deep_other_axis() -> None:
     tree = pd.DataFrame([
         {"dataset": "ninth", "axis": "sector", "code": "Road", "parent_code": ""},
