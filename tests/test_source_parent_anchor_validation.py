@@ -44,6 +44,46 @@ def test_exact_parent_children_match_without_double_counting() -> None:
     assert row["frontier_row_count"] == 2
 
 
+def test_parent_anchor_uses_descendant_mapping_to_roll_deep_other_axis() -> None:
+    tree = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "Road", "parent_code": ""},
+        {"dataset": "ninth", "axis": "sector", "code": "Road/Passenger", "parent_code": "Road"},
+        {"dataset": "ninth", "axis": "fuel", "code": "P", "parent_code": ""},
+        {"dataset": "ninth", "axis": "fuel", "code": "P/P.1", "parent_code": "P"},
+        {"dataset": "ninth", "axis": "fuel", "code": "P/P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Road/Passenger", "source_product": "P", "value": 10},
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Road/Passenger", "source_product": "P/P.1", "value": 4},
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Road/Passenger", "source_product": "P/P.2", "value": 6},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "NINTH", "source_flow": "Road", "source_product": "P/P.1",
+         "component_esto_flow": "15.02 Road", "component_esto_product": "P.1"},
+        {"source_system": "NINTH", "source_flow": "Road", "source_product": "P/P.2",
+         "component_esto_flow": "15.02 Road", "component_esto_product": "P.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "15.02 Road",
+         "component_esto_product": "P.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "15.02 Road",
+         "component_esto_product": "P.2", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E",
+         "scenario": "reference", "year": 2023, "common_row_id": "c1", "value": 4},
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E",
+         "scenario": "reference", "year": 2023, "common_row_id": "c2", "value": 6},
+    ])
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    row = detail[(detail["validation_axis"] == "product") & (detail["parent_code"] == "P")].iloc[0]
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 10
+
+
 def test_missing_child_fails_and_is_reported() -> None:
     # Genuine gap: parent 10 but mapped frontier only explains 4 -> failed.
     detail = validate_source_parent_anchors(*_fixture(include_child_b_mapping=False))

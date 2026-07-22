@@ -13,6 +13,7 @@ from codebase.mapping_tools.structural_resolver import (
     build_tree_index,
     build_tree_code_aliases,
     canonicalize_tree_codes,
+    resolve_parent_to_mapped_other_axis,
     resolve_nearest_mapped_pair,
 )
 from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pair_mask
@@ -304,6 +305,15 @@ def validate_source_parent_anchors(
                     "product" if other_col == "source_product" else "flow",
                     parent_index,
                 )
+                if resolved["status"] != "resolved":
+                    resolved = resolve_parent_to_mapped_other_axis(
+                        flow,
+                        product,
+                        children,
+                        mapped_pairs,
+                        "product" if other_col == "source_product" else "flow",
+                        parent_index,
+                    )
                 pair_remap[(str(flow), str(product))] = (
                     resolved["flow"], resolved["product"]
                 ) if resolved["status"] == "resolved" else (str(flow), str(product))

@@ -7,6 +7,7 @@ from codebase.mapping_tools.structural_resolver import (
     build_tree_code_aliases,
     canonicalize_tree_codes,
     prepare_pair_rollup_rules,
+    resolve_parent_to_mapped_other_axis,
     resolve_ancestry,
     resolve_nearest_mapped_pair,
     resolve_pair_rollups,
@@ -37,6 +38,20 @@ def test_leaf_labels_resolve_to_full_tree_paths_before_ancestor_lookup() -> None
     assert issues.empty
     assert result["status"] == "resolved"
     assert result["flow"] == "Transport/Road"
+
+
+def test_parent_uses_unique_mapped_descendant_to_resolve_other_axis() -> None:
+    result = resolve_parent_to_mapped_other_axis(
+        "Detailed sector",
+        "Fuel parent",
+        {"Fuel parent": ["Fuel child"]},
+        {("Road", "Fuel child")},
+        "flow",
+        {"Detailed sector": "Road"},
+    )
+    assert result["status"] == "resolved"
+    assert result["flow"] == "Road"
+    assert result["product"] == "Fuel parent"
 
 
 def test_ninth_and_esto_ancestry_uses_parent_code() -> None:

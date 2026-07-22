@@ -135,6 +135,67 @@ def resolve_nearest_mapped_pair(
     return {"status": "unresolved", "flow": flow, "product": product, "evidence_type": "tree", "evidence": ancestry["evidence"]}
 
 
+def resolve_parent_to_mapped_other_axis(
+    flow: str,
+    product: str,
+    children: dict[str, list[str]],
+    mapped_pairs: set[tuple[str, str]],
+    roll_axis: str,
+    parent_index: dict[str, str],
+) -> dict[str, Any]:
+    """Resolve a parent row through a mapped descendant on the other axis.
+
+    A source subtotal can exist at a detailed sector/fuel node even when the
+    mapping only exists for its children.  In that case the parent row may not
+    itself have a mapped pair, but its children can still identify one unique
+    nearest mapped ancestor on the other axis.  Returning that axis while
+    retaining the original parent code allows validation to use the correct
+    common boundary without inventing a child mapping or double-counting.
+    """
+    flow, product = str(flow).strip(), str(product).strip()
+    parent_code = flow if roll_axis == "product" else product
+    if parent_code not in children:
+        return {"status": "unresolved", "flow": flow, "product": product, "evidence": []}
+
+    candidates: set[str] = set()
+    evidence: list[dict[str, str]] = []
+    stack = list(children.get(parent_code, []))
+    visited: set[str] = set()
+    while stack:
+        child = stack.pop()
+        if child in visited:
+            continue
+        visited.add(child)
+        resolved = resolve_nearest_mapped_pair(
+            child if roll_axis == "product" else flow,
+            child if roll_axis == "flow" else product,
+            mapped_pairs,
+            roll_axis,
+            parent_index,
+        )
+        if resolved["status"] == "resolved":
+            candidate = resolved["flow"] if roll_axis == "flow" else resolved["product"]
+            candidates.add(candidate)
+            evidence.extend(resolved.get("evidence", []))
+        stack.extend(children.get(child, []))
+
+    if len(candidates) != 1:
+        return {
+            "status": "ambiguous" if len(candidates) > 1 else "unresolved",
+            "flow": flow,
+            "product": product,
+            "candidates": sorted(candidates),
+            "evidence": evidence,
+        }
+    other_axis = next(iter(candidates))
+    return {
+        "status": "resolved",
+        "flow": flow if roll_axis == "product" else other_axis,
+        "product": other_axis if roll_axis == "product" else product,
+        "evidence": evidence,
+    }
+
+
 def prepare_pair_rollup_rules(
     rules_df: pd.DataFrame,
     input_flow_column: str,
