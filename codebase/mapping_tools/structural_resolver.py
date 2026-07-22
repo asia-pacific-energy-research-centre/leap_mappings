@@ -13,6 +13,38 @@ import pandas as pd
 TREE_REQUIRED_COLUMNS = {"dataset", "axis", "code", "parent_code"}
 
 
+def build_tree_code_aliases(
+    tree_df: pd.DataFrame,
+    dataset: str,
+    axis: str,
+) -> dict[str, str]:
+    """Map tree labels and structural codes to one canonical tree code."""
+    missing = TREE_REQUIRED_COLUMNS.difference(tree_df.columns)
+    if missing:
+        raise ValueError(f"Tree is missing required columns: {sorted(missing)}")
+    selected = tree_df[
+        tree_df["dataset"].astype(str).str.casefold().eq(dataset.casefold())
+        & tree_df["axis"].astype(str).str.casefold().eq(axis.casefold())
+    ]
+    aliases: dict[str, str] = {}
+    for row in selected.itertuples(index=False):
+        code = str(row.code).strip()
+        if not code or code.casefold() == "nan":
+            continue
+        aliases[code] = code
+        if hasattr(row, "label"):
+            label = str(row.label).strip()
+            if label and label.casefold() != "nan":
+                aliases.setdefault(label, code)
+    return aliases
+
+
+def canonicalize_tree_codes(values: pd.Series, aliases: dict[str, str]) -> pd.Series:
+    """Replace known tree labels with their canonical structural codes."""
+    cleaned = values.fillna("").astype(str).str.strip()
+    return cleaned.map(lambda value: aliases.get(value, value))
+
+
 def build_tree_index(
     tree_df: pd.DataFrame,
     dataset: str,

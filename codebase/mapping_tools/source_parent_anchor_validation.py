@@ -11,6 +11,8 @@ import pandas as pd
 
 from codebase.mapping_tools.structural_resolver import (
     build_tree_index,
+    build_tree_code_aliases,
+    canonicalize_tree_codes,
     resolve_nearest_mapped_pair,
 )
 from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pair_mask
@@ -222,7 +224,7 @@ def validate_source_parent_anchors(
     for source_system in sorted(source["source_system"].dropna().astype(str).unique()):
         dataset = source_system.casefold()
         system_source = source[source["source_system"] == source_system]
-        system_mappings = mappings[mappings["source_system"] == source_system]
+        system_mappings = mappings[mappings["source_system"] == source_system].copy()
         # Scopes this system participates in, and the comparison rows scoped to
         # them — pre-filtered once so the per-axis frontier merge stays small.
         applicable_scopes = [
@@ -237,9 +239,40 @@ def validate_source_parent_anchors(
             # LEAP and Ninth trees use sector/fuel terminology.
             if dataset in {"leap", "ninth"}:
                 tree_axis = "sector" if axis == "flow" else "fuel"
-            children = _children_map(source_tree_df, dataset, tree_axis)
+            axis_aliases = build_tree_code_aliases(source_tree_df, dataset, tree_axis)
+            canonical_tree = source_tree_df.copy()
+            tree_mask = (
+                canonical_tree["dataset"].astype(str).str.casefold().eq(dataset)
+                & canonical_tree["axis"].astype(str).str.casefold().eq(tree_axis)
+            )
+            canonical_tree.loc[tree_mask, "code"] = canonicalize_tree_codes(
+                canonical_tree.loc[tree_mask, "code"], axis_aliases
+            )
+            canonical_tree.loc[tree_mask, "parent_code"] = canonicalize_tree_codes(
+                canonical_tree.loc[tree_mask, "parent_code"], axis_aliases
+            )
+            children = _children_map(canonical_tree, dataset, tree_axis)
             axis_col = "source_product" if axis == "product" else "source_flow"
             other_col = "source_flow" if axis == "product" else "source_product"
+            other_tree_axis = "product" if other_col == "source_product" else "flow"
+            if dataset in {"leap", "ninth"}:
+                other_tree_axis = "fuel" if other_col == "source_product" else "sector"
+            other_aliases = build_tree_code_aliases(source_tree_df, dataset, other_tree_axis)
+            other_tree_mask = (
+                canonical_tree["dataset"].astype(str).str.casefold().eq(dataset)
+                & canonical_tree["axis"].astype(str).str.casefold().eq(other_tree_axis)
+            )
+            canonical_tree.loc[other_tree_mask, "code"] = canonicalize_tree_codes(
+                canonical_tree.loc[other_tree_mask, "code"], other_aliases
+            )
+            canonical_tree.loc[other_tree_mask, "parent_code"] = canonicalize_tree_codes(
+                canonical_tree.loc[other_tree_mask, "parent_code"], other_aliases
+            )
+            axis_source = system_source.copy()
+            axis_source[axis_col] = canonicalize_tree_codes(axis_source[axis_col], axis_aliases)
+            axis_source[other_col] = canonicalize_tree_codes(axis_source[other_col], other_aliases)
+            system_mappings[axis_col] = canonicalize_tree_codes(system_mappings[axis_col], axis_aliases)
+            system_mappings[other_col] = canonicalize_tree_codes(system_mappings[other_col], other_aliases)
             # Prebuilt direct-mapping lookup + memo cache, scoped to this
             # (source_system, axis) since children/mappings are fixed here.
             direct_index = {
@@ -252,17 +285,13 @@ def validate_source_parent_anchors(
             # so leaf-level rows collapse onto the aggregate node the workbook
             # maps (e.g. leaf plant sectors -> 09_01_electricity_plants). The
             # groupby below then sums the collapsed rows to that level.
-            axis_source = system_source.copy()
-            other_tree_axis = "product" if other_col == "source_product" else "flow"
-            if dataset in {"leap", "ninth"}:
-                other_tree_axis = "fuel" if other_col == "source_product" else "sector"
-            parent_index, tree_issues = build_tree_index(source_tree_df, dataset, other_tree_axis)
+            parent_index, tree_issues = build_tree_index(canonical_tree, dataset, other_tree_axis)
             if not tree_issues.empty:
                 bad = tree_issues[tree_issues["issue_type"].isin(["ambiguous_parent", "cycle"])]
                 if not bad.empty:
                     raise ValueError(f"Invalid source tree for {dataset}/{other_tree_axis}: {bad.head(10).to_dict('records')}")
             source_evidence_lookup = _build_source_evidence_lookup(
-                system_source,
+                axis_source,
                 axis_col,
                 other_col,
                 parent_index,

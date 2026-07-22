@@ -4,11 +4,39 @@ import pandas as pd
 
 from codebase.mapping_tools.structural_resolver import (
     build_tree_index,
+    build_tree_code_aliases,
+    canonicalize_tree_codes,
     prepare_pair_rollup_rules,
     resolve_ancestry,
     resolve_nearest_mapped_pair,
     resolve_pair_rollups,
 )
+
+
+def test_leaf_labels_resolve_to_full_tree_paths_before_ancestor_lookup() -> None:
+    tree = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "Transport", "label": "Transport", "parent_code": ""},
+        {"dataset": "ninth", "axis": "sector", "code": "Transport/Road", "label": "Road", "parent_code": "Transport"},
+        {"dataset": "ninth", "axis": "sector", "code": "Transport/Road/Passenger", "label": "Passenger", "parent_code": "Transport/Road"},
+    ])
+    aliases = build_tree_code_aliases(tree, "ninth", "sector")
+    assert canonicalize_tree_codes(pd.Series(["Passenger"]), aliases).tolist() == [
+        "Transport/Road/Passenger"
+    ]
+    canonical_tree = tree.copy()
+    canonical_tree["code"] = canonicalize_tree_codes(canonical_tree["code"], aliases)
+    canonical_tree["parent_code"] = canonicalize_tree_codes(canonical_tree["parent_code"], aliases)
+    parent_index, issues = build_tree_index(canonical_tree, "ninth", "sector")
+    result = resolve_nearest_mapped_pair(
+        "Transport/Road/Passenger",
+        "Fuel",
+        {("Transport/Road", "Fuel")},
+        "flow",
+        parent_index,
+    )
+    assert issues.empty
+    assert result["status"] == "resolved"
+    assert result["flow"] == "Transport/Road"
 
 
 def test_ninth_and_esto_ancestry_uses_parent_code() -> None:
