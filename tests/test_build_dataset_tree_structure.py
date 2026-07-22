@@ -2,6 +2,7 @@
 """Focused tests for exact-context Stage A source validation."""
 
 #%%
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -10,7 +11,6 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     OUTLOOK_MAPPINGS_PATH,
     _build_esto_axis_tree,
     _build_source_inconsistency_lookup,
-    _non_expanding_rollup_hierarchy,
     build_common_esto_tree,
     build_esto_tree,
     _load_rollup_hierarchy,
@@ -187,39 +187,24 @@ def test_in_scope_real_rollup_hierarchy_has_no_tree_index_issues() -> None:
     assert issues.empty
 
 
-def test_non_expanding_rollup_hierarchy_drops_only_expanding_entries() -> None:
-    """The EXPANDING/NON_EXPANDING split keeps everything except EXPANDING nodes."""
-    hierarchy = {
-        "09.01-09.02 Power sector": {"parent_label": "09 Total transformation sector", "children": [], "rollup_mode": "EXPANDING"},
-        "09.06 Gas processing plants (including own use)": {"parent_label": "", "children": [], "rollup_mode": "NON_EXPANDING"},
-        "09.08 Coal transformation (including own use)": {"parent_label": "", "children": [], "rollup_mode": "DETACHED"},
-        "Unlabelled rule": {"parent_label": "", "children": [], "rollup_mode": ""},
-    }
-
-    filtered = _non_expanding_rollup_hierarchy(hierarchy)
-
-    assert set(filtered) == {
-        "09.06 Gas processing plants (including own use)",
-        "09.08 Coal transformation (including own use)",
-        "Unlabelled rule",
-    }
-
-
 def test_build_esto_tree_keeps_natural_children_under_an_expanding_rollup_branch(
     tmp_path: Path,
 ) -> None:
-    """An EXPANDING rollup must not orphan the raw branches it cross-cuts.
+    """The raw ESTO tree ignores esto_rollup_rules entirely.
 
     ``09.01 Main activity producer`` and ``09.02 Autoproducers`` each keep
     their own genuine raw ESTO children even though an EXPANDING rollup
     ("09.01-09.02 Power sector") also declares a cross-branch merge of their
     plant-type children -- see
     docs/prompts/anchor_validator_fixes_findings_20260722.md for the real-data
-    bug (both branches went structurally childless, at fixed, unmoved failure
-    counts, before this fix).
+    bug this rollup splicing caused (both branches went structurally
+    childless, at fixed, unmoved failure counts, before this fix). None of
+    esto_rollup_rules' synthetic labels ever appear in ESTO's own raw
+    flows/products columns -- ESTO's own identity self-mapping always keys
+    on its own literal raw labels -- so the raw tree ignores the rollup
+    workbook entirely; build_esto_tree doesn't even take a workbook_path.
     """
     data_path = tmp_path / "esto.csv"
-    workbook_path = tmp_path / "mappings.xlsx"
     pd.DataFrame([
         {"economy": "20_USA", "flows": "09 Total transformation sector", "products": "01 Coal", "2022": 100},
         {"economy": "20_USA", "flows": "09.01 Main activity producer", "products": "01 Coal", "2022": 60},
@@ -227,30 +212,40 @@ def test_build_esto_tree_keeps_natural_children_under_an_expanding_rollup_branch
         {"economy": "20_USA", "flows": "09.02 Autoproducers", "products": "01 Coal", "2022": 40},
         {"economy": "20_USA", "flows": "09.02.01 Electricity plants", "products": "01 Coal", "2022": 40},
     ]).to_csv(data_path, index=False)
-    pd.DataFrame([
-        {
-            "include": True,
-            "rolled_esto_flow": "09.01.01,09.02.01 Electricity plants",
-            "parent_flow_label": "09.01-09.02 Power sector",
-            "child_flow_labels": "09.01.01 Electricity plants; 09.02.01 Electricity plants",
-            "ROLLUP_MODE": "EXPANDING",
-        },
-        {
-            "include": True,
-            "rolled_esto_flow": "09.01-09.02 Power sector",
-            "parent_flow_label": "09 Total transformation sector",
-            "child_flow_labels": "09.01.01,09.02.01 Electricity plants",
-            "ROLLUP_MODE": "EXPANDING",
-        },
-    ]).to_excel(workbook_path, sheet_name="esto_rollup_rules", index=False)
 
-    tree = build_esto_tree(data_path, workbook_path)
+    tree = build_esto_tree(data_path)
     flows = tree[tree["axis"].eq("flow")].set_index("code")
 
     assert flows.loc["09.01.01 Electricity plants", "parent_code"] == "09.01 Main activity producer"
     assert flows.loc["09.02.01 Electricity plants", "parent_code"] == "09.02 Autoproducers"
     assert "09.01.01,09.02.01 Electricity plants" not in flows.index
     assert "09.01-09.02 Power sector" not in flows.index
+
+
+def test_build_esto_tree_keeps_natural_children_under_a_non_expanding_reattribution() -> None:
+    """A NON_EXPANDING reattribution must not orphan the raw branch it moves a leaf out of.
+
+    ``10.01 Own Use``'s own raw total is exactly the sum of ALL of its
+    original raw-tree children, including ones esto_rollup_rules reattributes
+    to flow 09 for Common ESTO comparison purposes (e.g. own-use gas/coal/oil
+    plants) -- the reattribution is a comparison-boundary relabel, not a
+    redefinition of what "10.01 Own Use" itself measures, so it must keep its
+    real children in the raw tree regardless of what esto_rollup_rules
+    declares (which the raw tree ignores entirely -- see the EXPANDING test
+    above).
+    """
+    csv_text = (
+        "economy,flows,products,2022\n"
+        "20_USA,10 Losses & own use,08.01 Natural gas,-400\n"
+        "20_USA,10.01 Own Use,08.01 Natural gas,-380\n"
+        "20_USA,10.01.02 Gas works plants,08.01 Natural gas,-300\n"
+        "20_USA,10.01.12 Oil and gas extraction,08.01 Natural gas,-80\n"
+    )
+    tree = build_esto_tree(io.StringIO(csv_text))
+    flows = tree[tree["axis"].eq("flow")].set_index("code")
+
+    assert flows.loc["10.01.02 Gas works plants", "parent_code"] == "10.01 Own Use"
+    assert flows.loc["10.01.12 Oil and gas extraction", "parent_code"] == "10.01 Own Use"
 
 
 def _dedupe_for_test(values: list[str]) -> list[str]:

@@ -147,38 +147,6 @@ def _load_rollup_hierarchy(workbook_path: Path = OUTLOOK_MAPPINGS_PATH) -> dict[
     return hierarchy
 
 
-def _non_expanding_rollup_hierarchy(
-    hierarchy: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Drop EXPANDING-mode rollup nodes before splicing into the raw ESTO tree.
-
-    EXPANDING rollups (e.g. ``09.01-09.02 Power sector``) declare children
-    that cross-cut two raw branches which each remain independently real and
-    additive on their own (``09.01 Main activity producer`` and
-    ``09.02 Autoproducers`` both still have their own genuine raw totals and
-    real numeric-prefix children). Splicing such a rollup into the *raw* ESTO
-    tree reparents every one of those real leaves away from its natural
-    branch, leaving ``09.01``/``09.02`` structurally childless even though
-    their own raw data and children are perfectly intact -- see
-    docs/prompts/anchor_validator_fixes_findings_20260722.md. The merged
-    labels these rollups introduce are never looked up by ESTO's own identity
-    self-mapping (which always maps a raw pair to itself), so the raw tree
-    never needed them; they still get spliced into the Common ESTO tree
-    (:func:`build_common_esto_tree`, unaffected by this filter), which is
-    where NINTH/LEAP's combined power-sector rows actually resolve onto them.
-
-    NON_EXPANDING/DETACHED rollups (e.g. own-use gas/coal/oil plants
-    reattributed from flow 10 to flow 09) genuinely redefine which branch a
-    leaf's raw value belongs to for comparison purposes, so they must keep
-    splicing into the raw tree exactly as before.
-    """
-    return {
-        code: node
-        for code, node in hierarchy.items()
-        if node.get("rollup_mode") != "EXPANDING"
-    }
-
-
 def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
                            subtotal_codes: set[str],
                            synthetic_nodes: dict[str, dict[str, Any]] | None = None) -> pd.DataFrame:
@@ -278,7 +246,6 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
 
 def build_esto_tree(
     data_csv_path: Path = ESTO_DATA_PATH,
-    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
 ) -> pd.DataFrame:
     """Build ESTO flow and product hierarchy from the balance data CSV."""
     df = pd.read_csv(data_csv_path, dtype=object)
@@ -303,11 +270,24 @@ def build_esto_tree(
         )
     }
 
-    rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
-    flow_tree = _build_esto_axis_tree(
-        flows, "flow", "esto", subtotal_flows,
-        _non_expanding_rollup_hierarchy(rollup_hierarchy),
-    )
+    # esto_rollup_rules declares synthetic comparison-boundary labels (e.g.
+    # "09.01-09.02 Power sector", "09.06 Gas processing plants (including
+    # own use)") that never appear in ESTO's own raw flows/products columns
+    # -- ESTO's own identity self-mapping always keys on its own literal raw
+    # labels, so the raw tree never needs them. Splicing them in reparents
+    # real leaves away from their natural raw-tree branch, orphaning the
+    # real ancestor of its own genuine children -- true for EXPANDING rows
+    # (e.g. "09.01 Main activity producer") and equally true for
+    # NON_EXPANDING/DETACHED reattribution rows (e.g. "10.01 Own Use", whose
+    # own raw total is exactly the sum of ALL of its original raw-tree
+    # children, including the ones reattributed to flow 09 for comparison
+    # purposes -- the reattribution is a Common ESTO comparison-boundary
+    # relabel, not a redefinition of what "10.01 Own Use" itself measures).
+    # These synthetic nodes still get spliced into the Common ESTO tree
+    # (build_common_esto_tree, unaffected), which is where NINTH/LEAP's
+    # comparison rows actually resolve onto them. See
+    # docs/prompts/anchor_validator_fixes_findings_20260722.md.
+    flow_tree = _build_esto_axis_tree(flows, "flow", "esto", subtotal_flows)
     prod_tree = _build_esto_axis_tree(prods, "product", "esto", subtotal_prods)
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
