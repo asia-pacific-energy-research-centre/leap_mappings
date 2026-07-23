@@ -137,6 +137,57 @@ def test_frontier_leaf_with_broken_other_axis_rollup_is_source_internal_not_fail
     assert row["reason"] == "source_internal_recursive_sum_inconsistency"
 
 
+def test_source_internal_check_is_not_ninth_specific() -> None:
+    """The same detection fires for an arbitrary source system that is
+    neither ESTO, NINTH, nor LEAP -- the check is built entirely from
+    axis_col/other_col/children/other_children, all already computed
+    generically per source_system, with no dataset name ever referenced.
+    Uses the default flow/product axis convention (the ``dataset in
+    {"leap","ninth"}`` sector/fuel-naming override does not apply here,
+    proving this also works for a dataset outside that hardcoded set).
+    """
+    tree = pd.DataFrame([
+        {"dataset": "iea", "axis": "flow", "code": "Sector", "parent_code": ""},
+        {"dataset": "iea", "axis": "flow", "code": "SubSector", "parent_code": "Sector"},
+        {"dataset": "iea", "axis": "product", "code": "08_gas", "parent_code": ""},
+        {"dataset": "iea", "axis": "product", "code": "08_01_natural_gas", "parent_code": "08_gas"},
+        {"dataset": "iea", "axis": "product", "code": "08_02_lng", "parent_code": "08_gas"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_gas", "value": -0.0001},
+        {"source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_01_natural_gas", "value": -4218.85},
+        {"source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_02_lng", "value": 0.0},
+        {"source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "SubSector", "source_product": "08_02_lng", "value": 4218.81},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "IEA", "source_flow": "Sector", "source_product": "08_01_natural_gas",
+         "component_esto_flow": "F", "component_esto_product": "01.01"},
+        {"source_system": "IEA", "source_flow": "Sector", "source_product": "08_02_lng",
+         "component_esto_flow": "F", "component_esto_product": "01.02"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "iea_only", "component_esto_flow": "F", "component_esto_product": "01.01", "common_row_id": "c1"},
+        {"comparison_scope": "iea_only", "component_esto_flow": "F", "component_esto_product": "01.02", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "iea_only", "source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023, "common_row_id": "c1", "value": -4218.85},
+        {"comparison_scope": "iea_only", "source_system": "IEA", "economy": "E", "scenario": "reference", "year": 2023, "common_row_id": "c2", "value": 0.0},
+    ])
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    product_rows = detail[detail["validation_axis"] == "product"]
+    row = product_rows[
+        (product_rows["parent_code"] == "08_gas") & (product_rows["other_axis_value"] == "Sector")
+    ].iloc[0]
+
+    assert row["status"] == "skipped"
+    assert row["reason"] == "source_internal_recursive_sum_inconsistency"
+
+
 def test_registered_but_dataless_child_falls_back_to_raw_value() -> None:
     """A common row declared for a component still needs the raw fallback
     when THIS source system's own comparison-data export has zero rows for
