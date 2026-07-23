@@ -459,9 +459,8 @@ def run_esto_exact_rows() -> None:
     esto_boundary_rules = load_non_expanding_rollup_rules(WORKBOOK_PATH).get(
         "esto_rollup_rules", pd.DataFrame()
     )
-    _, _, detached_esto_rules = split_rollup_rules(
-        pd.read_excel(WORKBOOK_PATH, sheet_name="esto_rollup_rules", dtype=object).fillna("")
-    )
+    esto_rollup_rules_raw = pd.read_excel(WORKBOOK_PATH, sheet_name="esto_rollup_rules", dtype=object).fillna("")
+    expanding_esto_rules, _, detached_esto_rules = split_rollup_rules(esto_rollup_rules_raw)
     detached_esto_flows = {
         str(value).strip()
         for value in detached_esto_rules.get("input_esto_flow", pd.Series(dtype=object))
@@ -471,6 +470,30 @@ def run_esto_exact_rows() -> None:
         df,
         esto_boundary_rules,
         year_columns=year_cols,
+    )
+    # EXPANDING-mode rolled labels (e.g. "09.01-09.02 Power sector", created
+    # because NINTH/LEAP can't distinguish 09.01 Main activity producer from
+    # 09.02 Autoproducers) never got an ESTO-side value anywhere in the
+    # pipeline: build_esto_non_expanding_subtotal_rows only ever ran against
+    # NON_EXPANDING/DETACHED rules. Confirmed via real data that all 4
+    # EXPANDING esto_rollup_rules labels had zero ESTO rows in
+    # common_esto_comparison_data.csv, which is why ESTO's own recursive
+    # validator ("09 Total transformation sector" vs. its Common ESTO
+    # children) fails for these labels -- the merged child's ESTO
+    # contribution was silently absent, not zero. The derivation logic is
+    # identical (sum the declared contributor flows/products), so reuse the
+    # same function against the EXPANDING split instead of writing a parallel
+    # implementation. The 09.01/09.02 contributor flows themselves remain in
+    # the raw/leaf ESTO rows below unchanged -- this only adds the merged
+    # label as an additional derived row, since the EXPANDING reattribution
+    # is additive, not a replacement (see bcb7caf/9b75628).
+    expanding_rows_df = build_esto_non_expanding_subtotal_rows(
+        df,
+        expanding_esto_rules,
+        year_columns=year_cols,
+    )
+    non_expanding_rows_df = pd.concat(
+        [non_expanding_rows_df, expanding_rows_df], ignore_index=True
     )
 
     df_leaf = select_esto_comparison_rows(df, reference_pairs, detached_esto_flows)
