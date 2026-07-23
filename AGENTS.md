@@ -124,8 +124,11 @@ Requirements (one-time install):
 
 - See `C:\\Users\\Work\\.codex\\AGENTS_BALANCE_TABLES.md` for balance table structure details.
 
-These two balance tables are the core inputs for `codebase/transformation_analysis_workflow.py`.
-Keep this structure in mind when adding new transformations or debugging data issues.
+These two balance tables are the core inputs across this repo's mapping and
+validation pipeline (e.g. `codebase/run_mapping_pipeline.py`,
+`codebase/mapping_tools/build_dataset_tree_structure.py`,
+`codebase/mapping_tools/source_parent_anchor_validation.py`). Keep this
+structure in mind when adding new transformations or debugging data issues.
 
 ### 9th structure (sector/fuel hierarchy)
 
