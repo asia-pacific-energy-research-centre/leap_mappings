@@ -154,10 +154,7 @@ location over hard-deleting, since `results/` has no git history to fall back on
 
 ## 10. `AGENTS.md` references a script that no longer exists
 
-**Status:** New finding (2026-07-23), not yet fixed
-
-`AGENTS.md` names `codebase/transformation_analysis_workflow.py` as an existing script; it does
-not exist under `codebase/` at any depth in this checkout. Left as-is here since `AGENTS.md` is a
-human-maintained instructions file, not touched as part of this docs-hygiene pass — worth
-correcting next time `AGENTS.md` is edited.
+**Status:** Done (commit `18b1989`, same day this was flagged) — `AGENTS.md` no longer references
+`codebase/transformation_analysis_workflow.py`; it now points at the actual current scripts. This
+entry was just never updated to reflect that fix until now.
 
