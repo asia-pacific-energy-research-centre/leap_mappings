@@ -214,53 +214,83 @@ marker.
 
 ---
 
-## Follow-on trace (2026-07-23, later same day): ESTO-side residual root cause found
+## Follow-on trace (2026-07-23, later same day): ESTO-side residual root cause found — and corrected
+
+**This section originally misdiagnosed the root cause as "never registered"; that was wrong and
+has been corrected below after a second pass. Read the corrected version, not the git history of
+this section, if you're picking this up.**
 
 Traced the largest of the ESTO `09 Total transformation sector` gap's 215 failed rows (see this
-prompt file's own status-update block near the top) to a concrete, well-understood root cause —
-**the same bug class already fixed once in a different validator, never ported to this one.**
+prompt file's own status-update block near the top).
 
 **Worked example**: economy `05PRC`, product `01.02 Other bituminous coal`, `esto_leap` scope,
 historical 2023. `09 Total transformation sector` (ESTO) reports `-80,642.80`; its Common ESTO
 children sum to only `-19,921.64` (just `09.08 Coal transformation`'s own value) — a `-60,721`
-shortfall. Confirmed via direct queries:
+shortfall. Raw ESTO (`data/00APEC_2025_low_with_subtotals.csv`) reports `09.01 Main activity
+producer` = `-59,584.56` for this exact economy/product — almost exactly the missing amount
+(`09.02 Autoproducers` = `0` here, not part of the gap).
 
-- Raw ESTO (`data/00APEC_2025_low_with_subtotals.csv`) reports `09.01 Main activity producer` =
-  `-59,584.56` for this exact economy/product — almost exactly the missing amount. (`09.02
-  Autoproducers` = `0` for this specific pair, not part of the gap here.)
-- `results/common_esto/common_esto_rows.csv` has **zero rows** registering `09.01 Main activity
-  producer` or `09.02 Autoproducers` against `01.02 Other bituminous coal` for any comparison
-  scope — this component was **never registered** in Common ESTO structure at all, the exact
-  shape `3fdf592` fixed in the anchor validator ("a component the validator correctly resolved
-  but Common ESTO structure building never registered at all... e.g. ESTO's own `09.01 Main
-  activity producer`, which NINTH/LEAP can only report merged into `09.01-09.02 Power sector`").
-- Confirmed the Common ESTO flow tree does have `09.01-09.02 Power sector` as a child of `09
-  Total transformation sector` (this validator's `_common_esto_validation_children_map` correctly
-  expects it) — the gap isn't a tree-structure problem, it's that the merged component's ESTO-side
-  comparison-data row for this specific product was never written.
+**First-pass claim (wrong): "the component was never registered in Common ESTO structure."**
+Checked `results/common_esto/common_esto_rows.csv` for `component_esto_flow` containing `"09.01
+Main activity"` or `"09.02 Autoproducers"` and found zero rows — but this was searching for the
+wrong thing. The component **is** registered, twice — once per relevant `comparison_scope` — just
+under the *merged* flow label directly, not under `09.01`/`09.02` individually:
 
-**Why this wasn't fixed by this session's earlier work**: `3fdf592`/`97e20f5` added a raw-fallback
-mechanism, but only inside `codebase/mapping_tools/source_parent_anchor_validation.py`'s
-`validate_source_parent_anchors` — a structurally different validator. This gap is in
-`_validate_common_esto_axis_recursive_sums` (`build_dataset_tree_structure.py:1875`), which is
-architecturally very different: it works entirely off pre-aggregated
-`common_esto_comparison_data.csv` rows grouped by `common_flow_label`/`common_product_label`, and
-**has no access to raw per-source-system data at all** (it only ever reads
-`comparison_data_path`). Porting the anchor validator's raw-fallback pattern here isn't a small
-patch — it requires threading raw source data into a function that currently doesn't take it, and
-re-deriving the same "only fall back when structurally registered but a sibling has real data"
-safety gate in a completely different aggregation shape. This is genuinely new, non-trivial
-engineering with the same real risk profile as the original `3fdf592`/`97e20f5` work (which took
-real iteration to get right, including a documented "registered but dataless" second pass in
-`97e20f5`) — not something to implement in a single pass without the same trace-then-verify
-discipline every other fix in this thread has used. **Deliberately not attempted in this pass;
-queued separately as its own task** rather than risked as a rushed one-shot change to a validator
-this multi-session process hasn't touched before.
+| `comparison_scope` | `common_row_id` | `is_exact_row` | `common_row_basis` | `component_esto_flow` |
+|---|---|---|---|---|
+| `esto_leap_ninth` | `common_esto_bb0df8113136284b` | `False` | `connected_component_rollup` | `09.01-09.02 Power sector` |
+| `esto_leap` | `common_esto_2b84fae47dc34514` | **`True`** | **`exact_esto_row`** | `09.01-09.02 Power sector` |
+
+**The real bug**: for the `esto_leap_ninth` scope, this common row is correctly built as a
+multi-component rollup (`requires_rollup=True`, `aggregate_group_source=NINTH` — NINTH's own
+mapping edges are what tell Stage 2's graph partitioning that `09.01`/`09.02` should merge). But
+for the `esto_leap` scope, the **same merged label** gets marked `is_exact_row=True`,
+`common_row_basis="exact_esto_row"` — treating `"09.01-09.02 Power sector"` as if it were itself a
+literal ESTO flow with its own raw data row. **It is not** — ESTO's raw CSV never has a flow
+literally named `"09.01-09.02 Power sector"` (confirmed earlier this session, `bcb7caf`'s whole
+premise: this label never appears in ESTO's own raw flows/products, only in the Common ESTO tree).
+So when Stage 3 looks up ESTO's own value for this "exact" component, it finds nothing real to
+attribute — the row exists structurally but corresponds to no reportable ESTO data.
+
+**Confirmed the mechanism precisely**: `build_common_esto_structure.py:697`,
+`is_exact_row = len(component_pairs) == 1` — a common row is marked "exact" purely based on how
+many (flow, product) pairs the union-find graph partitioning resolved into its connected
+component. `esto_leap`'s scope config sets `aggregate_source_systems=["LEAP"]` (confirmed in
+`COMPARISON_SCOPES`, line 39) — this scope's graph-edge-building step (`build_source_aggregate_edges`,
+~line 395) filters relationships to LEAP-sourced edges only, so **NINTH's own mapping edges — the
+only edges that connect `09.01`/`09.02` into the merged label — never get built for this scope**.
+Deprived of those edges, `"09.01-09.02 Power sector"` has nothing to connect to except itself,
+collapsing to a trivial single-component "exact" group.
+
+**Why this is a genuine, unresolved design question, not a simple bug**: is a merged/rollup label
+like `09.01-09.02 Power sector` even meaningful under a scope that structurally excludes the one
+source system (NINTH) whose data necessitated the merge in the first place? Two candidate fixes,
+not evaluated against each other in this pass:
+1. **Decompose, don't merge**: under `esto_leap` specifically, `09.01`/`09.02` should probably
+   remain separate common rows (as ESTO and LEAP can genuinely distinguish them) rather than being
+   forced into the NINTH-driven merged label at all — i.e. the scope-specific partitioning is
+   *supposed* to produce different granularity per scope (exactly the point of the 2026-07-14
+   configurable-scopes work verified earlier today), but this specific merged-label carryover looks
+   like an artifact of scope-independent label assignment rather than an intentional per-scope
+   partition.
+2. **Keep the merged label, fix its `is_exact_row` determination**: recognize that a "single
+   component" whose one component IS the merged/synthetic label itself (rather than a literal
+   source-system flow) should never be `is_exact_row=True`, regardless of edge count — it has no
+   literal ESTO data to be "exact" about.
+
+**This is a deeper, more architecturally significant finding than the "missing raw fallback"
+framing this section originally used** — it's a question about how Stage 2's connected-component
+graph partitioning should behave, per scope, for rollup/merged labels whose defining edges come
+from a source system that scope excludes. This needs its own dedicated investigation into
+`build_common_esto_structure.py`'s partitioning logic (a large, complex file) before any fix is
+attempted — **not done in this pass**, and not something to rush given how much iteration the
+original `bcb7caf`/`9b75628`/`3fdf592`/`97e20f5`/`c6772a9` fixes (all touching adjacent but distinct
+parts of this same rollup-label-handling problem space) each took to get right.
 
 **Scope check**: sampled two more of the largest ESTO `09 Total` failures (`20_USA`/`08.01
-Natural gas`, `16_RUS`/`08.01 Natural gas`) — both show the identical shape (large parent value,
-children_sum far short, `09.01-09.02 Power sector` unregistered for that product). Did NOT check
-whether every one of the 215 rows shares this exact cause — a `17 Electricity`/`18 Heat`-product
-subset (e.g. `16_RUS`, `08_JPN`) showed a different shape (parent nonzero, children near-zero, but
-not obviously the same "09.01-09.02 unregistered" pattern on first look) that would need its own
-check before assuming one fix resolves all 215 rows.
+Natural gas`, `16_RUS`/`08.01 Natural gas`) — did not re-verify these show the identical
+`is_exact_row`-on-a-merged-label shape (only re-confirmed the aggregate numbers matched, not the
+underlying `common_esto_rows.csv` mechanism for each) — do not assume they're identical without
+checking. A `17 Electricity`/`18 Heat`-product subset (e.g. `16_RUS`, `08_JPN`) showed a visibly
+different shape (parent nonzero, children near-zero) on a first look and would need its own trace
+before assuming one fix resolves all 215 rows.
