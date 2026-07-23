@@ -211,3 +211,56 @@ marker.
   silent failure.
 - Focused tests pass; Stages 1-3 completes; changes committed in a focused
   `codex:` commit.
+
+---
+
+## Follow-on trace (2026-07-23, later same day): ESTO-side residual root cause found
+
+Traced the largest of the ESTO `09 Total transformation sector` gap's 215 failed rows (see this
+prompt file's own status-update block near the top) to a concrete, well-understood root cause —
+**the same bug class already fixed once in a different validator, never ported to this one.**
+
+**Worked example**: economy `05PRC`, product `01.02 Other bituminous coal`, `esto_leap` scope,
+historical 2023. `09 Total transformation sector` (ESTO) reports `-80,642.80`; its Common ESTO
+children sum to only `-19,921.64` (just `09.08 Coal transformation`'s own value) — a `-60,721`
+shortfall. Confirmed via direct queries:
+
+- Raw ESTO (`data/00APEC_2025_low_with_subtotals.csv`) reports `09.01 Main activity producer` =
+  `-59,584.56` for this exact economy/product — almost exactly the missing amount. (`09.02
+  Autoproducers` = `0` for this specific pair, not part of the gap here.)
+- `results/common_esto/common_esto_rows.csv` has **zero rows** registering `09.01 Main activity
+  producer` or `09.02 Autoproducers` against `01.02 Other bituminous coal` for any comparison
+  scope — this component was **never registered** in Common ESTO structure at all, the exact
+  shape `3fdf592` fixed in the anchor validator ("a component the validator correctly resolved
+  but Common ESTO structure building never registered at all... e.g. ESTO's own `09.01 Main
+  activity producer`, which NINTH/LEAP can only report merged into `09.01-09.02 Power sector`").
+- Confirmed the Common ESTO flow tree does have `09.01-09.02 Power sector` as a child of `09
+  Total transformation sector` (this validator's `_common_esto_validation_children_map` correctly
+  expects it) — the gap isn't a tree-structure problem, it's that the merged component's ESTO-side
+  comparison-data row for this specific product was never written.
+
+**Why this wasn't fixed by this session's earlier work**: `3fdf592`/`97e20f5` added a raw-fallback
+mechanism, but only inside `codebase/mapping_tools/source_parent_anchor_validation.py`'s
+`validate_source_parent_anchors` — a structurally different validator. This gap is in
+`_validate_common_esto_axis_recursive_sums` (`build_dataset_tree_structure.py:1875`), which is
+architecturally very different: it works entirely off pre-aggregated
+`common_esto_comparison_data.csv` rows grouped by `common_flow_label`/`common_product_label`, and
+**has no access to raw per-source-system data at all** (it only ever reads
+`comparison_data_path`). Porting the anchor validator's raw-fallback pattern here isn't a small
+patch — it requires threading raw source data into a function that currently doesn't take it, and
+re-deriving the same "only fall back when structurally registered but a sibling has real data"
+safety gate in a completely different aggregation shape. This is genuinely new, non-trivial
+engineering with the same real risk profile as the original `3fdf592`/`97e20f5` work (which took
+real iteration to get right, including a documented "registered but dataless" second pass in
+`97e20f5`) — not something to implement in a single pass without the same trace-then-verify
+discipline every other fix in this thread has used. **Deliberately not attempted in this pass;
+queued separately as its own task** rather than risked as a rushed one-shot change to a validator
+this multi-session process hasn't touched before.
+
+**Scope check**: sampled two more of the largest ESTO `09 Total` failures (`20_USA`/`08.01
+Natural gas`, `16_RUS`/`08.01 Natural gas`) — both show the identical shape (large parent value,
+children_sum far short, `09.01-09.02 Power sector` unregistered for that product). Did NOT check
+whether every one of the 215 rows shares this exact cause — a `17 Electricity`/`18 Heat`-product
+subset (e.g. `16_RUS`, `08_JPN`) showed a different shape (parent nonzero, children near-zero, but
+not obviously the same "09.01-09.02 unregistered" pattern on first look) that would need its own
+check before assuming one fix resolves all 215 rows.
