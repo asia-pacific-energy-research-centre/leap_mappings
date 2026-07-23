@@ -180,16 +180,51 @@ driving it.
 
 ### Smaller, lower-priority residuals also visible in the final run
 
-- `10 Losses & own use` / `10.01 Own Use` (ESTO flow): 196 / 191 failed —
-  not investigated this session.
-- `01 Coal`, `08 Gas`, `07 Petroleum products`, `15 Solid biomass` (ESTO
-  product axis, `frontier_rows_absent`): 104/209/256/94 — likely the ESTO
-  side of the same aggregate-fuel family the NINTH product-axis fix
-  addressed; worth checking whether the same `literal_pairs`/`has_data_pairs`
-  mechanisms apply to the ESTO product axis or whether this needs its own
-  trace.
-- The passenger-road resolver gap from the original stocktake (66,402 skipped
-  `no_anchorable_common_esto_boundary` rows) was not touched this session.
+> **Re-triaged 2026-07-23 (a follow-on session, same day the connected-components
+> shared-frontier fix landed — `c6772a9` on branch `claude/anchor-validator-fixes-ee04bc`).
+> Checked all four items below directly against the current corrected baseline (759 failed /
+> 55,517 passed / 259,584 skipped) rather than trusting these 2026-07-22 figures.**
+
+- ~~`10 Losses & own use` / `10.01 Own Use` (ESTO flow): 196 / 191 failed~~ — **fully resolved,
+  0 failed rows today.** Almost certainly resolved by the connected-components shared-frontier
+  fix (`c6772a9`) — this is exactly the flow family that fix's own real-data trace centered on.
+- ~~`01 Coal`, `08 Gas`, `07 Petroleum products`, `15 Solid biomass` (ESTO product axis,
+  `frontier_rows_absent`): 104/209/256/94~~ — **fully resolved, 0 rows today** for any of these
+  four parents with this reason. Same likely cause as above.
+- **The passenger-road/transport `no_anchorable_common_esto_boundary` bucket: down from 66,402 to
+  35,369 rows (~47% reduction, cause not traced — likely incidental to other fixes rather than a
+  targeted change), but — more importantly — confirmed this is *not a bug to fix at all*.**
+  Checked ESTO's own raw flow list directly: ESTO has exactly one flat `15.02 Road` flow, with
+  zero vehicle-type breakdown. NINTH, by contrast, reports ~15 distinct vehicle-type sub-sectors
+  under road transport alone (`15_02_01_passenger/car`, `.../bus`, `.../sports_utility_vehicle`,
+  `.../light_truck`, `15_02_02_freight/two_wheeler_freight`, `.../medium_truck`,
+  `.../heavy_truck`, etc. — confirmed via the current failed-detail table, 33,122 of the 35,369
+  rows are NINTH). **ESTO structurally cannot represent this level of detail; there is no
+  "Common ESTO boundary" for these rows to anchor against because none should exist.**
+  `no_anchorable_common_esto_boundary` is the validator working exactly as designed here — this
+  is a genuine representation-granularity ceiling, not a resolver gap, a missing mapping, or
+  anything actionable in this codebase. Recommend closing this out as "expected, not a bug" rather
+  than carrying it forward as an open item; if finer ESTO-side transport detail is ever wanted,
+  that's a much bigger, separate ask (see `docs/prompts/esto_extended_dataset_design.md`'s
+  headline finding for the general shape of that kind of question, though transport-by-vehicle-
+  type wasn't itself checked against ESTO's tree as part of that note).
+- **`12_solar` allocation gap (~252 failures, ~2:1 ratio)**: down to **8 failures today**
+  (~97% reduction), all NINTH, all tiny in magnitude (0.09-1.6 units), and all involving the same
+  `14_industry_sector/14_03_manufacturing/14_03_11_nonspecified_industry` other-axis pairing
+  already extensively documented as an instance of the mirror-row gap (see
+  `docs/prompts/anchor_validator_fixes_findings_20260723.md`'s consolidated items 1/3/4 section
+  and the 2026-07-23 design doc on flag propagation). **Not a new, distinct issue** — folding this
+  into the already-tracked mirror-row-gap backlog rather than treating it as its own open item.
+
+**Net result: 2 of these 4 items are fully resolved, 1 (transport) is confirmed to be correct,
+expected behavior rather than a bug, and 1 (12_solar) has shrunk to a tiny residual that's the
+same already-documented mirror-row pattern, not a new problem.** Nothing new to investigate from
+this list — the only genuinely-open item across the whole 2026-07-22/23 anchor-validator thread at
+this point is the mirror-row gap itself (deliberately deferred, design doc written, see the
+2026-07-23 findings doc), and the separately-tracked `09 Total transformation sector` ESTO-side
+gap (215 rows, see `docs/prompts/investigate_ninth_09_total_transformation_reconciliation.md`'s
+own 2026-07-23 update — note that's a different validator, `common_esto_validation.csv`, not this
+one).
 
 ## Test plan for the next session
 
