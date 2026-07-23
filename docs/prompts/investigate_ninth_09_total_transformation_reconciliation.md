@@ -36,23 +36,19 @@
 >   "failed"` for any `09.07`-related row today — only `passed` (5,762) and
 >   `incomplete_contributors` (13,637, a distinct "missing data" status, not a reconciliation
 >   failure). The "614 genuine failures" this prompt reported are gone.
-> - **ESTO `09 Total transformation sector`: 636 failed rows (Σabs ≈ 527K) → 215 failed rows
->   today (Σabs ≈ 262K).** Roughly halved, but **still a real, unresolved, widespread gap** —
->   spread across most economies (`08_JPN`: 32, `16_RUS`: 23, `09_ROK`: 22, `05_PRC`: 19,
->   `20_USA`: 19, and 5+ more economies with real counts), not concentrated the way the NINTH
->   residual now is. **This is the one piece of this prompt's original scope that's genuinely
->   still open and substantial** — not touched in this pass beyond confirming its current size.
+> - **ESTO `09 Total transformation sector`: 636 → 215 → 7 failed rows, FIXED (2026-07-23, same
+>   day).** Traced to a confirmed, systematic root cause and fixed — see the "Third pass" section
+>   further down this file for the full trace, the fix, and real-data before/after numbers. This
+>   was the one piece of this prompt's original scope that stayed open through two earlier passes;
+>   it's now resolved.
 >
-> **Net assessment**: the primary symptom this prompt was written to chase (NINTH's ~4,663-7,159
-> row gap) is effectively closed, apparently by other work, not this pass. What's left is smaller
-> and reshaped: (a) a narrow 10-row NINTH residual needing its own trace, not a continuation of
-> the original own-use-boundary hypothesis, and (b) the ESTO-side 215-row gap, which is the
-> largest genuinely-still-open piece of what this prompt asked for. Recommend treating (b) as the
-> next concrete task if this thread is picked up again, using the same residual-decomposition
-> discipline this prompt already specifies (pick one economy/year, pull ESTO `09 Total` vs. its
-> `09.xx` children from `common_esto_comparison_data.csv`, compute the residual, trace it through
-> `energy_balance_relationships.csv`) — this pass did not attempt that decomposition, only sized
-> the remaining problem.
+> **Net assessment (updated after the third pass): both symptoms this prompt was written to chase
+> are now resolved.** NINTH's original ~4,663-7,159 row gap closed via other work (not this pass);
+> ESTO's 215-row gap closed via this session's own fix (see "Third pass" below). What remains: a
+> narrow 10-row NINTH residual (5 economies, not proportional, needs its own trace — not the same
+> own-use-boundary shape this prompt originally hypothesized) and a much smaller 7-row ESTO
+> residual left after the fix. Neither was traced further in this pass; both are small enough that
+> whoever picks this up next should re-count first rather than assume these figures still hold.
 
 You are working in C:\Users\Work\github\leap_mappings on the Common ESTO mapping
 pipeline. Read the repository AGENTS.md files and docs/mappings_system.md before
@@ -262,35 +258,55 @@ only edges that connect `09.01`/`09.02` into the merged label — never get buil
 Deprived of those edges, `"09.01-09.02 Power sector"` has nothing to connect to except itself,
 collapsing to a trivial single-component "exact" group.
 
-**Why this is a genuine, unresolved design question, not a simple bug**: is a merged/rollup label
-like `09.01-09.02 Power sector` even meaningful under a scope that structurally excludes the one
-source system (NINTH) whose data necessitated the merge in the first place? Two candidate fixes,
-not evaluated against each other in this pass:
-1. **Decompose, don't merge**: under `esto_leap` specifically, `09.01`/`09.02` should probably
-   remain separate common rows (as ESTO and LEAP can genuinely distinguish them) rather than being
-   forced into the NINTH-driven merged label at all — i.e. the scope-specific partitioning is
-   *supposed* to produce different granularity per scope (exactly the point of the 2026-07-14
-   configurable-scopes work verified earlier today), but this specific merged-label carryover looks
-   like an artifact of scope-independent label assignment rather than an intentional per-scope
-   partition.
-2. **Keep the merged label, fix its `is_exact_row` determination**: recognize that a "single
-   component" whose one component IS the merged/synthetic label itself (rather than a literal
-   source-system flow) should never be `is_exact_row=True`, regardless of edge count — it has no
-   literal ESTO data to be "exact" about.
+**Third pass (2026-07-23, the dedicated study) — the design-question framing above was also not
+quite right, and the actual root cause turned out much simpler. FIXED.**
 
-**This is a deeper, more architecturally significant finding than the "missing raw fallback"
-framing this section originally used** — it's a question about how Stage 2's connected-component
-graph partitioning should behave, per scope, for rollup/merged labels whose defining edges come
-from a source system that scope excludes. This needs its own dedicated investigation into
-`build_common_esto_structure.py`'s partitioning logic (a large, complex file) before any fix is
-attempted — **not done in this pass**, and not something to rush given how much iteration the
-original `bcb7caf`/`9b75628`/`3fdf592`/`97e20f5`/`c6772a9` fixes (all touching adjacent but distinct
-parts of this same rollup-label-handling problem space) each took to get right.
+The "is this a design question about scope-specific edge exclusion" framing assumed NINTH's edges
+were what would normally connect `09.01`/`09.02` into the merged label, and that excluding NINTH
+(via `esto_leap`'s `aggregate_source_systems=["LEAP"]`) was what caused the collapse to
+`is_exact_row=True`. Checking `results/mapping_relationships/energy_balance_relationships.csv`
+directly disproved this: **zero** relationship rows anywhere — LEAP, NINTH, or ESTO — ever target
+`09.01 Main activity producer` or `09.02 Autoproducers` individually. LEAP's own "Power" source
+flow maps *directly* to the merged label `"09.01-09.02 Power sector"` (216 rows, confirmed), the
+same way NINTH's does — meaning `is_exact_row=True` for this component is actually **correct and
+expected** under every scope; there was never a decomposition question to resolve.
 
-**Scope check**: sampled two more of the largest ESTO `09 Total` failures (`20_USA`/`08.01
-Natural gas`, `16_RUS`/`08.01 Natural gas`) — did not re-verify these show the identical
-`is_exact_row`-on-a-merged-label shape (only re-confirmed the aggregate numbers matched, not the
-underlying `common_esto_rows.csv` mechanism for each) — do not assume they're identical without
-checking. A `17 Electricity`/`18 Heat`-product subset (e.g. `16_RUS`, `08_JPN`) showed a visibly
-different shape (parent nonzero, children near-zero) on a first look and would need its own trace
-before assuming one fix resolves all 215 rows.
+The real, much simpler bug: confirmed via direct query that `results/common_esto/common_esto_comparison_data.csv`
+had **zero rows for `source_system == "ESTO"`** against `common_flow_label == "09.01-09.02 Power
+sector"`, for any product, in either scope — and checking all 4 `EXPANDING`-mode
+`esto_rollup_rules` labels the same way found **all 4** had zero ESTO rows. **ESTO's own
+conversion pipeline never computed a value for any EXPANDING-mode rolled label at all** — not a
+partitioning question, a genuine missing-computation gap. `codebase/mapping_tools/non_expanding_rollups.py`'s
+`build_esto_non_expanding_subtotal_rows` already does exactly this derivation (sum a rollup rule's
+declared contributor flows/products into one row for the rolled label) — but `run_mapping_pipeline.py`'s
+`run_esto_exact_rows()` only ever called it against the `NON_EXPANDING`/`DETACHED` rule split, never
+`EXPANDING`. The function itself is mode-agnostic; it was simply never invoked for this mode.
+
+**Fix**: `run_esto_exact_rows()` now also calls `build_esto_non_expanding_subtotal_rows` against
+the `EXPANDING` split (`split_rollup_rules(esto_rollup_rules_raw)[0]`) and concatenates the result
+with the existing derived rows. Verified standalone first (`09.01-09.02 Power sector`/`01.02 Other
+bituminous coal`/`05PRC`/2023 derives to exactly `-59,584.56136`, matching raw ESTO's `09.01 Main
+activity producer` value for that pair precisely) before running the real pipeline.
+
+**Real-data A/B** (`data_convert` + Stage 3 regeneration, full run):
+
+| | ESTO `09 Total transformation sector` failed rows | Overall ESTO failed (`common_esto_validation.csv`) | Overall NINTH failed |
+|---|---|---|---|
+| Before | 215 | 215 | 508 |
+| After | **7** | **7** | 500 |
+
+A 96.7% reduction for the targeted parent, and the overall ESTO failure count for the whole
+`common_esto_validation.csv` file dropped by the same amount (confirming this was effectively the
+entire ESTO-side residual, not just this one parent) — NINTH also dropped slightly (incidental,
+not targeted by this fix). No regressions: every remaining failure category stayed the same or
+improved, never worse. The 7 remaining rows (`05_PRC` mostly, one `20_USA`) are much smaller
+residuals (abs errors in the hundreds/low thousands vs. the original tens of thousands) — not
+retraced to a further cause in this pass. Full test suite: 254 passed, 2 pre-existing unrelated
+failures, 1 skipped — unchanged.
+
+**Lesson from this three-pass investigation, worth remembering**: the first two framings (missing
+raw fallback in a different validator; a scope-specific graph-partitioning design question) were
+each internally plausible and each wrong in a specific, checkable way — every correction came from
+querying the actual data/relationship files directly rather than reasoning from architecture alone.
+Neither wrong framing was reused or left uncorrected in this file; both are preserved above with
+explicit "this was wrong" markers rather than deleted, so the reasoning trail stays honest.
