@@ -1,5 +1,55 @@
 # Resume prompt: NINTH 09 Total transformation reconciliation gap
 
+> **Status update (2026-07-23) — largely resolved by intervening work, not by this pass
+> specifically.** Re-checked `results/tree_structure/common_esto_validation.csv` (regenerated
+> today via this session's own pipeline run) directly rather than trusting this prompt's
+> 2026-07-21 figures:
+>
+> - **NINTH `09 Total transformation sector`: 4,663-7,159 failed rows (this prompt's figures) →
+>   10 failed rows today.** A ~99.8% reduction, evidently from work done between 2026-07-21 and
+>   today (the standalone-rollup-validation fix this prompt references as already resolved,
+>   `4042d5e`, plus this session's own anchor-validator connected-components fix, `c6772a9` —
+>   though note that commit fixed a *different* validator, `source_parent_anchor_validation.py`,
+>   not the `common_esto_validation.csv` this prompt is about; the reduction here is more likely
+>   attributable to `4042d5e` and/or other intervening pipeline maturation, not directly to
+>   today's anchor-validator work — **not fully traced which specific commit(s) caused this
+>   reduction**, flagging that as an open provenance question rather than claiming certainty).
+> - **The remaining 10 rows are narrow and economy-concentrated**, not the broad
+>   own-use-boundary pattern this prompt hypothesized: exactly 5 economies × 2 scenarios
+>   (`05_PRC`, `08_JPN`, `09_ROK`, `11_MEX`, `16_RUS`), each with `children_sum` exceeding
+>   `parent_value` by a distinct, non-proportional amount (e.g. `05_PRC`: ~341 residual on a
+>   ~8,710 parent value; `11_MEX`: ~0.32 residual on a ~9.66 parent value) and
+>   `inherited_source_inconsistency == False` for all 10 (not yet explained by the existing
+>   `_build_source_inconsistency_lookup` mechanism — see
+>   `docs/prompts/data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` for what
+>   that mechanism is and how it could be extended here). Spot-checked whether the residual for
+>   `05_PRC` matches the own-use-boundary hypothesis this prompt proposed (comparing against
+>   NINTH's own `10.01.xx` own-use totals for that economy) — **no individual own-use component
+>   value obviously matches the ~341 residual alone**; a combination might, but this wasn't
+>   traced to a definitive conclusion. **This residual needs its own fresh trace, not an
+>   assumption that it's the same root cause as the original (much larger) gap** — the shape is
+>   different (5 specific economies vs. broad) and the magnitude is 2-3 orders of magnitude
+>   smaller.
+> - **The `09.07 Oil refineries (including own use)` rollup symptom (3rd item in this prompt's
+>   "cover the whole boundary" section): also appears resolved.**
+>   `results/tree_structure/common_esto_rollup_validation.csv` shows zero rows with `status ==
+>   "failed"` for any `09.07`-related row today — only `passed` (5,762) and
+>   `incomplete_contributors` (13,637, a distinct "missing data" status, not a reconciliation
+>   failure). The "614 genuine failures" this prompt reported are gone.
+> - **ESTO `09 Total transformation sector`: 636 → 215 → 7 failed rows, FIXED (2026-07-23, same
+>   day).** Traced to a confirmed, systematic root cause and fixed — see the "Third pass" section
+>   further down this file for the full trace, the fix, and real-data before/after numbers. This
+>   was the one piece of this prompt's original scope that stayed open through two earlier passes;
+>   it's now resolved.
+>
+> **Net assessment (updated after the third pass): both symptoms this prompt was written to chase
+> are now resolved.** NINTH's original ~4,663-7,159 row gap closed via other work (not this pass);
+> ESTO's 215-row gap closed via this session's own fix (see "Third pass" below). What remains: a
+> narrow 10-row NINTH residual (5 economies, not proportional, needs its own trace — not the same
+> own-use-boundary shape this prompt originally hypothesized) and a much smaller 7-row ESTO
+> residual left after the fix. Neither was traced further in this pass; both are small enough that
+> whoever picks this up next should re-count first rather than assume these figures still hold.
+
 You are working in C:\Users\Work\github\leap_mappings on the Common ESTO mapping
 pipeline. Read the repository AGENTS.md files and docs/mappings_system.md before
 making changes. Start with:
@@ -157,3 +207,139 @@ marker.
   silent failure.
 - Focused tests pass; Stages 1-3 completes; changes committed in a focused
   `codex:` commit.
+
+---
+
+## Follow-on trace (2026-07-23, later same day): ESTO-side residual root cause found — and corrected
+
+**This section originally misdiagnosed the root cause as "never registered"; that was wrong and
+has been corrected below after a second pass. Read the corrected version, not the git history of
+this section, if you're picking this up.**
+
+Traced the largest of the ESTO `09 Total transformation sector` gap's 215 failed rows (see this
+prompt file's own status-update block near the top).
+
+**Worked example**: economy `05PRC`, product `01.02 Other bituminous coal`, `esto_leap` scope,
+historical 2023. `09 Total transformation sector` (ESTO) reports `-80,642.80`; its Common ESTO
+children sum to only `-19,921.64` (just `09.08 Coal transformation`'s own value) — a `-60,721`
+shortfall. Raw ESTO (`data/00APEC_2025_low_with_subtotals.csv`) reports `09.01 Main activity
+producer` = `-59,584.56` for this exact economy/product — almost exactly the missing amount
+(`09.02 Autoproducers` = `0` here, not part of the gap).
+
+**First-pass claim (wrong): "the component was never registered in Common ESTO structure."**
+Checked `results/common_esto/common_esto_rows.csv` for `component_esto_flow` containing `"09.01
+Main activity"` or `"09.02 Autoproducers"` and found zero rows — but this was searching for the
+wrong thing. The component **is** registered, twice — once per relevant `comparison_scope` — just
+under the *merged* flow label directly, not under `09.01`/`09.02` individually:
+
+| `comparison_scope` | `common_row_id` | `is_exact_row` | `common_row_basis` | `component_esto_flow` |
+|---|---|---|---|---|
+| `esto_leap_ninth` | `common_esto_bb0df8113136284b` | `False` | `connected_component_rollup` | `09.01-09.02 Power sector` |
+| `esto_leap` | `common_esto_2b84fae47dc34514` | **`True`** | **`exact_esto_row`** | `09.01-09.02 Power sector` |
+
+**The real bug**: for the `esto_leap_ninth` scope, this common row is correctly built as a
+multi-component rollup (`requires_rollup=True`, `aggregate_group_source=NINTH` — NINTH's own
+mapping edges are what tell Stage 2's graph partitioning that `09.01`/`09.02` should merge). But
+for the `esto_leap` scope, the **same merged label** gets marked `is_exact_row=True`,
+`common_row_basis="exact_esto_row"` — treating `"09.01-09.02 Power sector"` as if it were itself a
+literal ESTO flow with its own raw data row. **It is not** — ESTO's raw CSV never has a flow
+literally named `"09.01-09.02 Power sector"` (confirmed earlier this session, `bcb7caf`'s whole
+premise: this label never appears in ESTO's own raw flows/products, only in the Common ESTO tree).
+So when Stage 3 looks up ESTO's own value for this "exact" component, it finds nothing real to
+attribute — the row exists structurally but corresponds to no reportable ESTO data.
+
+**Confirmed the mechanism precisely**: `build_common_esto_structure.py:697`,
+`is_exact_row = len(component_pairs) == 1` — a common row is marked "exact" purely based on how
+many (flow, product) pairs the union-find graph partitioning resolved into its connected
+component. `esto_leap`'s scope config sets `aggregate_source_systems=["LEAP"]` (confirmed in
+`COMPARISON_SCOPES`, line 39) — this scope's graph-edge-building step (`build_source_aggregate_edges`,
+~line 395) filters relationships to LEAP-sourced edges only, so **NINTH's own mapping edges — the
+only edges that connect `09.01`/`09.02` into the merged label — never get built for this scope**.
+Deprived of those edges, `"09.01-09.02 Power sector"` has nothing to connect to except itself,
+collapsing to a trivial single-component "exact" group.
+
+**Third pass (2026-07-23, the dedicated study) — the design-question framing above was also not
+quite right, and the actual root cause turned out much simpler. FIXED.**
+
+The "is this a design question about scope-specific edge exclusion" framing assumed NINTH's edges
+were what would normally connect `09.01`/`09.02` into the merged label, and that excluding NINTH
+(via `esto_leap`'s `aggregate_source_systems=["LEAP"]`) was what caused the collapse to
+`is_exact_row=True`. Checking `results/mapping_relationships/energy_balance_relationships.csv`
+directly disproved this: **zero** relationship rows anywhere — LEAP, NINTH, or ESTO — ever target
+`09.01 Main activity producer` or `09.02 Autoproducers` individually. LEAP's own "Power" source
+flow maps *directly* to the merged label `"09.01-09.02 Power sector"` (216 rows, confirmed), the
+same way NINTH's does — meaning `is_exact_row=True` for this component is actually **correct and
+expected** under every scope; there was never a decomposition question to resolve.
+
+The real, much simpler bug: confirmed via direct query that `results/common_esto/common_esto_comparison_data.csv`
+had **zero rows for `source_system == "ESTO"`** against `common_flow_label == "09.01-09.02 Power
+sector"`, for any product, in either scope — and checking all 4 `EXPANDING`-mode
+`esto_rollup_rules` labels the same way found **all 4** had zero ESTO rows. **ESTO's own
+conversion pipeline never computed a value for any EXPANDING-mode rolled label at all** — not a
+partitioning question, a genuine missing-computation gap. `codebase/mapping_tools/non_expanding_rollups.py`'s
+`build_esto_non_expanding_subtotal_rows` already does exactly this derivation (sum a rollup rule's
+declared contributor flows/products into one row for the rolled label) — but `run_mapping_pipeline.py`'s
+`run_esto_exact_rows()` only ever called it against the `NON_EXPANDING`/`DETACHED` rule split, never
+`EXPANDING`. The function itself is mode-agnostic; it was simply never invoked for this mode.
+
+**Fix**: `run_esto_exact_rows()` now also calls `build_esto_non_expanding_subtotal_rows` against
+the `EXPANDING` split (`split_rollup_rules(esto_rollup_rules_raw)[0]`) and concatenates the result
+with the existing derived rows. Verified standalone first (`09.01-09.02 Power sector`/`01.02 Other
+bituminous coal`/`05PRC`/2023 derives to exactly `-59,584.56136`, matching raw ESTO's `09.01 Main
+activity producer` value for that pair precisely) before running the real pipeline.
+
+**Real-data A/B** (`data_convert` + Stage 3 regeneration, full run):
+
+| | ESTO `09 Total transformation sector` failed rows | Overall ESTO failed (`common_esto_validation.csv`) | Overall NINTH failed |
+|---|---|---|---|
+| Before | 215 | 215 | 508 |
+| After | **7** | **7** | 500 |
+
+A 96.7% reduction for the targeted parent, and the overall ESTO failure count for the whole
+`common_esto_validation.csv` file dropped by the same amount (confirming this was effectively the
+entire ESTO-side residual, not just this one parent) — NINTH also dropped slightly (incidental,
+not targeted by this fix). No regressions: every remaining failure category stayed the same or
+improved, never worse. The 7 remaining rows (`05_PRC` mostly, one `20_USA`) are much smaller
+residuals (abs errors in the hundreds/low thousands vs. the original tens of thousands) — not
+retraced to a further cause in this pass. Full test suite: 254 passed, 2 pre-existing unrelated
+failures, 1 skipped — unchanged.
+
+**Lesson from this three-pass investigation, worth remembering**: the first two framings (missing
+raw fallback in a different validator; a scope-specific graph-partitioning design question) were
+each internally plausible and each wrong in a specific, checkable way — every correction came from
+querying the actual data/relationship files directly rather than reasoning from architecture alone.
+Neither wrong framing was reused or left uncorrected in this file; both are preserved above with
+explicit "this was wrong" markers rather than deleted, so the reasoning trail stays honest.
+
+## Fourth pass (2026-07-23, same day, after the fix landed): the 7 residual rows — 5 explained, same bug class, different file
+
+Traced the 7 rows left after the `2a438d9` fix. Checked each `abs_error` against raw ESTO's own
+`09.06 Gas processing plants` value (a **literal**, non-synthetic ESTO flow — not an EXPANDING
+rollup label) for the exact same `(economy, product)` pair:
+
+| economy | product | abs_error | raw ESTO `09.06 Gas processing plants` value | match? |
+|---|---|---|---|---|
+| `05_PRC` | `01.02 Other bituminous coal` | 1136.60 | -1136.60 | exact |
+| `05_PRC` | `02.03 Coke oven gas` | 227.68 | -227.68 | exact |
+| `05_PRC` | `07.10 Refinery gas (not liquefied)` | 32.12 | -32.12 | exact |
+| `05_PRC` | `07.16 Petroleum coke` | 43.33 | -43.33 | exact |
+| `05_PRC` | `08.03 Gas works gas` | 693.42 | 693.42 | exact |
+| `05_PRC` | `08.01 Natural gas` | 126.50 | 3846.83 | **no match** — different/additional cause |
+| `20_USA` | `01.05 Lignite` | 55.35 | -55.35 | exact |
+
+**5 of 7 explained exactly.** Confirmed via direct query: `results/common_esto/common_esto_comparison_data.csv`
+has **zero rows for `source_system == "ESTO"`** against `common_flow_label == "09.06 Gas
+processing plants"` (the base name, not `"09.06 Gas processing plants (including own use)"`), for
+*any* economy or year — and `energy_balance_relationships.csv` confirms **zero** ESTO relationship
+rows target this exact flow name at all, not even via ESTO's own identity self-mapping (which
+normally covers every raw ESTO flow trivially). This is the same bug shape as the just-fixed one —
+a real, additive ESTO flow orphaned from its own comparison data — but manifesting in a different
+file (`codebase/mapping_tools/build_energy_balance_relationships.py`'s relationship-building step,
+Stage 1, not `run_esto_exact_rows()`'s row-derivation step that was just fixed). Very likely the
+same root shape as `9b75628`'s "NON_EXPANDING rollup relabeling orphans the base literal flow"
+finding, but for the relationship-building layer specifically — **not confirmed**, just the most
+plausible hypothesis given the pattern match; would need its own trace before fixing.
+
+**Not investigated further in this pass** (context budget for this session was flagged as running
+low) — queued as its own follow-up rather than rushed. The `08.01 Natural gas`/`05_PRC` row (the
+one non-match) needs a separate trace; do not assume it shares this same cause.

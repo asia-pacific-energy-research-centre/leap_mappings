@@ -85,7 +85,7 @@ def build_for_colleagues_export() -> dict[str, Path]:
 
     source_df = pd.read_csv(_resolve(SOURCE_COMMON_PATH), dtype=object)
     source_df = source_df[
-        source_df["comparison_scope"].astype(str).eq("leap_vs_esto")
+        source_df["comparison_scope"].astype(str).eq("esto_leap")
         & source_df["source_system"].astype(str).isin(["LEAP", "ESTO"])
     ].copy()
     source_df = source_df.rename(

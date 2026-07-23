@@ -31,9 +31,11 @@ from __future__ import annotations
 import argparse
 import gc
 import sys
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 import pandas as pd
 
@@ -53,6 +55,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
+    discover_available_economies,
     discover_balance_export_workbooks,
     format_balance_export_discovery_report,
     resolve_balance_exports_root,
@@ -89,7 +92,6 @@ ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 
 # Raw LEAP workbooks are owned by the sibling leap_initialisation repository.
 LEAP_EXPORTS_ROOT = resolve_balance_exports_root()
-LEAP_EXPORT_DIR = LEAP_EXPORTS_ROOT / "20_USA"
 
 # ---------------------------------------------------------------------------
 # Output logging
@@ -205,25 +207,76 @@ def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
 # LEAP parse — produce raw_leap_results.csv
 # ---------------------------------------------------------------------------
 
-def run_leap_parse() -> None:
+def run_leap_parse(economies: Sequence[str] | None = None) -> None:
+    """Parse raw LEAP balance exports for one or more economies into RAW_LEAP_PATH.
+
+    ``economies`` may be an explicit list (e.g. from ``--leap-economies``). When
+    omitted (``None``), every economy with a recognized export directory under
+    the canonical exports root is auto-discovered and parsed -- no economy list
+    is hardcoded. Each requested economy is parsed independently; an economy
+    with no export directory present logs a warning and is skipped rather than
+    failing the whole run. All successfully parsed economies are combined into
+    one DataFrame and written once to RAW_LEAP_PATH.
+    """
     print("\n" + "=" * 60)
     print("LEAP PARSE  Parse LEAP balance exports")
     print("=" * 60)
+
+    if economies is None:
+        requested_economies = discover_available_economies(LEAP_EXPORTS_ROOT)
+    else:
+        requested_economies = [str(economy).strip() for economy in economies if str(economy).strip()]
+
     print(
         format_balance_export_discovery_report(
             discover_balance_export_workbooks(
-                economies=["20_USA", "02_BD"],
+                economies=requested_economies,
                 exports_root=LEAP_EXPORTS_ROOT,
             )
         )
     )
-    if not LEAP_EXPORT_DIR.exists():
-        print(f"  WARNING: no 20_USA raw LEAP exports found at {LEAP_EXPORT_DIR}")
-        print("  The canonical directory is valid; this economy has no source files.")
+
+    if not requested_economies:
+        print("  WARNING: no LEAP economies requested or discovered; nothing to parse.")
         return
 
     from codebase.mapping_tools.parse_leap_balance_export import parse_leap_balance_dir
-    parse_leap_balance_dir(LEAP_EXPORT_DIR, RAW_LEAP_PATH)
+
+    frames: list[pd.DataFrame] = []
+    parsed_economies: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="leap_parse_") as tmp_dir:
+        for economy in requested_economies:
+            export_dir = LEAP_EXPORTS_ROOT / economy
+            if not export_dir.exists():
+                print(f"  WARNING: no {economy} raw LEAP exports found at {export_dir}")
+                continue
+            # parse_leap_balance_dir writes its own CSV as a side effect; give
+            # it a scratch path per economy and use the returned DataFrame so
+            # the shared RAW_LEAP_PATH is only written once, combined below.
+            scratch_output = Path(tmp_dir) / f"{economy}_raw_leap.csv"
+            try:
+                df = parse_leap_balance_dir(export_dir, scratch_output, economy_code=economy)
+            except FileNotFoundError as exc:
+                print(f"  WARNING: {economy} export directory has no .xlsx files ({exc})")
+                continue
+            frames.append(df)
+            parsed_economies.append(economy)
+
+    if not frames:
+        print("  WARNING: no economies parsed; RAW_LEAP_PATH not written.")
+        return
+
+    combined = pd.concat(frames, ignore_index=True)
+    RAW_LEAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(RAW_LEAP_PATH, index=False)
+    try:
+        display_path = RAW_LEAP_PATH.relative_to(REPO_ROOT)
+    except ValueError:
+        display_path = RAW_LEAP_PATH
+    print(
+        f"  Combined LEAP long-format across {len(parsed_economies)} economy(ies) "
+        f"({', '.join(parsed_economies)}): {len(combined):,} rows -> {display_path}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -406,9 +459,8 @@ def run_esto_exact_rows() -> None:
     esto_boundary_rules = load_non_expanding_rollup_rules(WORKBOOK_PATH).get(
         "esto_rollup_rules", pd.DataFrame()
     )
-    _, _, detached_esto_rules = split_rollup_rules(
-        pd.read_excel(WORKBOOK_PATH, sheet_name="esto_rollup_rules", dtype=object).fillna("")
-    )
+    esto_rollup_rules_raw = pd.read_excel(WORKBOOK_PATH, sheet_name="esto_rollup_rules", dtype=object).fillna("")
+    expanding_esto_rules, _, detached_esto_rules = split_rollup_rules(esto_rollup_rules_raw)
     detached_esto_flows = {
         str(value).strip()
         for value in detached_esto_rules.get("input_esto_flow", pd.Series(dtype=object))
@@ -418,6 +470,30 @@ def run_esto_exact_rows() -> None:
         df,
         esto_boundary_rules,
         year_columns=year_cols,
+    )
+    # EXPANDING-mode rolled labels (e.g. "09.01-09.02 Power sector", created
+    # because NINTH/LEAP can't distinguish 09.01 Main activity producer from
+    # 09.02 Autoproducers) never got an ESTO-side value anywhere in the
+    # pipeline: build_esto_non_expanding_subtotal_rows only ever ran against
+    # NON_EXPANDING/DETACHED rules. Confirmed via real data that all 4
+    # EXPANDING esto_rollup_rules labels had zero ESTO rows in
+    # common_esto_comparison_data.csv, which is why ESTO's own recursive
+    # validator ("09 Total transformation sector" vs. its Common ESTO
+    # children) fails for these labels -- the merged child's ESTO
+    # contribution was silently absent, not zero. The derivation logic is
+    # identical (sum the declared contributor flows/products), so reuse the
+    # same function against the EXPANDING split instead of writing a parallel
+    # implementation. The 09.01/09.02 contributor flows themselves remain in
+    # the raw/leaf ESTO rows below unchanged -- this only adds the merged
+    # label as an additional derived row, since the EXPANDING reattribution
+    # is additive, not a replacement (see bcb7caf/9b75628).
+    expanding_rows_df = build_esto_non_expanding_subtotal_rows(
+        df,
+        expanding_esto_rules,
+        year_columns=year_cols,
+    )
+    non_expanding_rows_df = pd.concat(
+        [non_expanding_rows_df, expanding_rows_df], ignore_index=True
     )
 
     df_leaf = select_esto_comparison_rows(df, reference_pairs, detached_esto_flows)
@@ -691,7 +767,13 @@ def run_stage_3() -> None:
                     for label, mode in load_rollup_mode_labels(WORKBOOK_PATH).items()
                     if mode in {NON_EXPANDING_MODE, DETACHED_MODE}
                 }
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"  WARNING: failed to load non-expanding rollup labels for anchor "
+                    f"validation ({type(exc).__name__}: {exc}); anchor_exclude_parents will "
+                    f"be empty, so NON_EXPANDING/DETACHED rollup subtotals will be validated "
+                    f"as ordinary additive parents and may show spurious failures."
+                )
                 anchor_exclude_parents = set()
 
             # LEAP interim branches (e.g. "CHP interim") are an alternative
@@ -713,8 +795,13 @@ def run_stage_3() -> None:
                     for branch in fallback_rules.get("interim_branch", [])
                     if str(branch).strip()
                 }
-            except Exception:
-                pass
+            except Exception as exc:
+                print(
+                    f"  WARNING: failed to load LEAP interim-branch fallback rules for anchor "
+                    f"validation ({type(exc).__name__}: {exc}); interim branches (e.g. \"CHP "
+                    f"interim\") will not be excluded from ordinary additive-parent validation "
+                    f"and may show spurious failures."
+                )
 
             anchor_t0 = time.perf_counter()
             anchor_detail = validate_source_parent_anchors(
@@ -874,6 +961,16 @@ def main() -> None:
             "write the mapping workbook."
         ),
     )
+    parser.add_argument(
+        "--leap-economies",
+        default=None,
+        help=(
+            "Comma-separated list of economy codes to parse during the leap_parse "
+            "stage (e.g. --leap-economies 20_USA,12_NZ). Default: auto-discover "
+            "every economy with a recognized export directory under the canonical "
+            "LEAP exports root."
+        ),
+    )
     args = parser.parse_args()
 
     requested = [s.strip() for s in args.stages.split(",") if s.strip()]
@@ -891,9 +988,16 @@ def main() -> None:
     with _log_to_file(_PIPELINE_LOG_PATH) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
         print("Running pipeline stages:", stages_to_run)
+        leap_economies = (
+            [item.strip() for item in args.leap_economies.split(",") if item.strip()]
+            if args.leap_economies
+            else None
+        )
         for stage in stages_to_run:
             if stage == "0":
                 run_stage_0(apply_subtotal_changes=args.apply_maintenance)
+            elif stage == "leap_parse":
+                run_leap_parse(economies=leap_economies)
             else:
                 _STAGE_RUNNERS[stage]()
 

@@ -1,5 +1,44 @@
 # Prompt: Make comparison scopes selectable, and make each selected scope actually use its own granularity
 
+> **Resolution (2026-07-23).** Found already fully implemented when re-verified — confirmed
+> directly against current code and real data, not assumed from this doc's age (9 days stale at
+> time of re-check). `COMPARISON_SCOPES` in `build_common_esto_structure.py` now has genuinely
+> differentiated configs per scope (`esto_leap`: `use_cases=["leap_to_esto_balance_conversion"]`,
+> `aggregate_source_systems=["LEAP"]`; `esto_leap_ninth`: both). `run_common_esto_structure_workflow`
+> takes `enabled_scopes` as a real parameter (not a hardcoded loop), with
+> `DEFAULT_ENABLED_COMPARISON_SCOPES = ["esto_leap_ninth", "esto_leap"]` — exactly the two scopes
+> this prompt wanted enabled. The renaming checklist's targets (`COMPARISON_SCOPE_SYSTEMS` in both
+> `apply_common_esto_structure.py` and `source_parent_anchor_validation.py`, `ninth_scopes` in
+> `build_dataset_tree_structure.py`, `reconcile_anchor_validation.py`'s scope map) all already use
+> the new names. Verified against real current data
+> (`results/common_esto/common_esto_rows.csv`, regenerated 2026-07-23): `esto_leap` has 2,066
+> `common_row_id`s, `esto_leap_ninth` has 2,322 — genuinely different, not the byte-identical 2,180
+> this prompt was written to fix.
+>
+> **One genuine straggler found and fixed**: `codebase/for_colleagues_export_workflow.py:88` still
+> filtered on the old literal `"leap_vs_esto"`, which no longer matches anything — silently
+> producing zero rows in its output. Fixed to `"esto_leap"`. Comprehensive grep for all old scope
+> name literals across `codebase/`/`tests/` found nothing else stale (`esto_only` and
+> `leap_vs_ninth` usages are all correct — those two scope names were never renamed, per this
+> prompt's own plan to keep them "definable but disabled").
+>
+> **One tangential issue found, not fixed here**: `for_colleagues_export_workflow.py` reads
+> `results/common_esto/structural_artifacts/source_pair_to_common_row.csv`, a standalone artifact
+> written by `compile_structural_mapping_artifacts.py` (NOT part of `run_mapping_pipeline.py` — a
+> separate maintenance tool, per `docs/workflow_inventory.md`). That file is currently 10 days
+> stale (last written 2026-07-13, before the scope rename) and still has the OLD scope names with
+> byte-identical 8,103-row counts across all four — i.e. it still exhibits the exact bug this
+> prompt was written to fix, just in a different, disconnected artifact this task's scope didn't
+> cover. Fixing the code reference doesn't fix this file's staleness; it needs
+> `compile_structural_mapping_artifacts.py` re-run to regenerate correctly. Left as a follow-up
+> rather than run blind, given it's a standalone tool outside today's task scope and its full
+> input/side-effect surface wasn't traced as part of this pass.
+>
+> Full targeted suite (`test_build_common_esto_structure.py`, `test_apply_common_esto_structure.py`,
+> `test_source_parent_anchor_validation.py`, `test_reconcile_anchor_validation.py`): 49 passed,
+> unaffected by the one-line fix (none of them exercise `for_colleagues_export_workflow.py`, which
+> has no test coverage of its own).
+
 Work in `C:\Users\Work\github\leap_mappings`.
 
 ## Background / why this matters

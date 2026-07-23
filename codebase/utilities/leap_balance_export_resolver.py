@@ -205,6 +205,33 @@ def discover_balance_export_workbooks(
     return discovery
 
 
+def discover_available_economies(
+    exports_root: Path | str | None = None,
+) -> list[str]:
+    """Return economy codes with at least one recognized LEAP balance-export workbook.
+
+    Lists the immediate subdirectories of the canonical (or overridden) exports
+    root and keeps those containing at least one file matching
+    ``BALANCE_EXPORT_FILENAME_PATTERN`` for any scenario. Directories that exist
+    but hold no recognized workbook (e.g. an economy folder with only an
+    ``archive`` subfolder, or non-conforming fixture files) are excluded so
+    pipeline auto-discovery only picks up economies with real parseable data.
+    """
+    root = resolve_balance_exports_root(exports_root)
+    economies: list[str] = []
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir():
+            continue
+        has_workbook = any(
+            BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
+            for path in entry.glob("*.xlsx")
+            if not path.name.startswith("~$")
+        )
+        if has_workbook:
+            economies.append(entry.name)
+    return economies
+
+
 def format_balance_export_discovery_report(
     discovery: dict[tuple[str, str], list[Path]],
 ) -> str:

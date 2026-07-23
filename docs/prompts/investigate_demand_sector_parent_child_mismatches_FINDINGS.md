@@ -1,5 +1,52 @@
 # Findings: demand-sector parent/child mismatches (14 Industry, 14.03 Manufacturing, 15 Transport)
 
+> **Status update (2026-07-23) — all five items below are now resolved or dramatically reduced,
+> apparently by intervening work between 2026-07-21 and today, not fixed in this pass.**
+> Re-checked all five verdicts directly against `results/tree_structure/common_esto_validation.csv`
+> (regenerated today) rather than trusting the 2026-07-21 figures:
+>
+> | Parent / source | 2026-07-21 count | 2026-07-23 count | Verified fix in place? |
+> |---|---|---|---|
+> | `14.03 Manufacturing` / NINTH | 4,608 (142 non-inherited bug) | **82** | Not independently re-verified which sub-cause dropped; the 97%-inherited portion was never a bug to begin with. |
+> | `14 Industry sector` / LEAP | 420 | **0 — fully resolved** | **Yes** — `build_energy_balance_relationships.py` (`_apply_leap_rollup_rules` area, ~line 1653) now has an explicit `directly_mapped_flows` set and a `if rolled_flow in directly_mapped_flows` skip-cloning check, with a comment "A rolled aggregate that already has its own direct (non-rollup) mapping is [excluded from cloning]" — exactly the fix this doc proposed (item 2) and explicitly said not to apply at the time. |
+> | `15 Transport sector` / LEAP | 114 (exact 2x pattern) | **0 — fully resolved** | **Yes** — same fix as above; this doc's item 3 identified it as the same root cause. |
+> | `14 Industry sector` / NINTH | 996 (74% one cause) | **26** | **Yes for the dominant cause** — confirmed directly in `config/outlook_mappings_master.xlsx`'s `ninth_pairs_to_esto_pairs` sheet: the row `14_03_manufacturing -> 07.01 Motor gasoline` this doc said was missing now exists. The remaining 26 rows are presumably the secondary `14.02 Construction`/white-spirit-family cause (item 4's own doc text: "not independently confirmed... materiality is small") or a residual of the same family — not re-traced in this pass. |
+> | `15 Transport sector` / NINTH | 1,920 (exact 2x, jet fuel) | **2** | **Yes, but via a different mechanism than this doc's proposed fix.** The mapping sheet still has BOTH `07.04`/`07.05` rows for `15_01_domestic_air_transport`/`07_x_jet_fuel` (checked directly — this doc's proposed "drop one of the two rows" fix was NOT applied). Instead, `codebase/mapping_tools/apply_ninth_to_esto_conversion.py` now has `mark_unallocated_one_to_many_for_target_share`/an equal-share fallback mechanism — this is exactly the "uncommitted converter change" this doc's own 2026-07-21 refresh section mentioned finding already in the workspace, apparently since committed. This is a more general fix (works for any one-to-many unallocated NINTH mapping, not jet-fuel-specific) than what this doc proposed, and evidently a better one given the near-total resolution. |
+>
+> **Net result: nothing in this doc needs further action.** Both LEAP items are fully resolved via
+> the exact code fix this doc specified. Both NINTH items are resolved via a mapping-row addition
+> (Industry, matching this doc's proposal) and a more general converter-level fix (Transport,
+> better than this doc's proposal). `14.03 Manufacturing`'s residual 82 rows and `14 Industry
+> sector`/NINTH's residual 26 rows were not re-traced to confirm they're fully explained by the
+> already-documented sub-causes vs. something new — if this thread is revisited, that's the
+> concrete next step (same style of trace this doc already models), not a fresh investigation.
+>
+> **Not verified in this pass:** did not identify the exact commit(s) responsible (several
+> candidates exist in `git log` for both touched files between 2026-07-21 and today; pinning the
+> exact commit wasn't necessary to confirm current behavior, so wasn't pursued further).
+>
+> **Follow-on (2026-07-23, later same day): the `14.03 Manufacturing`/NINTH residual (82 rows)
+> traced to a precise, clean cause — not noise, and connects to other work this session.** Broke
+> the 82 rows down by product: `07.06 Kerosene` (22, tiny-magnitude ~0.13-0.19 unit values right at
+> the tolerance boundary — likely genuine rounding noise, not a real bug) and `02.01,02.03-02.08
+> Coal products` (18 rows). The coal-products rows show an **exact, deterministic 8/7 ratio**
+> (`children_sum / parent_value == 1.142857...` to 6+ decimal places) across every economy checked
+> (`01_AUS`, `03_CDA`, `05_PRC`, `09_ROK`, `11_MEX`, `20_USA` all exactly `8/7`; `08_JPN`/`16_RUS`/
+> `19_THA` very close, small additional noise on top of the same base ratio) — a clean fraction
+> like this is a structural signature, not random error (the same kind of signal the `15 Transport
+> sector`/LEAP bug's exact `2.0` ratio was, elsewhere in this doc). The `02.01,02.03-02.08 Coal
+> products` combined label has exactly 7 real constituent ESTO products (`02.01`, `02.03`, `02.04`,
+> `02.05`, `02.06`, `02.07`, `02.08` — the same 7-product family traced extensively in
+> `docs/prompts/anchor_validator_fixes_findings_20260723.md`'s connected-components shared-frontier
+> fix, `c6772a9`) — an exact `8/7` overshoot is consistent with one of those 7 components being
+> counted twice in this validator's `children_sum` aggregation. **This is the same class of
+> asymmetric-registration issue the connected-components fix resolved in the anchor validator, but
+> manifesting in the different `_validate_common_esto_axis_recursive_sums` validator, which has no
+> equivalent grouping-aware logic.** Not fixed in this pass — flagged for whoever picks up
+> `docs/prompts/investigate_ninth_09_total_transformation_reconciliation.md`'s queued follow-on
+> task (porting a fix to this same validator for a different root cause, the unregistered-component
+> gap) to check whether one fix addresses both, since they're in the same function.
+
 Diagnosis-only. No code, workbook, or exception-set edits were made. No pipeline reruns.
 
 ## Which validation file was used
