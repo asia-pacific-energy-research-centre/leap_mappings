@@ -310,3 +310,36 @@ each internally plausible and each wrong in a specific, checkable way — every 
 querying the actual data/relationship files directly rather than reasoning from architecture alone.
 Neither wrong framing was reused or left uncorrected in this file; both are preserved above with
 explicit "this was wrong" markers rather than deleted, so the reasoning trail stays honest.
+
+## Fourth pass (2026-07-23, same day, after the fix landed): the 7 residual rows — 5 explained, same bug class, different file
+
+Traced the 7 rows left after the `2a438d9` fix. Checked each `abs_error` against raw ESTO's own
+`09.06 Gas processing plants` value (a **literal**, non-synthetic ESTO flow — not an EXPANDING
+rollup label) for the exact same `(economy, product)` pair:
+
+| economy | product | abs_error | raw ESTO `09.06 Gas processing plants` value | match? |
+|---|---|---|---|---|
+| `05_PRC` | `01.02 Other bituminous coal` | 1136.60 | -1136.60 | exact |
+| `05_PRC` | `02.03 Coke oven gas` | 227.68 | -227.68 | exact |
+| `05_PRC` | `07.10 Refinery gas (not liquefied)` | 32.12 | -32.12 | exact |
+| `05_PRC` | `07.16 Petroleum coke` | 43.33 | -43.33 | exact |
+| `05_PRC` | `08.03 Gas works gas` | 693.42 | 693.42 | exact |
+| `05_PRC` | `08.01 Natural gas` | 126.50 | 3846.83 | **no match** — different/additional cause |
+| `20_USA` | `01.05 Lignite` | 55.35 | -55.35 | exact |
+
+**5 of 7 explained exactly.** Confirmed via direct query: `results/common_esto/common_esto_comparison_data.csv`
+has **zero rows for `source_system == "ESTO"`** against `common_flow_label == "09.06 Gas
+processing plants"` (the base name, not `"09.06 Gas processing plants (including own use)"`), for
+*any* economy or year — and `energy_balance_relationships.csv` confirms **zero** ESTO relationship
+rows target this exact flow name at all, not even via ESTO's own identity self-mapping (which
+normally covers every raw ESTO flow trivially). This is the same bug shape as the just-fixed one —
+a real, additive ESTO flow orphaned from its own comparison data — but manifesting in a different
+file (`codebase/mapping_tools/build_energy_balance_relationships.py`'s relationship-building step,
+Stage 1, not `run_esto_exact_rows()`'s row-derivation step that was just fixed). Very likely the
+same root shape as `9b75628`'s "NON_EXPANDING rollup relabeling orphans the base literal flow"
+finding, but for the relationship-building layer specifically — **not confirmed**, just the most
+plausible hypothesis given the pattern match; would need its own trace before fixing.
+
+**Not investigated further in this pass** (context budget for this session was flagged as running
+low) — queued as its own follow-up rather than rushed. The `08.01 Natural gas`/`05_PRC` row (the
+one non-match) needs a separate trace; do not assume it shares this same cause.
