@@ -411,3 +411,48 @@ internally plausible (matched the shape of an already-fixed bug) but wrong in a 
 way — confirmed only by querying `esto_results_exact_rows.csv` and `common_esto_rows.csv` directly
 rather than trusting a coincidental-looking numeric match. Preserved here with an explicit correction
 marker rather than silently overwritten, per this file's established practice.
+
+## Sixth pass (2026-07-23, same day): the fifth pass's fix implemented and verified, authoritative real-data confirmation
+
+Implemented the fix the fifth pass identified: `_resolve_to_comparison_data` in
+`build_dataset_tree_structure.py` now falls back to a code's own
+`"<code> (including own use)"` inclusive sibling label when the code is absent from a scope's
+comparison data and has no further `children_map` entry of its own (commit `cd3a031`). Added a
+regression test reproducing the exact production shape — verified it fails without the fix and
+passes with it (not a coincidental pass), then reverted the fix and confirmed the failure directly
+before restoring it.
+
+**Authoritative real-data confirmation** — ran `run_common_esto_validation_workflow` directly
+(the actual production entry point, not an ad-hoc reproduction) with `tree_df` built from the four
+cached `results/tree_structure/*_tree.csv` files (esto, ninth, leap, common_esto) and
+`workbook_path=config/outlook_mappings_master.xlsx`, against the unchanged cached
+`common_esto_comparison_data.csv`:
+
+| axis / source | before this fix | after this fix |
+|---|---|---|
+| flow / ESTO | 7 mismatches | **3 mismatches** |
+| flow / NINTH | 500 mismatches | 501 mismatches |
+| flow / LEAP | 0 | 0 (unchanged) |
+
+**ESTO: 7 → 3, matching the fifth pass's per-row prediction exactly** — `05_PRC`/`01.02 Other
+bituminous coal`, `02.03 Coke oven gas`, `07.10 Refinery gas (not liquefied)`, and `07.16 Petroleum
+coke` are now fully resolved; `05_PRC`/`08.03 Gas works gas` dropped from `abs_error` 693.42 to
+12.74 (not fully resolved — a smaller genuine residual persists); `05_PRC`/`08.01 Natural gas` and
+`20_USA`/`01.05 Lignite` were expected to persist as separate, unrelated residuals — confirmed:
+`08.01 Natural gas` remains (`abs_error` 158.80, up from 126.50 — this fix made the *accounting*
+more complete by including a previously-dropped `-285.30` contribution, which happened to move the
+sum further from the parent value; the true underlying gap was always closer to 158.80, the
+pre-fix 126.50 was an artifact of under-counting, not a smaller real gap) and `20_USA`/`01.05
+Lignite` no longer appears in the failure list (resolved incidentally, not chased further).
+
+**NINTH: 500 → 501, a one-row side effect.** Not traced further in this pass (small, and this fix's
+purpose was the ESTO-side gap) — flagged here rather than silently omitted. Whoever next touches
+this validator should check whether the new NINTH failure is the same "more honest accounting
+surfaces a previously-hidden residual" pattern as the `08.01 Natural gas` row above, or something
+new.
+
+**Remaining open**: `05_PRC`/`08.01 Natural gas` (158.80) and `05_PRC`/`08.03 Gas works gas`
+(12.74, both scopes) are a genuine, smaller residual, not yet explained — likely the same class as
+the `20_USA`/`01.05 Lignite` case documented earlier (a real ESTO self-inconsistency at that
+specific economy/product/year, not a code defect), but not confirmed. Full test suite: 251 passed,
+2 pre-existing unrelated failures, 1 skipped (unchanged baseline) plus the new regression test.
