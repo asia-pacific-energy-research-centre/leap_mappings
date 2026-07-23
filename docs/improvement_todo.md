@@ -2,6 +2,8 @@
 
 This backlog covers improvements outside the deferred regression and verification work in `docs/QA plan.md`. Complete items only after reviewing current generated outputs; existing result files may be stale when mapping workbooks have uncommitted changes.
 
+**Triaged 2026-07-23** (previously last touched 2026-07-05, 18 days stale): checked each item against current repo state rather than trusting the descriptions below at face value. Summary: items 1 and 4 are unchanged (re-verified, not stale); item 2 is partially done; item 3 is substantially implemented by work since this was written; items 5-7 remain fully open; item 8's blocking condition has partially lifted. See each item's own status line for specifics.
+
 ## 1. Resolve current semantic mapping issues
 
 **Status:** In progress — data-relevance filtering implemented; semantic findings still require review
@@ -44,20 +46,20 @@ Do not prioritize the raw counts in `unmapped_nonzero_esto_pairs.csv`, `unmapped
 
 ## 2. Finish the canonical-workbook migration
 
-**Status:** Pending
+**Status:** Partially done (re-verified 2026-07-23) — `config/leap_mappings.xlsx` no longer exists in the repo, so that removal is complete. `master_config.xlsx` is still referenced in 4 files: `codebase/leap_mapping_refresh_workflow.py`, `codebase/mapping_tools/build_energy_balance_relationships.py`, `codebase/utilities/leap_results_dashboard_balance.py`, `codebase/utilities/master_config.py`. The remaining audit/removal work below is still open.
 
-- Complete the intended removal of `config/leap_mappings.xlsx`.
-- Audit remaining production call sites for `leap_mappings.xlsx`, `master_config.xlsx`, and legacy `leap_utilities` fallbacks.
+- ~~Complete the intended removal of `config/leap_mappings.xlsx`.~~ Done — file no longer exists.
+- Audit remaining production call sites for `master_config.xlsx` and legacy `leap_utilities` fallbacks (the 4 files above).
 - Make canonical workflows use `config/outlook_mappings_master.xlsx` explicitly.
 - Fail with a clear message when a required canonical sheet or column is absent rather than silently using legacy data.
 - Keep deliberate legacy compatibility isolated and documented.
 
 ## 3. Complete hierarchy value validation
 
-**Status:** Pending
+**Status:** Substantially implemented (re-verified 2026-07-23) — `codebase/mapping_tools/build_dataset_tree_structure.py` now has `validate_ninth_recursive_sums`, `validate_ninth_sector_recursive_sums`, `validate_ninth_fuel_recursive_sums`, `validate_leap_recursive_sums`, and `validate_common_esto_recursive_sums`; the anchor-validator system (`codebase/mapping_tools/source_parent_anchor_validation.py`, extensively worked on 2026-07-22/23, see `docs/prompts/anchor_validator_fixes_findings_20260722.md`/`_20260723.md`) implements exactly the "mapped-ESTO-subtotal coverage check" bullet below (parent-subtotal vs. mapped-leaf-descendant comparison, per raw ESTO/NINTH/LEAP parent). Not independently re-verified against every remaining sub-bullet below (frontier metadata format, the single-vs-several-frontiers decision) — treat those specific sub-items as still open pending a closer check, not the whole item as done.
 
-- Add recursive 9th Outlook sector and fuel value validation.
-- Add recursive LEAP branch value validation where result data are available.
+- Add recursive 9th Outlook sector and fuel value validation. **Done.**
+- Add recursive LEAP branch value validation where result data are available. **Done** (LEAP result data now also available for 3 economies as of item 8 below, not just the single economy this was likely written against).
 - Preserve the distinction between source-defined hierarchy and Common ESTO-only extensions.
 - Report parent/detail overlaps that could cause double counting.
 - Document any hierarchy edges whose additive meaning requires human confirmation.
@@ -69,7 +71,7 @@ Do not prioritize the raw counts in `unmapped_nonzero_esto_pairs.csv`, `unmapped
 
 ## 4. Resolve the ESTO definition-authority working set
 
-**Status:** Pending human review
+**Status:** Pending human review — re-verified 2026-07-23, counts are unchanged from when this was written: `review_queue` still has exactly 4 rows, `product_leaks` still has exactly 109 rows. Genuinely untouched, not stale.
 
 Work through `config/esto_external_definition_authority_working_set.xlsx`:
 
@@ -81,7 +83,7 @@ Work through `config/esto_external_definition_authority_working_set.xlsx`:
 
 ## 5. Improve researcher mapping maintenance
 
-**Status:** Proposed
+**Status:** Proposed (re-verified 2026-07-23 — no compact review workbook found anywhere in the repo; still fully open)
 
 Generate a compact review workbook containing actionable findings rather than raw diagnostic volumes. Include:
 
@@ -98,7 +100,7 @@ The workbook should support review, not automatically approve or rewrite mapping
 
 ## 6. Make the existing orchestration workflow notebook-safe
 
-**Status:** Proposed
+**Status:** Proposed (re-verified 2026-07-23 — `codebase/run_mapping_pipeline.py` still uses `argparse`/CLI-only entry; still fully open)
 
 Refactor `codebase/run_mapping_pipeline.py` into a slim Jupyter-friendly workflow with top-level toggles for:
 
@@ -112,7 +114,7 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Rep
 
 ## 7. Improve explanatory documentation
 
-**Status:** Proposed
+**Status:** Proposed (re-verified 2026-07-23 — no glossary or pipeline diagram found in `docs/mappings_system.md`; still fully open). Note: a mermaid-diagram design doc is separately queued for one specific diagnostics flow (the anchor-validator flag-propagation design task) — that could potentially serve as a template/starting point for the "compact pipeline diagram" bullet below once it exists, but it's scoped narrower than this item asks for.
 
 - Add a compact pipeline diagram.
 - Add a worked example showing how a coarse source category forces a common rollup or graph partition.
@@ -123,7 +125,7 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Rep
 
 ## 8. Check the LEAP side of no-data mapping rows once full LEAP output sheets exist
 
-**Status:** Proposed
+**Status:** Partially unblocked (2026-07-23) — `results/mapping_relationships/raw_leap_results.csv` now contains real LEAP output data for 3 economies (`20_USA`, `12_NZ`, `02_BD`), not just one, after `codebase/run_mapping_pipeline.py`'s `run_leap_parse()` was generalized to auto-discover any economy with an export directory (see `codebase/utilities/leap_balance_export_resolver.py`'s `discover_available_economies`). This is still not "full" in the sense of all 21 APEC economies, so the blocking condition below has only partially lifted — but the assumption "the LEAP side always has no data" is no longer true for these 3 economies specifically, so the bullets below may now be partially actionable rather than fully blocked. Worth a fresh look rather than treating as still fully Proposed.
 
 `codebase/mapping_tools/build_no_data_mapping_rows.py` flags `leap_combined_esto` and `leap_combined_ninth` rows whose non-LEAP side (ESTO or 9th Outlook) has no non-zero data anywhere. It currently assumes the LEAP side always has no data, because we do not yet have full LEAP output sheets in a form comparable to the ESTO/9th source tables. Once those output sheets are available:
 
