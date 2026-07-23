@@ -166,6 +166,58 @@ def _build_raw_pair_values(source_df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _build_source_internal_bad_pairs(
+    raw_pair_values: pd.DataFrame,
+    other_children: dict[str, list[str]],
+    axis_col: str,
+    other_col: str,
+    tolerance: float,
+) -> pd.DataFrame:
+    """Return (axis_col, other_col, economy, scenario, year) rows where a raw
+    source node's own reported value disagrees with the sum of its own
+    other-axis children, for the exact same validation-axis code.
+
+    This is a pure self-consistency check on one source system's own raw
+    file -- no ESTO mapping, no Common ESTO structure, no other source
+    system involved. It catches cases like NINTH's own ``09_06_gas_
+    processing_plants`` sector reporting ``08_02_lng = 0`` while its own
+    ``09_06_02_liquefaction_regasification_plants`` sub-sector child reports
+    the real ``08_02_lng = +4218.81`` -- an internal rollup defect in the raw
+    file itself: the same physical quantity, reported two different ways at
+    two depths of the SAME source's own tree, that no mapping or tree fix in
+    this repo can reconcile. Rows whose frontier draws on such a pair are
+    not evidence of a genuine mapping problem; see the caller for how this
+    reclassifies their status.
+    """
+    if not other_children:
+        return pd.DataFrame(columns=[axis_col, other_col, "economy", "scenario", "year"])
+    child_to_parent = {
+        child: parent for parent, children in other_children.items() for child in children
+    }
+    rpv = raw_pair_values.assign(_other_parent=raw_pair_values[other_col].map(child_to_parent))
+    children_side = rpv[rpv["_other_parent"].notna()]
+    if children_side.empty:
+        return pd.DataFrame(columns=[axis_col, other_col, "economy", "scenario", "year"])
+    children_sum = (
+        children_side.groupby(
+            [axis_col, "_other_parent", "economy", "scenario", "year"], dropna=False, as_index=False,
+        )["value"]
+        .sum()
+        .rename(columns={"_other_parent": other_col, "value": "_children_sum"})
+    )
+    own_value = rpv[[axis_col, other_col, "economy", "scenario", "year", "value"]].rename(
+        columns={"value": "_own_value"}
+    )
+    compare = own_value.merge(
+        children_sum, on=[axis_col, other_col, "economy", "scenario", "year"], how="inner",
+    )
+    if compare.empty:
+        return pd.DataFrame(columns=[axis_col, other_col, "economy", "scenario", "year"])
+    abs_error = (compare["_own_value"] - compare["_children_sum"]).abs()
+    bad_mask = abs_error > tolerance * compare["_own_value"].abs().clip(lower=1.0)
+    return compare.loc[bad_mask, [axis_col, other_col, "economy", "scenario", "year"]].drop_duplicates()
+
+
 def _mapped_descendants(
     code: str,
     other_axis_value: str,
@@ -423,6 +475,20 @@ def validate_source_parent_anchors(
                 parent_index,
             )
             raw_pair_values = _build_raw_pair_values(axis_source)
+            other_children = _children_map(canonical_tree, dataset, other_tree_axis)
+            # Checks whether an OTHER-axis node (e.g. a sector) reconciles
+            # with its own other-axis children, for a fixed validation-axis
+            # code. This is deliberately one-directional: checking whether a
+            # VALIDATION-axis node reconciles with its own validation-axis
+            # children would just re-derive the main parent-vs-frontier
+            # check this loop already computes below, and would reclassify
+            # every genuine mismatch as "source-internal" instead of
+            # "failed". The other-axis direction is genuinely independent
+            # information -- a structurally different tree -- so it can
+            # corroborate without being circular.
+            source_internal_bad_pairs = _build_source_internal_bad_pairs(
+                raw_pair_values, other_children, axis_col, other_col, tolerance,
+            )
             mapped_pairs = set(zip(system_mappings["source_flow"].astype(str), system_mappings["source_product"].astype(str)))
             # Raw source hierarchies (notably Ninth) often report the same
             # numeric total as literal separate rows at multiple depths at
@@ -531,6 +597,13 @@ def validate_source_parent_anchors(
             # can be added into frontier_sum below instead of the resolved
             # component being silently dropped.
             raw_fallback_rows: list[tuple[str, str, str, str, str]] = []
+            # Every resolved frontier leaf, regardless of how its value gets
+            # fetched, checked below against source_internal_bad_pairs -- a
+            # row whose frontier touches a pair where this source's OWN
+            # other-axis rollup contradicts its own raw children (see
+            # _build_source_internal_bad_pairs) is not evidence of a mapping
+            # problem; it inherits that status instead of "failed".
+            frontier_leaf_rows: list[tuple[str, str, str, str]] = []
             for pcode, oav in agg[["parent_code", "other_axis_value"]].drop_duplicates().itertuples(index=False):
                 oas = str(oav)
                 fk = (pcode, oas)
@@ -554,6 +627,9 @@ def validate_source_parent_anchors(
                 frontier_components, missing_children = frontier_entry
                 missing_join_map[fk] = "|".join(sorted(set(missing_children)))
                 has_missing_map[fk] = bool(missing_children)
+                if not source_internal_bad_pairs.empty:
+                    for sf, sp in frontier_components[["source_flow", "source_product"]].drop_duplicates().itertuples(index=False):
+                        frontier_leaf_rows.append((pcode, oas, sf, sp))
                 for scope in applicable_scopes:
                     ids_key = (pcode, oas, scope)
                     cached = frontier_ids_cache.get(ids_key)
@@ -722,6 +798,48 @@ def validate_source_parent_anchors(
                 "raw_fallback_negative_sum", "raw_fallback_row_count",
             ])
 
+            # --- Source-internal rollup inconsistency -------------------------
+            # A row whose frontier touches a pair where this source's OWN
+            # other-axis rollup contradicts its own raw children (e.g. NINTH's
+            # own sector-level "08_02_lng" reads 0 while its own more granular
+            # sub-sector reports the real +4218.81) is not evidence of a
+            # mapping problem -- no tree/mapping change in this repo can fix a
+            # source file disagreeing with itself. Flag it distinctly instead
+            # of "failed" below.
+            # Deliberately checks only the frontier's LEAF components, not
+            # this row's own (parent_code, other_axis_value) pair: the row's
+            # own pair is exactly what the main parent-vs-frontier check
+            # below already evaluates, so treating its own mismatch as
+            # "source-internal" would be circular and could silently
+            # swallow a genuine, single-sided error in the parent's own
+            # declared value (see
+            # test_leaf_remap_onto_ancestor_with_own_row_still_fails_on_real_mismatch,
+            # which pins exactly this: a corrupted parent value must still
+            # surface as a real failure, not get waved off as "the source
+            # disagrees with itself").
+            bad_keys: set[tuple[str, str, str, str, str]] = set()
+            if frontier_leaf_rows and not source_internal_bad_pairs.empty:
+                leaf_df = pd.DataFrame(
+                    frontier_leaf_rows, columns=["parent_code", "_oas", "source_flow", "source_product"],
+                ).drop_duplicates()
+                leaf_exploded = base[
+                    ["parent_code", "_oas", "economy", "scenario", "year"]
+                ].drop_duplicates().merge(leaf_df, on=["parent_code", "_oas"], how="inner")
+                leaf_hits = leaf_exploded.merge(
+                    source_internal_bad_pairs,
+                    on=["source_flow", "source_product", "economy", "scenario", "year"],
+                    how="inner",
+                )
+                bad_keys.update(
+                    zip(leaf_hits["parent_code"], leaf_hits["_oas"], leaf_hits["economy"], leaf_hits["scenario"], leaf_hits["year"])
+                )
+            base["_source_internal_inconsistent"] = [
+                (pc, oa, ec, sc, yr) in bad_keys
+                for pc, oa, ec, sc, yr in zip(
+                    base["parent_code"], base["_oas"], base["economy"], base["scenario"], base["year"],
+                )
+            ]
+
             # --- Shared-frontier group combination --------------------------
             # Multiple raw source products can legitimately map onto the SAME
             # Common ESTO aggregate row for a given comparison scope (e.g. six
@@ -851,7 +969,14 @@ def validate_source_parent_anchors(
             incomplete_gap = nonzero_missing & tol_exceeded
             parent_child_inconsistency = zero_only_missing & tol_exceeded
             zero_parent_without_rows = rows_empty & ~tol_exceeded
+            # A source-internal rollup contradiction takes priority over
+            # every other outcome: if this same source's own data disagrees
+            # with itself at a pair the frontier depends on, no comparison
+            # this validator computes from it can be trusted either way,
+            # pass or fail -- see _build_source_internal_bad_pairs.
+            source_internal_inconsistent = base["_source_internal_inconsistent"].to_numpy()
             conditions = [
+                source_internal_inconsistent,
                 fids_empty,
                 zero_parent_without_rows,
                 incomplete_reconciles & nonzero_missing,
@@ -863,17 +988,19 @@ def validate_source_parent_anchors(
             ]
             base["status"] = np.select(
                 conditions,
-                ["skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
+                ["skipped", "skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
                 default="passed",
             )
             base["reason"] = np.select(
                 conditions,
-                ["no_anchorable_common_esto_boundary", "no_observed_source_frontier",
+                ["source_internal_recursive_sum_inconsistency",
+                 "no_anchorable_common_esto_boundary", "no_observed_source_frontier",
                  "within_tolerance_incomplete_frontier", "within_tolerance_zero_only_missing_children",
                  "parent_child_source_inconsistency", "incomplete_frontier",
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
+            base = base.drop(columns=["_source_internal_inconsistent"])
             if skip_rows.any():
                 # Non-primary members of a shared-frontier group: the primary
                 # row above already carries the combined comparison, so these

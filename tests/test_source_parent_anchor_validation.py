@@ -82,6 +82,61 @@ def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_cover
     assert row["frontier_row_count"] == 2
 
 
+def test_frontier_leaf_with_broken_other_axis_rollup_is_source_internal_not_failed() -> None:
+    """A frontier leaf whose OTHER axis rollup contradicts itself is flagged
+    distinctly, not "failed" -- mirrors the real NINTH case: sector
+    "09_06_gas_processing_plants" declares its own "08_02_lng" subfuel as 0,
+    while its own more granular sub-sector "09_06_02_liquefaction" reports
+    the real +4218.81 for the same subfuel. No tree or mapping change in
+    this repo can reconcile a raw file disagreeing with itself, so the
+    "08_gas" product-axis parent must not report an ordinary "failed" here.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "Sector", "parent_code": ""},
+        {"dataset": "ninth", "axis": "sector", "code": "SubSector", "parent_code": "Sector"},
+        {"dataset": "ninth", "axis": "fuel", "code": "08_gas", "parent_code": ""},
+        {"dataset": "ninth", "axis": "fuel", "code": "08_01_natural_gas", "parent_code": "08_gas"},
+        {"dataset": "ninth", "axis": "fuel", "code": "08_02_lng", "parent_code": "08_gas"},
+    ])
+    source = pd.DataFrame([
+        # Sector's own declared subfuel breakdown: natural_gas correctly
+        # rolled up, LNG wrongly left at 0 (should be +4218.81, per SubSector
+        # below), and the parent "x" total (08_gas) reflects the TRUE net.
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_gas", "value": -0.0001},
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_01_natural_gas", "value": -4218.85},
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "Sector", "source_product": "08_02_lng", "value": 0.0},
+        # SubSector reveals the real LNG figure that cancels natural_gas.
+        {"source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023,
+         "source_flow": "SubSector", "source_product": "08_02_lng", "value": 4218.81},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "NINTH", "source_flow": "Sector", "source_product": "08_01_natural_gas",
+         "component_esto_flow": "F", "component_esto_product": "01.01"},
+        {"source_system": "NINTH", "source_flow": "Sector", "source_product": "08_02_lng",
+         "component_esto_flow": "F", "component_esto_product": "01.02"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "F", "component_esto_product": "01.01", "common_row_id": "c1"},
+        {"comparison_scope": "esto_leap_ninth", "component_esto_flow": "F", "component_esto_product": "01.02", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023, "common_row_id": "c1", "value": -4218.85},
+        {"comparison_scope": "esto_leap_ninth", "source_system": "NINTH", "economy": "E", "scenario": "reference", "year": 2023, "common_row_id": "c2", "value": 0.0},
+    ])
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    product_rows = detail[detail["validation_axis"] == "product"]
+    row = product_rows[
+        (product_rows["parent_code"] == "08_gas") & (product_rows["other_axis_value"] == "Sector")
+    ].iloc[0]
+
+    assert row["status"] == "skipped"
+    assert row["reason"] == "source_internal_recursive_sum_inconsistency"
+
+
 def test_registered_but_dataless_child_falls_back_to_raw_value() -> None:
     """A common row declared for a component still needs the raw fallback
     when THIS source system's own comparison-data export has zero rows for
