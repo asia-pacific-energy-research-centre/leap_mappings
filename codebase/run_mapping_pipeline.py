@@ -744,7 +744,13 @@ def run_stage_3() -> None:
                     for label, mode in load_rollup_mode_labels(WORKBOOK_PATH).items()
                     if mode in {NON_EXPANDING_MODE, DETACHED_MODE}
                 }
-            except Exception:
+            except Exception as exc:
+                print(
+                    f"  WARNING: failed to load non-expanding rollup labels for anchor "
+                    f"validation ({type(exc).__name__}: {exc}); anchor_exclude_parents will "
+                    f"be empty, so NON_EXPANDING/DETACHED rollup subtotals will be validated "
+                    f"as ordinary additive parents and may show spurious failures."
+                )
                 anchor_exclude_parents = set()
 
             # LEAP interim branches (e.g. "CHP interim") are an alternative
@@ -766,8 +772,13 @@ def run_stage_3() -> None:
                     for branch in fallback_rules.get("interim_branch", [])
                     if str(branch).strip()
                 }
-            except Exception:
-                pass
+            except Exception as exc:
+                print(
+                    f"  WARNING: failed to load LEAP interim-branch fallback rules for anchor "
+                    f"validation ({type(exc).__name__}: {exc}); interim branches (e.g. \"CHP "
+                    f"interim\") will not be excluded from ordinary additive-parent validation "
+                    f"and may show spurious failures."
+                )
 
             anchor_t0 = time.perf_counter()
             anchor_detail = validate_source_parent_anchors(
