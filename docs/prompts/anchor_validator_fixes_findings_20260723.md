@@ -479,14 +479,26 @@ Ordered roughly by how well-understood each is (best-understood first):
    detection alone, in every form tried across four sessions now, has not
    produced a safe result.
 
-4. **8 "ambiguous" candidate mapping pairs** surfaced (then retracted along
-   with the other 29) by the missing-mapping-gap detector script referenced
-   below — these had real NINTH evidence but the sector or fuel maps to more
-   than one `esto_flow`/`esto_product` elsewhere in `ninth_pairs_to_esto_
-   pairs`, so the detector correctly declined to guess. If the mapping-gap
-   angle is revisited, rerun the detector against a **freshly regenerated**
-   correct-baseline result set (see caveat below) and hand the 8 ambiguous
-   ones to a human for judgment; do not auto-resolve them.
+4. **8 "ambiguous" candidate mapping pairs** — **resolved (follow-on session,
+   same day)**. Rebuilt the missing-mapping-gap detector from scratch and
+   reran it against the corrected baseline (post item-2's connected-
+   components fix: 760 failed / 55,636 passed / 259,464 skipped). Result:
+   only **1** real candidate remained, not 8 ambiguous ones — the earlier "8
+   ambiguous, 29 total" figures were themselves downstream of the pre-fix
+   inflated data and mostly evaporated once the shared-frontier-group bug was
+   corrected. The one candidate was unambiguous, not ambiguous: NINTH's
+   `14_industry_sector` sector reports real nonzero `08_gas_unallocated`
+   evidence (confirmed for economies `02_BD`, `17_SGP`, and others) with no
+   row in `ninth_pairs_to_esto_pairs`; both `esto_flow` ("14 Industry
+   sector") and `esto_product` ("08.99 Gas nonspecified") inferred
+   unambiguously from how the same `ninth_sector`/`ninth_fuel` already map
+   elsewhere. Handed to the user as a CSV row (matching the `ninth_pairs_to_
+   esto_pairs` sheet's exact columns, including inferred `ninth_pair_is_
+   subtotal`/`esto_pair_is_subtotal = True/True` to match the pattern used by
+   other parent-level rollup sectors mapped to this fuel) rather than
+   auto-applied; the user added it to the workbook themselves and it is now
+   committed (`9b5e31d`, `master`). Zero ambiguous candidates remained to
+   punt to a human.
 
 ## Reusable tooling from this session (not committed — scratchpad only)
 
