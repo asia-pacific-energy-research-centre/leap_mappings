@@ -46,6 +46,39 @@
 > `docs/prompts/investigate_ninth_09_total_transformation_reconciliation.md`'s queued follow-on
 > task (porting a fix to this same validator for a different root cause, the unregistered-component
 > gap) to check whether one fix addresses both, since they're in the same function.
+>
+> **Confirmed (2026-07-23, later same day) — this is a distinct root cause from the nested-rollup
+> gap, and needs its own, larger fix, not a shared one.** Traced precisely against
+> `common_esto_rows.csv` and `common_esto_comparison_data.csv` for `01_AUS`/2023/`14.03
+> Manufacturing`/`02.01,02.03-02.08 Coal products`/NINTH: **exactly 7 distinct `common_row_id`s**
+> (one per real constituent product `02.01`, `02.03`, `02.04`, `02.05`, `02.06`, `02.07`, `02.08`,
+> confirmed via direct query of `common_esto_rows.csv`) all map onto the identical
+> `(common_flow_label, common_product_label)` pair, and NINTH reports the **exact same value**
+> (`2.387014`) for all 7 — NINTH's own source data doesn't distinguish these 7 products, so the one
+> real figure gets duplicated across every ambiguous target rather than split. The validator's
+> `children_sum`/`parent_value` computation (`_validate_common_esto_axis_recursive_sums`) groups
+> raw comparison-data rows by label and **sums them naively** — summing 7 identical-valued rows
+> multiplies the true single value by 7×, which is exactly the `parent_value` side of the ratio
+> (`7 × 2.387014 = 16.709098`, matching `16.709099` to 6dp). The `children_sum` side picks up an
+> 8th identical-valued row from a different underlying component (`02.02 Gas coke`) that happens to
+> share the same duplicated figure, giving `8 × 2.387014 = 19.096112` (matching `19.096113`) — hence
+> the exact `8/7` ratio.
+>
+> **This is NOT the same fix as the nested-rollup-descent gap** (see
+> `docs/prompts/investigate_ninth_09_total_transformation_reconciliation.md`'s "Fifth pass", fixed
+> in `codebase/mapping_tools/build_dataset_tree_structure.py`'s `_resolve_to_comparison_data`). That
+> fix corrects which labels get *included* in a sum. This is a different problem: the same
+> underlying value is legitimately registered against multiple `common_row_id`s (a genuine
+> many-target ambiguity from NINTH's own source granularity, structurally identical to what the
+> anchor validator's connected-components fix, `c6772a9`, solves), and this validator has no
+> mechanism to recognize "these N rows are the same shared value, count once" the way the anchor
+> validator now does. Porting that grouping logic here would need new plumbing (this validator
+> doesn't currently load per-row component/lineage data at all, only aggregated label values) and a
+> dedicated design pass, not a small patch — **not implemented in this session**, root cause is
+> now confirmed with concrete evidence rather than a hypothesis. Recommended next step for whoever
+> picks this up: extend `_validate_common_esto_axis_recursive_sums` to accept a component-lineage
+> lookup (e.g. from `common_esto_row_components.csv`) and deduplicate by shared raw source
+> before summing, mirroring the anchor validator's connected-components grouping.
 
 Diagnosis-only. No code, workbook, or exception-set edits were made. No pipeline reruns.
 

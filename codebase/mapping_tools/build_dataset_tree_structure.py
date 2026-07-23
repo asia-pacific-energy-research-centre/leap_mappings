@@ -1877,6 +1877,13 @@ def _resolve_to_comparison_data(
     set) are replaced by their recursively resolved descendants. Codes absent
     with no tree children are dropped silently.
 
+    A NON_EXPANDING/DETACHED rollup re-parents a base flow's real descendants
+    under its inclusive ``"<code> (including own use)"`` label rather than the
+    base code itself (see ``_common_esto_validation_children_map``). A code
+    resolved this way still means "the real value for the base code", so this
+    falls back to that inclusive sibling label -- both as a direct data hit
+    and as an alternate key into ``children_map`` -- before giving up on it.
+
     This lets validation of a parent correctly sum through intermediate
     subtotals that were not included in the comparison dataset.
     """
@@ -1888,6 +1895,16 @@ def _resolve_to_comparison_data(
             resolved.extend(
                 _resolve_to_comparison_data(children_map[code], data_codes, children_map)
             )
+        else:
+            inclusive_variant = f"{code} (including own use)"
+            if inclusive_variant in data_codes:
+                resolved.append(inclusive_variant)
+            elif inclusive_variant in children_map:
+                resolved.extend(
+                    _resolve_to_comparison_data(
+                        children_map[inclusive_variant], data_codes, children_map
+                    )
+                )
     return resolved
 
 

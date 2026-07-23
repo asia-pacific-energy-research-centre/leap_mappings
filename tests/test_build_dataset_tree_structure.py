@@ -554,6 +554,57 @@ def test_common_flow_validation_expands_zero_base_rollup_placeholder(tmp_path: P
     assert total_check.empty
 
 
+def test_common_flow_validation_resolves_second_level_rollup_leaf_via_inclusive_sibling(tmp_path: Path) -> None:
+    """A second-level rollup leaf whose real value lives only under its own
+    inclusive sibling label must still be summed into the parent total --
+    not silently dropped -- when another sibling child resolves directly.
+
+    Reproduces the real ESTO ``09.06 Gas processing plants`` residual
+    exactly: ``09.06.01 Gas works plants`` (a leaf, no further tree children
+    of its own) is registered in the tree only as a child of
+    ``09.06 Gas processing plants (including own use)`` -- the prefix-based
+    edge-restoration in ``_common_esto_validation_children_map`` correctly
+    re-parents it under the bare ``09.06 Gas processing plants`` too, but its
+    own real value for this comparison scope is only present in the data
+    under its *own* inclusive sibling label,
+    ``09.06.01 Gas works plants (including own use)``, not the bare leaf
+    code. Without falling back to that sibling, this leaf is silently
+    dropped (it has no further children map entry, so it isn't a leaf
+    "expand into descendants" case), understating children_sum and
+    producing a spurious mismatch on the real parent,
+    ``09 Total transformation sector``, exactly as seen in production.
+    """
+    comparison_path = tmp_path / "comparison.csv"
+    tree_rows = [
+        {"code": "09 Total transformation sector", "parent_code": ""},
+        {"code": "09.06 Gas processing plants", "parent_code": "09 Total transformation sector"},
+        {"code": "09.01-09.02 Power sector", "parent_code": "09 Total transformation sector"},
+        {"code": "09.06 Gas processing plants (including own use)", "parent_code": ""},
+        {"code": "09.06.01 Gas works plants", "parent_code": "09.06 Gas processing plants (including own use)"},
+        {"code": "09.06.01 Gas works plants (including own use)", "parent_code": "09.06 Gas processing plants (including own use)"},
+    ]
+    tree = pd.DataFrame(
+        [{"dataset": d, "axis": "flow", **row} for d in ("esto", "common_esto") for row in tree_rows]
+    )
+    pd.DataFrame([
+        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09 Total transformation sector", "common_product_label": "07.16 Petroleum coke", "value": 860},
+        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09.01-09.02 Power sector", "common_product_label": "07.16 Petroleum coke", "value": 903},
+        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09.06.01 Gas works plants (including own use)", "common_product_label": "07.16 Petroleum coke", "value": -43},
+    ]).to_csv(comparison_path, index=False)
+
+    result = validate_common_esto_recursive_sums(
+        tree,
+        comparison_path,
+        leap_var_base_year=2022,
+    )
+
+    # The default (failures-only) view must show no mismatch: the leaf's
+    # real value is folded in via its own inclusive sibling, so parent_value
+    # (860) equals the true children_sum (903 + -43 = 860).
+    total_check = result[result["parent_code"] == "09 Total transformation sector"]
+    assert total_check.empty
+
+
 # Minimal columns used by the lookup for an empty LEAP frame.
 LEAP_LOOKUP_COLUMNS = [
     "source_issue_id", "source_system", "economy", "scenario", "year",
