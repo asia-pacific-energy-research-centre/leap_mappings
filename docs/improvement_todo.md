@@ -133,3 +133,31 @@ Reuse the existing stage functions. Do not duplicate their processing logic. Rep
 - Replace the `leap_side_has_data` placeholder (`pd.NA`) with a real boolean.
 - Restrict `leap_combined_esto`/`leap_combined_ninth` flags to rows where **both** sides have no data, matching the `ninth_pairs_to_esto_pairs` logic already in place.
 
+## 9. Clean up `results/` clutter (see `docs/results_folder_cleanup_candidates.md`)
+
+**Status:** Candidate list documented 2026-07-23, not yet actioned (except the purely ad hoc log
+files noted below)
+
+A docs-only navigation pass surfaced several confirmed-orphaned and likely-duplicate
+files/folders under `results/` and `config/archive/` — see
+`docs/results_folder_cleanup_candidates.md` for the full list and reasoning. Ad hoc manual-run
+log files (timestamped pipeline logs, `.pid`/`.ps1` files, redirected stdout/stderr) have already
+been moved into gitignored `_archive_2026-07-23/` subfolders (see `docs/archive_log.md`) since
+they're unambiguous scratch. Everything diagnostic-CSV-shaped (near-duplicate `qa_`/unfiltered
+pairs, the stale top-level `results/missing_mapped_esto_rows/` duplicate, the
+`inverted_conservation.building/` duplicate, `results/tree_structure/anchor_diagnostics/`, the
+`results/maintenance/*_copy*.csv` files) is deliberately left undocumented-as-acted-on here,
+since it's in scope for a separate diagnostic-file-consolidation design task being planned
+alongside the anchor-validator data-reliability-flag work. Before acting on the rest: confirm
+each item is genuinely regenerable or superseded, and prefer moving to a dated quarantine
+location over hard-deleting, since `results/` has no git history to fall back on.
+
+## 10. `AGENTS.md` references a script that no longer exists
+
+**Status:** New finding (2026-07-23), not yet fixed
+
+`AGENTS.md` names `codebase/transformation_analysis_workflow.py` as an existing script; it does
+not exist under `codebase/` at any depth in this checkout. Left as-is here since `AGENTS.md` is a
+human-maintained instructions file, not touched as part of this docs-hygiene pass — worth
+correcting next time `AGENTS.md` is edited.
+

@@ -211,6 +211,8 @@ data/*
 !data/**/README.md
 !data/**/.gitkeep
 outputs/
-results/
+results/**
 !outputs/.gitkeep
 !results/.gitkeep
+!results/**/
+!results/**/README.md

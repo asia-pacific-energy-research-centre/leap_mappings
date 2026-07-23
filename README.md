@@ -99,6 +99,28 @@ unless a script is explicitly documented as legacy.
 
 Run notebook-style from the repo root, following `AGENTS.md`.
 
+## Finding Your Way Around `results/`
+
+The pipeline writes a lot into `results/`. Start with `results/README.md` — it points to the
+handful of primary outputs and links to a short guide for each subfolder. See
+`docs/results_folder_cleanup_candidates.md` for known clutter/orphaned files flagged for future
+cleanup (not yet actioned), and `docs/repo_data_slimdown_plan.md` for which `config/`/`data/`
+files are actually required to run the pipeline.
+
+## Finding Your Way Around `codebase/`
+
+`codebase/` mixes the live pipeline with standalone maintenance tools, a legacy refresh
+workflow, dashboard-prototype code that (per `AGENTS.md`) belongs in the sibling
+`leap_dashboard` repo instead, and at least one currently-broken script. See
+`docs/workflow_inventory.md` for which is which before assuming a file is part of the active
+pipeline just because it's under `codebase/`.
+
+## Finding Your Way Around the Rest of the Repo
+
+`config/README.md` and `data/README.md` explain what's required to run the pipeline vs. legacy,
+right there in each folder. `docs/README.md` indexes every file under `docs/` so you don't have
+to open all of them to find the one you need.
+
 ## Suggested Improvements To The Guide
 
 - Add a small diagram of the pipeline: editable sheets -> relationships -> common ESTO rows -> comparison data -> dashboard.

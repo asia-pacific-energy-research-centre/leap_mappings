@@ -384,3 +384,22 @@ Also report coverage, dropped rows, source-versus-output totals, hierarchy consi
 - **Totals:** mapped-universe preservation passed with maximum absolute difference `9.313225746154785e-10` PJ.
 - **Hierarchy consistency:** rerunning Common recursive validation after restoring total-labelled rows exposed 4,677 mismatches: 4,672 Ninth product checks (`15 Solid biomass` and `16 Others`) and 5 LEAP flow checks (`09 Total transformation sector`). Industry produced no mismatches; the USA Reference 2060 natural-gas Manufacturing parent differed from its 11 direct children by only `1.82e-12` PJ. The validation still does not report its total eligible-check count.
 - **Mapping cardinality and semantics:** Stage 3 warned of 22 product-axis and 27 flow-axis overlapping Common groups. These remain review findings; total preservation alone does not establish that the overlaps are semantically correct or additive-safe.
+
+## MAP-011: Ignored sectors/fuels are excluded via the exception set, not chased as mapping gaps
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Mapping / QA scope
+**Affected areas:** `config/mapping_issue_exception_sets.xlsx`; ESTO and 9th Outlook source data; the sibling `leap_initialisation` repo (shares the same exception set for its own equivalent processes)
+
+### Situation
+
+ESTO and 9th Outlook source data contain sectors/fuels that are deliberately not modelled (not represented in LEAP or the comparison scope at all). Left unhandled, these show up as unmapped-nonzero findings and get chased as if they were missing mappings, when in fact there is nothing to map them to.
+
+### Current rule
+
+Record these sectors/fuels in `config/mapping_issue_exception_sets.xlsx` so QA and maintenance tooling can exclude them from unmapped/coverage findings, rather than treating every appearance as a gap to close. Other processes — in this repo or in the sibling `leap_initialisation` repo — that need to recognise the same "not modelled, ignore" scope should also read from this exception set instead of re-deriving their own list.
+
+### History
+
+- 2026-07-22 (approx.): Rule captured in a standalone working note (`prompts 5-7.md`, since archived to `docs/archive/`) during the same session that reviewed the mapping-issue exception workflow; folded into this decision log on 2026-07-23 so it doesn't rely on a loose root-level file for discoverability.
