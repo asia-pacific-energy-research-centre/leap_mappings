@@ -24,6 +24,28 @@
 > **Not verified in this pass:** did not identify the exact commit(s) responsible (several
 > candidates exist in `git log` for both touched files between 2026-07-21 and today; pinning the
 > exact commit wasn't necessary to confirm current behavior, so wasn't pursued further).
+>
+> **Follow-on (2026-07-23, later same day): the `14.03 Manufacturing`/NINTH residual (82 rows)
+> traced to a precise, clean cause — not noise, and connects to other work this session.** Broke
+> the 82 rows down by product: `07.06 Kerosene` (22, tiny-magnitude ~0.13-0.19 unit values right at
+> the tolerance boundary — likely genuine rounding noise, not a real bug) and `02.01,02.03-02.08
+> Coal products` (18 rows). The coal-products rows show an **exact, deterministic 8/7 ratio**
+> (`children_sum / parent_value == 1.142857...` to 6+ decimal places) across every economy checked
+> (`01_AUS`, `03_CDA`, `05_PRC`, `09_ROK`, `11_MEX`, `20_USA` all exactly `8/7`; `08_JPN`/`16_RUS`/
+> `19_THA` very close, small additional noise on top of the same base ratio) — a clean fraction
+> like this is a structural signature, not random error (the same kind of signal the `15 Transport
+> sector`/LEAP bug's exact `2.0` ratio was, elsewhere in this doc). The `02.01,02.03-02.08 Coal
+> products` combined label has exactly 7 real constituent ESTO products (`02.01`, `02.03`, `02.04`,
+> `02.05`, `02.06`, `02.07`, `02.08` — the same 7-product family traced extensively in
+> `docs/prompts/anchor_validator_fixes_findings_20260723.md`'s connected-components shared-frontier
+> fix, `c6772a9`) — an exact `8/7` overshoot is consistent with one of those 7 components being
+> counted twice in this validator's `children_sum` aggregation. **This is the same class of
+> asymmetric-registration issue the connected-components fix resolved in the anchor validator, but
+> manifesting in the different `_validate_common_esto_axis_recursive_sums` validator, which has no
+> equivalent grouping-aware logic.** Not fixed in this pass — flagged for whoever picks up
+> `docs/prompts/investigate_ninth_09_total_transformation_reconciliation.md`'s queued follow-on
+> task (porting a fix to this same validator for a different root cause, the unregistered-component
+> gap) to check whether one fix addresses both, since they're in the same function.
 
 Diagnosis-only. No code, workbook, or exception-set edits were made. No pipeline reruns.
 
