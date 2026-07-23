@@ -1,5 +1,59 @@
 # Resume prompt: NINTH 09 Total transformation reconciliation gap
 
+> **Status update (2026-07-23) — largely resolved by intervening work, not by this pass
+> specifically.** Re-checked `results/tree_structure/common_esto_validation.csv` (regenerated
+> today via this session's own pipeline run) directly rather than trusting this prompt's
+> 2026-07-21 figures:
+>
+> - **NINTH `09 Total transformation sector`: 4,663-7,159 failed rows (this prompt's figures) →
+>   10 failed rows today.** A ~99.8% reduction, evidently from work done between 2026-07-21 and
+>   today (the standalone-rollup-validation fix this prompt references as already resolved,
+>   `4042d5e`, plus this session's own anchor-validator connected-components fix, `c6772a9` —
+>   though note that commit fixed a *different* validator, `source_parent_anchor_validation.py`,
+>   not the `common_esto_validation.csv` this prompt is about; the reduction here is more likely
+>   attributable to `4042d5e` and/or other intervening pipeline maturation, not directly to
+>   today's anchor-validator work — **not fully traced which specific commit(s) caused this
+>   reduction**, flagging that as an open provenance question rather than claiming certainty).
+> - **The remaining 10 rows are narrow and economy-concentrated**, not the broad
+>   own-use-boundary pattern this prompt hypothesized: exactly 5 economies × 2 scenarios
+>   (`05_PRC`, `08_JPN`, `09_ROK`, `11_MEX`, `16_RUS`), each with `children_sum` exceeding
+>   `parent_value` by a distinct, non-proportional amount (e.g. `05_PRC`: ~341 residual on a
+>   ~8,710 parent value; `11_MEX`: ~0.32 residual on a ~9.66 parent value) and
+>   `inherited_source_inconsistency == False` for all 10 (not yet explained by the existing
+>   `_build_source_inconsistency_lookup` mechanism — see
+>   `docs/prompts/data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` for what
+>   that mechanism is and how it could be extended here). Spot-checked whether the residual for
+>   `05_PRC` matches the own-use-boundary hypothesis this prompt proposed (comparing against
+>   NINTH's own `10.01.xx` own-use totals for that economy) — **no individual own-use component
+>   value obviously matches the ~341 residual alone**; a combination might, but this wasn't
+>   traced to a definitive conclusion. **This residual needs its own fresh trace, not an
+>   assumption that it's the same root cause as the original (much larger) gap** — the shape is
+>   different (5 specific economies vs. broad) and the magnitude is 2-3 orders of magnitude
+>   smaller.
+> - **The `09.07 Oil refineries (including own use)` rollup symptom (3rd item in this prompt's
+>   "cover the whole boundary" section): also appears resolved.**
+>   `results/tree_structure/common_esto_rollup_validation.csv` shows zero rows with `status ==
+>   "failed"` for any `09.07`-related row today — only `passed` (5,762) and
+>   `incomplete_contributors` (13,637, a distinct "missing data" status, not a reconciliation
+>   failure). The "614 genuine failures" this prompt reported are gone.
+> - **ESTO `09 Total transformation sector`: 636 failed rows (Σabs ≈ 527K) → 215 failed rows
+>   today (Σabs ≈ 262K).** Roughly halved, but **still a real, unresolved, widespread gap** —
+>   spread across most economies (`08_JPN`: 32, `16_RUS`: 23, `09_ROK`: 22, `05_PRC`: 19,
+>   `20_USA`: 19, and 5+ more economies with real counts), not concentrated the way the NINTH
+>   residual now is. **This is the one piece of this prompt's original scope that's genuinely
+>   still open and substantial** — not touched in this pass beyond confirming its current size.
+>
+> **Net assessment**: the primary symptom this prompt was written to chase (NINTH's ~4,663-7,159
+> row gap) is effectively closed, apparently by other work, not this pass. What's left is smaller
+> and reshaped: (a) a narrow 10-row NINTH residual needing its own trace, not a continuation of
+> the original own-use-boundary hypothesis, and (b) the ESTO-side 215-row gap, which is the
+> largest genuinely-still-open piece of what this prompt asked for. Recommend treating (b) as the
+> next concrete task if this thread is picked up again, using the same residual-decomposition
+> discipline this prompt already specifies (pick one economy/year, pull ESTO `09 Total` vs. its
+> `09.xx` children from `common_esto_comparison_data.csv`, compute the residual, trace it through
+> `energy_balance_relationships.csv`) — this pass did not attempt that decomposition, only sized
+> the remaining problem.
+
 You are working in C:\Users\Work\github\leap_mappings on the Common ESTO mapping
 pipeline. Read the repository AGENTS.md files and docs/mappings_system.md before
 making changes. Start with:
