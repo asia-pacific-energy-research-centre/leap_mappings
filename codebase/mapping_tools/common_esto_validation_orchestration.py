@@ -421,6 +421,23 @@ def _excluded_rollup_parents(workbook_path: Path | None) -> set[str]:
     }
 
 
+def _detached_rollup_parents(workbook_path: Path | None) -> set[str]:
+    """Return rolled flow labels registered as ``DETACHED`` mode specifically.
+
+    Unlike ``NON_EXPANDING``, a ``DETACHED`` rollup's own-use contributors are
+    an intentionally separate accounting boundary and must not be folded back
+    into an ancestor's ordinary additive sum -- see
+    ``_resolve_to_comparison_data`` in ``build_dataset_tree_structure.py``.
+    """
+    if workbook_path is None or not Path(workbook_path).exists():
+        return set()
+    try:
+        mode_labels = load_rollup_mode_labels(Path(workbook_path))
+    except Exception:
+        return set()
+    return {label for label, mode in mode_labels.items() if mode == DETACHED_MODE}
+
+
 def _esto_rollup_contributors(workbook_path: Path | None) -> dict[str, dict[str, object]]:
     """Map each ESTO-shaped rolled flow label to its declared contributor flows.
 
@@ -688,6 +705,7 @@ def run_common_esto_validation_workflow(
     source_frontier = build_source_comparison_frontier(tree_df, workbook_path)
     source_frontier.to_csv(output_dir / "common_esto_source_frontier.csv", index=False)
     excluded_rollup_parents = _excluded_rollup_parents(workbook_path)
+    detached_rollup_parents = _detached_rollup_parents(workbook_path)
     detail_path = output_dir / "common_esto_validation.csv"
     summary_path = output_dir / "common_esto_validation_summary.csv"
     detail_frames: list[pd.DataFrame] = []
@@ -762,6 +780,7 @@ def run_common_esto_validation_workflow(
                 record_all_checks=True,
                 source_frontier=source_frontier,
                 exclude_parents=excluded_rollup_parents,
+                detached_labels=detached_rollup_parents,
             )
             metrics = _count_eligible_checks(
                 tree_df,

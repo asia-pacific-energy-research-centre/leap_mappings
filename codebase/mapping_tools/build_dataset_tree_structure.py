@@ -810,6 +810,17 @@ def _tree_children_map(tree_df: pd.DataFrame, dataset: str, axis: str) -> dict[s
     return children_map
 
 
+def _tree_parent_lookup(tree_df: pd.DataFrame, axis: str) -> dict[str, str]:
+    """Return code -> declared tree parent_code for one axis (esto dataset, the source hierarchy)."""
+    axis_tree = tree_df[(tree_df["dataset"] == "esto") & (tree_df["axis"] == axis)]
+    parent_of: dict[str, str] = {}
+    for _, row in axis_tree.iterrows():
+        parent = _str(row["parent_code"])
+        if parent:
+            parent_of.setdefault(_str(row["code"]), parent)
+    return parent_of
+
+
 def _common_esto_validation_children_map(
     tree_df: pd.DataFrame,
     axis: str,
@@ -1868,6 +1879,8 @@ def _resolve_to_comparison_data(
     codes: list[str],
     data_codes: set[str],
     children_map: dict[str, list[str]],
+    detached_labels: set[str] | None = None,
+    parent_of: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Expand any codes absent from comparison data to their tree descendants.
@@ -1877,24 +1890,37 @@ def _resolve_to_comparison_data(
     set) are replaced by their recursively resolved descendants. Codes absent
     with no tree children are dropped silently.
 
-    A NON_EXPANDING/DETACHED rollup re-parents a base flow's real descendants
-    under its inclusive ``"<code> (including own use)"`` label rather than the
-    base code itself (see ``_common_esto_validation_children_map``). A code
-    resolved this way still means "the real value for the base code", so this
-    falls back to that inclusive sibling label -- both as a direct data hit
-    and as an alternate key into ``children_map`` -- before giving up on it.
+    A NON_EXPANDING rollup re-parents a base flow's real descendants under its
+    inclusive ``"<code> (including own use)"`` label rather than the base code
+    itself (see ``_common_esto_validation_children_map``). A code resolved
+    this way still means "the real value for the base code", so this falls
+    back to that inclusive sibling label -- both as a direct data hit and as
+    an alternate key into ``children_map`` -- before giving up on it.
+
+    A DETACHED rollup is different: its own-use contributors are an
+    intentionally separate accounting boundary, not folded into the ordinary
+    additive total (that is the whole point of ``DETACHED`` vs
+    ``NON_EXPANDING``). A leaf code whose declared tree parent is a DETACHED
+    label (per ``parent_of``/``detached_labels``) must not use this fallback;
+    it is dropped, same as if it had no inclusive sibling at all.
 
     This lets validation of a parent correctly sum through intermediate
     subtotals that were not included in the comparison dataset.
     """
+    detached_labels = detached_labels or set()
+    parent_of = parent_of or {}
     resolved: list[str] = []
     for code in codes:
         if code in data_codes:
             resolved.append(code)
         elif code in children_map:
             resolved.extend(
-                _resolve_to_comparison_data(children_map[code], data_codes, children_map)
+                _resolve_to_comparison_data(
+                    children_map[code], data_codes, children_map, detached_labels, parent_of
+                )
             )
+        elif parent_of.get(code) in detached_labels:
+            continue
         else:
             inclusive_variant = f"{code} (including own use)"
             if inclusive_variant in data_codes:
@@ -1902,7 +1928,8 @@ def _resolve_to_comparison_data(
             elif inclusive_variant in children_map:
                 resolved.extend(
                     _resolve_to_comparison_data(
-                        children_map[inclusive_variant], data_codes, children_map
+                        children_map[inclusive_variant], data_codes, children_map,
+                        detached_labels, parent_of,
                     )
                 )
     return resolved
@@ -1920,6 +1947,7 @@ def _validate_common_esto_axis_recursive_sums(
     record_all_checks: bool = False,
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
+    detached_labels: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -1962,6 +1990,7 @@ def _validate_common_esto_axis_recursive_sums(
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
     other_axis_col = "common_flow_label" if axis == "product" else "common_product_label"
     children_map = _common_esto_validation_children_map(tree_df, axis, exclude_parents)
+    parent_of = _tree_parent_lookup(tree_df, axis)
     frontier_lookup: dict[tuple[str, str], set[str]] = {}
     if source_frontier is not None and not source_frontier.empty and axis == "flow":
         comparable = source_frontier[
@@ -2009,7 +2038,9 @@ def _validate_common_esto_axis_recursive_sums(
             for idx, values, sys_codes in groups_by_source_parent.get((source_system, parent_code), []):
                 # A zero-valued aggregate placeholder must not mask a nonzero
                 # detailed base input in this exact source slice.
-                resolved = _resolve_to_comparison_data(expected_children, sys_codes, children_map)
+                resolved = _resolve_to_comparison_data(
+                    expected_children, sys_codes, children_map, detached_labels, parent_of
+                )
                 if not resolved:
                     continue
                 pv = float(values[parent_code])
@@ -2104,13 +2135,17 @@ def validate_common_esto_recursive_sums(
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
+    detached_labels: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Validate Common ESTO product and flow subtotals when comparison data exists.
 
     ``source_inconsistencies`` is passed through to the per-axis validator.
     ``exclude_parents`` drops non-expanding / detached rollup labels from the
-    ordinary additive parent/child validation.
+    ordinary additive parent/child validation. ``detached_labels`` (a subset
+    of ``exclude_parents`` restricted to ``DETACHED`` mode) prevents a
+    DETACHED rollup's own-use contributors from being folded back into an
+    ancestor's ordinary additive sum -- see ``_resolve_to_comparison_data``.
     """
     result = pd.concat(
         [
@@ -2123,6 +2158,7 @@ def validate_common_esto_recursive_sums(
                 leap_var_base_year,
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
+                detached_labels=detached_labels,
             ),
             _validate_common_esto_axis_recursive_sums(
                 tree_df,
@@ -2133,6 +2169,7 @@ def validate_common_esto_recursive_sums(
                 leap_var_base_year,
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
+                detached_labels=detached_labels,
             ),
         ],
         ignore_index=True,
@@ -2286,19 +2323,25 @@ def run_tree_structure_workflow(
                 load_rollup_mode_labels,
             )
 
+            mode_labels = load_rollup_mode_labels(Path(outlook_mappings_path))
             rollup_parents = {
                 label
-                for label, mode in load_rollup_mode_labels(Path(outlook_mappings_path)).items()
+                for label, mode in mode_labels.items()
                 if mode in {NON_EXPANDING_MODE, DETACHED_MODE}
+            }
+            detached_parents = {
+                label for label, mode in mode_labels.items() if mode == DETACHED_MODE
             }
         except Exception:
             rollup_parents = set()
+            detached_parents = set()
         common_validation = validate_common_esto_recursive_sums(
             all_trees,
             common_comparison_path,
             source_inconsistencies=source_inconsistencies,
             leap_var_base_year=leap_var_base_year,
             exclude_parents=rollup_parents,
+            detached_labels=detached_parents,
         )
         common_validation.to_csv(common_val_path, index=False)
         if common_validation.empty:
