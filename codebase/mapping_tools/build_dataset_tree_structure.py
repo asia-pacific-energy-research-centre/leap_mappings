@@ -821,6 +821,47 @@ def _tree_parent_lookup(tree_df: pd.DataFrame, axis: str) -> dict[str, str]:
     return parent_of
 
 
+def build_ninth_subtotal_esto_flow_labels(
+    tree_df: pd.DataFrame,
+    workbook_path: Path | None,
+) -> set[str]:
+    """Return ESTO flow labels that a NINTH ``is_subtotal`` sector converts to.
+
+    The NINTH sector tree already knows, structurally, which sectors are
+    aggregates of their own named children (``is_subtotal=True``: the
+    sector's own raw value is defined as the sum of its named children, e.g.
+    ``14_03_manufacturing`` = sum of ``14_03_01_iron_and_steel`` +
+    ``14_03_02_...`` + ...). Converting such a sector to ESTO independently,
+    alongside its own already-independently-converted children, registers
+    the same NINTH total twice under two different allocation splits -- the
+    root cause of several NINTH flow-axis reconciliation failures (e.g. the
+    ``14.03 Manufacturing`` / coal-products family). This is a genuine
+    mapping-design question (should the subtotal sector be mapped to ESTO at
+    all, given it is fully redundant with its own mapped children?), not a
+    processing bug -- so rather than silently dropping data, this only
+    identifies which ESTO flow labels a NINTH subtotal sector targets, for
+    the caller to exclude from ordinary additive PARENT validation on the
+    NINTH side specifically (ESTO's own data for the same flow label may be
+    a perfectly good, independently-differentiated additive parent).
+    """
+    if workbook_path is None or not Path(workbook_path).exists():
+        return set()
+    ninth_sector_tree = tree_df[
+        (tree_df["dataset"] == "ninth") & (tree_df["axis"] == "sector") & (tree_df["is_subtotal"] == True)  # noqa: E712
+    ]
+    subtotal_sectors = set(ninth_sector_tree["label"].astype(str))
+    if not subtotal_sectors:
+        return set()
+    try:
+        pairs = pd.read_excel(Path(workbook_path), sheet_name="ninth_pairs_to_esto_pairs", dtype=object)
+    except Exception:
+        return set()
+    if "ninth_sector" not in pairs.columns or "esto_flow" not in pairs.columns:
+        return set()
+    matched = pairs[pairs["ninth_sector"].astype(str).isin(subtotal_sectors)]
+    return set(matched["esto_flow"].dropna().astype(str)) - {""}
+
+
 def _common_esto_validation_children_map(
     tree_df: pd.DataFrame,
     axis: str,
@@ -1948,9 +1989,21 @@ def _validate_common_esto_axis_recursive_sums(
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
     detached_labels: set[str] | None = None,
+    source_specific_exclude_parents: dict[str, set[str]] | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
+
+    ``source_specific_exclude_parents`` (``{source_system: {parent_code, ...}}``)
+    drops a parent from ordinary additive validation for ONE source system
+    only -- unlike ``exclude_parents``, which drops it for every source. This
+    is for a structural fact that's true of one source's own hierarchy but not
+    another's: e.g. a NINTH sector flagged ``is_subtotal`` in the NINTH tree
+    (its own raw value is defined as the sum of its own named children, so
+    independently converting both is a double-registration) should not be
+    validated as an additive parent for NINTH data, even though the same
+    label may be a perfectly good, independently-differentiated additive
+    parent for ESTO's own data.
 
     Graph-generated aggregate labels are treated as leaves because they do not
     have a natural recursive hierarchy.
@@ -2025,9 +2078,12 @@ def _validate_common_esto_axis_recursive_sums(
                 (idx, values, sys_codes)
             )
 
+    source_specific_exclude_parents = source_specific_exclude_parents or {}
     checks = []
     for parent_code, children in children_map.items():
         for source_system in grouped["source_system"].dropna().astype(str).unique():
+            if parent_code in source_specific_exclude_parents.get(source_system, set()):
+                continue
             expected_children = children
             if source_frontier is not None and axis == "flow":
                 frontier_children = frontier_lookup.get((str(source_system), str(parent_code)), set())
@@ -2136,6 +2192,7 @@ def validate_common_esto_recursive_sums(
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
     detached_labels: set[str] | None = None,
+    source_specific_exclude_parents: dict[str, set[str]] | None = None,
 ) -> pd.DataFrame:
     """
     Validate Common ESTO product and flow subtotals when comparison data exists.
@@ -2146,6 +2203,9 @@ def validate_common_esto_recursive_sums(
     of ``exclude_parents`` restricted to ``DETACHED`` mode) prevents a
     DETACHED rollup's own-use contributors from being folded back into an
     ancestor's ordinary additive sum -- see ``_resolve_to_comparison_data``.
+    ``source_specific_exclude_parents`` drops a parent from ordinary additive
+    validation for one source system only -- see
+    ``_validate_common_esto_axis_recursive_sums``.
     """
     result = pd.concat(
         [
@@ -2159,6 +2219,7 @@ def validate_common_esto_recursive_sums(
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
                 detached_labels=detached_labels,
+                source_specific_exclude_parents=source_specific_exclude_parents,
             ),
             _validate_common_esto_axis_recursive_sums(
                 tree_df,
@@ -2170,6 +2231,7 @@ def validate_common_esto_recursive_sums(
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
                 detached_labels=detached_labels,
+                source_specific_exclude_parents=source_specific_exclude_parents,
             ),
         ],
         ignore_index=True,
@@ -2335,6 +2397,9 @@ def run_tree_structure_workflow(
         except Exception:
             rollup_parents = set()
             detached_parents = set()
+        ninth_subtotal_flow_labels = build_ninth_subtotal_esto_flow_labels(
+            all_trees, Path(outlook_mappings_path)
+        )
         common_validation = validate_common_esto_recursive_sums(
             all_trees,
             common_comparison_path,
@@ -2342,6 +2407,7 @@ def run_tree_structure_workflow(
             leap_var_base_year=leap_var_base_year,
             exclude_parents=rollup_parents,
             detached_labels=detached_parents,
+            source_specific_exclude_parents={"NINTH": ninth_subtotal_flow_labels},
         )
         common_validation.to_csv(common_val_path, index=False)
         if common_validation.empty:

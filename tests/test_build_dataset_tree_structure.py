@@ -13,6 +13,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     _build_source_inconsistency_lookup,
     build_common_esto_tree,
     build_esto_tree,
+    build_ninth_subtotal_esto_flow_labels,
     _load_rollup_hierarchy,
     validate_common_esto_recursive_sums,
     validate_leap_recursive_sums,
@@ -660,6 +661,84 @@ def test_common_flow_validation_excludes_detached_rollup_leaf_from_ancestor_sum(
     )
     fixed_check = fixed_result[fixed_result["parent_code"] == "09 Total transformation sector"]
     assert fixed_check.empty
+
+
+def test_build_ninth_subtotal_esto_flow_labels_maps_subtotal_sectors_to_esto_flows(tmp_path: Path) -> None:
+    """A NINTH sector tree marked is_subtotal maps to its converted ESTO flow label.
+
+    Reproduces the real 14_03_manufacturing shape: it is flagged
+    is_subtotal=True in the NINTH sector tree (its raw value is exactly the
+    sum of its own named children), and the mapping workbook converts it to
+    ESTO flow "14.03 Manufacturing" -- exactly the label that must not be
+    validated as an ordinary additive NINTH parent, since doing so double
+    -counts the same NINTH total under a different allocation split than its
+    own children use.
+    """
+    workbook_path = tmp_path / "mappings.xlsx"
+    _write_mapping_workbook(
+        workbook_path,
+        ninth_rows=[
+            {"ninth_sector": "14_03_manufacturing", "ninth_fuel": "02_coal_products",
+             "esto_flow": "14.03 Manufacturing", "esto_product": "02.01 Coke oven coke"},
+            {"ninth_sector": "14_03_01_iron_and_steel", "ninth_fuel": "02_coal_products",
+             "esto_flow": "14.03.01 Iron and steel", "esto_product": "02.01 Coke oven coke"},
+        ],
+    )
+    tree_df = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "14_industry_sector/14_03_manufacturing",
+         "label": "14_03_manufacturing", "level": 2, "parent_code": "14_industry_sector", "is_subtotal": True},
+        {"dataset": "ninth", "axis": "sector",
+         "code": "14_industry_sector/14_03_manufacturing/14_03_01_iron_and_steel",
+         "label": "14_03_01_iron_and_steel", "level": 3,
+         "parent_code": "14_industry_sector/14_03_manufacturing", "is_subtotal": False},
+    ])
+
+    labels = build_ninth_subtotal_esto_flow_labels(tree_df, workbook_path)
+
+    assert labels == {"14.03 Manufacturing"}
+
+
+def test_common_flow_validation_excludes_ninth_subtotal_parent_but_keeps_esto_check(tmp_path: Path) -> None:
+    """A NINTH is_subtotal parent must be excluded for NINTH only -- ESTO's own,
+    independently-differentiated check on the same flow label must still run.
+
+    Reproduces the real 14.03 Manufacturing shape: NINTH's raw
+    14_03_manufacturing total is fully redundant with its own named
+    sub-flows (converted via a different, equal-share allocation basis, so
+    naive comparison against the same sub-flows produces a spurious
+    mismatch) -- but ESTO's own data for "14.03 Manufacturing" genuinely
+    differentiates its own children, so an ESTO-side mismatch on the same
+    parent must still be reported, not silently dropped.
+    """
+    comparison_path = tmp_path / "comparison.csv"
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "14.03 Manufacturing", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "14.03.01 Iron and steel", "parent_code": "14.03 Manufacturing"},
+        {"dataset": "common_esto", "axis": "flow", "code": "14.03 Manufacturing", "parent_code": ""},
+        {"dataset": "common_esto", "axis": "flow", "code": "14.03.01 Iron and steel", "parent_code": "14.03 Manufacturing"},
+    ])
+    pd.DataFrame([
+        # NINTH: parent and child disagree (the allocation-split mismatch) -- must be excluded, not reported.
+        {"comparison_scope": "scope", "source_system": "NINTH", "economy": "01_AUS", "scenario": "reference", "year": 2023, "common_flow_label": "14.03 Manufacturing", "common_product_label": "02.01 Coke oven coke", "value": 16.71},
+        {"comparison_scope": "scope", "source_system": "NINTH", "economy": "01_AUS", "scenario": "reference", "year": 2023, "common_flow_label": "14.03.01 Iron and steel", "common_product_label": "02.01 Coke oven coke", "value": 19.10},
+        # ESTO: parent and child genuinely disagree -- a real mismatch that must still be reported.
+        {"comparison_scope": "scope", "source_system": "ESTO", "economy": "01_AUS", "scenario": "reference", "year": 2023, "common_flow_label": "14.03 Manufacturing", "common_product_label": "02.01 Coke oven coke", "value": 100.0},
+        {"comparison_scope": "scope", "source_system": "ESTO", "economy": "01_AUS", "scenario": "reference", "year": 2023, "common_flow_label": "14.03.01 Iron and steel", "common_product_label": "02.01 Coke oven coke", "value": 50.0},
+    ]).to_csv(comparison_path, index=False)
+
+    result = validate_common_esto_recursive_sums(
+        tree,
+        comparison_path,
+        leap_var_base_year=2022,
+        source_specific_exclude_parents={"NINTH": {"14.03 Manufacturing"}},
+    )
+
+    ninth_check = result[(result["source_system"] == "NINTH") & (result["parent_code"] == "14.03 Manufacturing")]
+    assert ninth_check.empty
+
+    esto_check = result[(result["source_system"] == "ESTO") & (result["parent_code"] == "14.03 Manufacturing")]
+    assert len(esto_check) == 1
+    assert esto_check.iloc[0]["status"] == "failed"
 
 
 # Minimal columns used by the lookup for an empty LEAP frame.

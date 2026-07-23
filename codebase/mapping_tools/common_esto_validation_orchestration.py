@@ -13,6 +13,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     LEAP_VAR_BASE_YEAR,
     _common_esto_validation_children_map,
     _validate_common_esto_axis_recursive_sums,
+    build_ninth_subtotal_esto_flow_labels,
 )
 from codebase.mapping_tools.non_expanding_rollups import (
     DETACHED_MODE,
@@ -627,8 +628,10 @@ def _count_eligible_checks(
     leap_var_base_year: int,
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
+    source_specific_exclude_parents: dict[str, set[str]] | None = None,
 ) -> pd.DataFrame:
     """Count data groups eligible for the existing hierarchy validator."""
+    source_specific_exclude_parents = source_specific_exclude_parents or {}
     data = pd.read_csv(comparison_data_path, dtype=object)
     data["year"] = pd.to_numeric(data["year"], errors="coerce")
     data = data[data["year"] > int(leap_var_base_year)].copy()
@@ -668,6 +671,8 @@ def _count_eligible_checks(
         child_groups = children_rows.groupby(group_cols, dropna=False).size().index
         for group_key in parent_groups.intersection(child_groups):
             source_system = str(group_key[1])
+            if parent_code in source_specific_exclude_parents.get(source_system, set()):
+                continue
             if source_frontier is not None and axis == "flow":
                 allowed = children_by_source.get(source_system, set())
                 if not allowed:
@@ -706,6 +711,8 @@ def run_common_esto_validation_workflow(
     source_frontier.to_csv(output_dir / "common_esto_source_frontier.csv", index=False)
     excluded_rollup_parents = _excluded_rollup_parents(workbook_path)
     detached_rollup_parents = _detached_rollup_parents(workbook_path)
+    ninth_subtotal_flow_labels = build_ninth_subtotal_esto_flow_labels(tree_df, workbook_path)
+    source_specific_exclude_parents = {"NINTH": ninth_subtotal_flow_labels}
     detail_path = output_dir / "common_esto_validation.csv"
     summary_path = output_dir / "common_esto_validation_summary.csv"
     detail_frames: list[pd.DataFrame] = []
@@ -781,6 +788,7 @@ def run_common_esto_validation_workflow(
                 source_frontier=source_frontier,
                 exclude_parents=excluded_rollup_parents,
                 detached_labels=detached_rollup_parents,
+                source_specific_exclude_parents=source_specific_exclude_parents,
             )
             metrics = _count_eligible_checks(
                 tree_df,
@@ -789,6 +797,7 @@ def run_common_esto_validation_workflow(
                 leap_var_base_year,
                 source_frontier=source_frontier,
                 exclude_parents=excluded_rollup_parents,
+                source_specific_exclude_parents=source_specific_exclude_parents,
             )
             detail_frames.append(axis_detail)
             mismatch_counts = (
