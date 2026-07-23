@@ -343,3 +343,71 @@ plausible hypothesis given the pattern match; would need its own trace before fi
 **Not investigated further in this pass** (context budget for this session was flagged as running
 low) — queued as its own follow-up rather than rushed. The `08.01 Natural gas`/`05_PRC` row (the
 one non-match) needs a separate trace; do not assume it shares this same cause.
+
+## Fifth pass (2026-07-23, same day): the fourth pass's diagnosis was wrong — corrected with the real root cause
+
+**This section corrects the fourth pass above, which misdiagnosed the cause.** Re-verified against a
+fresh full pipeline run's output files directly (`common_esto_rows.csv`,
+`common_esto_components_pruned_not_applicable.csv`, `esto_results_exact_rows.csv`,
+`common_esto_comparison_data.csv`, `common_esto_validation_child_detail.csv`) rather than reasoning
+from the pattern match alone.
+
+**The fourth pass's claim was wrong**: raw ESTO's literal `09.06 Gas processing plants` flow is
+**not** orphaned from relationship-building. It **is** registered in `common_esto_rows.csv` as
+`is_exact_row=True`/`common_row_basis=exact_esto_row` for every relevant product, under every scope.
+Checked directly against `esto_results_exact_rows.csv` (raw ESTO's own converted output): this
+literal flow genuinely has **zero non-zero rows for any product, in any economy** — it is correctly
+and deliberately pruned by the "not needed for current comparison data" mechanism
+(`prune_reason: no_nonzero_esto_base_ninth_projection_or_leap_balance_evidence`) for 10 of the 11
+registered products. That pruning is correct behavior, not a bug. The fourth pass's per-row table
+claiming "raw ESTO `09.06 Gas processing plants` value" exactly matched each residual's `abs_error`
+was checking the wrong thing — it never queried `esto_results_exact_rows.csv` directly, and the
+apparent numeric matches were coincidental proximity to values that actually live under **more
+deeply nested** rollup labels (see below), not the literal `09.06` flow itself.
+
+**Real root cause, confirmed via direct query of `common_esto_validation_child_detail.csv`**: for
+the `05_PRC`/`08.01 Natural gas`/2023/`esto_leap` failure, the recursive validator's expected child
+`09.06 Gas processing plants` is correctly diagnosed as `represented_by_descendants` (i.e. the
+validator knows its value lives one level deeper, in `09.06.01 Gas works plants` /
+`09.06.02 Liquefaction/regasification plants` / `09.06.03 Natural gas blending plants`) — but the
+literal second-level component `09.06.01 Gas works plants` (value **exactly -126.496582**, matching
+this row's `abs_error` of 126.50 to 6 decimal places) is registered in `common_esto_rows.csv` **only
+under the `esto_leap_ninth` comparison scope, not under `esto_leap`**. Under `esto_leap`, only the
+`09.06.01 Gas works plants (including own use)` rolled label exists, not the plain literal — so for
+this one scope, the recursive validator's descent into the second-level rollup has nothing to sum for
+that specific sub-branch, and the failure is the direct result.
+
+The other five rows in the fourth pass's table (`01.02`, `02.03`, `07.10`, `07.16`, `08.03`) show the
+same shape one level down: their values live in `09.06.01 Gas works plants (including own use)`
+under `esto_leap` (confirmed via direct query — e.g. `07.16 Petroleum coke`: `-43.331187`, an exact
+match to that row's `abs_error`), which the recursive validator's children-sum for the *first-level*
+`09.06 Gas processing plants` child does not descend into. Two of six (`01.02`, `02.03`) are close but
+not exact (`-1163.69` vs `1136.60`; `-229.71` vs `227.68`) — a small residual on top, likely a genuine
+ESTO self-consistency wrinkle at that specific `(economy, product)`, same class as the `20_USA`/
+`01.05 Lignite` row, which is a plain small ESTO self-inconsistency unrelated to any rollup nesting
+(no missing/rolled label involved at all — `09.01-09.02 Power sector` is the only real contributor,
+and it simply doesn't sum to the parent).
+
+**Well-scoped, confirmed root cause**: the recursive validator's children-sum computation
+(`_validate_common_esto_axis_recursive_sums` in `build_dataset_tree_structure.py`) resolves one level
+of NON_EXPANDING/DETACHED rollup substitution when a frontier child is itself a rolled label, but
+does not recurse into a **second level** of nesting (`09.06` → `09.06.01`/`09.06.02` → their own
+`(including own use)` rolled variants) consistently across every comparison scope — the nested
+component is sometimes simply absent from `common_esto_rows.csv` under the scope being validated
+(`esto_leap`) even though it exists correctly under a sibling scope (`esto_leap_ninth`). This is a
+genuine, narrow validator gap, not a data problem and not a `build_energy_balance_relationships.py`
+Stage 1 problem as the fourth pass guessed.
+
+**Not implemented in this pass** — the nested-rollup descent logic needs its own dedicated look
+(specifically: why `09.06.01 Gas works plants` is scope-conditionally registered, and whether the
+recursive validator should recurse through multiple rollup levels rather than one). Genuinely small
+in impact (7 rows, all in one economy/year plus one `20_USA` residual that's unrelated), so left as a
+clean, well-scoped follow-up rather than rushed. Full targeted test suite (111 tests) and full suite
+(254 passed, 2 pre-existing unrelated failures, 1 skipped) both still pass — no code was touched in
+this pass, this is a documentation-only correction.
+
+**Lesson, consistent with the rest of this file's history**: the fourth pass's hypothesis was
+internally plausible (matched the shape of an already-fixed bug) but wrong in a specific, checkable
+way — confirmed only by querying `esto_results_exact_rows.csv` and `common_esto_rows.csv` directly
+rather than trusting a coincidental-looking numeric match. Preserved here with an explicit correction
+marker rather than silently overwritten, per this file's established practice.
