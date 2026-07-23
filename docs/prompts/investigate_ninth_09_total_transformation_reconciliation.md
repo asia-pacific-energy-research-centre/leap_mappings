@@ -456,3 +456,36 @@ new.
 the `20_USA`/`01.05 Lignite` case documented earlier (a real ESTO self-inconsistency at that
 specific economy/product/year, not a code defect), but not confirmed. Full test suite: 251 passed,
 2 pre-existing unrelated failures, 1 skipped (unchanged baseline) plus the new regression test.
+
+## Seventh pass (2026-07-23, same day): `08.03 Gas works gas` resolved (real bug, fixed); `08.01 Natural gas` confirmed genuine and irreducible
+
+**`05_PRC`/`08.03 Gas works gas` (abs_error 12.74, both scopes) was a real, distinct bug — fixed
+(commit `7016f7e`).** Traced its exact composition: `children_sum` (585.52) included
+`09.08.01 Coke ovens (including own use)` (`-12.744965`) — but `09.08.01 Coke ovens`'s declared
+tree parent is `09.08 Coal transformation (including own use)`, which is registered as **DETACHED**
+mode, not `NON_EXPANDING` (checked directly in `esto_rollup_rules`). DETACHED means this own-use
+contributor is an intentionally separate accounting boundary — it must never fold into an ancestor's
+ordinary additive total, unlike a `NON_EXPANDING` rollup's. The sixth pass's fix (fifth pass's design)
+didn't distinguish the two modes, so it incorrectly folded this DETACHED leaf in anyway. Fixed by
+threading a `detached_labels` set (DETACHED-mode labels only) and a `code -> declared tree parent`
+lookup into `_resolve_to_comparison_data`, so a leaf whose declared parent is DETACHED is dropped
+instead of substituted. Real-data re-verification via `run_common_esto_validation_workflow` directly:
+ESTO flow-axis mismatches **3 → 1**; both `08.03 Gas works gas` rows (both comparison scopes) now
+fully resolve.
+
+**`05_PRC`/`08.01 Natural gas` (abs_error 158.80) is confirmed genuine and irreducible — not a code
+defect.** Listed every single `09.xx`-prefixed `common_flow_label` in the raw comparison data for
+this exact `(economy, product, year, scope)` slice: there is no missing or unaccounted component —
+every value that could possibly contribute is already accounted for in `children_sum`
+(`09.06.01 Gas works plants (including own use)`, `09.06.02 Liquefaction/regasification plants`,
+`09.06.03 Natural gas blending plants`, `09.12 Non-specified transformation`,
+`09.01-09.02 Power sector` — none DETACHED, none unresolved). `parent_value` (785.13) simply does
+not equal the true sum of its own declared children (626.33) for this one specific
+economy/product/year. This is the same class as the `20_USA`/`01.05 Lignite` residual and the
+mirror-row gap: raw ESTO's own reported total disagrees with its own reported breakdown. No further
+code fix applies here — flag-and-propagate (the held mirror-row-gap design), not silent correction,
+is the right eventual treatment per the user's standing instruction on this class of issue.
+
+**Only one ESTO flow-axis residual remains open in this whole investigation thread: `05_PRC`/
+`08.01 Natural gas`, and it is not fixable in code.** Full test suite: 252 passed, 2 pre-existing
+unrelated failures, 1 skipped (unchanged baseline).
