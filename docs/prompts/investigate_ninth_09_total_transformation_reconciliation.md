@@ -489,3 +489,12 @@ is the right eventual treatment per the user's standing instruction on this clas
 **Only one ESTO flow-axis residual remains open in this whole investigation thread: `05_PRC`/
 `08.01 Natural gas`, and it is not fixable in code.** Full test suite: 252 passed, 2 pre-existing
 unrelated failures, 1 skipped (unchanged baseline).
+
+**NINTH flow-axis side effect traced: `500 → 501` is `01_AUS`/2043/`09 Total transformation
+sector`/`17 Electricity`, abs_error `0.38`.** Tiny in magnitude, same "more complete accounting
+occasionally reveals a pre-existing small gap" shape as the ESTO `08.01 Natural gas` row above —
+not chased further given the size. The other two rows in the `09.xx` family (`09.01-09.02 Power
+sector`/`09_ROK`/`02.01,02.03-02.08 Coal products`, both scenarios) are pre-existing and belong to
+the already-documented 8/7-ratio coal-products duplication family (see
+`docs/prompts/investigate_demand_sector_parent_child_mismatches_FINDINGS.md`), confirmed unrelated
+to either fix in this pass.
