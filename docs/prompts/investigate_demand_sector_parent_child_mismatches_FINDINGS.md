@@ -79,8 +79,45 @@
 > picks this up: extend `_validate_common_esto_axis_recursive_sums` to accept a component-lineage
 > lookup (e.g. from `common_esto_row_components.csv`) and deduplicate by shared raw source
 > before summing, mirroring the anchor validator's connected-components grouping.
+>
+> **Correction (2026-07-23, later same day): the actual root cause of the 82+26-row family was
+> different from this "duplicate value" framing above, and has been fixed.** Traced precisely:
+> NINTH's raw `14_03_manufacturing` total (19.096113) exactly equals the sum of its own named
+> sub-flows (Iron/steel + Chemical + Non-ferrous + Mineral products + Non-specified — same total to
+> 8 significant figures, confirmed directly against `ninth_source_to_esto_component_lineage.csv`).
+> NINTH's source data is perfectly self-consistent — this was never a duplicated-value bug at the
+> source level. The real cause: the mapping/conversion pipeline converts the broad NINTH sector
+> (`14_03_manufacturing`) to ESTO products **independently** from its own already-converted named
+> children, using a **different allocation-share basis** for each — a flat equal-share for the broad
+> sector (ESTO has no differentiated basis at that broad flow level) vs. a real ESTO-proportional
+> share for the named children (ESTO does differentiate at that finer level). Comparing the two
+> independently-allocated totals as parent vs. children then produces a spurious mismatch — two
+> different slicings of the same underlying total, not a real reconciliation failure. Confirmed the
+> same shape explains `14 Industry sector`'s 26-row residual too (a sibling check one level up).
+>
+> This is fundamentally a mapping-design question (should a NINTH sector fully redundant with its
+> own already-mapped children be independently mapped to ESTO at all?), not a processing bug — the
+> user was asked and preferred not to edit the mapping workbook directly. **Fixed instead using data
+> the pipeline already computes**: the NINTH sector tree (`ninth_tree.csv`) already has a
+> structurally-derived `is_subtotal` flag (true parent/child tree edges, not the inconsistent manual
+> `ninth_pair_is_subtotal`/`esto_pair_is_subtotal` columns in the mapping sheet) — `14_03_manufacturing`
+> is correctly flagged `is_subtotal=True`. Added `build_ninth_subtotal_esto_flow_labels()`
+> (`build_dataset_tree_structure.py`) to resolve every such sector to its converted ESTO flow label,
+> and a new `source_specific_exclude_parents` parameter (unlike `exclude_parents`, scoped to ONE
+> source system) so this exclusion applies to NINTH only — ESTO's own, independently-differentiated
+> data for the same flow label must still be checked as an ordinary additive parent, and is.
+>
+> **Verified against real production data**: NINTH flow-axis mismatches **500 → 6** (98.8%
+> reduction; the 500 baseline already included this session's earlier nested-rollup/DETACHED fixes).
+> ESTO flow-axis stayed at exactly 1, completely unaffected, confirming the per-source-system scoping
+> works correctly. The remaining 6 NINTH rows are all `02.01,02.03-02.08 Coal products` — the
+> genuinely separate "shared duplicate value across merged targets" family described just above,
+> now cleanly isolated with all the allocation-mismatch noise gone. Two regression tests added.
+> Full test suite: 254 passed, 2 pre-existing unrelated failures, 1 skipped (unchanged baseline).
+> Committed `28c2632`.
 
-Diagnosis-only. No code, workbook, or exception-set edits were made. No pipeline reruns.
+Diagnosis-only, except for the 2026-07-23 correction above (code fix, not a workbook edit). No
+pipeline reruns.
 
 ## Which validation file was used
 
