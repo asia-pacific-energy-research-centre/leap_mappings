@@ -894,6 +894,81 @@ def test_distinct_frontier_scope_is_unaffected_by_shared_scope_grouping() -> Non
     assert by_other["B"]["frontier_sum"] == 4
 
 
+def _overlapping_signature_fixture():
+    """Three raw flows (X, Y, Z) under parent product ``P``, mirroring the
+    real ``10.01 Own Use`` coal-by-products shape: their registered
+    ``common_row_id`` sets overlap but are NOT identical, because one flow
+    (X) additionally has its own extra, non-shared component (analogous to
+    ``10.01.11 Oil refineries`` registering only ``02.01`` as an exact row
+    while every other flow child registers the whole family into one shared
+    row). Under the old exact-signature-equality rule this fails to fully
+    group: X (signature ``{shared, distinct}``) would stay standalone while
+    Y and Z (signature ``{shared}`` each) would group with each other only.
+    Under connected components all three belong in ONE group, since X's
+    signature overlaps both Y's and Z's via the shared id.
+    """
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "X", "source_product": "P", "value": 70},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "Y", "source_product": "P", "value": 20},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "source_flow": "Z", "source_product": "P", "value": 15},
+    ])
+    mappings = pd.DataFrame([
+        # X registers BOTH the shared component (like every ordinary flow
+        # child) AND its own extra, non-shared component (like
+        # "10.01.11 Oil refineries" registering only "02.01" as an exact row).
+        {"source_system": "ESTO", "source_flow": "X", "source_product": "P.1", "component_esto_flow": "FX1", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "X", "source_product": "P.2", "component_esto_flow": "FX2", "component_esto_product": "P.2"},
+        # Y and Z only ever register the shared component.
+        {"source_system": "ESTO", "source_flow": "Y", "source_product": "P.1", "component_esto_flow": "FY", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "Z", "source_product": "P.1", "component_esto_flow": "FZ", "component_esto_product": "P.1"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "mixed", "component_esto_flow": "FX1", "component_esto_product": "P.1", "common_row_id": "id_shared"},
+        {"comparison_scope": "mixed", "component_esto_flow": "FY", "component_esto_product": "P.1", "common_row_id": "id_shared"},
+        {"comparison_scope": "mixed", "component_esto_flow": "FZ", "component_esto_product": "P.1", "common_row_id": "id_shared"},
+        {"comparison_scope": "mixed", "component_esto_flow": "FX2", "component_esto_product": "P.2", "common_row_id": "id_distinct"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "mixed", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "id_shared", "value": 100},
+        {"comparison_scope": "mixed", "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022, "common_row_id": "id_distinct", "value": 5},
+    ])
+    return source, tree, mappings, common, comparison
+
+
+def test_overlapping_but_not_identical_signatures_group_via_connected_components() -> None:
+    source, tree, mappings, common, comparison = _overlapping_signature_fixture()
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    rows = detail[(detail["comparison_scope"] == "mixed") & (detail["parent_code"] == "P")]
+    # All three (X, Y, Z) collapse into one group -- one primary row plus two
+    # skipped, not "X standalone" + "Y+Z grouped" as exact-equality grouping
+    # would have produced.
+    assert len(rows) == 3
+    primary_rows = rows[rows["status"] != "skipped"]
+    skipped_rows = rows[rows["status"] == "skipped"]
+    assert len(primary_rows) == 1
+    assert len(skipped_rows) == 2
+
+    primary = primary_rows.iloc[0]
+    assert set(primary["other_axis_value"].split(" + ")) == {"X", "Y", "Z"}
+    # Combined raw total: X (70) + Y (20) + Z (15) == 105.
+    assert primary["parent_value"] == 105
+    # Recomputed frontier_sum is the UNION of common_row_ids touched by any
+    # member, each counted once -- id_shared (100) + id_distinct (5) == 105,
+    # NOT id_shared counted three times (one per member) or omitted entirely.
+    assert primary["frontier_sum"] == 105
+    assert primary["frontier_row_count"] == 2
+    assert primary["status"] == "passed"
+
+    for _, skipped in skipped_rows.iterrows():
+        assert skipped["reason"] == "grouped_with_shared_frontier_sibling"
+
+
 def test_non_expanding_direct_match_with_real_data_is_not_descended() -> None:
     # Regression guard for the previously-reverted structural heuristic: a
     # node with its OWN real comparison data must never be discarded in favor

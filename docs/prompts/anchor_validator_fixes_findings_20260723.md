@@ -191,52 +191,295 @@ file test — both present before this session too, confirmed via `git stash`).
 Ordered roughly by how well-understood each is (best-understood first):
 
 1. **The mirror-row gap (~152 rows, `09_06_gas_processing_plants`/NINTH flow
-   axis and structurally identical cases elsewhere).** Well-diagnosed, proven
-   *not* safely fixable via same-session cross-referencing without
-   reintroducing the exact regression `1c17af8` avoided. If revisited, the
-   right framing is probably not "detect and skip" but "trust the more
-   granular raw data and substitute it as the corrected value" (discussed at
-   length in-session but not implemented — deliberately out of scope, since
-   the user asked to *flag* these, not auto-correct them; auto-correction is
-   a bigger, riskier design decision that needs explicit sign-off first).
+   axis, plus the structurally identical "row's own pair" variant across
+   `15_solid_biomass`/`16_others`/`08_gas`/`14_industry_sector`, ~603-825 rows
+   total).** **Attempted a fix in a third follow-on session (still
+   2026-07-23): a real, working mechanism was built and verified on real
+   data, but it turned out to have zero effect on any of these rows and to
+   introduce a new false-positive side effect. Reverted; this remains open,
+   now with a concrete negative result on record instead of an untested
+   hypothesis.** See "The mirror-row gap: attempted fix and why it was
+   reverted" below for the full trace — this consolidates the old items 1,
+   3, and 4, which all turned out to be the same underlying question with
+   the same answer.
 
 2. **`10.01 Own Use` / `10 Losses & own use` residual (160 rows, ESTO-side,
-   `esto_leap_ninth` scope).** Found but **not traced**: multiple `other_
-   axis_value` rows (e.g. `02.01 Coke oven coke + 02.07 Coal tar`, `02.03
-   Coke oven gas`, `02.04 Blast furnace gas + 02.06 Patent fuel + 02.08
-   BKB/PB`) share an identical `frontier_sum` (`-32.003271` for one group of
-   four economy-01AUS rows) while each has a different, smaller
-   `parent_value` — looks like the shared-frontier-group mechanism (see
-   `docs/prompts/anchor_validator_fixes_findings_20260722.md` fix 6,
-   "Oil Refining shared-frontier grouping") either isn't collapsing these
-   into one primary+skipped group the way it should under this specific
-   scope, or a *different* set of products is being incorrectly bucketed
-   into the same signature. `missing_expected_children` only ever shows
-   `10.01.19 Hydrogen transformation`, which cannot explain a ~32-unit gap.
-   **Next step:** trace one concrete row exactly like every fix this session
-   did — pick economy `01AUS`, `other_axis_value = "02.01 Coke oven coke +
-   02.07 Coal tar"`, dump `frontier_ids_cache`/`frontier_signatures`/
-   `shared_groups` for that `(parent_code, oas)` key and see why grouping
-   isn't producing the expected single-primary-row outcome, or why
-   `frontier_sum` is `-32` when the raw ESTO `10.01 Own Use` value for `02.01
-   Coke oven coke` is `0`.
+   `esto_leap_ninth` scope).** **Traced in the follow-on session (still
+   2026-07-23); root cause found, but the fix does not belong in this file.**
 
-3. **`15_solid_biomass` (183), `16_others` (148), `08_gas` (98) NINTH-side
-   residuals, post-`1c17af8`.** Some fraction of these are almost certainly
-   more instances of the same source-internal-inconsistency pattern
-   `1c17af8` targets, just not caught because the specific (leaf, other-axis)
-   pair isn't a frontier *leaf* of the failing row (i.e. they're the "mirror
-   row" shape from item 1, or a variant one level removed). Worth sampling a
-   handful before assuming they're all copies of the same known gap — do not
-   assume; verify each with a real-data trace the way every fix this session
-   did.
+   Traced concretely: economy `01AUS`, year 2023, parent `10.01 Own Use`. The
+   shared-frontier-group mechanism (`docs/prompts/anchor_validator_fixes_
+   findings_20260722.md` fix 6, "Oil Refining shared-frontier grouping") *is*
+   firing correctly — it groups `other_axis_value`s whose registered
+   `common_row_id` set is identical. The actual problem is upstream, in
+   `results/common_esto/common_esto_rows.csv` (built by Stage 2's graph
+   partitioning): ESTO reports 7 individual raw coal by-products under
+   `10.01 Own Use` (`02.01 Coke oven coke`, `02.03 Coke oven gas`, `02.04
+   Blast furnace gas`, `02.05 Other recovered gases`, `02.06 Patent fuel`,
+   `02.07 Coal tar`, `02.08 BKB/PB`), and Common ESTO structure rolls them
+   into one combined `"02.01,02.03-02.08 Coal products"` row **per flow
+   child** (`10.01.01`, `.02`, `.05`, `.06`, `.07`, `.11`) — but which of the
+   7 products each flow child registers to that combined row is not uniform:
 
-4. **`14_industry_sector` family (79+75+51+39 ≈ 244 rows across ESTO/NINTH
-   variants).** Not investigated at all this session beyond confirming (via
-   the retracted candidate CSV's correction) that it is *not* a missing-
-   mapping-row gap. Needs its own fresh trace.
+   | flow child | products it registers |
+   |---|---|
+   | `10.01.01 Electricity, CHP and heat plants` | 02.01, 02.03, 02.07 |
+   | `10.01.02 Gas works plants` | 02.03, 02.05 |
+   | `10.01.05/06/07` (coke ovens / coal mines / blast furnaces) | all 7 |
+   | `10.01.11 Oil refineries` | 02.01 only (as an exact row, not a rollup) |
 
-5. **8 "ambiguous" candidate mapping pairs** surfaced (then retracted along
+   That asymmetry splits what "should" be one shared group into four
+   distinct signatures: `{02.01, 02.07}`, `{02.03}` alone, `{02.04, 02.06,
+   02.08}`, `{02.05}` alone. For `01AUS`/2023, only two flow children
+   (`10.01.05`: `-15.810278`, `10.01.07`: `-16.192993`, summing to
+   `-32.003271`) have any real ESTO comparison data at all (confirmed via
+   `results/common_esto/common_esto_comparison_data.csv`, filtered to
+   `source_system == "ESTO"`, `comparison_scope == "esto_leap_ninth"`) — so
+   all four signature-groups end up comparing against that same `-32.003271`
+   total regardless of which product they check. This is a coincidence of
+   arithmetic (two flow children's real data summing to a number every group
+   gets compared against), not a value-fetching bug: raw ESTO's own `10.01
+   Own Use / 02.01 Coke oven coke` genuinely is `0`, exactly as reported.
+   Confirmed the same shape (this coal-by-product family, plus a parallel
+   `07.12-07.17` petroleum-by-product family) accounts for effectively all
+   160 rows across ~14 economies — only 9-11 distinct `(parent_code,
+   other_axis_value)` combinations drive the whole residual, not 160
+   independent cases.
+
+   **Fixed in the follow-on session (still 2026-07-23), after the user
+   confirmed the asymmetric per-flow-child registration itself is
+   intentional and physically correct** (different flow children genuinely
+   can't produce every coal by-product, so it's correct that they don't all
+   register the same product set) **— the bug was entirely in the
+   validator's grouping rule, not in `common_esto_rows.csv`.**
+   `validate_source_parent_anchors`'s "Shared-frontier group combination"
+   block (`docs/prompts/anchor_validator_fixes_findings_20260722.md` fix 6,
+   "Oil Refining shared-frontier grouping") grouped `other_axis_value`s only
+   when their registered `common_row_id` signature was **exactly identical**.
+   Under the confirmed-intentional asymmetric registration, semantically
+   related products end up with *overlapping but not identical* signatures
+   (e.g. `02.01`/`02.07` share `{a75b, afdd, 09653c, be35}` and DID group
+   under the old rule; `02.03` adds an extra id and `02.05`/`02.04`/`02.06`/
+   `02.08` are missing one, so they did NOT group, even though every one of
+   these signatures shares `afdd`/`09653c`/`be35` — the three coke-ovens/
+   coal-mines/blast-furnaces flow children that register all 7 products).
+   The exact-equality rule split what should have been one shared group into
+   up to four partial groups, each compared against whichever partial subset
+   of flow children happened to have real data — a coincidence of
+   arithmetic, not a real reconciliation.
+
+   **The fix:** changed grouping from "identical signature" to **connected
+   components over overlapping signatures** (union-find keyed by shared
+   `common_row_id`, transitively) — implemented in the same "Shared-frontier
+   group combination" block. The exact-equality case is subsumed as the
+   special case where every signature in a component happens to be
+   identical, so it required no separate code path. The important follow-on
+   correctness issue (flagged in advance and verified explicit before
+   writing the reconciliation): reusing one member's own `frontier_sum` (safe
+   under exact-equality, since every member's frontier_sum already came from
+   the identical id set) is WRONG under connected components, since members'
+   registered id sets are now genuine subsets of the union — summing each
+   member's own frontier_sum would double-count shared ids. The combined
+   group's `frontier_sum`/`frontier_positive_sum`/`frontier_negative_sum`/
+   `frontier_row_count` (and, orthogonally, any raw-fallback contribution
+   from unregistered/dataless members of the same component) are now
+   recomputed from the **union of every `common_row_id` touched by any
+   member, each counted exactly once**, applied to the primary row via an
+   explicit `(group_id, economy, scenario, year)` lookup map rather than
+   `pd.merge` (a merge would silently reset `base`'s index, which the
+   surrounding boolean masks depend on). `parent_value`/`parent_positive_
+   value`/`parent_negative_value` combination across the whole connected
+   component reuses the existing `combine_cols`/`groupby(...).transform("sum")`
+   logic unchanged — that part was already correct in shape.
+
+   **Verified with a real-data A/B** (restricted repro: ESTO+NINTH, year
+   slice `{esto_base_year, 2030}`, all economies, `unmodelled_source_codes`
+   and `exclude_parents` both applied — see "Reusable tooling" below):
+
+   | | failed | passed | skipped |
+   |---|---|---|---|
+   | Before (git-stashed, exact-equality grouping) | 1,262 | 56,162 | 258,436 |
+   | After (connected-components grouping) | **760** | 55,636 | 259,464 |
+
+   All 160 of the `10.01 Own Use`/`10 Losses & own use` ESTO-side residual
+   rows resolved (0 remaining failures for those two parents, confirmed by
+   direct filter on the after-fix detail table) — concretely, `01AUS`/2023's
+   `10.01 Own Use` coal-by-products family now collapses into ONE combined
+   row (`other_axis_value` = all seven `02.0x` labels joined with `" + "`,
+   `parent_value == frontier_sum == -32.003271`, status `passed`) instead of
+   three separate `failed` rows plus partial skips. The parallel `07.12`-
+   `07.17` petroleum-by-products family under the same parent resolved the
+   same way (`07.12 White spirit SBP + 07.13 Lubricants + 07.14 Bitumen +
+   07.16 Petroleum coke + 07.17 Other products`, now `passed`).
+
+   **The fix's real-data impact is much larger than just this one family**:
+   total failures across the whole dataset dropped by 502 (1,262 → 760), not
+   ~160 — grouping by `parent_code`/`comparison_scope`/`source_system`
+   showed reductions concentrated in `09 Total transformation sector` (ESTO,
+   -56), `14 Industry sector`/`14.03 Manufacturing` (ESTO, -51/-39) and their
+   NINTH-side equivalents `14_industry_sector`/`14_03_manufacturing` (NINTH,
+   -69/-63), and `16 Other sector`/`16_other_sector` (ESTO/NINTH, -23/-33) —
+   i.e. the same asymmetric-registration shape recurs across several other
+   flow/sector families that share the "some flow children register a
+   partial by-product subset, others register the whole family" structure.
+   **No `(parent_code, comparison_scope, source_system)` combination gained
+   any new failures** (confirmed by diffing failed-row counts grouped on
+   those three keys between the before/after detail tables — every nonzero
+   delta was a reduction). `passed` dropped slightly (56,162 → 55,636,
+   -526): expected and correct — some `other_axis_value` members that used
+   to be evaluated independently (and happened to pass by coincidence
+   against a partial frontier sum) are now folded into their group's primary
+   row and marked `skipped`/`grouped_with_shared_frontier_sibling` instead,
+   since they are no longer independent numeric findings.
+
+   **Known remaining gap: none found in this family.** Every row checked in
+   the `10.01`/`10`/`07.12-07.17` shape reconciled after correct grouping;
+   this session did not find a case where connected-components grouping
+   produced a genuine, still-failing numeric mismatch, though the fix's
+   design explicitly allows for that outcome (a real mismatch after correct
+   grouping is a valid result, not something to force-pass). The broader
+   `14_industry_sector` residual (item 4 below) and NINTH-side items 1/3 are
+   unrelated shapes and remain open as documented below.
+
+   Regression coverage: `tests/test_source_parent_anchor_validation.py` gained
+   `test_overlapping_but_not_identical_signatures_group_via_connected_components`,
+   which mirrors this exact real-data shape (three `other_axis_value`s with
+   pairwise-overlapping-but-not-identical signatures) and pins both that they
+   now collapse into one group AND that the recomputed `frontier_sum` is the
+   deduplicated union (not a double-counted or partial sum). The existing
+   `test_shared_frontier_group_is_combined_not_individually_failed` and
+   `test_distinct_frontier_scope_is_unaffected_by_shared_scope_grouping`
+   (the Oil Refining exact-equality case from `docs/prompts/anchor_validator_
+   fixes_findings_20260722.md` fix 6) still pass unchanged, confirming
+   connected components subsumes exact-equality grouping without regressing
+   it. Full targeted suite (`tests/test_source_parent_anchor_validation.py
+   tests/test_structural_resolver.py tests/test_build_dataset_tree_structure.py
+   tests/test_non_expanding_rollups.py tests/test_build_energy_balance_
+   relationships.py`): **111 passed** (110 baseline + 1 new test), confirmed
+   both before and after the fix (before: 110 passed + 1 new test failing as
+   expected against the old grouping rule; after: 111 passed).
+
+3. **The mirror-row gap: attempted fix and why it was reverted (consolidates
+   the old items 1, 3, and 4 above — same underlying question, same
+   answer).** A fourth follow-on session (still 2026-07-23) picked up the
+   user's explicit direction: "extend the skip to catch the row's own pair
+   too," on condition of finding a way to tell a genuine mirror-row apart
+   from the genuine single-sided error `test_leaf_remap_onto_ancestor_
+   with_own_row_still_fails_on_real_mismatch` protects.
+
+   **The candidate signal tried:** walk the OTHER-axis tree *past* the
+   immediate children `_build_source_internal_bad_pairs` already checks, to
+   grandchildren and deeper. Hypothesis: in a genuine mirror-row, the true
+   value hasn't vanished, it's just reported at a level deeper than the
+   immediate children — so some deep descendant should still show real,
+   nonzero evidence for the same validation-axis code. In the protected
+   single-sided-error fixture (`_duplicated_rollup_value_fixture`'s "Plants"/
+   "Solar" case), "Solar" is a *leaf* with no children of its own, so there
+   is no level below the immediate children to search — the signal correctly
+   stays silent there, and all 111 existing tests (including the four
+   `test_leaf_remap_onto_ancestor_with_own_...` tests) kept passing with this
+   change in place. Implemented as two new pure functions,
+   `_build_deep_other_descendants` (other-axis node -> descendants strictly
+   below its immediate children, memoized DFS) and
+   `_build_deep_descendant_evidence` (finds real nonzero raw evidence at
+   those deeper nodes for the same validation-axis code), gating a new
+   row's-own-pair check that only fires when `_build_source_internal_
+   bad_pairs` already flags the row's own `(parent_code, other_axis_value)`
+   pair as bad *and* deep evidence corroborates it.
+
+   **Passing the unit-test suite was not enough — real-data A/B is what
+   falsified the hypothesis.** Rebuilt the restricted repro from scratch,
+   confirmed it reproduced the current baseline exactly
+   (`760 failed / 55,636 passed / 259,464 skipped`) with the item-2 fix alone
+   before trusting anything from it, then re-ran with the new mechanism
+   added on top:
+
+   | | failed | passed | skipped |
+   |---|---|---|---|
+   | Before (item-2 fix only) | 760 | 55,636 | 259,464 |
+   | After (+ deep-descendant-evidence row's-own-pair check) | **760** | 55,624 | 259,476 |
+
+   **Zero of the 760 failing rows were reclassified.** Every one of the 12
+   rows that changed status moved `passed` -> `skipped`; none moved out of
+   `failed`. Traced both directions concretely:
+
+   - **The signal under-fires on the actual target case.** Direct query of
+     `data/merged_file_energy_ALL_20251106.csv` for the exact `01AUS`/
+     `16_others`/`09_total_transformation_sector/09_01_electricity_plants`
+     row item 3 was built around (still `failed`,
+     `parent_child_source_inconsistency`, `parent_value == -12.37876`,
+     `frontier_sum == 0.0` in both before and after) shows the true value
+     genuinely has no deeper representation *anywhere* in the sector's own
+     subtree: every one of its 30 sub-sector/sub-sub-sector/sub-sub-sub-
+     sector descendant rows, at every depth down to the leaf, reports
+     exactly `0` for fuel `16_others`. The `-12.37876` figure exists only at
+     the `09_01_electricity_plants` level itself — the doc's original
+     "reported at the wrong depth" theory does not hold for this row once
+     checked directly; if it is a mirror-row at all, the true value would
+     have to live in a completely different, non-descendant part of NINTH's
+     tree, which a same-subtree deep search cannot find by construction.
+   - **The signal over-fires on rows that were already correct.** The 12
+     `passed` -> `skipped` rows (`08_gas`/`15_transport_sector`, NINTH,
+     3 economies x 2 years x 2 scenarios) were already reconciling exactly
+     (`parent_value == frontier_sum == 18.879735` for `01AUS`/reference/2023,
+     confirmed unchanged in both runs) — a real, correct pass. Direct query
+     of the raw file shows why the *unrelated* self-consistency check still
+     fired: `15_transport_sector`'s own total for fuel `08_gas`
+     (`18.879735`) does not equal the sum of its own immediate sector
+     children (`15_01`...`15_06`, summing to only `1.773`), because NINTH's
+     transport sector has many more nonzero cells scattered across deeper
+     sub-sub-sector rows than its own immediate-child rollups capture (e.g.
+     `15_02_road/15_02_02_freight/15_02_02_02_light_commercial_vehicle/..._
+     compressed_natual_gas == 0.714903`) — a real, ordinary hierarchical
+     rollup gap in the OTHER axis, unrelated to whether the *validated*
+     parent/frontier comparison is trustworthy. Since some such deep cell is
+     always nonzero for a sufficiently large real sector subtree, "does any
+     deep descendant have a nonzero value" was not actually correlated with
+     "is the mismatch a mirror-row" — it fired on this already-passing row
+     for reasons that have nothing to do with the row being validated.
+
+   **Conclusion: reverted, not shipped.** The deep-descendant-evidence
+   signal does not reliably distinguish a genuine mirror-row from a genuine
+   single-sided error — it manages to both miss the real target cases (no
+   deeper evidence found in the one case checked directly) and produce new
+   false positives on unrelated, already-correct rows, while leaving all
+   ~760 real failures (including every row in items 1/3/4's original
+   `09_06_gas_processing_plants`/`15_solid_biomass`/`16_others`/`08_gas`/
+   `14_industry_sector` families) completely unchanged. This matches the
+   task's own warning almost exactly: a change that passes the unit-test
+   suite by construction (since the one adversarial fixture happens to use a
+   leaf child) but produces no real benefit and one confirmed regression
+   class on real data is not a safe fix to ship. `codebase/mapping_tools/
+   source_parent_anchor_validation.py` and `tests/test_source_parent_anchor_
+   validation.py` are both back to their pre-session state (the item-2
+   connected-components fix only); nothing from this attempt was kept.
+   Full targeted suite re-confirmed at **111 passed** after the revert, and
+   the real-data repro re-confirmed the exact `760 / 55,636 / 259,464`
+   baseline with the revert in place.
+
+   **What this rules out, and what's left to try.** It rules out "walk
+   further down the SAME other-axis node's own subtree" as a general
+   distinguishing signal — that specific search space is either empty (the
+   `16_others` case) or noisy (the `08_gas`/`15_transport_sector` case) on
+   real data, not just in principle. It does NOT rule out every possible
+   distinguishing signal — e.g. a signal that also requires the deep
+   evidence to itself reconcile numerically against the frontier (not just
+   be nonzero) might avoid the `08_gas`/`15_transport_sector` false positive,
+   but would still need to somehow locate `16_others`' missing `-12.37876`
+   somewhere else in NINTH's tree (a genuinely different search, e.g. across
+   sibling sectors rather than descendants) to catch the case items 1/3/4
+   were originally built around — and per `1c17af8`'s own commit message,
+   every cross-axis/cross-branch variant tried in earlier sessions collapsed
+   into the same circularity the shipped, narrow, frontier-leaf-only version
+   avoids. If revisited, the right framing may genuinely be the one
+   `1c17af8`'s commit message already flagged as the likely real answer:
+   "trust the more granular raw data and substitute it as the corrected
+   value" is a fundamentally different (and bigger) design decision than
+   "detect and skip," and needs explicit user sign-off before attempting —
+   detection alone, in every form tried across four sessions now, has not
+   produced a safe result.
+
+4. **8 "ambiguous" candidate mapping pairs** surfaced (then retracted along
    with the other 29) by the missing-mapping-gap detector script referenced
    below — these had real NINTH evidence but the sector or fuel maps to more
    than one `esto_flow`/`esto_product` elsewhere in `ninth_pairs_to_esto_

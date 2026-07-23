@@ -847,40 +847,96 @@ def validate_source_parent_anchors(
             # "07.12-07.17 Petroleum products" row under esto_leap_ninth,
             # because Ninth's raw data cannot distinguish the sub-products).
             # In that case every member's frontier_sum already reflects the
-            # WHOLE shared group's total (each resolves to the identical
-            # common_row_id set), so comparing each raw product's own
+            # WHOLE shared group's total, so comparing each raw product's own
             # individual parent_value against that shared total can only ever
             # reconcile for a member whose value happens to equal the group's
-            # combined total. Detect (parent_code, other_axis_value) groups
-            # that share an identical, non-empty common_row_id set for a given
-            # comparison_scope, combine their raw values into one primary row
-            # compared against the shared frontier_sum, and mark the rest
-            # ``skipped`` so the detail table does not silently drop rows or
-            # report spurious failures for them.
-            frontier_signatures: dict[tuple[str, str, str], tuple[str, ...]] = {
-                key: tuple(sorted(str(cid) for cid in ids))
-                for key, (ids, _structurally_registered, _fallback_candidates) in frontier_ids_cache.items()
-                if ids
-            }
-            group_members: dict[tuple[str, str, tuple[str, ...]], list[str]] = {}
-            for (gpcode, goas, gscope), signature in frontier_signatures.items():
-                group_members.setdefault((gpcode, gscope, signature), []).append(goas)
-            shared_groups = {
-                key: sorted(members)
-                for key, members in group_members.items()
-                if len(members) > 1
-            }
+            # combined total.
+            #
+            # Grouping is by CONNECTED COMPONENT over shared common_row_ids,
+            # not exact signature equality. A source system can legitimately
+            # register only a partial, asymmetric subset of a semantically
+            # related product family's common rows per flow child -- e.g.
+            # ESTO's "10.01 Own Use" flow children each register a different
+            # subset of the same 7 coal by-products' shared Common ESTO row:
+            # "10.01.01" registers {02.01, 02.03, 02.07}, "10.01.11" registers
+            # only {02.01}, others register all 7. Exact-equality grouping
+            # split these into several partial groups that each got compared
+            # against whichever partial subset of flow children happened to
+            # have real data for a given economy/year -- a coincidence of
+            # arithmetic, not a real reconciliation. Two other_axis_values now
+            # belong in the same group whenever their registered
+            # common_row_id sets overlap at all, transitively (union-find),
+            # so the old exact-equality case is subsumed as the special case
+            # where every signature in a component happens to be identical.
+            uf_parent: dict[Any, Any] = {}
+
+            def _uf_find(x: Any) -> Any:
+                root = x
+                while uf_parent[root] != root:
+                    root = uf_parent[root]
+                while uf_parent[x] != root:
+                    uf_parent[x], x = root, uf_parent[x]
+                return root
+
+            def _uf_union(a: Any, b: Any) -> None:
+                ra, rb = _uf_find(a), _uf_find(b)
+                if ra != rb:
+                    uf_parent[ra] = rb
+
+            node_ids: dict[tuple[str, str, str], list[str]] = {}
+            for (gpcode, goas, gscope), (ids, _structurally_registered, _fallback_candidates) in frontier_ids_cache.items():
+                if not ids:
+                    continue
+                sig = sorted({str(cid) for cid in ids})
+                node = (gpcode, gscope, goas)
+                node_ids[node] = sig
+                uf_parent.setdefault(node, node)
+                for cid in sig:
+                    id_node = ("__id__", gpcode, gscope, cid)
+                    uf_parent.setdefault(id_node, id_node)
+                    _uf_union(node, id_node)
+
+            component_members: dict[Any, list[tuple[str, str, str]]] = {}
+            for node in node_ids:
+                component_members.setdefault(_uf_find(node), []).append(node)
+
+
+            # Each connected component's group id is keyed on the UNION of
+            # every common_row_id touched by any of its members, not on any
+            # single member's own (possibly partial) signature.
+            shared_groups: dict[str, dict[str, Any]] = {}
+            for members in component_members.values():
+                if len(members) <= 1:
+                    continue
+                gpcode, gscope = members[0][0], members[0][1]
+                oas_members = sorted(m[2] for m in members)
+                union_ids = sorted({cid for m in members for cid in node_ids[m]})
+                group_id = f"{gpcode}||{gscope}||{'|'.join(union_ids)}"
+                shared_groups[group_id] = {
+                    "parent_code": gpcode,
+                    "scope": gscope,
+                    "members": oas_members,
+                    "union_ids": union_ids,
+                }
+
+            # Index raw_fallback_rows by (parent_code, other_axis_value,
+            # scope) once so the per-group fold-in below is O(1) per member
+            # instead of an O(members * raw_fallback_rows) scan.
+            raw_fallback_index: dict[tuple[str, str, str], set[tuple[str, str]]] = {}
+            for pc2, oa2, sc2, sflow, sprod in raw_fallback_rows:
+                raw_fallback_index.setdefault((pc2, oa2, sc2), set()).add((sflow, sprod))
+
             skip_rows = pd.Series(False, index=base.index)
             if shared_groups:
                 group_id_of: dict[tuple[str, str, str], str] = {}
                 primary_of: dict[str, str] = {}
                 label_of: dict[str, str] = {}
-                for (gpcode, gscope, signature), members in shared_groups.items():
-                    group_id = f"{gpcode}||{gscope}||{'|'.join(signature)}"
+                for group_id, info in shared_groups.items():
+                    members = info["members"]
                     primary_of[group_id] = members[0]
                     label_of[group_id] = " + ".join(members)
                     for member in members:
-                        group_id_of[(gpcode, gscope, member)] = group_id
+                        group_id_of[(info["parent_code"], info["scope"], member)] = group_id
                 base["_shared_group_id"] = [
                     group_id_of.get((pc, sc, oa))
                     for pc, sc, oa in zip(base["parent_code"], base["comparison_scope"], base["_oas"])
@@ -902,6 +958,87 @@ def validate_source_parent_anchors(
                     base.loc[primary_rows, "other_axis_value"] = base.loc[
                         primary_rows, "_shared_group_id"
                     ].map(label_of)
+
+                    # Recompute the group's frontier_sum from the union of
+                    # every common_row_id touched by any member, each summed
+                    # exactly once -- reusing one member's own frontier_sum
+                    # (correct only when every member's registered id set was
+                    # identical) would double-count ids shared by several
+                    # members, or omit ids only some members registered, now
+                    # that a component can span overlapping-but-not-identical
+                    # signatures. Built as an explicit (group_id, economy,
+                    # scenario, year) -> values map and applied via row-key
+                    # lookup (not pd.merge) so ``base``'s index -- which the
+                    # boolean masks above already depend on -- is preserved.
+                    group_frontier_map: dict[tuple[str, Any, Any, Any], tuple[float, float, float, int]] = {}
+                    for group_id, info in shared_groups.items():
+                        scope = info["scope"]
+                        union_ids = info["union_ids"]
+                        if not union_ids:
+                            continue
+                        id_hits = system_comparison[
+                            (system_comparison["comparison_scope"] == scope)
+                            & (system_comparison["common_row_id"].isin(union_ids))
+                        ]
+                        member_fallback_pairs: set[tuple[str, str]] = set()
+                        for member in info["members"]:
+                            member_fallback_pairs |= raw_fallback_index.get(
+                                (info["parent_code"], member, scope), set()
+                            )
+                        parts = [id_hits[["economy", "scenario", "year", "value"]]]
+                        if member_fallback_pairs:
+                            fb_df = pd.DataFrame(
+                                sorted(member_fallback_pairs), columns=["source_flow", "source_product"],
+                            )
+                            fb_hits = fb_df.merge(
+                                raw_pair_values, on=["source_flow", "source_product"], how="inner",
+                            )
+                            if not fb_hits.empty:
+                                parts.append(fb_hits[["economy", "scenario", "year", "value"]])
+                        combined = pd.concat(parts, ignore_index=True) if len(parts) > 1 else parts[0]
+                        if combined.empty:
+                            continue
+                        combined = combined.assign(
+                            _gpos=combined["value"].where(combined["value"] > 0, 0.0),
+                            _gneg=combined["value"].where(combined["value"] < 0, 0.0),
+                        )
+                        gsum = (
+                            combined.groupby(["economy", "scenario", "year"], dropna=False, sort=False)
+                            .agg(
+                                g_sum=("value", "sum"),
+                                g_pos=("_gpos", "sum"),
+                                g_neg=("_gneg", "sum"),
+                                g_count=("value", "size"),
+                            )
+                            .reset_index()
+                        )
+                        for econ, scen, yr, gsum_v, gpos_v, gneg_v, gcount_v in gsum.itertuples(index=False):
+                            group_frontier_map[(group_id, econ, scen, yr)] = (
+                                gsum_v, gpos_v, gneg_v, int(gcount_v)
+                            )
+
+                    if group_frontier_map:
+                        row_keys = list(
+                            zip(base["_shared_group_id"], base["economy"], base["scenario"], base["year"])
+                        )
+                        recomputed = [group_frontier_map.get(k) for k in row_keys]
+                        has_recompute = pd.Series(
+                            [v is not None for v in recomputed], index=base.index,
+                        )
+                        apply_mask = primary_rows & has_recompute
+                        if apply_mask.any():
+                            recompute_cols = [
+                                "frontier_sum", "frontier_positive_sum",
+                                "frontier_negative_sum", "frontier_row_count",
+                            ]
+                            for col_idx, col in enumerate(recompute_cols):
+                                values = pd.Series(
+                                    [v[col_idx] if v is not None else None for v in recomputed],
+                                    index=base.index,
+                                )
+                                base.loc[apply_mask, col] = values.loc[apply_mask]
+                            base["frontier_row_count"] = base["frontier_row_count"].astype(int)
+
                     skip_rows = grouped_mask & ~is_primary
                 base = base.drop(columns=["_shared_group_id"])
 
