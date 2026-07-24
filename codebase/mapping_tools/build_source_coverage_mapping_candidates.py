@@ -259,6 +259,14 @@ def _annotate_cardinality(
     statuses: list[str] = []
     overlap_flags: list[bool] = []
     overlap_axes: list[str] = []
+    existing_to_target: list[str] = []
+    existing_from_source: list[str] = []
+
+    def format_key(key: tuple[str, ...]) -> str:
+        return " | ".join(value for value in key if value)
+
+    def format_keys(keys: set[tuple[str, ...]]) -> str:
+        return "; ".join(sorted(format_key(key) for key in keys if format_key(key)))
     source_counts: list[int] = []
     target_counts: list[int] = []
     for _, row in frame.iterrows():
@@ -271,6 +279,12 @@ def _annotate_cardinality(
         target_source_count = len(
             existing_target_sources.get(target_key, set())
             | candidate_target_sources.get(target_key, set())
+        )
+        existing_to_target.append(
+            format_keys(existing_target_sources.get(target_key, set()))
+        )
+        existing_from_source.append(
+            format_keys(existing_source_targets.get(source_key, set()))
         )
         has_overlap, overlap_axis = has_parent_child_overlap(source_key, target_key)
         if has_overlap:
@@ -295,6 +309,8 @@ def _annotate_cardinality(
     output["candidate_status"] = statuses
     output["parent_child_overlap"] = overlap_flags
     output["parent_child_overlap_axis"] = overlap_axes
+    output["existing_mappings_to_same_target"] = existing_to_target
+    output["existing_mappings_from_same_source"] = existing_from_source
     return output
 
 
@@ -457,18 +473,18 @@ def build_candidates(
                 ["ninth_sector", "ninth_fuel"],
                 ["esto_flow", "esto_product"],
             )
-        outputs[name] = frame[sheet_columns + [column for column in ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count", "economy", "component", "source", "source_flow", "source_fuel", "mapped_leap_fuel"] if column in frame.columns]]
+        outputs[name] = frame[sheet_columns + [column for column in ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count", "existing_mappings_to_same_target", "existing_mappings_from_same_source", "economy", "component", "source", "source_flow", "source_fuel", "mapped_leap_fuel"] if column in frame.columns]]
         if name in {"leap_combined_ninth", "leap_combined_esto", "ninth_pairs_to_esto_pairs"} and not frame.empty:
             safe_name = f"{name}_safe"
             conflict_name = f"{name}_conflicts"
             outputs[safe_name] = frame[
                 frame["cardinality_if_added"].isin({"ONE_TO_ONE_ADDITION", "MANY_TO_ONE_ADDITION"})
                 & ~frame["parent_child_overlap"]
-            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count"]]
+            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count", "existing_mappings_to_same_target", "existing_mappings_from_same_source"]]
             outputs[conflict_name] = frame[
                 ~frame["cardinality_if_added"].isin({"ONE_TO_ONE_ADDITION", "MANY_TO_ONE_ADDITION"})
                 | frame["parent_child_overlap"]
-            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count"]]
+            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count", "existing_mappings_to_same_target", "existing_mappings_from_same_source"]]
     outputs["unresolved"] = pd.DataFrame(unresolved_rows)
     return outputs
 

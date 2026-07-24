@@ -98,3 +98,13 @@ The generator now performs that parent-child check using LEAP path ancestry and
 the numeric hierarchy codes in the 9th/ESTO labels. Those rows receive
 `PARENT_CHILD_OVERLAP_CONFLICT` and are excluded from the safe files, even when
 their ordinary cardinality would otherwise be many-to-one.
+
+Each candidate also includes two context columns:
+
+- `existing_mappings_to_same_target`: active source branch/flow rows already
+  mapped to the candidate target.
+- `existing_mappings_from_same_source`: active target branch/flow rows already
+  mapped from the candidate source.
+
+These make the remaining many-to-one additions inspectable without opening the
+mapping workbook separately.

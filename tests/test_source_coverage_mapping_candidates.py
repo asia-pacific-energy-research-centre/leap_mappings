@@ -44,6 +44,20 @@ def test_cardinality_annotation_quarantines_parent_child_overlap() -> None:
     assert bool(annotated.iloc[0]["parent_child_overlap"])
 
 
+def test_cardinality_annotation_shows_existing_mapping_context() -> None:
+    existing = pd.DataFrame(
+        [
+            {"source": "Existing branch", "target": "Existing flow", "duplicate_to_remove": False}
+        ]
+    )
+    candidates = pd.DataFrame([{"source": "New branch", "target": "Existing flow"}])
+
+    annotated = _annotate_cardinality(candidates, existing, ["source"], ["target"])
+
+    assert annotated.iloc[0]["existing_mappings_to_same_target"] == "Existing branch"
+    assert annotated.iloc[0]["existing_mappings_from_same_source"] == ""
+
+
 def test_build_candidates_keeps_sheet_rows_copy_ready_and_does_not_edit_workbook() -> None:
     detail = pd.DataFrame(
         [
