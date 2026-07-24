@@ -1,5 +1,16 @@
 # Resume prompt: NINTH 09 Total transformation reconciliation gap
 
+> **Current-baseline re-triage (2026-07-24).** The earlier failure counts are
+> stale again. The current Stage 3 baseline (`common_esto_post_patch_20260724T000000Z`)
+> has one failed NINTH flow-axis check for this parent: `01_AUS`, `target`, 2043,
+> `17 Electricity`, `esto_leap_ninth`; parent value `-4.111213`, children sum
+> `-4.493983`, residual `0.382770` PJ. The child detail places it at the
+> `09.01-09.02 Power sector` / `09.13 Hydrogen transformation` boundary. This
+> is not a detached-rollup regression or a mapping candidate. Treat it as a
+> narrow NINTH source-internal consistency case that is not currently attributed
+> by the shared lookup; do not add a mapping or workbook exception. Its only
+> follow-up is the separate reliability-flag design.
+
 > **Status update (2026-07-23) — largely resolved by intervening work, not by this pass
 > specifically.** Re-checked `results/tree_structure/common_esto_validation.csv` (regenerated
 > today via this session's own pipeline run) directly rather than trusting this prompt's
