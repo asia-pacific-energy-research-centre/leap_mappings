@@ -1,0 +1,74 @@
+# Source-to-LEAP coverage audit
+
+`codebase/mapping_tools/source_coverage_audit.py` is the reusable checker for
+finding non-zero source fuels that are missing from LEAP or from the canonical
+mapping workbook.
+
+## What it checks
+
+The audit is source-first:
+
+1. Read non-zero 9th Outlook rows for the configured scope and reference
+   scenario.
+2. Drop only 9th rows with `subtotal_results == True`.
+3. Keep valid parent-level rows where `subfuel == "x"`.
+4. Read non-zero ESTO rows for the configured scope.
+5. Drop only ESTO rows with `is_subtotal == True`.
+6. Preserve negative values, including international bunker rows.
+7. Apply the canonical mapping only after the source inventory exists.
+8. Check the exact mapped path in each economy's LEAP template.
+
+An unmapped source row is retained in the output. It is never silently removed
+because the mapping workbook lacks a row.
+
+## Configuration
+
+Scopes are defined in `config/source_coverage_scopes.json`. The initial scope is
+`all_demand_aggregated`, with the six components below:
+
+```text
+Demand\All demand aggregated
+├── Freight road
+├── Passenger road
+├── Transport non road
+├── Industry
+├── Other sector
+└── Buildings
+```
+
+To reuse the checker for another sector, add another scope and its source
+selectors to that JSON. The Python module should not receive new hardcoded
+sector lists.
+
+## Outputs
+
+Running `run_coverage_audit()` writes four CSVs under
+`results/source_coverage/`:
+
+- `*_source_inventory.csv`: all non-zero source fuel rows before mapping.
+- `*_coverage_detail.csv`: source rows plus mapping and LEAP presence status.
+- `*_coverage_gaps.csv`: only rows that need review.
+- `*_coverage_summary.csv`: counts by economy, component, source, and status.
+
+Important statuses are:
+
+- `OK`: mapped fuel exists at the exact LEAP path.
+- `MISSING_LEAP_FUEL`: mapping exists, but the exact nested LEAP fuel path is
+  absent.
+- `UNMAPPED_SOURCE_FUEL`: non-zero source fuel has no active mapping.
+- `AMBIGUOUS_MAPPING`: active mappings produce more than one LEAP fuel name.
+- `REMOVED_MAPPING_ONLY`: only deliberately removed mapping rows exist.
+- `LEAP_TEMPLATE_MISSING`: the economy's LEAP structure export was not found.
+
+The LEAP template lookup accepts both ordinary economy filenames such as
+`leap_export_template 20_USA.xlsx` and generic filenames such as
+`leap_export_template 03_CDA_COMP_GEN.xlsx`; the latter is normalized to
+`03_CDA` before comparison.
+
+## Current smoke result
+
+The initial all-demand run read all 21 economies. Before the six nested LEAP
+branches are created, the expected result is a large `MISSING_LEAP_FUEL` set;
+that is the actionable list for the LEAP structure handoff. Separate unmapped
+and ambiguous rows identify mapping work and are not confused with missing
+LEAP branches.

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "note": "Configuration for source-first non-zero fuel coverage audits. Source rows are collected before mappings are applied. Add new reusable scopes here rather than hardcoding sector logic in the audit module.",
+  "scopes": {
+    "all_demand_aggregated": {
+      "leap_root": "Demand\\All demand aggregated",
+      "components": [
+        {
+          "name": "Freight road",
+          "ninth": {"sub2sectors": ["15_02_02_freight"]},
+          "esto_flow_prefixes": ["15.02 Road"],
+          "mapping_ninth_sectors": ["15_02_road"],
+          "mapping_esto_flows": ["15.02 Road"]
+        },
+        {
+          "name": "Passenger road",
+          "ninth": {"sub2sectors": ["15_02_01_passenger"]},
+          "esto_flow_prefixes": ["15.02 Road"],
+          "mapping_ninth_sectors": ["15_02_road"],
+          "mapping_esto_flows": ["15.02 Road"]
+        },
+        {
+          "name": "Transport non road",
+          "ninth_any_of": [
+            {"sectors": ["04_international_marine_bunkers"]},
+            {"sectors": ["05_international_aviation_bunkers"]},
+            {"sub1sectors": ["15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"]}
+          ],
+          "esto_flow_prefixes": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"],
+          "mapping_ninth_sectors": ["04_international_marine_bunkers", "05_international_aviation_bunkers", "15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"],
+          "mapping_esto_flows": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"]
+        },
+        {
+          "name": "Industry",
+          "ninth": {"sectors": ["14_industry_sector"]},
+          "esto_flow_prefixes": ["14 Industry sector"],
+          "mapping_ninth_sectors": ["14_industry_sector"],
+          "mapping_esto_flows": ["14 Industry sector"]
+        },
+        {
+          "name": "Other sector",
+          "ninth": {"sub1sectors": ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"]},
+          "esto_flow_prefixes": ["16.02 Residential", "16.03 Agriculture", "16.04 Fishing", "16.05 Non-specified others"],
+          "mapping_ninth_sectors": ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"],
+          "mapping_esto_flows": ["16.02 Residential", "16.03 Agriculture", "16.04 Fishing", "16.05 Non-specified others"]
+        },
+        {
+          "name": "Buildings",
+          "ninth": {"sub1sectors": ["16_01_buildings"]},
+          "esto_flow_prefixes": ["16.01 Commercial and public services"],
+          "mapping_ninth_sectors": ["16_01_buildings"],
+          "mapping_esto_flows": ["16.01 Commercial and public services"]
+        }
+      ]
+    }
+  }
+}
