@@ -5,6 +5,7 @@ import pandas as pd
 from codebase.mapping_tools.source_parent_anchor_validation import (
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
+    build_failed_anchor_raw_child_values,
     summarise_source_parent_anchors,
     validate_source_parent_anchors,
 )
@@ -1072,3 +1073,22 @@ def test_data_quality_exception_missing_sheet_is_a_no_op(tmp_path) -> None:
     augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
 
     assert (~augmented["known_data_quality_exception"]).all()
+
+
+def test_failed_anchor_child_values_show_each_immediate_raw_child() -> None:
+    source, tree, _, _, _ = _fixture(child_b_value=6)
+    detail = pd.DataFrame([{
+        "status": "failed", "validation_axis": "product", "comparison_scope": "esto_only",
+        "source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+        "other_axis_value": "F", "parent_code": "P", "parent_value": 10.0,
+        "frontier_sum": 8.0, "difference": 2.0, "abs_error": 2.0,
+    }])
+
+    child_values = build_failed_anchor_raw_child_values(detail, source, tree)
+
+    assert set(child_values["child_code"]) == {"P.1", "P.2"}
+    by_child = child_values.set_index("child_code")
+    assert by_child.loc["P.1", "raw_child_total"] == 4.0
+    assert by_child.loc["P.2", "raw_child_total"] == 6.0
+    assert (by_child["parent_total"] == 10.0).all()
+    assert (by_child["frontier_total"] == 8.0).all()

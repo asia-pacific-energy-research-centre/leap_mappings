@@ -593,6 +593,8 @@ def run_stage_3() -> None:
     )
     from codebase.mapping_tools.source_parent_anchor_validation import (
         ANCHOR_COLUMNS,
+        ANCHOR_CHILD_VALUE_COLUMNS,
+        build_failed_anchor_raw_child_values,
         load_raw_source_anchor_inputs,
         summarise_source_parent_anchors,
         validate_source_parent_anchors,
@@ -723,8 +725,10 @@ def run_stage_3() -> None:
 
     anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
     anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
+    anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
     if skip_reason:
         anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+        anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
         anchor_summary = pd.DataFrame([{
             "run_id": run_id, "status": "skipped", "eligible": 0,
             "passed": 0, "failed": 0, "skipped": 0, "reason": skip_reason,
@@ -833,6 +837,11 @@ def run_stage_3() -> None:
                 unmodelled_source_codes=unmodelled_source_codes,
                 exclude_parents=anchor_exclude_parents,
             )
+            anchor_child_values = build_failed_anchor_raw_child_values(
+                anchor_detail,
+                raw_anchor_source,
+                validation_tree,
+            )
         except MemoryError as exc:
             print(
                 "  WARNING: source_parent_anchor_validation ran out of memory; "
@@ -840,6 +849,7 @@ def run_stage_3() -> None:
             )
             print(f"  WARNING: {type(exc).__name__}: {exc}")
             anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+            anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
             anchor_summary = pd.DataFrame([{
                 "run_id": run_id,
                 "status": "skipped",
@@ -855,12 +865,14 @@ def run_stage_3() -> None:
                 f"{time.perf_counter() - anchor_t0:.1f}s ({len(anchor_detail):,} rows)"
             )
             anchor_detail.insert(0, "run_id", run_id)
+            anchor_child_values.insert(0, "run_id", run_id)
             anchor_summary = summarise_source_parent_anchors(anchor_detail)
             anchor_summary.insert(0, "run_id", run_id)
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
     anchor_detail.to_csv(anchor_detail_path, index=False)
+    anchor_child_values.to_csv(anchor_child_values_path, index=False)
     anchor_summary.to_csv(anchor_summary_path, index=False)
 
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"

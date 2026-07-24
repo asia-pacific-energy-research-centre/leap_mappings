@@ -45,6 +45,12 @@ ANCHOR_COLUMNS = [
     "frontier_negative_sum",
 ]
 
+ANCHOR_CHILD_VALUE_COLUMNS = [
+    "validation_axis", "comparison_scope", "source_system", "parent_code", "child_code",
+    "failed_context_count", "parent_total", "frontier_total", "mismatch_total",
+    "absolute_mismatch_total", "raw_child_total", "raw_child_row_count",
+]
+
 # A reviewed, manually-curated exception for a raw-source self-inconsistency
 # NINTH/LEAP/ESTO's own data cannot resolve automatically (see
 # _augment_with_data_quality_exceptions). Reuses the same
@@ -1379,6 +1385,107 @@ def load_raw_source_anchor_inputs(
         pd.concat(source_frames, ignore_index=True)[source_columns],
         pd.concat(mapping_frames, ignore_index=True)[mapping_columns].drop_duplicates(),
     )
+
+
+def build_failed_anchor_raw_child_values(
+    detail_df: pd.DataFrame,
+    source_df: pd.DataFrame,
+    source_tree_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Summarise each immediate raw child for contexts with a failed anchor.
+
+    ``frontier_total`` remains the validator's authoritative, de-duplicated
+    mapped-frontier total. ``raw_child_total`` is deliberately separate: it
+    is the raw source value reported for one immediate child. This makes the
+    tree inspectable without pretending that overlapping mapped descendants
+    can be allocated uniquely to individual children.
+    """
+    required_detail = {
+        "status", "validation_axis", "comparison_scope", "source_system",
+        "economy", "scenario", "year", "other_axis_value", "parent_code",
+        "parent_value", "frontier_sum", "difference", "abs_error",
+    }
+    required_source = {
+        "source_system", "economy", "scenario", "year", "source_flow",
+        "source_product", "value",
+    }
+    if not required_detail.issubset(detail_df.columns) or not required_source.issubset(source_df.columns):
+        return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
+
+    failed = detail_df[detail_df["status"].astype(str).eq("failed")].copy()
+    if failed.empty:
+        return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
+    failed["economy"] = _normalize_economy(failed["economy"])
+    failed["year"] = pd.to_numeric(failed["year"], errors="coerce")
+    for column in ["parent_value", "frontier_sum", "difference", "abs_error"]:
+        failed[column] = pd.to_numeric(failed[column], errors="coerce").fillna(0.0)
+
+    source = source_df.copy()
+    source["economy"] = _normalize_economy(source["economy"])
+    source["year"] = pd.to_numeric(source["year"], errors="coerce")
+    source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
+    detail_rows: list[pd.DataFrame] = []
+
+    for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
+        dataset = source_system.casefold()
+        system_failed = failed[failed["source_system"].astype(str).eq(source_system)]
+        system_source = source[source["source_system"].astype(str).eq(source_system)]
+        for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
+            if dataset in {"leap", "ninth"}:
+                tree_axis = "sector" if validation_axis == "flow" else "fuel"
+            axis_failed = system_failed[system_failed["validation_axis"].astype(str).eq(validation_axis)].copy()
+            if axis_failed.empty:
+                continue
+            axis_col = "source_flow" if validation_axis == "flow" else "source_product"
+            other_col = "source_product" if validation_axis == "flow" else "source_flow"
+            aliases = build_tree_code_aliases(source_tree_df, dataset, tree_axis)
+            tree_mask = (
+                source_tree_df["dataset"].astype(str).str.casefold().eq(dataset)
+                & source_tree_df["axis"].astype(str).str.casefold().eq(tree_axis)
+            )
+            tree = source_tree_df.loc[tree_mask, ["code", "parent_code"]].copy()
+            if tree.empty:
+                continue
+            tree["code"] = canonicalize_tree_codes(tree["code"], aliases)
+            tree["parent_code"] = canonicalize_tree_codes(tree["parent_code"], aliases)
+            edges = tree[tree["parent_code"].astype(str).ne("")].rename(columns={
+                "parent_code": "parent_code", "code": "child_code",
+            }).drop_duplicates()
+            axis_failed["parent_code"] = canonicalize_tree_codes(axis_failed["parent_code"], aliases)
+            expanded = axis_failed.merge(edges, on="parent_code", how="inner")
+            if expanded.empty:
+                continue
+            child_source = system_source.copy()
+            child_source[axis_col] = canonicalize_tree_codes(child_source[axis_col], aliases)
+            child_source = child_source.rename(columns={axis_col: "child_code", other_col: "other_axis_value"})
+            join_columns = ["economy", "scenario", "year", "other_axis_value", "child_code"]
+            matched = expanded.merge(
+                child_source[join_columns + ["value"]],
+                on=join_columns,
+                how="left",
+            )
+            matched["value"] = matched["value"].fillna(0.0)
+            grouped = (
+                matched.groupby(
+                    ["validation_axis", "comparison_scope", "source_system", "parent_code", "child_code"],
+                    dropna=False,
+                )
+                .agg(
+                    failed_context_count=("status", "size"),
+                    parent_total=("parent_value", "sum"),
+                    frontier_total=("frontier_sum", "sum"),
+                    mismatch_total=("difference", "sum"),
+                    absolute_mismatch_total=("abs_error", "sum"),
+                    raw_child_total=("value", "sum"),
+                    raw_child_row_count=("value", lambda values: int((values != 0).sum())),
+                )
+                .reset_index()
+            )
+            detail_rows.append(grouped)
+
+    if not detail_rows:
+        return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
+    return pd.concat(detail_rows, ignore_index=True)[ANCHOR_CHILD_VALUE_COLUMNS]
 
 
 def summarise_source_parent_anchors(detail_df: pd.DataFrame) -> pd.DataFrame:
