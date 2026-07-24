@@ -118,8 +118,19 @@ def _row_matches_exception(
     candidate_row: pd.Series,
     exception_row: pd.Series,
     match_columns: list[str],
+    numeric_tolerance_columns: frozenset[str] = frozenset(),
+    tolerance: float = 0.01,
 ) -> bool:
-    """Return True when all populated exception match columns match the candidate row."""
+    """Return True when all populated exception match columns match the candidate row.
+
+    ``numeric_tolerance_columns`` compares those specific columns as numbers
+    within ``tolerance`` (relative to the exception's recorded value) instead
+    of exact string equality. Use this for a value recorded at the moment an
+    exception was reviewed (e.g. a raw parent total) so the exception stops
+    matching if the underlying data later changes -- a different bug landing
+    on the same code/label key should not silently inherit an old, unrelated
+    sign-off.
+    """
     populated_columns = [col for col in match_columns if _norm(exception_row.get(col, ""))]
     if not populated_columns:
         return False
@@ -127,6 +138,15 @@ def _row_matches_exception(
     for col in populated_columns:
         expected = _norm(exception_row.get(col, ""))
         actual = _norm(candidate_row.get(col, ""))
+        if col in numeric_tolerance_columns:
+            try:
+                expected_num = float(expected)
+                actual_num = float(actual)
+            except ValueError:
+                return False
+            if abs(expected_num - actual_num) > tolerance * max(abs(expected_num), 1):
+                return False
+            continue
         if expected.endswith(MATCH_PREFIX_SUFFIX):
             if not actual.startswith(expected[:-1]):
                 return False
@@ -138,9 +158,13 @@ def _row_matches_exception(
 def matching_exception_notes(
     candidate_row: pd.Series,
     exception_df: pd.DataFrame,
+    numeric_tolerance_columns: frozenset[str] = frozenset(),
+    tolerance: float = 0.01,
 ) -> str:
     """Return notes from the first enabled exception row matching the candidate row."""
-    matching_row = matching_exception_row(candidate_row, exception_df)
+    matching_row = matching_exception_row(
+        candidate_row, exception_df, numeric_tolerance_columns, tolerance
+    )
     if matching_row is None:
         return ""
     return _norm(matching_row.get("notes", ""))
@@ -149,6 +173,8 @@ def matching_exception_notes(
 def matching_exception_row(
     candidate_row: pd.Series,
     exception_df: pd.DataFrame,
+    numeric_tolerance_columns: frozenset[str] = frozenset(),
+    tolerance: float = 0.01,
 ) -> pd.Series | None:
     """Return the first enabled exception row matching the candidate row."""
     if exception_df.empty:
@@ -159,7 +185,9 @@ def matching_exception_row(
         return None
 
     for _, exception_row in exception_df.iterrows():
-        if _row_matches_exception(candidate_row, exception_row, match_columns):
+        if _row_matches_exception(
+            candidate_row, exception_row, match_columns, numeric_tolerance_columns, tolerance
+        ):
             return exception_row
     return None
 
@@ -170,6 +198,8 @@ def split_allowed_rows(
     status_column: str,
     reason_column: str,
     workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+    numeric_tolerance_columns: frozenset[str] = frozenset(),
+    tolerance: float = 0.01,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split a QA table into review rows and rows matched by a manual exception sheet."""
     allowed_columns = [*list(candidate_df.columns), status_column, reason_column]
@@ -179,7 +209,7 @@ def split_allowed_rows(
     exception_df = load_exception_sheet(sheet_name, workbook_path=workbook_path)
     reviewed = candidate_df.copy()
     matches = [
-        matching_exception_row(row, exception_df)
+        matching_exception_row(row, exception_df, numeric_tolerance_columns, tolerance)
         for _, row in reviewed.iterrows()
     ]
     reviewed[reason_column] = [

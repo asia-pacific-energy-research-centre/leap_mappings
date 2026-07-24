@@ -3,6 +3,8 @@
 import pandas as pd
 
 from codebase.mapping_tools.source_parent_anchor_validation import (
+    DATA_QUALITY_EXCEPTION_SHEET,
+    _augment_with_data_quality_exceptions,
     summarise_source_parent_anchors,
     validate_source_parent_anchors,
 )
@@ -981,3 +983,92 @@ def test_non_expanding_direct_match_with_real_data_is_not_descended() -> None:
     p_row = detail[detail["parent_code"] == "P"].iloc[0]
     # NX resolves to its own real, atomic value (10), not NX.1 + NX.2 (6).
     assert p_row["frontier_sum"] == 20
+
+
+def _write_data_quality_exception_workbook(tmp_path, **overrides) -> "Path":
+    from pathlib import Path
+
+    workbook_path = Path(tmp_path) / "exceptions.xlsx"
+    row = {
+        "enabled": True,
+        "source_system": "NINTH",
+        "validation_axis": "product",
+        "parent_code": "16_others",
+        "other_axis_value": "09_total_transformation_sector/09_01_electricity_plants",
+        "economy": "",
+        "parent_value": "-12.37876",
+        "notes": "known NINTH self-inconsistency, reviewed 2026-07-24",
+    }
+    row.update(overrides)
+    pd.DataFrame([row]).to_excel(workbook_path, sheet_name=DATA_QUALITY_EXCEPTION_SHEET, index=False)
+    return workbook_path
+
+
+def _data_quality_candidate_rows() -> pd.DataFrame:
+    base = {
+        "source_system": "NINTH",
+        "validation_axis": "product",
+        "parent_code": "16_others",
+        "other_axis_value": "09_total_transformation_sector/09_01_electricity_plants",
+    }
+    return pd.DataFrame([
+        {**base, "status": "failed", "parent_value": -12.37876},
+        # A different parent_value at the same code/label key -- must NOT
+        # inherit the exception meant for the -12.37876 case.
+        {**base, "status": "failed", "parent_value": -999.0},
+        # Already-passing rows are never checked against the sheet.
+        {**base, "status": "passed", "parent_value": -12.37876},
+    ])
+
+
+def test_data_quality_exception_flags_matching_failed_row_without_changing_status(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(tmp_path)
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert augmented["status"].tolist() == ["failed", "failed", "passed"]
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
+    assert "known NINTH self-inconsistency" in augmented.iloc[0]["data_quality_exception_notes"]
+
+
+def test_data_quality_exception_does_not_match_a_different_parent_value(tmp_path) -> None:
+    """A stale exception (or a fresh, unrelated bug landing on the same
+    code/label key) must not silently inherit an old sign-off."""
+    workbook_path = _write_data_quality_exception_workbook(tmp_path)
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert bool(augmented.iloc[1]["known_data_quality_exception"]) is False
+    assert augmented.iloc[1]["data_quality_exception_notes"] == ""
+
+
+def test_data_quality_exception_never_checks_already_passing_rows(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(tmp_path)
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert bool(augmented.iloc[2]["known_data_quality_exception"]) is False
+
+
+def test_data_quality_exception_disabled_row_never_matches(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(tmp_path, enabled=False)
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+
+
+def test_data_quality_exception_missing_sheet_is_a_no_op(tmp_path) -> None:
+    from pathlib import Path
+
+    workbook_path = Path(tmp_path) / "empty.xlsx"
+    pd.DataFrame([{"placeholder": 1}]).to_excel(workbook_path, sheet_name="unrelated", index=False)
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert (~augmented["known_data_quality_exception"]).all()

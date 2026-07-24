@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -17,6 +18,11 @@ from codebase.mapping_tools.structural_resolver import (
     resolve_nearest_mapped_pair,
 )
 from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pair_mask
+from codebase.mapping_issue_exceptions import (
+    EXCEPTION_WORKBOOK_PATH,
+    load_exception_sheet,
+    matching_exception_row,
+)
 
 
 COMPARISON_SCOPE_SYSTEMS = {
@@ -37,6 +43,16 @@ ANCHOR_COLUMNS = [
     "missing_nonzero_child_abs", "missing_zero_or_absent_child_count",
     "parent_positive_value", "parent_negative_value", "frontier_positive_sum",
     "frontier_negative_sum",
+]
+
+# A reviewed, manually-curated exception for a raw-source self-inconsistency
+# NINTH/LEAP/ESTO's own data cannot resolve automatically (see
+# _augment_with_data_quality_exceptions). Reuses the same
+# config/mapping_issue_exception_sets.xlsx workbook and enabled/notes
+# convention as every other exception family in this repo.
+DATA_QUALITY_EXCEPTION_SHEET = "source_mismatch_allowed"
+ANCHOR_EXCEPTION_COLUMNS = [
+    "known_data_quality_exception", "data_quality_exception_notes",
 ]
 
 
@@ -1169,8 +1185,47 @@ def validate_source_parent_anchors(
             records_frames.append(base[ANCHOR_COLUMNS].copy())
 
     if not records_frames:
-        return pd.DataFrame(columns=ANCHOR_COLUMNS)
-    return pd.concat(records_frames, ignore_index=True)
+        return pd.DataFrame(columns=ANCHOR_COLUMNS + ANCHOR_EXCEPTION_COLUMNS)
+    return _augment_with_data_quality_exceptions(pd.concat(records_frames, ignore_index=True))
+
+
+def _augment_with_data_quality_exceptions(
+    result: pd.DataFrame,
+    workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
+    sheet_name: str = DATA_QUALITY_EXCEPTION_SHEET,
+) -> pd.DataFrame:
+    """Flag failing rows matched by a reviewed, manually-curated exception.
+
+    Never changes ``status``/``reason`` -- a row stays exactly what it would
+    otherwise be. "Augment, don't hide": existing consumers that count or
+    filter on ``status`` keep working unchanged; the new columns are purely
+    additive. Adds ``known_data_quality_exception`` (bool) and
+    ``data_quality_exception_notes`` (the matched exception row's notes).
+
+    Matching requires the row's own ``parent_value`` to be numerically within
+    tolerance of the value recorded when the exception was reviewed, on top
+    of the usual code/label match -- so if the underlying data later changes
+    (a source correction, or a different bug landing on the same key), the
+    exception stops applying instead of silently continuing to hide it. See
+    ``codebase.mapping_issue_exceptions.matching_exception_row``'s
+    ``numeric_tolerance_columns``.
+    """
+    result = result.copy()
+    result["known_data_quality_exception"] = False
+    result["data_quality_exception_notes"] = ""
+    exception_df = load_exception_sheet(sheet_name, workbook_path=workbook_path)
+    if exception_df.empty or result.empty:
+        return result
+
+    failed = result[result["status"] == "failed"]
+    for idx, row in failed.iterrows():
+        match = matching_exception_row(
+            row, exception_df, numeric_tolerance_columns=frozenset({"parent_value"})
+        )
+        if match is not None:
+            result.at[idx, "known_data_quality_exception"] = True
+            result.at[idx, "data_quality_exception_notes"] = str(match.get("notes", "") or "").strip()
+    return result
 
 
 # Economy used to exercise the numeric anchor totals when validating the
