@@ -51,6 +51,12 @@ ANCHOR_CHILD_VALUE_COLUMNS = [
     "absolute_mismatch_total", "raw_child_total", "raw_child_row_count",
 ]
 
+ANCHOR_CHILD_CONTEXT_COLUMNS = [
+    "validation_axis", "comparison_scope", "source_system", "economy", "scenario", "year",
+    "other_axis_value", "parent_code", "child_code", "parent_value", "frontier_sum",
+    "difference", "abs_error", "raw_child_value", "raw_child_row_count",
+]
+
 # A reviewed, manually-curated exception for a raw-source self-inconsistency
 # NINTH/LEAP/ESTO's own data cannot resolve automatically (see
 # _augment_with_data_quality_exceptions). Reuses the same
@@ -1387,12 +1393,12 @@ def load_raw_source_anchor_inputs(
     )
 
 
-def build_failed_anchor_raw_child_values(
+def build_failed_anchor_raw_child_context_values(
     detail_df: pd.DataFrame,
     source_df: pd.DataFrame,
     source_tree_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Summarise each immediate raw child for contexts with a failed anchor.
+    """Return immediate raw-child values for every failed anchor context.
 
     ``frontier_total`` remains the validator's authoritative, de-duplicated
     mapped-frontier total. ``raw_child_total`` is deliberately separate: it
@@ -1410,11 +1416,11 @@ def build_failed_anchor_raw_child_values(
         "source_product", "value",
     }
     if not required_detail.issubset(detail_df.columns) or not required_source.issubset(source_df.columns):
-        return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
+        return pd.DataFrame(columns=ANCHOR_CHILD_CONTEXT_COLUMNS)
 
     failed = detail_df[detail_df["status"].astype(str).eq("failed")].copy()
     if failed.empty:
-        return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
+        return pd.DataFrame(columns=ANCHOR_CHILD_CONTEXT_COLUMNS)
     failed["economy"] = _normalize_economy(failed["economy"])
     failed["year"] = pd.to_numeric(failed["year"], errors="coerce")
     for column in ["parent_value", "frontier_sum", "difference", "abs_error"]:
@@ -1467,16 +1473,15 @@ def build_failed_anchor_raw_child_values(
             matched["value"] = matched["value"].fillna(0.0)
             grouped = (
                 matched.groupby(
-                    ["validation_axis", "comparison_scope", "source_system", "parent_code", "child_code"],
+                    [
+                        "validation_axis", "comparison_scope", "source_system", "economy", "scenario",
+                        "year", "other_axis_value", "parent_code", "child_code", "parent_value",
+                        "frontier_sum", "difference", "abs_error",
+                    ],
                     dropna=False,
                 )
                 .agg(
-                    failed_context_count=("status", "size"),
-                    parent_total=("parent_value", "sum"),
-                    frontier_total=("frontier_sum", "sum"),
-                    mismatch_total=("difference", "sum"),
-                    absolute_mismatch_total=("abs_error", "sum"),
-                    raw_child_total=("value", "sum"),
+                    raw_child_value=("value", "sum"),
                     raw_child_row_count=("value", lambda values: int((values != 0).sum())),
                 )
                 .reset_index()
@@ -1484,8 +1489,40 @@ def build_failed_anchor_raw_child_values(
             detail_rows.append(grouped)
 
     if not detail_rows:
+        return pd.DataFrame(columns=ANCHOR_CHILD_CONTEXT_COLUMNS)
+    return pd.concat(detail_rows, ignore_index=True)[ANCHOR_CHILD_CONTEXT_COLUMNS]
+
+
+def build_failed_anchor_raw_child_values(
+    detail_df: pd.DataFrame,
+    source_df: pd.DataFrame,
+    source_tree_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Summarise immediate raw-child values across failed anchor contexts."""
+    context_values = build_failed_anchor_raw_child_context_values(detail_df, source_df, source_tree_df)
+    return summarise_failed_anchor_raw_child_context_values(context_values)
+
+
+def summarise_failed_anchor_raw_child_context_values(context_values: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate context-level child values for compact tree display."""
+    if context_values.empty:
         return pd.DataFrame(columns=ANCHOR_CHILD_VALUE_COLUMNS)
-    return pd.concat(detail_rows, ignore_index=True)[ANCHOR_CHILD_VALUE_COLUMNS]
+    return (
+        context_values.groupby(
+            ["validation_axis", "comparison_scope", "source_system", "parent_code", "child_code"],
+            dropna=False,
+        )
+        .agg(
+            failed_context_count=("parent_value", "size"),
+            parent_total=("parent_value", "sum"),
+            frontier_total=("frontier_sum", "sum"),
+            mismatch_total=("difference", "sum"),
+            absolute_mismatch_total=("abs_error", "sum"),
+            raw_child_total=("raw_child_value", "sum"),
+            raw_child_row_count=("raw_child_row_count", "sum"),
+        )
+        .reset_index()[ANCHOR_CHILD_VALUE_COLUMNS]
+    )
 
 
 def summarise_source_parent_anchors(detail_df: pd.DataFrame) -> pd.DataFrame:

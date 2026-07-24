@@ -5,6 +5,7 @@ import pandas as pd
 from codebase.mapping_tools.source_parent_anchor_validation import (
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
+    build_failed_anchor_raw_child_context_values,
     build_failed_anchor_raw_child_values,
     summarise_source_parent_anchors,
     validate_source_parent_anchors,
@@ -1092,3 +1093,7 @@ def test_failed_anchor_child_values_show_each_immediate_raw_child() -> None:
     assert by_child.loc["P.2", "raw_child_total"] == 6.0
     assert (by_child["parent_total"] == 10.0).all()
     assert (by_child["frontier_total"] == 8.0).all()
+
+    context_values = build_failed_anchor_raw_child_context_values(detail, source, tree)
+    assert len(context_values) == 2
+    assert set(context_values["raw_child_value"]) == {4.0, 6.0}
