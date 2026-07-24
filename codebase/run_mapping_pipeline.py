@@ -321,6 +321,10 @@ def run_ninth_to_esto() -> None:
         convert_ninth_results_to_esto,
         relationships_need_target_dataset_share,
     )
+    from codebase.mapping_tools.target_share_allocation import (
+        target_dataset_share_target_flows,
+        load_target_dataset_share_basis_rows,
+    )
     # Load the mapping first so the wide 9th frame can be filtered to only
     # sector/fuel pairs with an included ESTO mapping *before* the year melt.
     relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
@@ -342,6 +346,21 @@ def run_ninth_to_esto() -> None:
     target_values_df = None
     if relationships_need_target_dataset_share(relationships_df):
         target_values_df = pd.read_csv(ESTO_ROWS_PATH, dtype=object)
+        needed_flows = target_dataset_share_target_flows(relationships_df)
+        subtotal_basis_df = load_target_dataset_share_basis_rows(ESTO_CSV_PATH, needed_flows)
+        if not subtotal_basis_df.empty:
+            # esto_results_exact_rows.csv deliberately drops is_subtotal rows
+            # (see run_esto_exact_rows); a source relationship can target an
+            # aggregate ESTO flow only resolvable at that subtotal level, so
+            # the allocation basis is fetched back in here, scoped to exactly
+            # the flows that need it -- see target_share_allocation.py.
+            target_values_df = pd.concat(
+                [target_values_df, subtotal_basis_df], ignore_index=True
+            )
+            print(
+                f"  Target-dataset-share basis: added {len(subtotal_basis_df):,} "
+                f"ESTO subtotal rows for {len(needed_flows):,} aggregate flow(s)"
+            )
     converted_df, lineage_df = convert_ninth_results_to_esto(
         ninth_long,
         relationships_df,

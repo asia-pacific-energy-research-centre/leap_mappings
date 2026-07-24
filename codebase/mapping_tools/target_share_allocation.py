@@ -4,6 +4,7 @@
 #%%
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
@@ -130,5 +131,82 @@ def apply_target_dataset_allocation(
 
     result.loc[rows["_original_index"], "allocation_share"] = rows["_computed_allocation_share"].to_numpy()
     return result
+
+
+def target_dataset_share_target_flows(relationships_df: pd.DataFrame) -> set[str]:
+    """Return every ``target_flow`` that needs target-dataset-share allocation.
+
+    A source pair needs it when every candidate relationship row for that
+    pair has a blank ``allocation_share`` and there is more than one distinct
+    target. Mirrors the grouping in :func:`apply_target_dataset_allocation`;
+    kept side-effect free so callers can use the result to fetch exactly the
+    ESTO basis rows required, without guessing.
+    """
+    required = {"source_flow", "source_product", "target_flow", "target_product", "allocation_share"}
+    if not required.issubset(relationships_df.columns):
+        return set()
+
+    rows = relationships_df.copy()
+    source_group_columns = ["source_flow", "source_product"]
+    blank_share = rows["allocation_share"].fillna("").astype(str).str.strip().eq("")
+    rows["_target_pair"] = (
+        rows["target_flow"].fillna("").astype(str).str.strip()
+        + "\x1f"
+        + rows["target_product"].fillna("").astype(str).str.strip()
+    )
+    target_count = rows.groupby(source_group_columns, dropna=False)["_target_pair"].transform("nunique")
+    all_shares_blank = blank_share.groupby(
+        [rows[column] for column in source_group_columns], dropna=False
+    ).transform("all")
+    needs_share = all_shares_blank & target_count.gt(1)
+    flows = rows.loc[needs_share, "target_flow"].fillna("").astype(str).str.strip()
+    return set(flows) - {""}
+
+
+def load_target_dataset_share_basis_rows(
+    esto_csv_path: Path,
+    needed_flows: set[str],
+) -> pd.DataFrame:
+    """
+    Load ESTO's own reported subtotal rows for exactly the flow labels a
+    target-dataset-share allocation needs as its basis.
+
+    ``esto_results_exact_rows.csv`` (the usual ``target_values_df`` source)
+    deliberately excludes every ``is_subtotal=True`` row, so Common ESTO
+    structure-building never double-counts a subtotal against its own
+    re-derived children. But a source-to-ESTO relationship can target an
+    aggregate flow (e.g. ``"14.03 Manufacturing"``) that only the source
+    dataset resolves at that coarse a granularity -- ESTO's own basis for
+    splitting the source value across that aggregate's children genuinely
+    exists, just one level lower, as ESTO's own reported subtotal, which the
+    exact-rows file strips. This reads it back in from the raw ESTO source,
+    scoped to only the flow labels actually needed and only their
+    ``is_subtotal=True`` rows, so it never touches the shared exact-rows file
+    or risks double-counting a leaf ESTO row already present there.
+    """
+    empty = pd.DataFrame(columns=["economy", "esto_flow", "esto_product", "year", "value"])
+    if not needed_flows or not esto_csv_path.exists():
+        return empty
+
+    df = pd.read_csv(esto_csv_path, dtype=object)
+    is_subtotal = df["is_subtotal"].astype(str).str.strip().str.lower().eq("true")
+    is_needed_flow = df["flows"].astype(str).str.strip().isin(needed_flows)
+    df = df[is_subtotal & is_needed_flow].copy()
+    if df.empty:
+        return empty
+
+    year_cols = [column for column in df.columns if str(column).isdigit()]
+    for column in year_cols:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    long_df = df[["economy", "flows", "products", *year_cols]].melt(
+        id_vars=["economy", "flows", "products"],
+        value_vars=year_cols,
+        var_name="year",
+        value_name="value",
+    ).dropna(subset=["value"])
+    long_df = long_df.rename(columns={"flows": "esto_flow", "products": "esto_product"})
+    long_df["year"] = long_df["year"].astype(int).astype(str)
+    return long_df[["economy", "esto_flow", "esto_product", "year", "value"]]
 
 #%%

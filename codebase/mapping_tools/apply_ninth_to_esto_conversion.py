@@ -12,7 +12,10 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.source_rollups import apply_source_rollups
-from codebase.mapping_tools.target_share_allocation import apply_target_dataset_allocation
+from codebase.mapping_tools.target_share_allocation import (
+    apply_target_dataset_allocation,
+    target_dataset_share_target_flows,
+)
 
 #%%
 REQUIRED_NINTH_COLUMNS = ["ninth_sector", "ninth_fuel", "value"]
@@ -307,22 +310,7 @@ def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> b
         "allocation_source"
     ].fillna("").astype(str).str.strip().str.casefold().eq("target_dataset_share").any():
         return True
-    required = {"source_flow", "source_product", "target_flow", "target_product", "allocation_share"}
-    if not required.issubset(relationships_df.columns):
-        return False
-    rows = relationships_df.copy()
-    source_group_columns = ["source_flow", "source_product"]
-    blank_share = rows["allocation_share"].fillna("").astype(str).str.strip().eq("")
-    rows["_target_pair"] = (
-        rows["target_flow"].fillna("").astype(str).str.strip()
-        + "\x1f"
-        + rows["target_product"].fillna("").astype(str).str.strip()
-    )
-    target_count = rows.groupby(source_group_columns, dropna=False)["_target_pair"].transform("nunique")
-    all_shares_blank = blank_share.groupby(
-        [rows[column] for column in source_group_columns], dropna=False
-    ).transform("all")
-    return bool((all_shares_blank & target_count.gt(1)).any())
+    return bool(target_dataset_share_target_flows(relationships_df))
 
 
 def load_non_expanding_ninth_rollup_rules(mapping_workbook_path: Path) -> pd.DataFrame:
