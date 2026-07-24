@@ -22,6 +22,28 @@ def test_cardinality_annotation_quarantines_many_to_many_edges() -> None:
     assert annotated.iloc[0]["cardinality_if_added"] == "MANY_TO_MANY_CONFLICT"
 
 
+def test_cardinality_annotation_quarantines_parent_child_overlap() -> None:
+    existing = pd.DataFrame(
+        [
+            {
+                "source": "16_01_01_child",
+                "target": "16.01 Commercial and public services",
+                "duplicate_to_remove": False,
+            }
+        ]
+    )
+    candidates = pd.DataFrame(
+        [{"source": "16_01_parent", "target": "16.01 Commercial and public services"}]
+    )
+
+    annotated = _annotate_cardinality(
+        candidates, existing, ["source"], ["target"]
+    )
+
+    assert annotated.iloc[0]["cardinality_if_added"] == "PARENT_CHILD_OVERLAP_CONFLICT"
+    assert bool(annotated.iloc[0]["parent_child_overlap"])
+
+
 def test_build_candidates_keeps_sheet_rows_copy_ready_and_does_not_edit_workbook() -> None:
     detail = pd.DataFrame(
         [

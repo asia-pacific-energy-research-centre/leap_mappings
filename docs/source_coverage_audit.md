@@ -82,8 +82,8 @@ It does not edit `outlook_mappings_master.xlsx`.
 The generated pack is split into:
 
 - `*_safe_candidates.csv`: one-to-one and many-to-one additions.
-- `*_conflicts_candidates.csv`: one-to-many and many-to-many rows that require
-  an explicit hierarchy/subtotal decision.
+- `*_conflicts_candidates.csv`: one-to-many, many-to-many, and parent/child
+  overlap rows that require an explicit hierarchy/subtotal decision.
 - `*_candidates.csv`: the complete annotated set for auditability.
 
 Cardinality is evaluated against active existing rows and all sibling candidate
@@ -93,3 +93,8 @@ target with multiple sources, it is classified as `MANY_TO_MANY_CONFLICT`.
 Many-to-one rows are not many-to-many, but they still add another source to an
 existing target and should be checked for subtotal or parent-child semantics
 before manual insertion.
+
+The generator now performs that parent-child check using LEAP path ancestry and
+the numeric hierarchy codes in the 9th/ESTO labels. Those rows receive
+`PARENT_CHILD_OVERLAP_CONFLICT` and are excluded from the safe files, even when
+their ordinary cardinality would otherwise be many-to-one.

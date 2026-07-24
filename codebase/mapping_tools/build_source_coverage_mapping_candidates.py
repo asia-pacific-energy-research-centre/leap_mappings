@@ -9,6 +9,7 @@ LEAP target is missing or ambiguous.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 import sys
 from typing import Any
@@ -163,7 +164,7 @@ def _annotate_cardinality(
     source_columns: list[str],
     target_columns: list[str],
 ) -> pd.DataFrame:
-    """Classify each candidate against existing and sibling candidate edges."""
+    """Classify candidates, including parent/child overlap conflicts."""
     active = existing[
         ~existing["duplicate_to_remove"].map(
             lambda value: str(value).strip().casefold() in {"true", "1", "yes", "y"}
@@ -192,7 +193,72 @@ def _annotate_cardinality(
         candidate_source_targets.setdefault(source_key, set()).add(target_key)
         candidate_target_sources.setdefault(target_key, set()).add(source_key)
 
+    all_edges = [
+        (
+            tuple(str(row.get(column, "")).strip() for column in source_columns),
+            tuple(str(row.get(column, "")).strip() for column in target_columns),
+        )
+        for _, row in pd.concat([active, frame], ignore_index=True).iterrows()
+    ]
+
+    def hierarchy_relation(left: str, right: str, column: str) -> str:
+        """Return parent/child direction for LEAP paths or coded labels."""
+        left = str(left).strip()
+        right = str(right).strip()
+        if not left or not right or left == right:
+            return ""
+        if "path" in column:
+            left_parts = [part.casefold() for part in re.split(r"[/\\]", left) if part.strip()]
+            right_parts = [part.casefold() for part in re.split(r"[/\\]", right) if part.strip()]
+            if len(left_parts) < len(right_parts) and right_parts[: len(left_parts)] == left_parts:
+                return "left_parent"
+            if len(right_parts) < len(left_parts) and left_parts[: len(right_parts)] == right_parts:
+                return "right_parent"
+            return ""
+
+        def numeric_parts(value: str) -> list[int]:
+            # Codes such as 16_01_01, 16.01.99, and 07_x are hierarchical;
+            # x denotes an aggregate level and therefore stops the prefix.
+            code = value.split(maxsplit=1)[0].replace("-", "_")
+            parts: list[int] = []
+            for token in re.split(r"[._]", code):
+                if token.casefold() == "x":
+                    break
+                if token.isdigit():
+                    parts.append(int(token))
+                else:
+                    break
+            return parts
+
+        left_parts = numeric_parts(left)
+        right_parts = numeric_parts(right)
+        if len(left_parts) < len(right_parts) and right_parts[: len(left_parts)] == left_parts:
+            return "left_parent"
+        if len(right_parts) < len(left_parts) and left_parts[: len(right_parts)] == right_parts:
+            return "right_parent"
+        return ""
+
+    def has_parent_child_overlap(
+        source_key: tuple[str, ...], target_key: tuple[str, ...]
+    ) -> tuple[bool, str]:
+        for other_source, other_target in all_edges:
+            if other_source == source_key and other_target == target_key:
+                continue
+            if other_target == target_key:
+                for column, left, right in zip(source_columns, source_key, other_source):
+                    relation = hierarchy_relation(left, right, column)
+                    if relation:
+                        return True, f"source_{column}_parent_child"
+            if other_source == source_key:
+                for column, left, right in zip(target_columns, target_key, other_target):
+                    relation = hierarchy_relation(left, right, column)
+                    if relation:
+                        return True, f"target_{column}_parent_child"
+        return False, ""
+
     statuses: list[str] = []
+    overlap_flags: list[bool] = []
+    overlap_axes: list[str] = []
     source_counts: list[int] = []
     target_counts: list[int] = []
     for _, row in frame.iterrows():
@@ -206,7 +272,10 @@ def _annotate_cardinality(
             existing_target_sources.get(target_key, set())
             | candidate_target_sources.get(target_key, set())
         )
-        if source_target_count > 1 and target_source_count > 1:
+        has_overlap, overlap_axis = has_parent_child_overlap(source_key, target_key)
+        if has_overlap:
+            status = "PARENT_CHILD_OVERLAP_CONFLICT"
+        elif source_target_count > 1 and target_source_count > 1:
             status = "MANY_TO_MANY_CONFLICT"
         elif source_target_count > 1:
             status = "ONE_TO_MANY_CONFLICT"
@@ -215,6 +284,8 @@ def _annotate_cardinality(
         else:
             status = "ONE_TO_ONE_ADDITION"
         statuses.append(status)
+        overlap_flags.append(has_overlap)
+        overlap_axes.append(overlap_axis)
         source_counts.append(source_target_count)
         target_counts.append(target_source_count)
     output = frame.copy()
@@ -222,6 +293,8 @@ def _annotate_cardinality(
     output["existing_target_source_count"] = target_counts
     output["cardinality_if_added"] = statuses
     output["candidate_status"] = statuses
+    output["parent_child_overlap"] = overlap_flags
+    output["parent_child_overlap_axis"] = overlap_axes
     return output
 
 
@@ -384,16 +457,18 @@ def build_candidates(
                 ["ninth_sector", "ninth_fuel"],
                 ["esto_flow", "esto_product"],
             )
-        outputs[name] = frame[sheet_columns + [column for column in ["candidate_status", "cardinality_if_added", "existing_source_target_count", "existing_target_source_count", "economy", "component", "source", "source_flow", "source_fuel", "mapped_leap_fuel"] if column in frame.columns]]
+        outputs[name] = frame[sheet_columns + [column for column in ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count", "economy", "component", "source", "source_flow", "source_fuel", "mapped_leap_fuel"] if column in frame.columns]]
         if name in {"leap_combined_ninth", "leap_combined_esto", "ninth_pairs_to_esto_pairs"} and not frame.empty:
             safe_name = f"{name}_safe"
             conflict_name = f"{name}_conflicts"
             outputs[safe_name] = frame[
                 frame["cardinality_if_added"].isin({"ONE_TO_ONE_ADDITION", "MANY_TO_ONE_ADDITION"})
-            ][sheet_columns + ["candidate_status", "cardinality_if_added", "existing_source_target_count", "existing_target_source_count"]]
+                & ~frame["parent_child_overlap"]
+            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count"]]
             outputs[conflict_name] = frame[
-                frame["cardinality_if_added"].isin({"ONE_TO_MANY_CONFLICT", "MANY_TO_MANY_CONFLICT"})
-            ][sheet_columns + ["candidate_status", "cardinality_if_added", "existing_source_target_count", "existing_target_source_count"]]
+                ~frame["cardinality_if_added"].isin({"ONE_TO_ONE_ADDITION", "MANY_TO_ONE_ADDITION"})
+                | frame["parent_child_overlap"]
+            ][sheet_columns + ["candidate_status", "cardinality_if_added", "parent_child_overlap", "parent_child_overlap_axis", "existing_source_target_count", "existing_target_source_count"]]
     outputs["unresolved"] = pd.DataFrame(unresolved_rows)
     return outputs
 
