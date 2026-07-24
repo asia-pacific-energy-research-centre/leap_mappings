@@ -1960,7 +1960,10 @@ def _resolve_to_comparison_data(
                     children_map[code], data_codes, children_map, detached_labels, parent_of
                 )
             )
-        elif parent_of.get(code) in detached_labels:
+        elif (
+            parent_of.get(code) in detached_labels
+            or f"{parent_of.get(code, '')} (including own use)" in detached_labels
+        ):
             continue
         else:
             inclusive_variant = f"{code} (including own use)"
