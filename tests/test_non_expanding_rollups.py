@@ -15,6 +15,7 @@ from codebase.mapping_tools.non_expanding_rollups import (
     build_unresolved_non_expanding_qa,
     is_non_expanding_rule_row,
     get_rollup_mode,
+    load_rollup_source_flow_modes,
     non_expanding_rollup_id,
     split_non_expanding_rules,
 )
@@ -107,6 +108,30 @@ class TestRuleMarkers:
             non_expanding_rollup_id("16.03-16.04 Agriculture and fishing")
             == "nonexp_16_03_16_04_agriculture_and_fishing"
         )
+
+    def test_source_flow_modes_use_explicit_input_to_rollup_relationship(self, tmp_path) -> None:
+        workbook_path = tmp_path / "mappings.xlsx"
+        pd.DataFrame([
+            {
+                "input_esto_flow": "09.08 Coal transformation",
+                "rolled_esto_flow": "09.08 Coal transformation (including own use)",
+                "ROLLUP_MODE": "DETACHED",
+                "include": True,
+            },
+            {
+                "input_esto_flow": "09.08.01 Coke ovens",
+                "rolled_esto_flow": "09.08.01 Coke ovens (including own use)",
+                "ROLLUP_MODE": "NON_EXPANDING",
+                "include": True,
+            },
+        ]).to_excel(workbook_path, sheet_name="esto_rollup_rules", index=False)
+
+        modes = load_rollup_source_flow_modes(workbook_path, "ESTO")
+
+        assert modes == {
+            "09.08 Coal transformation": {"DETACHED"},
+            "09.08.01 Coke ovens": {"NON_EXPANDING"},
+        }
 
 
 class TestScenario1AgricultureFishing:

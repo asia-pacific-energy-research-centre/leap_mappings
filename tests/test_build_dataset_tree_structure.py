@@ -626,11 +626,21 @@ def test_common_flow_validation_excludes_detached_rollup_leaf_from_ancestor_sum(
         {"code": "09.08 Coal transformation", "parent_code": "09 Total transformation sector"},
         {"code": "09.01-09.02 Power sector", "parent_code": "09 Total transformation sector"},
         {"code": "09.08 Coal transformation (including own use)", "parent_code": ""},
-        {"code": "09.08.01 Coke ovens", "parent_code": "09.08 Coal transformation (including own use)"},
+        {"code": "09.08.01 Coke ovens", "parent_code": "09.08 Coal transformation"},
         {"code": "09.08.01 Coke ovens (including own use)", "parent_code": "09.08 Coal transformation (including own use)"},
     ]
+    common_rows = [dict(row) for row in tree_rows]
+    common_rows[4]["parent_code"] = "09.08 Coal transformation (including own use)"
     tree = pd.DataFrame(
-        [{"dataset": d, "axis": "flow", **row} for d in ("esto", "common_esto") for row in tree_rows]
+        [
+            {"dataset": "esto", "axis": "flow", **row}
+            for row in tree_rows
+            if "including own use" not in row["code"]
+        ]
+        + [
+            {"dataset": "common_esto", "axis": "flow", **row}
+            for row in common_rows
+        ]
     )
     pd.DataFrame([
         {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09 Total transformation sector", "common_product_label": "08.03 Gas works gas", "value": -95.158148},
@@ -657,43 +667,9 @@ def test_common_flow_validation_excludes_detached_rollup_leaf_from_ancestor_sum(
         tree,
         comparison_path,
         leap_var_base_year=2022,
-        detached_labels={"09.08 Coal transformation (including own use)"},
+        detached_labels={"09.08 Coal transformation"},
     )
     fixed_check = fixed_result[fixed_result["parent_code"] == "09 Total transformation sector"]
-    assert fixed_check.empty
-
-
-def test_detached_rollup_base_parent_is_resolved_from_inclusive_label(tmp_path: Path) -> None:
-    """A real ESTO base parent must match its synthetic DETACHED label.
-
-    ESTO's source tree declares ``09.08.01 Coke ovens`` under the base
-    ``09.08 Coal transformation`` label, while the rollup rules identify the
-    detached boundary as ``09.08 Coal transformation (including own use)``.
-    """
-    comparison_path = tmp_path / "comparison.csv"
-    tree_rows = [
-        {"code": "09 Total transformation sector", "parent_code": ""},
-        {"code": "09.08 Coal transformation", "parent_code": "09 Total transformation sector"},
-        {"code": "09.01-09.02 Power sector", "parent_code": "09 Total transformation sector"},
-        {"code": "09.08 Coal transformation (including own use)", "parent_code": ""},
-        {"code": "09.08.01 Coke ovens", "parent_code": "09.08 Coal transformation"},
-    ]
-    tree = pd.DataFrame(
-        [{"dataset": d, "axis": "flow", **row} for d in ("esto", "common_esto") for row in tree_rows]
-    )
-    pd.DataFrame([
-        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09 Total transformation sector", "common_product_label": "08.03 Gas works gas", "value": -95.158148},
-        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09.01-09.02 Power sector", "common_product_label": "08.03 Gas works gas", "value": -95.158148},
-        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "05_PRC", "scenario": "historical", "year": 2023, "common_flow_label": "09.08.01 Coke ovens (including own use)", "common_product_label": "08.03 Gas works gas", "value": -12.744965},
-    ]).to_csv(comparison_path, index=False)
-
-    result = validate_common_esto_recursive_sums(
-        tree,
-        comparison_path,
-        leap_var_base_year=2022,
-        detached_labels={"09.08 Coal transformation (including own use)"},
-    )
-    fixed_check = result[result["parent_code"] == "09 Total transformation sector"]
     assert fixed_check.empty
 
 

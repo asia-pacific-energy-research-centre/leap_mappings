@@ -1941,9 +1941,9 @@ def _resolve_to_comparison_data(
     A DETACHED rollup is different: its own-use contributors are an
     intentionally separate accounting boundary, not folded into the ordinary
     additive total (that is the whole point of ``DETACHED`` vs
-    ``NON_EXPANDING``). A leaf code whose declared tree parent is a DETACHED
-    label (per ``parent_of``/``detached_labels``) must not use this fallback;
-    it is dropped, same as if it had no inclusive sibling at all.
+    ``NON_EXPANDING``). ``detached_labels`` contains source-tree parent labels
+    resolved from the explicit rollup metadata, so a leaf whose declared
+    parent is detached must not use this fallback.
 
     This lets validation of a parent correctly sum through intermediate
     subtotals that were not included in the comparison dataset.
@@ -1960,10 +1960,7 @@ def _resolve_to_comparison_data(
                     children_map[code], data_codes, children_map, detached_labels, parent_of
                 )
             )
-        elif (
-            parent_of.get(code) in detached_labels
-            or f"{parent_of.get(code, '')} (including own use)" in detached_labels
-        ):
+        elif parent_of.get(code) in detached_labels:
             continue
         else:
             inclusive_variant = f"{code} (including own use)"

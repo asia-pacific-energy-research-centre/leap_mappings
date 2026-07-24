@@ -208,6 +208,45 @@ def load_rollup_mode_labels(workbook_path: Path) -> dict[str, str]:
     return labels
 
 
+def load_rollup_source_flow_modes(workbook_path: Path, source_system: str) -> dict[str, set[str]]:
+    """Map explicit input flow labels to the rollup modes that use them.
+
+    The input flow is the source-tree identity; the rolled flow is the
+    generated comparison label. Keeping the two identities separate avoids
+    relying on naming conventions when a rollup crosses those structures.
+    """
+    sheet_name = next(
+        (
+            sheet
+            for sheet, entry in ROLLUP_SHEET_CONFIGS.items()
+            if entry["source_system"] == source_system
+        ),
+        None,
+    )
+    if sheet_name is None:
+        raise ValueError(f"Unknown rollup source system: {source_system}")
+    config = ROLLUP_SHEET_CONFIGS[sheet_name]
+    try:
+        rules_df = pd.read_excel(
+            workbook_path,
+            sheet_name=sheet_name,
+            dtype=object,
+        ).fillna("")
+    except Exception:
+        return {}
+    if "include" in rules_df.columns:
+        rules_df = rules_df[rules_df["include"].map(_truthy)]
+
+    source_flow_modes: dict[str, set[str]] = {}
+    for _, rule in rules_df.iterrows():
+        input_flow = _str(rule.get(config["input_flow"], ""))
+        rolled_flow = _str(rule.get(config["rolled_flow"], ""))
+        if not input_flow or not rolled_flow:
+            continue
+        source_flow_modes.setdefault(input_flow, set()).add(get_rollup_mode(rule))
+    return source_flow_modes
+
+
 def build_non_expanding_rollup_catalogue(rules_by_sheet: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Compile one row per non-expanding rule contributor across all sheets."""
     rows: list[dict[str, Any]] = []

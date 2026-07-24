@@ -24,6 +24,7 @@ from codebase.mapping_tools.non_expanding_rollups import (
     get_rollup_mode,
     load_non_expanding_rollup_rules,
     load_rollup_mode_labels,
+    load_rollup_source_flow_modes,
     non_expanding_rollup_id,
 )
 
@@ -423,20 +424,23 @@ def _excluded_rollup_parents(workbook_path: Path | None) -> set[str]:
 
 
 def _detached_rollup_parents(workbook_path: Path | None) -> set[str]:
-    """Return rolled flow labels registered as ``DETACHED`` mode specifically.
+    """Return source-tree flow labels registered as ``DETACHED`` mode.
 
-    Unlike ``NON_EXPANDING``, a ``DETACHED`` rollup's own-use contributors are
-    an intentionally separate accounting boundary and must not be folded back
-    into an ancestor's ordinary additive sum -- see
-    ``_resolve_to_comparison_data`` in ``build_dataset_tree_structure.py``.
+    The source tree uses ``input_esto_flow`` labels, while comparison data uses
+    ``rolled_esto_flow`` labels. Resolve the mode from the explicit workbook
+    relationship rather than treating those labels as interchangeable.
     """
     if workbook_path is None or not Path(workbook_path).exists():
         return set()
     try:
-        mode_labels = load_rollup_mode_labels(Path(workbook_path))
+        source_flow_modes = load_rollup_source_flow_modes(Path(workbook_path), "ESTO")
     except Exception:
         return set()
-    return {label for label, mode in mode_labels.items() if mode == DETACHED_MODE}
+    return {
+        source_flow
+        for source_flow, modes in source_flow_modes.items()
+        if DETACHED_MODE in modes
+    }
 
 
 def _esto_rollup_contributors(workbook_path: Path | None) -> dict[str, dict[str, object]]:
