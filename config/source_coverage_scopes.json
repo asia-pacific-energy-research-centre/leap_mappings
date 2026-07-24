@@ -4,12 +4,15 @@
   "scopes": {
     "all_demand_aggregated": {
       "leap_root": "Demand\\All demand aggregated",
+      "mapping_root": "All demand aggregated",
       "components": [
         {
           "name": "Freight road",
           "ninth": {"sub2sectors": ["15_02_02_freight"]},
           "esto_flow_prefixes": ["15.02 Road"],
           "mapping_ninth_sectors": ["15_02_road"],
+          "ninth_pair_is_subtotal_default": true,
+          "mapping_ninth_sector_to_esto_flows": {"15_02_road": ["15.02 Road"]},
           "mapping_esto_flows": ["15.02 Road"]
         },
         {
@@ -17,6 +20,8 @@
           "ninth": {"sub2sectors": ["15_02_01_passenger"]},
           "esto_flow_prefixes": ["15.02 Road"],
           "mapping_ninth_sectors": ["15_02_road"],
+          "ninth_pair_is_subtotal_default": true,
+          "mapping_ninth_sector_to_esto_flows": {"15_02_road": ["15.02 Road"]},
           "mapping_esto_flows": ["15.02 Road"]
         },
         {
@@ -28,6 +33,16 @@
           ],
           "esto_flow_prefixes": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"],
           "mapping_ninth_sectors": ["04_international_marine_bunkers", "05_international_aviation_bunkers", "15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"],
+          "ninth_pair_is_subtotal_default": false,
+          "mapping_ninth_sector_to_esto_flows": {
+            "04_international_marine_bunkers": ["04 International marine bunkers"],
+            "05_international_aviation_bunkers": ["05 International aviation bunkers"],
+            "15_01_domestic_air_transport": ["15.01 Domestic air transport"],
+            "15_03_rail": ["15.03 Rail"],
+            "15_04_domestic_navigation": ["15.04 Domestic navigation"],
+            "15_05_pipeline_transport": ["15.05 Pipeline transport"],
+            "15_06_nonspecified_transport": ["15.06 Non-specified transport"]
+          },
           "mapping_esto_flows": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"]
         },
         {
@@ -35,6 +50,8 @@
           "ninth": {"sectors": ["14_industry_sector"]},
           "esto_flow_prefixes": ["14 Industry sector"],
           "mapping_ninth_sectors": ["14_industry_sector"],
+          "ninth_pair_is_subtotal_default": true,
+          "mapping_ninth_sector_to_esto_flows": {"14_industry_sector": ["14 Industry sector"]},
           "mapping_esto_flows": ["14 Industry sector"]
         },
         {
@@ -42,6 +59,11 @@
           "ninth": {"sub1sectors": ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"]},
           "esto_flow_prefixes": ["16.02 Residential", "16.03 Agriculture", "16.04 Fishing", "16.05 Non-specified others"],
           "mapping_ninth_sectors": ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"],
+          "ninth_pair_is_subtotal_default": true,
+          "mapping_ninth_sector_to_esto_flows": {
+            "16_02_agriculture_and_fishing": ["16.03 Agriculture", "16.04 Fishing", "16.03-16.04 Agriculture and fishing"],
+            "16_05_nonspecified_others": ["16.05 Non-specified others"]
+          },
           "mapping_esto_flows": ["16.02 Residential", "16.03 Agriculture", "16.04 Fishing", "16.05 Non-specified others"]
         },
         {
@@ -49,6 +71,8 @@
           "ninth": {"sub1sectors": ["16_01_buildings"]},
           "esto_flow_prefixes": ["16.01 Commercial and public services"],
           "mapping_ninth_sectors": ["16_01_buildings"],
+          "ninth_pair_is_subtotal_default": true,
+          "mapping_ninth_sector_to_esto_flows": {"16_01_buildings": ["16.01 Commercial and public services"]},
           "mapping_esto_flows": ["16.01 Commercial and public services"]
         }
       ]

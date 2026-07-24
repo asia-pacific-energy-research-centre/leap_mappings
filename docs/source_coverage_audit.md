@@ -72,3 +72,24 @@ branches are created, the expected result is a large `MISSING_LEAP_FUEL` set;
 that is the actionable list for the LEAP structure handoff. Separate unmapped
 and ambiguous rows identify mapping work and are not confused with missing
 LEAP branches.
+
+## Mapping candidates and cardinality review
+
+`codebase/mapping_tools/build_source_coverage_mapping_candidates.py` converts
+coverage detail into review-only rows for the three canonical mapping sheets.
+It does not edit `outlook_mappings_master.xlsx`.
+
+The generated pack is split into:
+
+- `*_safe_candidates.csv`: one-to-one and many-to-one additions.
+- `*_conflicts_candidates.csv`: one-to-many and many-to-many rows that require
+  an explicit hierarchy/subtotal decision.
+- `*_candidates.csv`: the complete annotated set for auditability.
+
+Cardinality is evaluated against active existing rows and all sibling candidate
+rows. A row is therefore not labelled safe merely because it is unique by
+itself. If adding it would leave both a source with multiple targets and a
+target with multiple sources, it is classified as `MANY_TO_MANY_CONFLICT`.
+Many-to-one rows are not many-to-many, but they still add another source to an
+existing target and should be checked for subtotal or parent-child semantics
+before manual insertion.
