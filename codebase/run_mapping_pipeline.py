@@ -690,12 +690,17 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
 
     common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
     esto_tree = build_esto_tree(ESTO_CSV_PATH)
+    esto_extended_tree = build_esto_tree(ESTO_EXTENDED_CSV_PATH)
     ninth_tree = build_ninth_tree(NINTH_CSV_PATH, data_df=ninth_wide)
     leap_tree = build_leap_tree(WORKBOOK_PATH)
-    validation_tree = pd.concat([esto_tree, ninth_tree, leap_tree, common_tree], ignore_index=True)
+    validation_tree = pd.concat(
+        [esto_tree, esto_extended_tree, ninth_tree, leap_tree, common_tree],
+        ignore_index=True,
+    )
     tree_output_dir = REPO_ROOT / "results" / "tree_structure"
     tree_output_dir.mkdir(parents=True, exist_ok=True)
     esto_tree.to_csv(tree_output_dir / "esto_tree.csv", index=False)
+    esto_extended_tree.to_csv(tree_output_dir / "esto_extended_tree.csv", index=False)
     ninth_tree.to_csv(tree_output_dir / "ninth_tree.csv", index=False)
     leap_tree.to_csv(tree_output_dir / "leap_tree.csv", index=False)
     common_tree.to_csv(tree_output_dir / "common_esto_tree.csv", index=False)
@@ -782,6 +787,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         try:
             raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
                 esto_data_path=ESTO_CSV_PATH,
+                esto_extended_data_path=ESTO_EXTENDED_CSV_PATH,
                 ninth_data_path=NINTH_CSV_PATH,
                 raw_leap_path=RAW_LEAP_PATH,
                 workbook_path=WORKBOOK_PATH,

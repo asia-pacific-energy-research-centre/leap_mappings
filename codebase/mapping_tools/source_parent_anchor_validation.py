@@ -1562,6 +1562,7 @@ def load_raw_source_anchor_inputs(
     ninth_data_path,
     raw_leap_path,
     workbook_path,
+    esto_extended_data_path=None,
     leap_var_base_year: int = 2022,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load raw ESTO, Ninth, and LEAP values plus their source-to-component mappings."""
@@ -1581,6 +1582,21 @@ def load_raw_source_anchor_inputs(
     esto_pairs["component_esto_flow"] = esto_pairs["source_flow"]
     esto_pairs["component_esto_product"] = esto_pairs["source_product"]
     mapping_frames.append(esto_pairs)
+
+    if esto_extended_data_path is not None and Path(esto_extended_data_path).exists():
+        esto_extended = pd.read_csv(esto_extended_data_path, dtype=object)
+        extended_long = _melt_years(esto_extended, ["economy", "flows", "products"])
+        extended_long = extended_long.rename(columns={"flows": "source_flow", "products": "source_product"})
+        extended_long["source_system"] = "ESTO_EXTENDED"
+        extended_long["scenario"] = "historical"
+        source_frames.append(extended_long)
+        extended_pairs = esto_extended[["flows", "products"]].drop_duplicates().rename(columns={
+            "flows": "source_flow", "products": "source_product",
+        })
+        extended_pairs["source_system"] = "ESTO_EXTENDED"
+        extended_pairs["component_esto_flow"] = extended_pairs["source_flow"]
+        extended_pairs["component_esto_product"] = extended_pairs["source_product"]
+        mapping_frames.append(extended_pairs)
 
     ninth_load_start = time.perf_counter()
     ninth = pd.read_csv(ninth_data_path, dtype=object)
