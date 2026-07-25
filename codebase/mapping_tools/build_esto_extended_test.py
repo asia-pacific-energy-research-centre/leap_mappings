@@ -2,23 +2,29 @@
 """Build a non-destructive ESTO Extended prototype.
 
 The prototype copies a base ESTO CSV, inventories LEAP export-template branch
-paths, records unmapped template branches, and applies declarative hierarchy
-extension rules.  The first rule reproduces the existing 16.01.99 pattern:
-parent minus known children.  Generated rows carry provenance columns so this
-can become a reviewed production workflow later.
+paths, restores established ESTO structural children, and creates review-only
+extension candidates by comparing LEAP leaves with the ESTO flow tree.
+Generated rows carry provenance columns so this can become a reviewed
+production workflow later.
 """
 
 #%%
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-#%%
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from codebase.mapping_tools.build_missing_mapped_esto_rows import build_lng_split_esto_rows
+
+#%%
 LEAP_INITIALISATION_ROOT = Path(r"C:\Users\Work\github\leap_initialisation")
 BASE_ESTO_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 MAPPING_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
@@ -36,18 +42,40 @@ PROVENANCE_COLUMNS = [
     "esto_extended_source_leap_paths",
 ]
 
-# This is deliberately declarative.  Future extension rules should be added
-# here or moved to a reviewed config table rather than copied into the logic.
-EXTENSION_RULES = [
-    {
-        "rule_id": "commercial_services_residual",
-        "rule_type": "parent_minus_children",
-        "parent_flow": "16.01 Commercial and public services",
-        "excluded_child_flows": ["16.01.01 Datacentres"],
-        "generated_flow": "16.01.99 Commercial and public services unallocated",
-        "description": "Parent flow minus known detailed child flows.",
-    },
-]
+ESTABLISHED_FLOW_RULE = {
+    "rule_id": "established_lng_split",
+    "source_flow": "09.06.02 Liquefaction/regasification plants",
+    "generated_flows": [
+        "09.06.02.01 Liquefaction",
+        "09.06.02.02 Regasification",
+    ],
+    "value_method": "signed_lng_direction_split",
+}
+
+# This rule exists only for the unit test proving that the old 16.01.99
+# mechanism is still understood. It is deliberately not part of the real
+# ESTO Extended build.
+DEMO_RESIDUAL_RULE = {
+    "rule_id": "demo_parent_minus_children",
+    "rule_type": "parent_minus_children",
+    "parent_flow": "16.01 Commercial and public services",
+    "excluded_child_flows": ["16.01.01 Datacentres"],
+    "generated_flow": "16.01.99 Commercial and public services unallocated",
+}
+
+ESTO_MATCH_STOPWORDS = {
+    "and", "of", "the", "plants", "plant", "other", "non", "specified",
+    "unspecified", "services", "sector", "transformation", "fuel", "fuels",
+}
+
+ESTABLISHED_FLOW_LABELS = {
+    "09.06.02.01 Liquefaction",
+    "09.06.02.02 Regasification",
+}
+ESTABLISHED_LEAF_TARGETS = {
+    "lng regasification": "09.06.02.02 Regasification",
+    "ng liquefaction": "09.06.02.01 Liquefaction",
+}
 
 
 #%%
@@ -180,6 +208,138 @@ def _normalise_extension_label(value: object) -> str:
     return label
 
 
+def _label_tokens(value: object) -> set[str]:
+    label = _normalise_text(value).casefold()
+    label = re.sub(r"[^a-z0-9]+", " ", label)
+    return {
+        token
+        for token in label.split()
+        if len(token) > 2 and token not in ESTO_MATCH_STOPWORDS
+    }
+
+
+def load_esto_flow_tree(base_esto_path: Path) -> pd.DataFrame:
+    """Return unique ESTO flows with their numeric hierarchy codes."""
+    esto = pd.read_csv(base_esto_path, usecols=["flows"], dtype=object)
+    base_flows = set(esto["flows"].dropna().map(_normalise_text))
+    all_flows = sorted(base_flows | ESTABLISHED_FLOW_LABELS)
+    flows = pd.DataFrame({"esto_flow": all_flows})
+    flows["esto_flow_code"] = flows["esto_flow"].map(_esto_code)
+    flows["flow_present_in_base"] = flows["esto_flow"].isin(base_flows)
+    return flows[flows["esto_flow_code"].ne("")].reset_index(drop=True)
+
+
+def build_tree_based_extension_candidates(
+    unmapped_candidates: pd.DataFrame,
+    esto_flow_tree: pd.DataFrame,
+) -> pd.DataFrame:
+    """Match unmapped LEAP leaves to likely ESTO flow parents.
+
+    This is intentionally review-only. It identifies a possible target parent
+    and a proposed child label, but it does not allocate a code or create data.
+    """
+    flow_records = esto_flow_tree.to_dict("records")
+    output: list[dict[str, Any]] = []
+    for _, row in unmapped_candidates.iterrows():
+        if row.get("exact_active_esto_mapping", False):
+            continue
+        path_tokens = _label_tokens(row["branch_path"])
+        leaf_tokens = _label_tokens(row["leaf_label"])
+        scored: list[tuple[int, int, str, str]] = []
+        for flow in flow_records:
+            flow_tokens = _label_tokens(flow["esto_flow"])
+            leaf_overlap = len(leaf_tokens & flow_tokens)
+            path_overlap = len(path_tokens & flow_tokens)
+            score = (leaf_overlap * 3) + path_overlap
+            if score:
+                scored.append((score, leaf_overlap, flow["esto_flow"], flow["esto_flow_code"]))
+        if not scored:
+            continue
+        scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        established_target = ESTABLISHED_LEAF_TARGETS.get(_normalise_text(row["leaf_label"]).casefold())
+        if established_target:
+            established_code = _esto_code(established_target)
+            best_score = max(item[0] for item in scored) + 100
+            best_leaf_overlap = len(leaf_tokens & _label_tokens(established_target))
+            best_flow = established_target
+            best_code = established_code
+        else:
+            best_score, best_leaf_overlap, best_flow, best_code = scored[0]
+        tied = [item for item in scored if item[:2] == (best_score, best_leaf_overlap)]
+        if established_target:
+            tied = [(best_score, best_leaf_overlap, best_flow, best_code)]
+        output.append(
+            {
+                "leap_branch_path": row["branch_path"],
+                "leap_parent_path": row["parent_path"],
+                "leap_leaf_label": row["leaf_label"],
+                "proposed_child_label": row["proposed_extension_label"],
+                "esto_parent_flow": best_flow,
+                "esto_parent_code": best_code,
+                "match_score": best_score,
+                "leaf_token_overlap": best_leaf_overlap,
+                "tied_parent_count": len(tied),
+                "candidate_status": (
+                    "review_existing_established_target"
+                    if best_flow in ESTABLISHED_FLOW_LABELS
+                    else "review_possible_new_child"
+                ),
+                "target_flow_present_in_base": bool(
+                    next(
+                        (
+                            flow.get("flow_present_in_base", True)
+                            for flow in flow_records
+                            if flow["esto_flow"] == best_flow
+                        ),
+                        False,
+                    )
+                ),
+                "proposed_code": "",
+                "value_status": "not_generated_review_only",
+            }
+        )
+    return pd.DataFrame(output)
+
+
+def summarise_extension_candidate_sets(candidates: pd.DataFrame) -> pd.DataFrame:
+    """Show parent groups where multiple LEAP leaves suggest one ESTO parent."""
+    if candidates.empty:
+        return pd.DataFrame(
+            columns=["esto_parent_flow", "esto_parent_code", "candidate_count", "leap_branches", "set_status"]
+        )
+    grouped = (
+        candidates.groupby(["esto_parent_flow", "esto_parent_code"], as_index=False)
+        .agg(
+            candidate_count=("leap_branch_path", "nunique"),
+            leap_branches=("leap_branch_path", lambda values: "|".join(sorted(set(values)))),
+        )
+    )
+    grouped["set_status"] = grouped["candidate_count"].map(
+        lambda count: "candidate_extension_set" if count >= 2 else "single_candidate"
+    )
+    return grouped.sort_values(["set_status", "candidate_count", "esto_parent_flow"], ascending=[True, False, True])
+
+
+def summarise_leap_parent_candidate_sets(candidates: pd.DataFrame) -> pd.DataFrame:
+    """Identify LEAP tree parents with several unmapped child branches."""
+    if candidates.empty:
+        return pd.DataFrame(
+            columns=["leap_parent_path", "candidate_count", "leap_child_branches", "suggested_esto_parents", "set_status"]
+        )
+    grouped = (
+        candidates.groupby("leap_parent_path", as_index=False)
+        .agg(
+            candidate_count=("leap_branch_path", "nunique"),
+            leap_child_branches=("leap_leaf_label", lambda values: "|".join(sorted(set(values)))),
+            suggested_esto_parents=("esto_parent_flow", lambda values: "|".join(sorted(set(values)))),
+        )
+    )
+    grouped["set_status"] = grouped["candidate_count"].map(
+        lambda count: "candidate_leap_child_set" if count >= 2 else "single_candidate"
+    )
+    return grouped.sort_values(["set_status", "candidate_count", "leap_parent_path"], ascending=[True, False, True])
+
+
 #%%
 def _numeric_values(row: pd.Series, year_columns: list[str]) -> pd.Series:
     return pd.to_numeric(row[year_columns], errors="coerce").fillna(0.0).astype(float)
@@ -261,6 +421,39 @@ def apply_parent_minus_children_rule(
     )
 
 
+def restore_established_lng_rows(esto_df: pd.DataFrame, base_esto_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Restore only missing established LNG child rows using the tested splitter."""
+    source_rows, audit = build_lng_split_esto_rows(base_esto_path)
+    if source_rows.empty:
+        return pd.DataFrame(columns=list(esto_df.columns)), audit
+
+    existing_keys = {
+        tuple(row)
+        for row in esto_df[["economy", "flows", "products"]]
+        .assign(
+            economy=lambda frame: frame["economy"].map(_normalise_economy),
+            flows=lambda frame: frame["flows"].map(_esto_code),
+            products=lambda frame: frame["products"].map(_esto_code),
+        )
+        .itertuples(index=False, name=None)
+    }
+    source_rows = source_rows.copy()
+    source_rows["_key"] = list(
+        zip(
+            source_rows["economy"].map(_normalise_economy),
+            source_rows["flows"].map(_esto_code),
+            source_rows["products"].map(_esto_code),
+        )
+    )
+    missing = source_rows[~source_rows["_key"].isin(existing_keys)].drop(columns=["_key"])
+    missing = _with_provenance_columns(missing)
+    missing["esto_extended_row_origin"] = "established_structural_completion"
+    missing["esto_extended_rule_id"] = ESTABLISHED_FLOW_RULE["rule_id"]
+    missing["esto_extended_parent_flow"] = ESTABLISHED_FLOW_RULE["source_flow"]
+    missing["esto_extended_derived_from"] = ESTABLISHED_FLOW_RULE["value_method"]
+    return missing.reindex(columns=list(esto_df.columns)), audit
+
+
 def build_esto_extended(
     base_esto_path: Path,
     template_dir: Path,
@@ -283,16 +476,12 @@ def build_esto_extended(
         if any(token in path.casefold() for token in ["commercial and public services", "datacentres"])
     )
 
-    generated_frames: list[pd.DataFrame] = []
-    rule_summaries: list[pd.DataFrame] = []
-    for rule in EXTENSION_RULES:
-        if rule["rule_type"] != "parent_minus_children":
-            raise ValueError(f"Unsupported extension rule type: {rule['rule_type']}")
-        generated, summary = apply_parent_minus_children_rule(esto, rule, rule_source_paths)
-        generated_frames.append(generated)
-        rule_summaries.append(summary)
+    generated, lng_audit = restore_established_lng_rows(esto, base_esto_path)
+    candidate_flows = load_esto_flow_tree(base_esto_path)
+    extension_candidates = build_tree_based_extension_candidates(candidates, candidate_flows)
+    candidate_sets = summarise_extension_candidate_sets(extension_candidates)
+    leap_parent_sets = summarise_leap_parent_candidate_sets(extension_candidates)
 
-    generated = pd.concat(generated_frames, ignore_index=True) if generated_frames else pd.DataFrame(columns=esto.columns)
     extended = pd.concat([esto, generated], ignore_index=True)
     key_columns = ["economy", "flows", "products"]
     duplicate_keys = extended.duplicated(key_columns, keep=False)
@@ -306,26 +495,43 @@ def build_esto_extended(
         "generated_rows": output_dir / "esto_extended_generated_rows.csv",
         "rule_summary": output_dir / "esto_extended_rule_summary.csv",
         "extension_registry": output_dir / "esto_extended_extension_registry.csv",
+        "extension_candidates": output_dir / "esto_extended_extension_candidates.csv",
+        "extension_candidate_sets": output_dir / "esto_extended_extension_candidate_sets.csv",
+        "leap_parent_candidate_sets": output_dir / "esto_extended_leap_parent_candidate_sets.csv",
+        "lng_split_audit": output_dir / "esto_extended_lng_split_audit.csv",
     }
     extended.to_csv(output_paths["dataset"], index=False)
     inventory.to_csv(output_paths["branch_inventory"], index=False)
     candidates.to_csv(output_paths["unmapped_candidates"], index=False)
     generated.to_csv(output_paths["generated_rows"], index=False)
-    pd.concat(rule_summaries, ignore_index=True).to_csv(output_paths["rule_summary"], index=False)
+    pd.DataFrame(
+        [
+            {
+                "rule_id": ESTABLISHED_FLOW_RULE["rule_id"],
+                "source_flow": ESTABLISHED_FLOW_RULE["source_flow"],
+                "generated_flows": "|".join(ESTABLISHED_FLOW_RULE["generated_flows"]),
+                "generated_rows": len(generated),
+                "value_method": ESTABLISHED_FLOW_RULE["value_method"],
+            }
+        ]
+    ).to_csv(output_paths["rule_summary"], index=False)
+    extension_candidates.to_csv(output_paths["extension_candidates"], index=False)
+    candidate_sets.to_csv(output_paths["extension_candidate_sets"], index=False)
+    leap_parent_sets.to_csv(output_paths["leap_parent_candidate_sets"], index=False)
+    lng_audit.to_csv(output_paths["lng_split_audit"], index=False)
     registry = pd.DataFrame(
         [
             {
-                "extension_id": rule["rule_id"],
-                "parent_flow": rule["parent_flow"],
-                "generated_flow": rule["generated_flow"],
-                "generated_code": _esto_code(rule["generated_flow"]),
-                "generated_label": _normalise_text(rule["generated_flow"]),
-                "naming_method": "configured_parent_code_plus_residual_suffix",
-                "value_method": rule["rule_type"],
+                "extension_id": ESTABLISHED_FLOW_RULE["rule_id"],
+                "parent_flow": ESTABLISHED_FLOW_RULE["source_flow"],
+                "generated_flow": "|".join(ESTABLISHED_FLOW_RULE["generated_flows"]),
+                "generated_code": "09.06.02.01|09.06.02.02",
+                "generated_label": "Liquefaction|Regasification",
+                "naming_method": "established_esto_code_and_label",
+                "value_method": ESTABLISHED_FLOW_RULE["value_method"],
                 "source_leap_paths": rule_source_paths,
-                "review_status": "prototype_only",
+                "review_status": "established_structural_rule",
             }
-            for rule in EXTENSION_RULES
         ]
     )
     registry.to_csv(output_paths["extension_registry"], index=False)
@@ -341,9 +547,9 @@ def run_synthetic_smoke_test() -> None:
             {"economy": "20USA", "flows": "16.01.01 Datacentres", "products": "17 Electricity", "is_subtotal": False, "2022": 25.0},
         ]
     )
-    generated, _ = apply_parent_minus_children_rule(sample, EXTENSION_RULES[0])
+    generated, _ = apply_parent_minus_children_rule(sample, DEMO_RESIDUAL_RULE)
     assert len(generated) == 1
-    assert generated.iloc[0]["flows"] == EXTENSION_RULES[0]["generated_flow"]
+    assert generated.iloc[0]["flows"] == DEMO_RESIDUAL_RULE["generated_flow"]
     assert generated.iloc[0]["2022"] == 75.0
     assert generated.iloc[0]["esto_extended_row_origin"] == "generated"
     print("Synthetic ESTO Extended smoke test passed")
