@@ -160,7 +160,7 @@ def run_stage_1() -> None:
         run_relationship_workflow,
     )
     run_relationship_workflow(
-        mapping_workbook_path=MAPPING_WORKBOOK_PATH,
+        mapping_workbook_path=WORKBOOK_PATH,
         fallback_workbook_path=FALLBACK_WORKBOOK_PATH,
         sheet_configs=SHEET_CONFIGS,
         output_csv_path=OUTPUT_CSV_PATH,
@@ -193,7 +193,7 @@ def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
         coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
         common_esto_overrides_path=COMMON_ESTO_OVERRIDES_PATH,
         common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
-        outlook_mappings_path=OUTLOOK_MAPPINGS_PATH,
+        outlook_mappings_path=WORKBOOK_PATH,
         output_dir=OUTPUT_DIR,
         enabled_scopes=(
             DEFAULT_ENABLED_COMPARISON_SCOPES
@@ -557,7 +557,7 @@ def run_data_convert() -> None:
 # Stage 3 — Apply common ESTO structure
 # ---------------------------------------------------------------------------
 
-def run_stage_3() -> None:
+def run_stage_3(skip_deep_validation: bool = False) -> None:
     import time
     stage3_t0 = time.perf_counter()
     print("\n" + "=" * 60)
@@ -631,6 +631,11 @@ def run_stage_3() -> None:
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )
+
+    if skip_deep_validation:
+        print("  Deep recursive-tree and source-anchor validations skipped by explicit test-mode flag.")
+        print(f"  Common ESTO comparison output written to: {COMMON_ESTO_DIR}")
+        return
 
     status_path = COMMON_ESTO_DIR / "common_esto_output_status.csv"
     stage3_status = pd.read_csv(status_path, dtype=object).fillna("")
@@ -1030,7 +1035,42 @@ def main() -> None:
             "LEAP exports root."
         ),
     )
+    parser.add_argument(
+        "--esto-path",
+        default=None,
+        help="Optional ESTO-style CSV override, allowing a fourth test dataset such as data/esto_extended.csv.",
+    )
+    parser.add_argument(
+        "--mapping-workbook-path",
+        default=None,
+        help="Optional mapping workbook override for an isolated test mapping set.",
+    )
+    parser.add_argument(
+        "--ninth-path",
+        default=None,
+        help="Optional Ninth-style CSV override, useful for a reproducible fourth-dataset test slice.",
+    )
+    parser.add_argument(
+        "--raw-leap-path",
+        default=None,
+        help="Optional parsed raw-LEAP CSV override for a reproducible test slice.",
+    )
+    parser.add_argument(
+        "--skip-deep-validation",
+        action="store_true",
+        help="Test mode: stop after common-structure application and skip the full recursive/anchor validation pass.",
+    )
     args = parser.parse_args()
+
+    global ESTO_CSV_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
+    if args.esto_path:
+        ESTO_CSV_PATH = Path(args.esto_path).resolve()
+    if args.mapping_workbook_path:
+        WORKBOOK_PATH = Path(args.mapping_workbook_path).resolve()
+    if args.ninth_path:
+        NINTH_CSV_PATH = Path(args.ninth_path).resolve()
+    if args.raw_leap_path:
+        RAW_LEAP_PATH = Path(args.raw_leap_path).resolve()
 
     requested = [s.strip() for s in args.stages.split(",") if s.strip()]
     skipped   = {s.strip() for s in args.skip.split(",") if s.strip()}
@@ -1057,6 +1097,8 @@ def main() -> None:
                 run_stage_0(apply_subtotal_changes=args.apply_maintenance)
             elif stage == "leap_parse":
                 run_leap_parse(economies=leap_economies)
+            elif stage == "3":
+                run_stage_3(skip_deep_validation=args.skip_deep_validation)
             else:
                 _STAGE_RUNNERS[stage]()
 

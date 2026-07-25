@@ -169,6 +169,7 @@ COLUMN_CANDIDATES = {
     ],
     "remove_row": [
         "remove_row",
+        "duplicate_to_remove",
         "remove",
         "inactive",
         "drop_row",

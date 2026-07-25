@@ -977,6 +977,129 @@ def apply_general_subtotal_labels(
     return output
 
 
+def build_evenly_disaggregated_candidate_rows(
+    base_esto: pd.DataFrame,
+    candidate_rows: pd.DataFrame,
+    all_flow_labels: set[str],
+    all_product_labels: set[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Populate every candidate economy by evenly splitting each parent row.
+
+    Allocation is performed independently for each economy/product/year. A
+    parent value is divided equally across the direct candidate children that
+    exist for that product; nested candidates are then allocated from the
+    populated intermediate rows. This creates a deterministic fourth-dataset
+    fixture while retaining exact parent-child conservation for each populated
+    branch.
+    """
+    if candidate_rows.empty:
+        return candidate_rows.copy(), pd.DataFrame()
+    year_columns = _year_columns(base_esto)
+    base_source = base_esto.drop_duplicates(["economy", "flows", "products"]).copy()
+    flow_labels = set(base_source["flows"].dropna().map(_normalise_text)) | all_flow_labels
+    flow_by_code = {_esto_code(label): label for label in flow_labels if _esto_code(label)}
+    candidate = candidate_rows.drop_duplicates(["flows", "products"]).copy()
+    candidate_keys = set(zip(candidate["flows"], candidate["products"]))
+    candidate_flows = set(candidate["flows"])
+    child_lookup: dict[str, list[str]] = {}
+    for flow in candidate_flows:
+        code = _esto_code(flow)
+        parent_code = code.rsplit(".", 1)[0] if "." in code else ""
+        parent_flow = flow_by_code.get(parent_code, "")
+        if parent_flow:
+            child_lookup.setdefault(parent_flow, []).append(flow)
+    for parent in child_lookup:
+        child_lookup[parent] = sorted(set(child_lookup[parent]), key=lambda value: (_esto_code(value).count("."), value))
+
+    source_columns = [column for column in base_esto.columns if column not in PROVENANCE_COLUMNS]
+    economies = sorted(base_source["economy"].dropna().unique())
+    base_lookup = base_source.set_index(["economy", "flows", "products"])
+    generated_lookup: dict[tuple[str, str, str], dict[str, float]] = {}
+    output_rows: list[dict[str, Any]] = []
+    audit_rows: list[dict[str, Any]] = []
+
+    def parent_values(economy: str, flow: str, product: str) -> dict[str, float]:
+        key = (economy, flow, product)
+        if key in generated_lookup:
+            return generated_lookup[key]
+        if key not in base_lookup.index:
+            return {year: 0.0 for year in year_columns}
+        source = base_lookup.loc[key]
+        if isinstance(source, pd.DataFrame):
+            source = source.iloc[0]
+        values = {}
+        for year in year_columns:
+            value = pd.to_numeric(source[year], errors="coerce")
+            values[year] = 0.0 if pd.isna(value) else float(value)
+        return values
+
+    ordered_candidates = candidate.assign(_depth=candidate["flows"].map(lambda value: _esto_code(value).count("."))).sort_values(["_depth", "flows", "products"])
+    for _, candidate_row in ordered_candidates.iterrows():
+        flow = candidate_row["flows"]
+        product = candidate_row["products"]
+        flow_children = [child for child in child_lookup.get(flow_by_code.get(_esto_code(flow), flow), []) if (child, product) in candidate_keys]
+        code = _esto_code(flow)
+        parent_flow = flow_by_code.get(code.rsplit(".", 1)[0], "") if "." in code else ""
+        if not parent_flow:
+            continue
+        siblings = [child for child in child_lookup.get(parent_flow, []) if (child, product) in candidate_keys]
+        divisor = len(siblings) or 1
+        for economy in economies:
+            source_values = parent_values(economy, parent_flow, product)
+            values = {year: source_values[year] / divisor for year in year_columns}
+            generated_lookup[(economy, flow, product)] = values
+            row = {column: pd.NA for column in source_columns}
+            row.update({column: candidate_row.get(column, "") for column in PROVENANCE_COLUMNS})
+            row.update({"economy": economy, "flows": flow, "products": product, "esto_extended_row_origin": "synthetic_disaggregation", "esto_extended_rule_id": "even_parent_split", "esto_extended_parent_flow": parent_flow, "candidate_status": candidate_row.get("candidate_status", "")})
+            row["is_subtotal"] = candidate_row.get("is_subtotal", False)
+            row.update(values)
+            output_rows.append(row)
+        audit_rows.append({"flow": flow, "product": product, "parent_flow": parent_flow, "direct_sibling_count": divisor, "allocation_method": "equal_split"})
+    output = pd.DataFrame(output_rows, columns=source_columns + PROVENANCE_COLUMNS + ["candidate_status"])
+    output = apply_general_subtotal_labels(output, flow_labels, all_product_labels)
+    return output, pd.DataFrame(audit_rows)
+
+
+def audit_even_disaggregation_values(
+    extended: pd.DataFrame,
+    candidate_rows: pd.DataFrame,
+) -> pd.DataFrame:
+    """Check parent conservation and equal direct-child allocations."""
+    if candidate_rows.empty:
+        return pd.DataFrame(columns=["parent_flow", "product_count", "max_conservation_difference", "max_child_share_difference", "status"])
+    labels = set(extended["flows"].dropna().map(_normalise_text)) | set(candidate_rows["flows"].dropna().map(_normalise_text))
+    by_code = {_esto_code(label): label for label in labels if _esto_code(label)}
+    candidate_flows = set(candidate_rows["flows"])
+    parent_children: dict[str, list[str]] = {}
+    for flow in candidate_flows:
+        code = _esto_code(flow)
+        parent = by_code.get(code.rsplit(".", 1)[0], "") if "." in code else ""
+        if parent:
+            parent_children.setdefault(parent, []).append(flow)
+    year_columns = _year_columns(extended)
+    rows: list[dict[str, Any]] = []
+    for parent, children in sorted(parent_children.items()):
+        child_frame = extended[extended["flows"].isin(children)].copy()
+        products = sorted(child_frame["products"].dropna().unique())
+        parent_frame = extended[extended["flows"].eq(parent) & extended["products"].isin(products)].copy()
+        if parent_frame.empty or child_frame.empty:
+            rows.append({"parent_flow": parent, "product_count": len(products), "max_conservation_difference": "", "max_child_share_difference": "", "status": "skipped_no_parent_values"})
+            continue
+        parent_sum = parent_frame.groupby(["economy", "products"], as_index=False)[year_columns].sum()
+        child_sum = child_frame.groupby(["economy", "products"], as_index=False)[year_columns].sum()
+        merged = parent_sum.merge(child_sum, on=["economy", "products"], how="inner", suffixes=("_parent", "_children"))
+        max_conservation = 0.0
+        max_share = 0.0
+        for year in year_columns:
+            max_conservation = max(max_conservation, float((pd.to_numeric(merged[f"{year}_parent"], errors="coerce").fillna(0.0) - pd.to_numeric(merged[f"{year}_children"], errors="coerce").fillna(0.0)).abs().max() or 0.0))
+        child_values = child_frame.groupby(["economy", "products", "flows"], as_index=False)[year_columns].sum()
+        for year in year_columns:
+            grouped = child_values.groupby(["economy", "products"])[year].transform("mean")
+            max_share = max(max_share, float((pd.to_numeric(child_values[year], errors="coerce").fillna(0.0) - pd.to_numeric(grouped, errors="coerce").fillna(0.0)).abs().max() or 0.0))
+        rows.append({"parent_flow": parent, "product_count": len(products), "max_conservation_difference": max_conservation, "max_child_share_difference": max_share, "status": "pass" if max_conservation <= 1e-8 and max_share <= 1e-8 else "fail"})
+    return pd.DataFrame(rows)
+
+
 def build_transport_tree_candidates(
     inventory: pd.DataFrame,
     mapping_workbook_path: Path,
@@ -1237,6 +1360,8 @@ def build_extended_default_audits(
     generated: pd.DataFrame,
     template_candidates: pd.DataFrame,
     rollup_catalogue: pd.DataFrame,
+    disaggregation_audit: pd.DataFrame | None = None,
+    disaggregation_value_audit: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run the reusable hierarchy, subtotal, and detached-category checks."""
     base_flows = set(base_esto["flows"].dropna().map(_normalise_text))
@@ -1283,6 +1408,11 @@ def build_extended_default_audits(
     )
     detached = rollup_catalogue[rollup_catalogue["rollup_mode"].isin(["DETACHED", "NON_EXPANDING"])]
     detail_rows.append({"check_name": "declared_detached_rollups", "item": "rollup catalogue", "parent": "", "status": "info", "detail": f"{len(detached)} declared boundary rules retained as metadata."})
+    if disaggregation_audit is not None and not disaggregation_audit.empty:
+        detail_rows.append({"check_name": "synthetic_disaggregation_rules", "item": "candidate rows", "parent": "", "status": "pass", "detail": f"{len(disaggregation_audit):,} flow/product allocations populated by equal parent splits."})
+    if disaggregation_value_audit is not None and not disaggregation_value_audit.empty:
+        failed_value_checks = int(disaggregation_value_audit["status"].eq("fail").sum())
+        detail_rows.append({"check_name": "synthetic_value_conservation", "item": "candidate parent flows", "parent": "", "status": "fail" if failed_value_checks else "pass", "detail": f"{failed_value_checks:,} parent boundaries failed conservation/equal-share checks."})
     details = pd.DataFrame(detail_rows)
     summary = details.groupby(["check_name", "status"], as_index=False).size().rename(columns={"size": "count"})
     return summary, details
@@ -1338,13 +1468,21 @@ def build_esto_extended(
     all_flow_labels = set(esto["flows"].dropna().map(_normalise_text)) | set(template_child_candidates["flows"].dropna().map(_normalise_text))
     all_product_labels = set(esto["products"].dropna().map(_normalise_text)) | set(template_child_candidates["products"].dropna().map(_normalise_text))
     template_candidate_rows = apply_general_subtotal_labels(template_candidate_rows, all_flow_labels, all_product_labels)
+    disaggregated_rows, disaggregation_audit = build_evenly_disaggregated_candidate_rows(
+        esto,
+        template_candidate_rows,
+        all_flow_labels,
+        all_product_labels,
+    )
     mapping_candidate_outputs = build_mapping_candidates_from_template_evidence(
         template_child_evidence[template_child_evidence["candidate_status"].ne("existing_esto_child")],
         mapping_workbook_path,
     )
 
+    all_generated = pd.concat([all_generated, disaggregated_rows], ignore_index=True)
     extended = pd.concat([esto, all_generated], ignore_index=True)
     extended = apply_general_subtotal_labels(extended, all_flow_labels, all_product_labels)
+    disaggregation_value_audit = audit_even_disaggregation_values(extended, template_candidate_rows)
     key_columns = ["economy", "flows", "products"]
     duplicate_keys = extended.duplicated(key_columns, keep=False)
     if duplicate_keys.any():
@@ -1352,6 +1490,7 @@ def build_esto_extended(
 
     output_paths = {
         "dataset": output_dir / "esto_extended_test.csv",
+        "data_dataset": REPO_ROOT / "data" / "esto_extended.csv",
         "branch_inventory": output_dir / "leap_template_branch_inventory.csv",
         "unmapped_candidates": output_dir / "unmapped_leap_branch_candidates.csv",
         "generated_rows": output_dir / "esto_extended_generated_rows.csv",
@@ -1362,6 +1501,9 @@ def build_esto_extended(
         "template_child_candidates": output_dir / "esto_extended_template_child_candidates.csv",
         "template_child_evidence": output_dir / "esto_extended_template_child_evidence.csv",
         "template_candidate_rows": output_dir / "esto_extended_template_candidate_rows.csv",
+        "disaggregated_rows": output_dir / "esto_extended_disaggregated_rows.csv",
+        "disaggregation_audit": output_dir / "esto_extended_disaggregation_audit.csv",
+        "disaggregation_value_audit": output_dir / "esto_extended_disaggregation_value_audit.csv",
         "mapping_candidates_leap_to_esto": output_dir / "esto_extended_mapping_candidates_leap_to_esto.csv",
         "mapping_candidates_leap_to_ninth": output_dir / "esto_extended_mapping_candidates_leap_to_ninth.csv",
         "mapping_candidates_ninth_to_esto": output_dir / "esto_extended_mapping_candidates_ninth_to_esto.csv",
@@ -1375,6 +1517,7 @@ def build_esto_extended(
         "lng_split_audit": output_dir / "esto_extended_lng_split_audit.csv",
     }
     extended.to_csv(output_paths["dataset"], index=False)
+    extended.to_csv(output_paths["data_dataset"], index=False)
     inventory.to_csv(output_paths["branch_inventory"], index=False)
     candidates.to_csv(output_paths["unmapped_candidates"], index=False)
     all_generated.to_csv(output_paths["generated_rows"], index=False)
@@ -1385,6 +1528,9 @@ def build_esto_extended(
     template_child_candidates.to_csv(output_paths["template_child_candidates"], index=False)
     template_child_evidence.to_csv(output_paths["template_child_evidence"], index=False)
     template_candidate_rows.to_csv(output_paths["template_candidate_rows"], index=False)
+    disaggregated_rows.to_csv(output_paths["disaggregated_rows"], index=False)
+    disaggregation_audit.to_csv(output_paths["disaggregation_audit"], index=False)
+    disaggregation_value_audit.to_csv(output_paths["disaggregation_value_audit"], index=False)
     for key, frame in mapping_candidate_outputs.items():
         output_paths[f"mapping_candidates_{key}"].parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(output_paths[f"mapping_candidates_{key}"], index=False)
@@ -1394,6 +1540,8 @@ def build_esto_extended(
         all_generated,
         template_candidate_rows,
         rollup_catalogue,
+        disaggregation_audit,
+        disaggregation_value_audit,
     )
     hierarchy_summary.to_csv(output_paths["hierarchy_audit_summary"], index=False)
     hierarchy_details.to_csv(output_paths["hierarchy_audit_details"], index=False)

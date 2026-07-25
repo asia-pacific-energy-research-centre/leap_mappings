@@ -12,6 +12,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     build_rollup_tree_edges,
     build_extended_default_audits,
     apply_general_subtotal_labels,
+    audit_even_disaggregation_values,
     build_transport_tree_candidates,
     build_tree_based_extension_candidates,
     build_template_driven_child_candidates,
@@ -281,6 +282,23 @@ def test_general_subtotal_label_promotes_flow_parents_and_product_parents():
     )
 
     assert labelled["is_subtotal"].tolist() == [True, True, False, True]
+
+
+def test_disaggregation_audit_requires_conservation_and_equal_shares():
+    extended = pd.DataFrame(
+        [
+            {"economy": "20USA", "flows": "15.02 Road", "products": "17 Electricity", "is_subtotal": True, "2022": 100.0},
+            {"economy": "20USA", "flows": "15.02.01 Freight road", "products": "17 Electricity", "is_subtotal": True, "2022": 50.0},
+            {"economy": "20USA", "flows": "15.02.02 Passenger road", "products": "17 Electricity", "is_subtotal": True, "2022": 50.0},
+            {"economy": "20USA", "flows": "15.02.01.01 LCVs", "products": "17 Electricity", "is_subtotal": False, "2022": 25.0},
+            {"economy": "20USA", "flows": "15.02.01.02 Trucks", "products": "17 Electricity", "is_subtotal": False, "2022": 25.0},
+        ]
+    )
+    candidates = extended.iloc[1:][["flows", "products", "is_subtotal"]].copy()
+    audit = audit_even_disaggregation_values(extended, candidates)
+
+    assert set(audit["status"]) == {"pass"}
+    assert audit["max_conservation_difference"].max() <= 1e-8
 
 
 #%%
