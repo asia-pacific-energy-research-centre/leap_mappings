@@ -1200,6 +1200,88 @@ def validate_ninth_recursive_sums(
     )
 
 
+def _validate_ninth_sector_recursive_sums_fast(
+    df: pd.DataFrame,
+    workbook_path: Path,
+    common_rows_path: Path,
+    tolerance: float,
+    leap_var_base_year: int,
+    scenario_filter: str,
+) -> pd.DataFrame:
+    """Vectorized implementation of the Ninth sector-frontier validator."""
+    year_cols = [c for c in df.columns if str(c).isdigit() and int(c) > int(leap_var_base_year)]
+    if not year_cols:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+    working = df.copy()
+    working[year_cols] = working[year_cols].apply(pd.to_numeric, errors="coerce")
+    if scenario_filter:
+        working = working[working["scenarios"].astype(str).str.casefold() == scenario_filter.casefold()].copy()
+    working["ninth_fuel"] = working["subfuels"].astype(str).str.strip()
+    mask_x = working["ninth_fuel"].eq("x")
+    working.loc[mask_x, "ninth_fuel"] = working.loc[mask_x, "fuels"].astype(str).str.strip()
+    has_sub1 = working["sub1sectors"].astype(str).str.strip().ne("x")
+    parent_df = working[has_sub1 & working["sub2sectors"].astype(str).str.strip().eq("x")].copy()
+    child_df = working[has_sub1 & working["sub2sectors"].astype(str).str.strip().ne("x") & working["sub3sectors"].astype(str).str.strip().eq("x")].copy()
+    if parent_df.empty or child_df.empty:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+
+    pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object).fillna("")
+    sector_to_flows: dict[str, set[str]] = {}
+    sector_fuel_to_products: dict[tuple[str, str], set[str]] = {}
+    for row in pairs.itertuples(index=False):
+        values = row._asdict()
+        sector, fuel = _str(values.get("ninth_sector")), _str(values.get("ninth_fuel"))
+        flow, product = _str(values.get("esto_flow")), _str(values.get("esto_product"))
+        if sector and flow:
+            sector_to_flows.setdefault(sector, set()).add(flow)
+        if sector and fuel and product:
+            sector_fuel_to_products.setdefault((sector, fuel), set()).add(product)
+    common_rows = pd.read_csv(common_rows_path, dtype=object).fillna("")
+    partition_lookup = {
+        (_str(row.common_flow_label), _str(row.component_esto_product)): _str(row.common_product_label)
+        for row in common_rows[common_rows["comparison_scope"].astype(str).isin({"esto_leap_ninth", "leap_vs_ninth"})].itertuples(index=False)
+        if _str(row.common_flow_label) and _str(row.component_esto_product) and _str(row.common_product_label)
+    }
+    group_cols = ["economy", "scenarios", "sub1sectors", "ninth_fuel"]
+    parent_sum = parent_df.groupby(group_cols, dropna=False, as_index=False)[year_cols].sum()
+    child_sum = child_df.groupby(group_cols, dropna=False, as_index=False)[year_cols].sum()
+    child_codes = child_df.groupby(group_cols, dropna=False)["sub2sectors"].agg(lambda values: sorted({_str(value) for value in values})).reset_index(name="child_codes")
+    merged = parent_sum.merge(child_sum, on=group_cols, how="inner", suffixes=("_parent", "_children")).merge(child_codes, on=group_cols, how="left")
+    mismatches: list[dict] = []
+    for values in merged.to_dict("records"):
+        parent_sector = _str(values["sub1sectors"])
+        ninth_fuel = _str(values["ninth_fuel"])
+        esto_flows = sector_to_flows.get(parent_sector, set())
+        if len(esto_flows) != 1:
+            continue
+        esto_parent_flow = next(iter(esto_flows))
+        raw_products = sector_fuel_to_products.get((parent_sector, ninth_fuel), set())
+        partition_labels = {partition_lookup[(esto_parent_flow, product)] for product in raw_products if (esto_parent_flow, product) in partition_lookup}
+        if not partition_labels:
+            continue
+        codes = values["child_codes"]
+        if any(not sector_fuel_to_products.get((code, ninth_fuel)) for code in codes):
+            continue
+        for year in year_cols:
+            pv = float(values[f"{year}_parent"]) if pd.notna(values[f"{year}_parent"]) else 0.0
+            cv = float(values[f"{year}_children"]) if pd.notna(values[f"{year}_children"]) else 0.0
+            difference = pv - cv
+            if abs(difference) <= tolerance * max(abs(pv), 1):
+                continue
+            for partition_label in sorted(partition_labels):
+                mismatches.append({
+                    "source_issue_id": _source_issue_id("NINTH", "sector", _str(values["economy"]), _str(values["scenarios"]), year, parent_sector, ninth_fuel),
+                    "source_system": "NINTH", "economy": _str(values["economy"]), "scenario": _str(values["scenarios"]), "year": year,
+                    "ninth_sector": parent_sector, "ninth_fuel": ninth_fuel, "child_ninth_sectors": _join_sorted(codes),
+                    "esto_parent_flow": esto_parent_flow, "esto_parent_product": partition_label, "source_issue_class": "sum_mismatch",
+                    "child_coverage_status": "complete", "inheritance_eligible": True, "child_count": len(codes),
+                    "parent_value": pv, "children_sum": cv, "difference": difference, "abs_error": abs(difference),
+                })
+    if not mismatches:
+        return pd.DataFrame(columns=NINTH_SECTOR_VALIDATION_COLS)
+    return pd.DataFrame(mismatches).sort_values(["economy", "year", "ninth_fuel"]).reset_index(drop=True)
+
+
 def validate_ninth_sector_recursive_sums(
     data_csv_path: Path = NINTH_DATA_PATH,
     workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
@@ -1219,6 +1301,14 @@ def validate_ninth_sector_recursive_sums(
     mismatches as confirmed_inherited.
     """
     df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
+    return _validate_ninth_sector_recursive_sums_fast(
+        df=df,
+        workbook_path=workbook_path,
+        common_rows_path=common_rows_path,
+        tolerance=tolerance,
+        leap_var_base_year=leap_var_base_year,
+        scenario_filter=scenario_filter,
+    )
     year_cols = [
         c for c in df.columns
         if str(c).isdigit() and int(c) > int(leap_var_base_year)
@@ -1368,6 +1458,77 @@ def validate_ninth_sector_recursive_sums(
     )
 
 
+def _validate_ninth_fuel_recursive_sums_fast(
+    df: pd.DataFrame,
+    workbook_path: Path,
+    common_rows_path: Path,
+    tolerance: float,
+    leap_var_base_year: int,
+    scenario_filter: str,
+) -> pd.DataFrame:
+    """Vectorized implementation of the Ninth fuel-frontier validator."""
+    year_cols = [c for c in df.columns if str(c).isdigit() and int(c) > int(leap_var_base_year)]
+    if not year_cols:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+    working = df.copy()
+    working[year_cols] = working[year_cols].apply(pd.to_numeric, errors="coerce")
+    if scenario_filter:
+        working = working[working["scenarios"].astype(str).str.casefold() == scenario_filter.casefold()].copy()
+    sub2 = working["sub2sectors"].astype(str).str.strip()
+    sub1 = working["sub1sectors"].astype(str).str.strip()
+    sectors = working["sectors"].astype(str).str.strip()
+    working["ninth_sector"] = sectors
+    working.loc[sub1.ne("x"), "ninth_sector"] = sub1[sub1.ne("x")]
+    working.loc[sub2.ne("x"), "ninth_sector"] = sub2[sub2.ne("x")]
+    has_fuel = working["fuels"].astype(str).str.strip().ne("x")
+    parent_df = working[has_fuel & working["subfuels"].astype(str).str.strip().eq("x")].copy()
+    child_df = working[has_fuel & working["subfuels"].astype(str).str.strip().ne("x")].copy()
+    if parent_df.empty or child_df.empty:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+    pairs = pd.read_excel(workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=object).fillna("")
+    source_targets = _mapping_targets(pairs, "ninth_sector", "ninth_fuel", "esto_flow", "esto_product")
+    common_rows = pd.read_csv(common_rows_path, dtype=object).fillna("")
+    partition_lookup = {
+        (_str(row.common_flow_label), _str(row.component_esto_product)): _str(row.common_product_label)
+        for row in common_rows[common_rows["comparison_scope"].astype(str).isin({"esto_leap_ninth", "leap_vs_ninth"})].itertuples(index=False)
+        if _str(row.common_flow_label) and _str(row.component_esto_product) and _str(row.common_product_label)
+    }
+    group_cols = ["economy", "scenarios", "ninth_sector", "fuels"]
+    parent_sum = parent_df.groupby(group_cols, dropna=False, as_index=False)[year_cols].sum()
+    child_sum = child_df.groupby(group_cols, dropna=False, as_index=False)[year_cols].sum()
+    child_codes = child_df.groupby(group_cols, dropna=False)["subfuels"].agg(lambda values: sorted({_str(value) for value in values})).reset_index(name="child_codes")
+    merged = parent_sum.merge(child_sum, on=group_cols, how="inner", suffixes=("_parent", "_children")).merge(child_codes, on=group_cols, how="left")
+    mismatches: list[dict] = []
+    for values in merged.to_dict("records"):
+        economy, scenario = _str(values["economy"]), _str(values["scenarios"])
+        ninth_sector, fuels_val = _str(values["ninth_sector"]), _str(values["fuels"])
+        targets = source_targets.get((ninth_sector, fuels_val), set())
+        if len(targets) != 1:
+            continue
+        esto_parent_flow, raw_product = next(iter(targets))
+        partition_label = partition_lookup.get((esto_parent_flow, raw_product), "")
+        if not partition_label:
+            continue
+        child_codes_value = values["child_codes"]
+        for year in year_cols:
+            pv = float(values[f"{year}_parent"]) if pd.notna(values[f"{year}_parent"]) else 0.0
+            cv = float(values[f"{year}_children"]) if pd.notna(values[f"{year}_children"]) else 0.0
+            difference = pv - cv
+            if abs(difference) <= tolerance * max(abs(pv), 1):
+                continue
+            mismatches.append({
+                "source_issue_id": _source_issue_id("NINTH", "fuel", economy, scenario, year, ninth_sector, fuels_val),
+                "source_system": "NINTH", "economy": economy, "scenario": scenario, "year": year,
+                "ninth_sector": ninth_sector, "ninth_fuel": fuels_val, "child_ninth_fuels": _join_sorted(child_codes_value),
+                "esto_parent_product": partition_label, "esto_parent_flow": esto_parent_flow, "source_issue_class": "sum_mismatch",
+                "child_coverage_status": "complete", "inheritance_eligible": True, "child_count": len(child_codes_value),
+                "parent_value": pv, "children_sum": cv, "difference": difference, "abs_error": abs(difference),
+            })
+    if not mismatches:
+        return pd.DataFrame(columns=NINTH_FUEL_VALIDATION_COLS)
+    return pd.DataFrame(mismatches).sort_values(["economy", "year", "ninth_fuel"]).reset_index(drop=True)
+
+
 def validate_ninth_fuel_recursive_sums(
     data_csv_path: Path = NINTH_DATA_PATH,
     workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
@@ -1387,6 +1548,14 @@ def validate_ninth_fuel_recursive_sums(
     Stage B product-axis mismatches as confirmed_inherited.
     """
     df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
+    return _validate_ninth_fuel_recursive_sums_fast(
+        df=df,
+        workbook_path=workbook_path,
+        common_rows_path=common_rows_path,
+        tolerance=tolerance,
+        leap_var_base_year=leap_var_base_year,
+        scenario_filter=scenario_filter,
+    )
     year_cols = [
         c for c in df.columns
         if str(c).isdigit() and int(c) > int(leap_var_base_year)
@@ -1504,6 +1673,112 @@ def validate_ninth_fuel_recursive_sums(
     )
 
 
+def _validate_leap_recursive_sums_fast(
+    leap_data_paths: list[Path],
+    workbook_path: Path,
+    esto_data_path: Path,
+    tolerance: float,
+    leap_var_base_year: int,
+) -> pd.DataFrame:
+    """Validate LEAP parents using pre-aggregated source-path lookups."""
+    available = [path for path in leap_data_paths if path.exists()]
+    if not available:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+    leap_df = pd.concat([pd.read_csv(path, dtype=object) for path in available], ignore_index=True)
+    leap_df["value"] = pd.to_numeric(leap_df["value"], errors="coerce").fillna(0.0)
+    leap_df["year"] = pd.to_numeric(leap_df["year"], errors="coerce")
+    leap_df = leap_df[leap_df["year"] > int(leap_var_base_year)].copy()
+    if leap_df.empty:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+    leap_df["year"] = leap_df["year"].astype(int).astype(str)
+    esto_map = pd.read_excel(workbook_path, sheet_name="leap_combined_esto", dtype=object).fillna("")
+    esto_map = esto_map[esto_map["leap_sector_name_full_path"].ne("") & esto_map["esto_flow"].ne("") & esto_map["raw_leap_fuel_name"].ne("") & esto_map["esto_product"].ne("")].copy()
+    esto_map["parent_path"] = esto_map["leap_sector_name_full_path"].map(_str)
+    esto_map["parent_leaf"] = esto_map["parent_path"].str.split("/").str[-1]
+    esto_map["source_product"] = esto_map["raw_leap_fuel_name"].map(_str)
+    esto_map["target_flow"] = esto_map["esto_flow"].map(_str)
+    esto_map["target_product"] = esto_map["esto_product"].map(_str)
+    esto_flows = set(pd.read_csv(esto_data_path, usecols=["flows"], dtype=object)["flows"].dropna().map(_str))
+    source_pair_targets = (
+        esto_map.groupby(["parent_path", "source_product"], dropna=False)
+        .apply(lambda group: {(_str(row.target_flow), _str(row.target_product)) for row in group.itertuples(index=False)}, include_groups=False)
+        .to_dict()
+    )
+    leaf_product_paths = esto_map.groupby(["parent_leaf", "source_product"])["parent_path"].agg(lambda values: set(map(_str, values))).to_dict()
+    source_path_column = "leap_sector_path" if "leap_sector_path" in leap_df.columns else "leap_flow_path" if "leap_flow_path" in leap_df.columns else "leap_flow"
+    leap_df["_source_key"] = leap_df[source_path_column].map(_str)
+    grouped = leap_df.groupby(["_source_key", "leap_product", "economy", "scenario", "year"], dropna=False, as_index=False)["value"].sum()
+    source_lookup = {
+        key: group[["economy", "scenario", "year", "value"]].copy()
+        for key, group in grouped.groupby(["_source_key", "leap_product"], dropna=False)
+    }
+    parent_rows = esto_map.drop_duplicates(["parent_path", "source_product", "target_flow", "target_product"])
+    mismatches: list[dict] = []
+    for mapping in parent_rows.itertuples(index=False):
+        parent_path, parent_leaf, leap_product = _str(mapping.parent_path), _str(mapping.parent_leaf), _str(mapping.source_product)
+        esto_parent_flow, esto_parent_product = _str(mapping.target_flow), _str(mapping.target_product)
+        expected_child_flows = _direct_child_labels(esto_parent_flow, esto_flows)
+        if not expected_child_flows:
+            continue
+        child_mappings = esto_map[esto_map["target_flow"].isin(expected_child_flows) & esto_map["target_product"].eq(esto_parent_product)].drop_duplicates(["parent_path", "source_product", "target_flow", "target_product"])
+        if child_mappings.empty:
+            continue
+        mapped_child_flows = set(child_mappings["target_flow"].map(_str))
+        missing_child_flows = expected_child_flows.difference(mapped_child_flows)
+        parent_targets = source_pair_targets.get((parent_path, leap_product), set())
+        parent_mapping_status = "exact" if parent_targets == {(esto_parent_flow, esto_parent_product)} else "ambiguous_parent_mapping"
+        parent_key = (parent_path if source_path_column != "leap_flow" else parent_leaf, leap_product)
+        parent_data = source_lookup.get(parent_key, pd.DataFrame())
+        if parent_data.empty:
+            continue
+        source_context_status = "full_path" if source_path_column != "leap_flow" else ("leaf_only_unambiguous" if leaf_product_paths.get((parent_leaf, leap_product), set()) == {parent_path} else "leaf_only_ambiguous")
+        child_frames = []
+        child_paths: set[str] = set()
+        child_mapping_ambiguous = False
+        for child in child_mappings.itertuples(index=False):
+            child_path, child_leaf, child_product = _str(child.parent_path), _str(child.parent_leaf), _str(child.source_product)
+            child_paths.add(child_path)
+            if source_path_column == "leap_flow" and leaf_product_paths.get((child_leaf, child_product), set()) != {child_path}:
+                child_mapping_ambiguous = True
+            child_key = (child_path if source_path_column != "leap_flow" else child_leaf, child_product)
+            child_data = source_lookup.get(child_key)
+            if child_data is not None and not child_data.empty:
+                child_frames.append(child_data)
+        children_data = pd.concat(child_frames, ignore_index=True) if child_frames else pd.DataFrame(columns=["economy", "scenario", "year", "value"])
+        children_sum = children_data.groupby(["economy", "scenario", "year"], dropna=False)["value"].sum() if not children_data.empty else pd.Series(dtype=float)
+        parent_sum = parent_data.groupby(["economy", "scenario", "year"], dropna=False)["value"].sum()
+        for idx, pv_value in parent_sum.items():
+            pv, cv = float(pv_value), float(children_sum.get(idx, 0.0))
+            difference = pv - cv
+            if abs(difference) <= tolerance * max(abs(pv), 1):
+                continue
+            economy, scenario, year = map(_str, idx)
+            if source_context_status == "leaf_only_ambiguous" or child_mapping_ambiguous:
+                mapping_status, source_issue_class, child_coverage_status = "ambiguous_leaf_context", "mapping_ambiguous", "ambiguous_source_paths"
+            elif parent_mapping_status != "exact":
+                mapping_status, source_issue_class, child_coverage_status = parent_mapping_status, "mapping_ambiguous", "ambiguous_parent_mapping"
+            elif missing_child_flows:
+                mapping_status, source_issue_class, child_coverage_status = "exact", "children_incomplete", "unmapped_expected_children"
+            elif abs(pv) > tolerance and abs(cv) <= tolerance:
+                mapping_status, source_issue_class, child_coverage_status = "exact", "children_incomplete", "no_nonzero_children"
+            else:
+                mapping_status, source_issue_class, child_coverage_status = "exact", "sum_mismatch", "complete"
+            mismatches.append({
+                "source_issue_id": _source_issue_id("LEAP", economy, scenario, year, parent_path, leap_product, esto_parent_flow, esto_parent_product),
+                "source_system": "LEAP", "economy": economy, "scenario": scenario, "year": year,
+                "parent_leap_sector_path": parent_path, "parent_leap_sector": parent_leaf, "leap_product": leap_product,
+                "child_leap_sector_paths": _join_sorted(child_paths), "esto_parent_flow": esto_parent_flow, "esto_parent_product": esto_parent_product,
+                "child_esto_flows": _join_sorted(mapped_child_flows), "source_context_status": source_context_status,
+                "source_issue_class": source_issue_class, "mapping_status": mapping_status, "child_coverage_status": child_coverage_status,
+                "inheritance_eligible": source_issue_class == "sum_mismatch" and mapping_status == "exact" and child_coverage_status == "complete" and source_context_status in {"full_path", "leaf_only_unambiguous"},
+                "child_count": len(expected_child_flows), "mapped_child_count": len(mapped_child_flows), "parent_value": pv, "children_sum": cv,
+                "difference": difference, "abs_error": abs(difference),
+            })
+    if not mismatches:
+        return pd.DataFrame(columns=LEAP_VALIDATION_COLS)
+    return pd.DataFrame(mismatches).sort_values(["economy", "year", "parent_leap_sector"]).reset_index(drop=True)
+
+
 def validate_leap_recursive_sums(
     leap_data_paths: list[Path] | None = None,
     workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
@@ -1526,6 +1801,14 @@ def validate_leap_recursive_sums(
             leap_data_paths = [LEGACY_LEAP_DATA_PATH]
         else:
             leap_data_paths = []
+
+    return _validate_leap_recursive_sums_fast(
+        leap_data_paths=leap_data_paths,
+        workbook_path=workbook_path,
+        esto_data_path=esto_data_path,
+        tolerance=tolerance,
+        leap_var_base_year=leap_var_base_year,
+    )
 
     available = [p for p in leap_data_paths if p.exists()]
     if not available:

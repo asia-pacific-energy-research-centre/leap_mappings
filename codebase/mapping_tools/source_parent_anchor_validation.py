@@ -1247,17 +1247,82 @@ def _augment_with_data_quality_exceptions(
     if exception_df.empty or result.empty:
         return result
 
-    failed = result[result["status"] == "failed"]
-    for idx, row in failed.iterrows():
-        match = matching_exception_row(
-            row, exception_df, numeric_tolerance_columns=frozenset({"parent_value"})
-        )
-        if match is not None:
-            result.at[idx, "known_data_quality_exception"] = True
-            result.at[idx, "data_quality_exception_notes"] = str(match.get("notes", "") or "").strip()
-            result.at[idx, "exception_resolution"] = "skipped_but_flagged"
-            result.at[idx, "status"] = "skipped"
-            result.at[idx, "reason"] = "reviewed_source_data_exception"
+    failed = result[result["status"] == "failed"].copy()
+    if failed.empty:
+        return result
+
+    # The exception sheet is keyed by the five categorical anchor fields and
+    # additionally records the reviewed parent value.  The previous generic
+    # matcher scanned every enabled exception row for every failed anchor
+    # record, which became the dominant cost of all-economy validation.  Use a
+    # vectorized keyed merge for the ordinary exact-key case, retaining the
+    # generic matcher only for the uncommon prefix-wildcard case.
+    key_columns = [
+        column
+        for column in [
+            "source_system", "validation_axis", "parent_code",
+            "other_axis_value", "economy",
+        ]
+        if column in failed.columns and column in exception_df.columns
+    ]
+    numeric_column = "parent_value"
+    wildcard_mask = pd.Series(False, index=exception_df.index)
+    for column in key_columns:
+        wildcard_mask |= exception_df[column].astype(str).str.strip().str.endswith("*")
+
+    def _normalised(series: pd.Series) -> pd.Series:
+        return series.fillna("").astype(str).str.strip()
+
+    exact_exceptions = exception_df.loc[~wildcard_mask].copy()
+    matched = pd.DataFrame()
+    if key_columns and not exact_exceptions.empty:
+        left = failed[key_columns + [numeric_column]].copy()
+        left["_result_index"] = left.index
+        right_columns = key_columns + [numeric_column, "notes"]
+        right = exact_exceptions[[column for column in right_columns if column in exact_exceptions.columns]].copy()
+        for column in key_columns:
+            left[column] = _normalised(left[column])
+            right[column] = _normalised(right[column])
+        left[numeric_column] = pd.to_numeric(left[numeric_column], errors="coerce")
+        right[numeric_column] = pd.to_numeric(right[numeric_column], errors="coerce")
+        matched = left.merge(right, on=key_columns, how="inner", suffixes=("_candidate", "_exception"))
+        if not matched.empty:
+            candidate_values = matched[f"{numeric_column}_candidate"]
+            exception_values = matched[f"{numeric_column}_exception"]
+            numeric_match = (
+                candidate_values.notna()
+                & exception_values.notna()
+                & ((candidate_values - exception_values).abs()
+                   <= 0.01 * exception_values.abs().clip(lower=1.0))
+            )
+            matched = matched.loc[numeric_match].drop_duplicates("_result_index", keep="first")
+
+    # Preserve the generic behaviour for wildcard exception keys and for any
+    # future sheet whose shape cannot use the keyed fast path.
+    wildcard_exceptions = exception_df.loc[wildcard_mask]
+    matched_indices = set(matched["_result_index"].tolist()) if not matched.empty else set()
+    if not wildcard_exceptions.empty:
+        for idx, row in failed.loc[~failed.index.isin(matched_indices)].iterrows():
+            match = matching_exception_row(
+                row, wildcard_exceptions,
+                numeric_tolerance_columns=frozenset({numeric_column}),
+            )
+            if match is not None:
+                matched = pd.concat([
+                    matched,
+                    pd.DataFrame([{
+                        "_result_index": idx,
+                        "notes": str(match.get("notes", "") or "").strip(),
+                    }]),
+                ], ignore_index=True)
+
+    if not matched.empty:
+        notes_by_index = matched.set_index("_result_index")["notes"].fillna("").astype(str).str.strip()
+        result.loc[result.index.intersection(notes_by_index.index), "known_data_quality_exception"] = True
+        result.loc[result.index.intersection(notes_by_index.index), "data_quality_exception_notes"] = notes_by_index
+        result.loc[result.index.intersection(notes_by_index.index), "exception_resolution"] = "skipped_but_flagged"
+        result.loc[result.index.intersection(notes_by_index.index), "status"] = "skipped"
+        result.loc[result.index.intersection(notes_by_index.index), "reason"] = "reviewed_source_data_exception"
     return result
 
 
