@@ -85,6 +85,7 @@ ESTABLISHED_LEAF_TARGETS = {
     "lng regasification": "09.06.02.02 Regasification",
     "ng liquefaction": "09.06.02.01 Liquefaction",
 }
+FUEL_ROLE_LABELS = {"Feedstock Fuels", "Output Fuels", "Auxiliary Fuels"}
 
 
 #%%
@@ -593,6 +594,243 @@ def build_rollup_tree_edges(rollup_catalogue: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
 
 
+def _active_leap_mapping_rows(mapping_workbook_path: Path) -> pd.DataFrame:
+    """Load active LEAP mappings used as sector/product inheritance evidence."""
+    mappings = pd.read_excel(mapping_workbook_path, sheet_name="leap_combined_esto", dtype=object).fillna("")
+    required = ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]
+    _require_columns(mappings, required, "leap_combined_esto")
+    removed = mappings.get("remove_row", pd.Series(False, index=mappings.index)).map(
+        lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+    )
+    duplicate = mappings.get("duplicate_to_remove", pd.Series(False, index=mappings.index)).map(
+        lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+    )
+    mappings = mappings.loc[~(removed | duplicate), required].copy()
+    mappings["leap_sector_name_full_path"] = mappings["leap_sector_name_full_path"].map(_normalise_path)
+    mappings["raw_leap_fuel_name"] = mappings["raw_leap_fuel_name"].map(_normalise_text)
+    mappings["esto_flow"] = mappings["esto_flow"].map(_normalise_text)
+    mappings["esto_product"] = mappings["esto_product"].map(_normalise_text)
+    return mappings[mappings["leap_sector_name_full_path"].ne("") & mappings["esto_flow"].ne("")].drop_duplicates()
+
+
+def _path_suffix_candidates(path: str) -> list[str]:
+    parts = _normalise_path(path).split("/")
+    return ["/".join(parts[index:]) for index in range(len(parts))]
+
+
+def _mapping_rows_for_sector_and_fuel(
+    mappings: pd.DataFrame,
+    sector_path: str,
+    fuel_label: str,
+) -> pd.DataFrame:
+    """Find mappings by longest sector suffix, then inherited fuel label."""
+    fuel = _normalise_text(fuel_label)
+    sector_suffixes = _path_suffix_candidates(sector_path)
+    for suffix in sorted(sector_suffixes, key=len, reverse=True):
+        scoped = mappings[mappings["leap_sector_name_full_path"].eq(suffix)]
+        if scoped.empty:
+            continue
+        exact = scoped[scoped["raw_leap_fuel_name"].eq(fuel)]
+        if not exact.empty:
+            return exact
+        normalised_fuel = re.sub(r"[^a-z0-9]+", "", fuel.casefold())
+        fuzzy = scoped[
+            scoped["raw_leap_fuel_name"].map(lambda value: re.sub(r"[^a-z0-9]+", "", value.casefold())).eq(normalised_fuel)
+        ]
+        if not fuzzy.empty:
+            return fuzzy
+    return mappings.iloc[0:0].copy()
+
+
+def _extract_template_fuel_evidence(inventory: pd.DataFrame, sector_path: str) -> pd.DataFrame:
+    """Extract descendant fuels and their LEAP transformation roles."""
+    prefix = _normalise_path(sector_path).rstrip("/") + "/"
+    descendants = inventory[inventory["branch_path"].str.startswith(prefix)].copy()
+    rows: list[dict[str, Any]] = []
+    for path in descendants["branch_path"].drop_duplicates():
+        parts = path.split("/")
+        role_positions = [index for index, part in enumerate(parts) if part in FUEL_ROLE_LABELS]
+        if not role_positions or role_positions[-1] + 1 >= len(parts):
+            if not _normalise_path(sector_path).casefold().startswith("demand/"):
+                continue
+            if not bool(inventory.loc[inventory["branch_path"].eq(path), "observed_as_leaf"].any()):
+                continue
+            rows.append(
+                {
+                    "branch_path": path,
+                    "fuel_role": "Demand fuel",
+                    "fuel_label": parts[-1],
+                    "fuel_path": path,
+                }
+            )
+            continue
+        role_index = role_positions[-1]
+        rows.append(
+            {
+                "branch_path": path,
+                "fuel_role": parts[role_index],
+                "fuel_label": parts[role_index + 1],
+                "fuel_path": "/".join(parts[: role_index + 2]),
+            }
+        )
+    return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+
+
+def _esto_flow_components(rollup_catalogue: pd.DataFrame, flow_label: str) -> list[str]:
+    """Expand a mapped composite ESTO flow to declared component leaves."""
+    label = _normalise_text(flow_label)
+    direct_codes = re.findall(r"\d+(?:\.\d+)*", label.split(" ", 1)[0])
+    if len(direct_codes) == 1:
+        return [label]
+    matching = rollup_catalogue[(rollup_catalogue["source_system"] == "ESTO") & rollup_catalogue["rolled_flow"].eq(label)]
+    components: list[str] = []
+    for child_list in matching["child_flow_labels"]:
+        components.extend(child.strip() for child in _normalise_text(child_list).split(";") if child.strip())
+    return sorted(set(components)) or [label]
+
+
+def build_template_driven_child_candidates(
+    inventory: pd.DataFrame,
+    mapping_workbook_path: Path,
+    rollup_catalogue: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build reviewable child-flow candidates from Transformation/Demand trees.
+
+    A candidate is a LEAP sector/process node with descendant fuel-role leaves.
+    Fuel labels are inherited as products from its mapped parent sector.  The
+    function does not invent values: candidate rows are structural zero rows,
+    while the evidence table records the role/product combinations that need
+    value allocation or review.
+    """
+    scoped = inventory[inventory["branch_path"].str.split("/").str[0].isin(["Transformation", "Demand"])].copy()
+    mappings = _active_leap_mapping_rows(mapping_workbook_path)
+    candidate_rows: list[dict[str, Any]] = []
+    evidence_rows: list[dict[str, Any]] = []
+    seen_nodes: set[str] = set()
+
+    for path in sorted(scoped["branch_path"].drop_duplicates(), key=lambda value: (value.count("/"), value)):
+        parts = path.split("/")
+        if len(parts) < 3 or path in seen_nodes:
+            continue
+        if parts[0] == "Transformation":
+            if "Processes" not in parts:
+                continue
+            process_index = parts.index("Processes")
+            if process_index + 1 >= len(parts) or parts[process_index + 1] in FUEL_ROLE_LABELS:
+                continue
+            if process_index + 2 < len(parts) and parts[process_index + 2] in FUEL_ROLE_LABELS:
+                continue
+            sector_path = "/".join(parts[1:process_index]) or parts[1]
+            child_label = parts[process_index + 1]
+        else:
+            if any(part in FUEL_ROLE_LABELS for part in parts):
+                continue
+            sector_path = "/".join(parts[1:-1])
+            child_label = parts[-1]
+            if not sector_path or child_label in {"All demand aggregated", "Other loss and own use"}:
+                continue
+
+        fuel_evidence = _extract_template_fuel_evidence(scoped, path)
+        if fuel_evidence.empty:
+            continue
+        seen_nodes.add(path)
+        mapped_products: list[dict[str, Any]] = []
+        for _, fuel_row in fuel_evidence.iterrows():
+            mapped = _mapping_rows_for_sector_and_fuel(mappings, sector_path, fuel_row["fuel_label"])
+            for _, mapping in mapped.iterrows():
+                mapped_products.append(
+                    {
+                        "fuel_role": fuel_row["fuel_role"],
+                        "fuel_label": fuel_row["fuel_label"],
+                        "esto_flow": mapping["esto_flow"],
+                        "esto_product": mapping["esto_product"],
+                    }
+                )
+        if not mapped_products:
+            continue
+        parent_flows = sorted(set(item["esto_flow"] for item in mapped_products))
+        component_flows = sorted({component for parent in parent_flows for component in _esto_flow_components(rollup_catalogue, parent)})
+        placement_status = "review_rollup_placement" if any("," in parent.split(" ", 1)[0] for parent in parent_flows) else "review_new_child"
+        for component_index, component in enumerate(component_flows, start=1):
+            parent_code = _esto_code(component)
+            if not parent_code:
+                continue
+            proposed_flow = f"{parent_code}.{component_index:02d} {child_label}"
+            for item in mapped_products:
+                evidence_rows.append(
+                    {
+                        "leap_sector_path": path,
+                        "leap_parent_sector_path": sector_path,
+                        "leap_child_label": child_label,
+                        "fuel_role": item["fuel_role"],
+                        "leap_fuel_label": item["fuel_label"],
+                        "esto_parent_flow": item["esto_flow"],
+                        "esto_component_flow": component,
+                        "esto_product": item["esto_product"],
+                        "proposed_child_flow": proposed_flow,
+                        "candidate_status": placement_status,
+                    }
+                )
+                candidate_rows.append(
+                    {
+                        "flows": proposed_flow,
+                        "products": item["esto_product"],
+                        "esto_extended_row_origin": "template_driven_candidate",
+                        "esto_extended_rule_id": "template_tree_child_inference",
+                        "esto_extended_parent_flow": component,
+                        "esto_extended_derived_from": f"{path} | {item['fuel_role']}",
+                        "esto_extended_source_leap_paths": path,
+                        "candidate_status": placement_status,
+                    }
+                )
+    evidence = pd.DataFrame(evidence_rows).drop_duplicates().reset_index(drop=True)
+    if not evidence.empty:
+        # Allocate child ordinals independently beneath each component leaf.
+        # This prevents the second component of a rollup receiving ``.02``
+        # merely because it was enumerated after the first component.
+        ordinal_lookup: dict[tuple[str, str], int] = {}
+        for component, group in evidence.groupby("esto_component_flow"):
+            for ordinal, child_label in enumerate(sorted(group["leap_child_label"].unique()), start=1):
+                ordinal_lookup[(component, child_label)] = ordinal
+        evidence["proposed_child_flow"] = evidence.apply(
+            lambda row: f"{_esto_code(row['esto_component_flow'])}.{ordinal_lookup[(row['esto_component_flow'], row['leap_child_label'])]:02d} {row['leap_child_label']}",
+            axis=1,
+        )
+        flow_lookup = {
+            (row["esto_component_flow"], row["leap_sector_path"]): row["proposed_child_flow"]
+            for _, row in evidence.drop_duplicates(["esto_component_flow", "leap_sector_path"]).iterrows()
+        }
+        for row in candidate_rows:
+            row["flows"] = flow_lookup.get(
+                (row["esto_extended_parent_flow"], row["esto_extended_source_leap_paths"]),
+                row["flows"],
+            )
+    candidates = pd.DataFrame(candidate_rows).drop_duplicates().reset_index(drop=True)
+    return candidates, evidence
+
+
+def materialise_template_candidate_rows(base_esto: pd.DataFrame, candidates: pd.DataFrame) -> pd.DataFrame:
+    """Create zero-valued structural rows for review, never merge automatically."""
+    if candidates.empty:
+        return pd.DataFrame(columns=list(base_esto.columns) + ["candidate_status"])
+    rows = []
+    source_columns = [column for column in base_esto.columns if column not in PROVENANCE_COLUMNS]
+    year_columns = _year_columns(base_esto)
+    for _, candidate in candidates.iterrows():
+        row = {column: pd.NA for column in source_columns}
+        row["economy"] = "TEMPLATE"
+        row["flows"] = candidate["flows"]
+        row["products"] = candidate["products"]
+        if "is_subtotal" in row:
+            row["is_subtotal"] = False
+        for year in year_columns:
+            row[year] = 0.0
+        row.update({column: candidate.get(column, "") for column in PROVENANCE_COLUMNS})
+        row["candidate_status"] = candidate["candidate_status"]
+        rows.append(row)
+    return pd.DataFrame(rows, columns=source_columns + PROVENANCE_COLUMNS + ["candidate_status"])
+
+
 def build_esto_extended(
     base_esto_path: Path,
     template_dir: Path,
@@ -623,6 +861,12 @@ def build_esto_extended(
     extension_candidates = build_tree_based_extension_candidates(candidates, candidate_flows)
     candidate_sets = summarise_extension_candidate_sets(extension_candidates)
     leap_parent_sets = summarise_leap_parent_candidate_sets(extension_candidates)
+    template_child_candidates, template_child_evidence = build_template_driven_child_candidates(
+        inventory,
+        mapping_workbook_path,
+        rollup_catalogue,
+    )
+    template_candidate_rows = materialise_template_candidate_rows(esto, template_child_candidates)
 
     extended = pd.concat([esto, all_generated], ignore_index=True)
     key_columns = ["economy", "flows", "products"]
@@ -639,6 +883,9 @@ def build_esto_extended(
         "rollup_rows": output_dir / "esto_extended_rollup_rows.csv",
         "rollup_lineage": output_dir / "esto_extended_rollup_lineage.csv",
         "rollup_tree_edges": output_dir / "esto_extended_rollup_tree_edges.csv",
+        "template_child_candidates": output_dir / "esto_extended_template_child_candidates.csv",
+        "template_child_evidence": output_dir / "esto_extended_template_child_evidence.csv",
+        "template_candidate_rows": output_dir / "esto_extended_template_candidate_rows.csv",
         "rule_summary": output_dir / "esto_extended_rule_summary.csv",
         "extension_registry": output_dir / "esto_extended_extension_registry.csv",
         "extension_candidates": output_dir / "esto_extended_extension_candidates.csv",
@@ -654,6 +901,9 @@ def build_esto_extended(
     rollup_generated.to_csv(output_paths["rollup_rows"], index=False)
     rollup_audit.to_csv(output_paths["rollup_lineage"], index=False)
     build_rollup_tree_edges(rollup_catalogue).to_csv(output_paths["rollup_tree_edges"], index=False)
+    template_child_candidates.to_csv(output_paths["template_child_candidates"], index=False)
+    template_child_evidence.to_csv(output_paths["template_child_evidence"], index=False)
+    template_candidate_rows.to_csv(output_paths["template_candidate_rows"], index=False)
     pd.DataFrame(
         [
             {
