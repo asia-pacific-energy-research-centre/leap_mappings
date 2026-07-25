@@ -493,6 +493,10 @@ def validate_source_parent_anchors(
             axis_source[other_col] = canonicalize_tree_codes(axis_source[other_col], other_aliases)
             system_mappings[axis_col] = canonicalize_tree_codes(system_mappings[axis_col], axis_aliases)
             system_mappings[other_col] = canonicalize_tree_codes(system_mappings[other_col], other_aliases)
+            if source_system == "LEAP" and axis == "flow":
+                own_use_flows = _leap_own_use_rollup_flows(children, system_mappings)
+                own_use_mask = axis_source["source_flow"].astype(str).isin(own_use_flows)
+                axis_source.loc[own_use_mask, "value"] = -axis_source.loc[own_use_mask, "value"].abs()
             # Prebuilt direct-mapping lookup + memo cache, scoped to this
             # (source_system, axis) since children/mappings are fixed here.
             direct_index = {
@@ -1255,6 +1259,42 @@ def _augment_with_data_quality_exceptions(
             result.at[idx, "status"] = "skipped"
             result.at[idx, "reason"] = "reviewed_source_data_exception"
     return result
+
+
+def _leap_own_use_rollup_flows(
+    children: dict[str, list[str]],
+    source_mapping: pd.DataFrame,
+) -> set[str]:
+    """Return LEAP flows whose mapped descendants are exclusively own-use/losses.
+
+    Raw LEAP records these flows as positive consumption, whereas the ESTO
+    balance convention records 10.01/10.02 own-use/loss flows as negative.
+    Include their structural parents so a manually-created LEAP roll-up and
+    its children are compared in the same convention.
+    """
+    direct_types: dict[str, set[str]] = {}
+    for flow, group in source_mapping.groupby("source_flow", dropna=False):
+        targets = group["component_esto_flow"].fillna("").astype(str).str.strip()
+        types = {
+            "own_use" if target.startswith(("10.01", "10.02")) else "other"
+            for target in targets if target
+        }
+        if types:
+            direct_types[str(flow)] = types
+
+    cache: dict[str, set[str]] = {}
+    def descendant_types(flow: str, seen: frozenset[str] = frozenset()) -> set[str]:
+        if flow in cache:
+            return cache[flow]
+        if flow in seen:
+            return set()
+        types = set(direct_types.get(flow, set()))
+        for child in children.get(flow, []):
+            types |= descendant_types(child, seen | {flow})
+        cache[flow] = types
+        return types
+
+    return {flow for flow in set(children) | set(direct_types) if descendant_types(flow) == {"own_use"}}
 
 
 def build_leaf_reconciliation_exception_candidates(
