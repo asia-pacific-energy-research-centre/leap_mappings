@@ -596,6 +596,8 @@ def run_stage_3() -> None:
         ANCHOR_CHILD_CONTEXT_COLUMNS,
         ANCHOR_CHILD_VALUE_COLUMNS,
         ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS,
+        LEAF_RECONCILIATION_CANDIDATE_COLUMNS,
+        build_leaf_reconciliation_exception_candidates,
         build_failed_anchor_mapped_component_context_values,
         build_failed_anchor_raw_child_context_values,
         load_raw_source_anchor_inputs,
@@ -732,11 +734,13 @@ def run_stage_3() -> None:
     anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
     anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.csv"
     anchor_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_mapped_component_context_values.csv"
+    leaf_reconciliation_candidates_path = tree_output_dir / "source_parent_anchor_leaf_reconciliation_candidates.csv"
     if skip_reason:
         anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
         anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
         anchor_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
         anchor_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+        leaf_reconciliation_candidates = pd.DataFrame(columns=["run_id"] + LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
         anchor_summary = pd.DataFrame([{
             "run_id": run_id, "status": "skipped", "eligible": 0,
             "passed": 0, "failed": 0, "skipped": 0, "reason": skip_reason,
@@ -854,6 +858,9 @@ def run_stage_3() -> None:
             anchor_mapped_component_context_values = build_failed_anchor_mapped_component_context_values(
                 anchor_detail, validation_tree, source_mapping, common_rows, comparison_data,
             )
+            leaf_reconciliation_candidates = build_leaf_reconciliation_exception_candidates(
+                anchor_detail, raw_anchor_source, validation_tree,
+            )
         except MemoryError as exc:
             print(
                 "  WARNING: source_parent_anchor_validation ran out of memory; "
@@ -864,6 +871,7 @@ def run_stage_3() -> None:
             anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
             anchor_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
             anchor_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+            leaf_reconciliation_candidates = pd.DataFrame(columns=["run_id"] + LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
             anchor_summary = pd.DataFrame([{
                 "run_id": run_id,
                 "status": "skipped",
@@ -882,6 +890,7 @@ def run_stage_3() -> None:
             anchor_child_values.insert(0, "run_id", run_id)
             anchor_child_context_values.insert(0, "run_id", run_id)
             anchor_mapped_component_context_values.insert(0, "run_id", run_id)
+            leaf_reconciliation_candidates.insert(0, "run_id", run_id)
             anchor_summary = summarise_source_parent_anchors(anchor_detail)
             anchor_summary.insert(0, "run_id", run_id)
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
@@ -891,6 +900,7 @@ def run_stage_3() -> None:
     anchor_child_values.to_csv(anchor_child_values_path, index=False)
     anchor_child_context_values.to_csv(anchor_child_context_values_path, index=False)
     anchor_mapped_component_context_values.to_csv(anchor_mapped_component_context_values_path, index=False)
+    leaf_reconciliation_candidates.to_csv(leaf_reconciliation_candidates_path, index=False)
     anchor_summary.to_csv(anchor_summary_path, index=False)
 
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"

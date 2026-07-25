@@ -5,6 +5,7 @@ import pandas as pd
 from codebase.mapping_tools.source_parent_anchor_validation import (
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
+    build_leaf_reconciliation_exception_candidates,
     build_failed_anchor_mapped_component_context_values,
     build_failed_anchor_raw_child_context_values,
     build_failed_anchor_raw_child_values,
@@ -1036,13 +1037,15 @@ def _data_quality_candidate_rows() -> pd.DataFrame:
     ])
 
 
-def test_data_quality_exception_flags_matching_failed_row_without_changing_status(tmp_path) -> None:
+def test_data_quality_exception_skips_matching_failed_row_but_retains_flag(tmp_path) -> None:
     workbook_path = _write_data_quality_exception_workbook(tmp_path)
     result = _data_quality_candidate_rows()
 
     augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
 
-    assert augmented["status"].tolist() == ["failed", "failed", "passed"]
+    assert augmented["status"].tolist() == ["skipped", "failed", "passed"]
+    assert augmented.iloc[0]["reason"] == "reviewed_source_data_exception"
+    assert augmented.iloc[0]["exception_resolution"] == "skipped_but_flagged"
     assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
     assert "known NINTH self-inconsistency" in augmented.iloc[0]["data_quality_exception_notes"]
 
@@ -1087,6 +1090,34 @@ def test_data_quality_exception_missing_sheet_is_a_no_op(tmp_path) -> None:
     augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
 
     assert (~augmented["known_data_quality_exception"]).all()
+
+
+def test_leaf_reconciliation_candidate_requires_leaf_sum_to_reconcile() -> None:
+    detail = pd.DataFrame([{
+        "status": "failed", "validation_axis": "flow", "comparison_scope": "esto_leap_ninth",
+        "source_system": "NINTH", "economy": "20USA", "scenario": "target", "year": 2070,
+        "other_axis_value": "08_01_natural_gas", "parent_code": "09_total", "parent_value": 10.0,
+    }])
+    source = pd.DataFrame([
+        {"source_system": "NINTH", "economy": "20USA", "scenario": "target", "year": 2070, "source_flow": "09_total", "source_product": "08_01_natural_gas", "value": 10.0},
+        {"source_system": "NINTH", "economy": "20USA", "scenario": "target", "year": 2070, "source_flow": "09_a", "source_product": "08_01_natural_gas", "value": 4.0},
+        {"source_system": "NINTH", "economy": "20USA", "scenario": "target", "year": 2070, "source_flow": "09_b", "source_product": "08_01_natural_gas", "value": 6.0},
+    ])
+    tree = pd.DataFrame([
+        {"dataset": "ninth", "axis": "sector", "code": "09_total", "parent_code": ""},
+        {"dataset": "ninth", "axis": "sector", "code": "09_intermediate", "parent_code": "09_total"},
+        {"dataset": "ninth", "axis": "sector", "code": "09_a", "parent_code": "09_intermediate"},
+        {"dataset": "ninth", "axis": "sector", "code": "09_b", "parent_code": "09_intermediate"},
+    ])
+
+    candidates = build_leaf_reconciliation_exception_candidates(detail, source, tree)
+
+    assert len(candidates) == 1
+    candidate = candidates.iloc[0]
+    assert not bool(candidate["enabled"])
+    assert candidate["candidate_classification"] == "direct_children_incomplete_but_leaves_reconcile"
+    assert candidate["direct_children_sum"] == 0.0
+    assert candidate["leaf_descendants_sum"] == 10.0
 
 
 def test_failed_anchor_child_values_show_each_immediate_raw_child() -> None:

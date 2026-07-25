@@ -71,7 +71,14 @@ ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS = [
 # convention as every other exception family in this repo.
 DATA_QUALITY_EXCEPTION_SHEET = "source_mismatch_allowed"
 ANCHOR_EXCEPTION_COLUMNS = [
-    "known_data_quality_exception", "data_quality_exception_notes",
+    "known_data_quality_exception", "data_quality_exception_notes", "exception_resolution",
+]
+
+LEAF_RECONCILIATION_CANDIDATE_COLUMNS = [
+    "enabled", "source_system", "validation_axis", "parent_code", "other_axis_value",
+    "economy", "parent_value", "notes", "candidate_classification", "comparison_scope",
+    "scenario", "year", "direct_children_sum", "direct_children_residual",
+    "leaf_descendants_sum", "leaf_descendants_residual", "leaf_descendant_codes",
 ]
 
 
@@ -1213,13 +1220,12 @@ def _augment_with_data_quality_exceptions(
     workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
     sheet_name: str = DATA_QUALITY_EXCEPTION_SHEET,
 ) -> pd.DataFrame:
-    """Flag failing rows matched by a reviewed, manually-curated exception.
+    """Mark reviewed source-data exceptions as skipped, while retaining evidence.
 
-    Never changes ``status``/``reason`` -- a row stays exactly what it would
-    otherwise be. "Augment, don't hide": existing consumers that count or
-    filter on ``status`` keep working unchanged; the new columns are purely
-    additive. Adds ``known_data_quality_exception`` (bool) and
-    ``data_quality_exception_notes`` (the matched exception row's notes).
+    A reviewed exception is not a mapping defect, so it must not inflate the
+    actionable anchor-failure count.  Keep it visible as ``skipped`` with a
+    dedicated reason and its reviewer notes; this is the "skipped but flagged"
+    outcome rather than silently dropping the raw evidence.
 
     Matching requires the row's own ``parent_value`` to be numerically within
     tolerance of the value recorded when the exception was reviewed, on top
@@ -1232,6 +1238,7 @@ def _augment_with_data_quality_exceptions(
     result = result.copy()
     result["known_data_quality_exception"] = False
     result["data_quality_exception_notes"] = ""
+    result["exception_resolution"] = ""
     exception_df = load_exception_sheet(sheet_name, workbook_path=workbook_path)
     if exception_df.empty or result.empty:
         return result
@@ -1244,7 +1251,136 @@ def _augment_with_data_quality_exceptions(
         if match is not None:
             result.at[idx, "known_data_quality_exception"] = True
             result.at[idx, "data_quality_exception_notes"] = str(match.get("notes", "") or "").strip()
+            result.at[idx, "exception_resolution"] = "skipped_but_flagged"
+            result.at[idx, "status"] = "skipped"
+            result.at[idx, "reason"] = "reviewed_source_data_exception"
     return result
+
+
+def build_leaf_reconciliation_exception_candidates(
+    detail_df: pd.DataFrame,
+    source_df: pd.DataFrame,
+    source_tree_df: pd.DataFrame,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Return review-only candidates where leaves reconcile but direct children do not.
+
+    These rows are deliberately *not* applied automatically.  A reviewer may
+    copy a candidate into ``source_mismatch_allowed`` after confirming that the
+    source hierarchy's intermediate rollup is a valid representation rather
+    than a data defect.  The candidate key includes the parent value, so a
+    later source-data change cannot inherit the old sign-off.
+    """
+    required_detail = {
+        "status", "validation_axis", "comparison_scope", "source_system", "economy",
+        "scenario", "year", "other_axis_value", "parent_code", "parent_value",
+    }
+    required_source = {
+        "source_system", "economy", "scenario", "year", "source_flow",
+        "source_product", "value",
+    }
+    if not required_detail.issubset(detail_df.columns) or not required_source.issubset(source_df.columns):
+        return pd.DataFrame(columns=LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
+
+    failed = detail_df[detail_df["status"].astype(str).eq("failed")].copy()
+    if failed.empty:
+        return pd.DataFrame(columns=LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
+    failed["economy"] = _normalize_economy(failed["economy"])
+    failed["year"] = pd.to_numeric(failed["year"], errors="coerce")
+    failed["parent_value"] = pd.to_numeric(failed["parent_value"], errors="coerce").fillna(0.0)
+
+    source = source_df.copy()
+    source["economy"] = _normalize_economy(source["economy"])
+    source["year"] = pd.to_numeric(source["year"], errors="coerce")
+    source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
+    rows: list[dict[str, object]] = []
+
+    for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
+        dataset = source_system.casefold()
+        system_source = source[source["source_system"].astype(str).eq(source_system)]
+        for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
+            if dataset in {"leap", "ninth"}:
+                tree_axis = "sector" if validation_axis == "flow" else "fuel"
+            axis_failed = failed[
+                failed["source_system"].astype(str).eq(source_system)
+                & failed["validation_axis"].astype(str).eq(validation_axis)
+            ]
+            if axis_failed.empty:
+                continue
+            axis_col = "source_flow" if validation_axis == "flow" else "source_product"
+            other_col = "source_product" if validation_axis == "flow" else "source_flow"
+            aliases = build_tree_code_aliases(source_tree_df, dataset, tree_axis)
+            tree = source_tree_df.loc[
+                source_tree_df["dataset"].astype(str).str.casefold().eq(dataset)
+                & source_tree_df["axis"].astype(str).str.casefold().eq(tree_axis),
+                ["code", "parent_code"],
+            ].copy()
+            if tree.empty:
+                continue
+            tree["code"] = canonicalize_tree_codes(tree["code"], aliases)
+            tree["parent_code"] = canonicalize_tree_codes(tree["parent_code"], aliases)
+            children: dict[str, list[str]] = {}
+            for tree_row in tree.itertuples(index=False):
+                parent = str(tree_row.parent_code).strip() if pd.notna(tree_row.parent_code) else ""
+                if parent:
+                    children.setdefault(parent, []).append(str(tree_row.code).strip())
+            if not children:
+                continue
+            axis_source = system_source.copy()
+            axis_source[axis_col] = canonicalize_tree_codes(axis_source[axis_col], aliases)
+            value_lookup = axis_source.groupby(
+                [axis_col, other_col, "economy", "scenario", "year"], dropna=False
+            )["value"].sum().to_dict()
+
+            def leaf_descendants(code: str, seen: frozenset[str] = frozenset()) -> list[str]:
+                if code in seen:
+                    return []
+                node_children = children.get(code, [])
+                if not node_children:
+                    return [code]
+                leaves: list[str] = []
+                for child in node_children:
+                    leaves.extend(leaf_descendants(child, seen | {code}))
+                return leaves
+
+            for record in axis_failed.itertuples(index=False):
+                parent = str(record.parent_code)
+                immediate_children = children.get(parent, [])
+                leaves = sorted(set(leaf_descendants(parent)))
+                if not immediate_children or set(immediate_children) == set(leaves):
+                    continue
+                other_value = str(record.other_axis_value)
+                context = (str(record.economy), str(record.scenario), record.year)
+                direct_sum = sum(float(value_lookup.get((child, other_value, *context), 0.0)) for child in immediate_children)
+                leaf_sum = sum(float(value_lookup.get((leaf, other_value, *context), 0.0)) for leaf in leaves)
+                parent_value = float(record.parent_value)
+                direct_residual = parent_value - direct_sum
+                leaf_residual = parent_value - leaf_sum
+                scale = max(abs(parent_value), 1.0)
+                if abs(direct_residual) <= tolerance * scale or abs(leaf_residual) > tolerance * scale:
+                    continue
+                rows.append({
+                    "enabled": False,
+                    "source_system": source_system,
+                    "validation_axis": validation_axis,
+                    "parent_code": parent,
+                    "other_axis_value": other_value,
+                    "economy": str(record.economy),
+                    "parent_value": parent_value,
+                    "notes": "Review candidate: immediate children do not reconcile, but all descendant leaves reconcile. Confirm source hierarchy semantics before enabling.",
+                    "candidate_classification": "direct_children_incomplete_but_leaves_reconcile",
+                    "comparison_scope": str(record.comparison_scope),
+                    "scenario": str(record.scenario),
+                    "year": int(record.year) if pd.notna(record.year) else "",
+                    "direct_children_sum": direct_sum,
+                    "direct_children_residual": direct_residual,
+                    "leaf_descendants_sum": leaf_sum,
+                    "leaf_descendants_residual": leaf_residual,
+                    "leaf_descendant_codes": "|".join(leaves),
+                })
+    if not rows:
+        return pd.DataFrame(columns=LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
+    return pd.DataFrame(rows, columns=LEAF_RECONCILIATION_CANDIDATE_COLUMNS).drop_duplicates()
 
 
 # Economy used to exercise the numeric anchor totals when validating the
