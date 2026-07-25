@@ -1027,6 +1027,230 @@ def build_transport_tree_candidates(
     return pd.DataFrame(candidate_rows).drop_duplicates().reset_index(drop=True), pd.DataFrame(evidence_rows).drop_duplicates().reset_index(drop=True)
 
 
+def _active_mapping_sheet_rows(
+    mapping_workbook_path: Path,
+    sheet_name: str,
+    required_columns: list[str],
+) -> pd.DataFrame:
+    """Load active rows from a mapping sheet while ignoring review removals."""
+    frame = pd.read_excel(mapping_workbook_path, sheet_name=sheet_name, dtype=object).fillna("")
+    _require_columns(frame, required_columns, sheet_name)
+    remove = frame.get("duplicate_to_remove", pd.Series(False, index=frame.index)).map(
+        lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+    )
+    remove |= frame.get("remove_row", pd.Series(False, index=frame.index)).map(
+        lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+    )
+    frame = frame.loc[~remove, required_columns].copy()
+    for column in required_columns:
+        frame[column] = frame[column].map(_normalise_text)
+    return frame[frame[required_columns].ne("").all(axis=1)].drop_duplicates().reset_index(drop=True)
+
+
+def _candidate_source_path_variants(branch_path: str) -> list[str]:
+    """Return likely mapping keys for a full template branch path."""
+    path = _normalise_path(branch_path)
+    parts = path.split("/")
+    if parts and parts[0] in {"Transformation", "Demand"}:
+        parts = parts[1:]
+    variants = ["/".join(parts[:index]) for index in range(1, len(parts) + 1)]
+    variants.extend("/".join(parts[index:]) for index in range(len(parts)) if parts[index:])
+    lower = path.casefold()
+    if lower.startswith("demand/freight road") or lower.startswith("demand/passenger road"):
+        variants.insert(0, "Road")
+    if lower.startswith("transformation/transmission and distribution"):
+        variants.insert(0, "Transmission and Distribution")
+    return list(dict.fromkeys(variants))
+
+
+def _find_mapping_anchor_rows(
+    mapping_rows: pd.DataFrame,
+    branch_path: str,
+    fuel_label: str,
+    source_path_column: str,
+    fuel_column: str,
+) -> tuple[str, pd.DataFrame]:
+    """Find the longest active mapping anchor supporting a branch fuel."""
+    fuel_key = re.sub(r"[^a-z0-9]+", "", _normalise_text(fuel_label).casefold())
+    for variant in sorted(_candidate_source_path_variants(branch_path), key=len, reverse=True):
+        scoped = mapping_rows[mapping_rows[source_path_column].eq(variant)]
+        if scoped.empty:
+            continue
+        scoped = scoped[
+            scoped[fuel_column].map(lambda value: re.sub(r"[^a-z0-9]+", "", value.casefold())).eq(fuel_key)
+        ]
+        if not scoped.empty:
+            return variant, scoped
+    return "", mapping_rows.iloc[0:0].copy()
+
+
+def build_mapping_candidates_from_template_evidence(
+    template_evidence: pd.DataFrame,
+    mapping_workbook_path: Path,
+) -> dict[str, pd.DataFrame]:
+    """Derive LEAP→ESTO, LEAP→Ninth, and Ninth→ESTO review candidates."""
+    empty_outputs = {
+        "leap_to_esto": pd.DataFrame(),
+        "leap_to_ninth": pd.DataFrame(),
+        "ninth_to_esto": pd.DataFrame(),
+    }
+    if template_evidence.empty:
+        return empty_outputs
+    leap_esto = _active_mapping_sheet_rows(
+        mapping_workbook_path,
+        "leap_combined_esto",
+        ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"],
+    )
+    leap_ninth = _active_mapping_sheet_rows(
+        mapping_workbook_path,
+        "leap_combined_ninth",
+        ["leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"],
+    )
+    ninth_esto = _active_mapping_sheet_rows(
+        mapping_workbook_path,
+        "ninth_pairs_to_esto_pairs",
+        ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"],
+    )
+    leap_esto_existing = set(zip(leap_esto.iloc[:, 0], leap_esto.iloc[:, 1], leap_esto.iloc[:, 2], leap_esto.iloc[:, 3]))
+    leap_ninth_existing = set(zip(leap_ninth.iloc[:, 0], leap_ninth.iloc[:, 1], leap_ninth.iloc[:, 2], leap_ninth.iloc[:, 3]))
+    ninth_esto_existing = set(zip(ninth_esto.iloc[:, 0], ninth_esto.iloc[:, 1], ninth_esto.iloc[:, 2], ninth_esto.iloc[:, 3]))
+    leap_esto_rows: list[dict[str, Any]] = []
+    leap_ninth_rows: list[dict[str, Any]] = []
+    ninth_esto_rows: list[dict[str, Any]] = []
+    for _, evidence in template_evidence.drop_duplicates().iterrows():
+        branch_path = evidence["leap_sector_path"]
+        fuel = evidence["leap_fuel_label"]
+        source_path = "/".join(_normalise_path(branch_path).split("/")[1:])
+        proposed_flow = evidence["proposed_child_flow"]
+        proposed_product = evidence["esto_product"]
+        leap_esto_key = (source_path, fuel, proposed_flow, proposed_product)
+        if leap_esto_key not in leap_esto_existing:
+            leap_esto_rows.append(
+                {
+                    "leap_sector_name_full_path": source_path,
+                    "raw_leap_fuel_name": fuel,
+                    "esto_flow": proposed_flow,
+                    "esto_product": proposed_product,
+                    "leap_is_subtotal": False,
+                    "esto_pair_is_subtotal": False,
+                    "duplicate_to_remove": False,
+                    "mapping_anchor_flow": evidence["esto_parent_flow"],
+                    "mapping_anchor_path": _find_mapping_anchor_rows(leap_esto, branch_path, fuel, "leap_sector_name_full_path", "raw_leap_fuel_name")[0],
+                    "candidate_status": evidence["candidate_status"],
+                }
+            )
+        anchor_path, ninth_matches = _find_mapping_anchor_rows(
+            leap_ninth,
+            branch_path,
+            fuel,
+            "leap_sector_name_full_path",
+            "raw_leap_fuel_name",
+        )
+        if ninth_matches.empty:
+            continue
+        for _, ninth_match in ninth_matches.iterrows():
+            ninth_key = (source_path, fuel, ninth_match["ninth_sector"], ninth_match["ninth_fuel"])
+            if ninth_key not in leap_ninth_existing:
+                leap_ninth_rows.append(
+                    {
+                        "leap_sector_name_full_path": source_path,
+                        "raw_leap_fuel_name": fuel,
+                        "ninth_sector": ninth_match["ninth_sector"],
+                        "ninth_fuel": ninth_match["ninth_fuel"],
+                        "leap_is_subtotal": False,
+                        "ninth_pair_is_subtotal": False,
+                        "duplicate_to_remove": False,
+                        "mapping_anchor_path": anchor_path,
+                        "candidate_status": evidence["candidate_status"],
+                    }
+                )
+            ninth_esto_key = (ninth_match["ninth_sector"], ninth_match["ninth_fuel"], proposed_flow, proposed_product)
+            if ninth_esto_key not in ninth_esto_existing:
+                ninth_esto_rows.append(
+                    {
+                        "ninth_sector": ninth_match["ninth_sector"],
+                        "ninth_fuel": ninth_match["ninth_fuel"],
+                        "esto_flow": proposed_flow,
+                        "esto_product": proposed_product,
+                        "ninth_pair_is_subtotal": False,
+                        "esto_pair_is_subtotal": False,
+                        "duplicate_to_remove": False,
+                        "mapping_anchor_esto_flow": evidence["esto_parent_flow"],
+                        "candidate_status": evidence["candidate_status"],
+                    }
+                )
+    outputs = {
+        "leap_to_esto": pd.DataFrame(leap_esto_rows).drop_duplicates().reset_index(drop=True),
+        "leap_to_ninth": pd.DataFrame(leap_ninth_rows).drop_duplicates().reset_index(drop=True),
+        "ninth_to_esto": pd.DataFrame(ninth_esto_rows).drop_duplicates().reset_index(drop=True),
+    }
+    if not outputs["ninth_to_esto"].empty:
+        combined = pd.concat(
+            [ninth_esto[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]], outputs["ninth_to_esto"][["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]]],
+            ignore_index=True,
+        ).drop_duplicates()
+        source_counts = combined.groupby(["ninth_sector", "ninth_fuel"]).apply(
+            lambda frame: frame[["esto_flow", "esto_product"]].drop_duplicates().shape[0]
+        )
+        target_counts = combined.groupby(["esto_flow", "esto_product"]).apply(
+            lambda frame: frame[["ninth_sector", "ninth_fuel"]].drop_duplicates().shape[0]
+        )
+        outputs["ninth_to_esto"]["candidate_status"] = outputs["ninth_to_esto"].apply(
+            lambda row: "review_many_to_many_before_adding"
+            if source_counts.get((row["ninth_sector"], row["ninth_fuel"]), 0) > 1
+            or target_counts.get((row["esto_flow"], row["esto_product"]), 0) > 1
+            else row["candidate_status"],
+            axis=1,
+        )
+    return outputs
+
+
+def build_extended_default_audits(
+    base_esto: pd.DataFrame,
+    extended: pd.DataFrame,
+    generated: pd.DataFrame,
+    template_candidates: pd.DataFrame,
+    rollup_catalogue: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Run the reusable hierarchy, subtotal, and detached-category checks."""
+    base_flows = set(base_esto["flows"].dropna().map(_normalise_text))
+    candidate_flows = set(template_candidates.get("flows", pd.Series(dtype=object)).dropna().map(_normalise_text))
+    all_flows = base_flows | candidate_flows
+    code_to_flow = {_esto_code(flow): flow for flow in all_flows if _esto_code(flow)}
+    detail_rows: list[dict[str, Any]] = []
+    for _, row in template_candidates.iterrows():
+        code = _esto_code(row["flows"])
+        parent_code = code.rsplit(".", 1)[0] if "." in code else ""
+        detail_rows.append(
+            {
+                "check_name": "candidate_parent_closure",
+                "item": row["flows"],
+                "parent": code_to_flow.get(parent_code, row.get("esto_extended_parent_flow", "")),
+                "status": "pass" if parent_code in code_to_flow else "fail",
+                "detail": row.get("esto_extended_source_leap_paths", ""),
+            }
+        )
+    rollup_mask = generated.get("esto_extended_row_origin", pd.Series(dtype=object)).eq("rollup_derived")
+    candidate_subtotal_ok = template_candidates.empty or template_candidates.get("is_subtotal", pd.Series(False, index=template_candidates.index)).map(
+        lambda value: _normalise_text(value).casefold() not in {"true", "1", "yes", "y"}
+    ).all()
+    rollup_subtotal_ok = not rollup_mask.any() or generated.loc[rollup_mask, "is_subtotal"].map(
+        lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+    ).all()
+    detail_rows.extend(
+        [
+            {"check_name": "candidate_rows_not_subtotals", "item": "template_candidate_rows", "parent": "", "status": "pass" if candidate_subtotal_ok else "fail", "detail": "Structural candidates remain non-subtotal rows."},
+            {"check_name": "rollup_rows_are_subtotals", "item": "rollup_derived", "parent": "", "status": "pass" if rollup_subtotal_ok else "fail", "detail": "Derived rollup rows remain subtotal rows."},
+            {"check_name": "extended_duplicate_keys", "item": "economy/flows/products", "parent": "", "status": "pass" if not extended.duplicated(["economy", "flows", "products"]).any() else "fail", "detail": "No duplicate ESTO keys."},
+        ]
+    )
+    detached = rollup_catalogue[rollup_catalogue["rollup_mode"].isin(["DETACHED", "NON_EXPANDING"])]
+    detail_rows.append({"check_name": "declared_detached_rollups", "item": "rollup catalogue", "parent": "", "status": "info", "detail": f"{len(detached)} declared boundary rules retained as metadata."})
+    details = pd.DataFrame(detail_rows)
+    summary = details.groupby(["check_name", "status"], as_index=False).size().rename(columns={"size": "count"})
+    return summary, details
+
+
 def build_esto_extended(
     base_esto_path: Path,
     template_dir: Path,
@@ -1074,6 +1298,10 @@ def build_esto_extended(
     template_child_candidates = pd.concat([template_child_candidates, transport_candidates], ignore_index=True).drop_duplicates()
     template_child_evidence = pd.concat([template_child_evidence, transport_evidence], ignore_index=True).drop_duplicates()
     template_candidate_rows = materialise_template_candidate_rows(esto, template_child_candidates)
+    mapping_candidate_outputs = build_mapping_candidates_from_template_evidence(
+        template_child_evidence[template_child_evidence["candidate_status"].ne("existing_esto_child")],
+        mapping_workbook_path,
+    )
 
     extended = pd.concat([esto, all_generated], ignore_index=True)
     key_columns = ["economy", "flows", "products"]
@@ -1093,6 +1321,11 @@ def build_esto_extended(
         "template_child_candidates": output_dir / "esto_extended_template_child_candidates.csv",
         "template_child_evidence": output_dir / "esto_extended_template_child_evidence.csv",
         "template_candidate_rows": output_dir / "esto_extended_template_candidate_rows.csv",
+        "mapping_candidates_leap_to_esto": output_dir / "esto_extended_mapping_candidates_leap_to_esto.csv",
+        "mapping_candidates_leap_to_ninth": output_dir / "esto_extended_mapping_candidates_leap_to_ninth.csv",
+        "mapping_candidates_ninth_to_esto": output_dir / "esto_extended_mapping_candidates_ninth_to_esto.csv",
+        "hierarchy_audit_summary": output_dir / "esto_extended_hierarchy_audit_summary.csv",
+        "hierarchy_audit_details": output_dir / "esto_extended_hierarchy_audit_details.csv",
         "rule_summary": output_dir / "esto_extended_rule_summary.csv",
         "extension_registry": output_dir / "esto_extended_extension_registry.csv",
         "extension_candidates": output_dir / "esto_extended_extension_candidates.csv",
@@ -1111,6 +1344,18 @@ def build_esto_extended(
     template_child_candidates.to_csv(output_paths["template_child_candidates"], index=False)
     template_child_evidence.to_csv(output_paths["template_child_evidence"], index=False)
     template_candidate_rows.to_csv(output_paths["template_candidate_rows"], index=False)
+    for key, frame in mapping_candidate_outputs.items():
+        output_paths[f"mapping_candidates_{key}"].parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(output_paths[f"mapping_candidates_{key}"], index=False)
+    hierarchy_summary, hierarchy_details = build_extended_default_audits(
+        esto,
+        extended,
+        all_generated,
+        template_candidate_rows,
+        rollup_catalogue,
+    )
+    hierarchy_summary.to_csv(output_paths["hierarchy_audit_summary"], index=False)
+    hierarchy_details.to_csv(output_paths["hierarchy_audit_details"], index=False)
     pd.DataFrame(
         [
             {

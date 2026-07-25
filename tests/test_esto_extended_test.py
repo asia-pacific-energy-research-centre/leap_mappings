@@ -10,6 +10,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     _normalise_path,
     apply_parent_minus_children_rule,
     build_rollup_tree_edges,
+    build_extended_default_audits,
     build_transport_tree_candidates,
     build_tree_based_extension_candidates,
     build_template_driven_child_candidates,
@@ -232,6 +233,35 @@ def test_transport_tree_builds_nested_road_children_from_demand_paths():
         "15.02.01.01.01 ICE heavy",
     }
     assert set(candidates["products"]) == {"07.01 Motor gasoline"}
+
+
+def test_default_audits_check_parent_closure_and_subtotal_roles():
+    base = pd.DataFrame(
+        [
+            {"economy": "20USA", "flows": "09.01.02 CHP plants", "products": "17 Electricity", "is_subtotal": True},
+        ]
+    )
+    generated = pd.DataFrame(
+        [
+            {"economy": "20USA", "flows": "09.01.02 CHP plants", "products": "17 Electricity", "is_subtotal": True, "esto_extended_row_origin": "rollup_derived"},
+        ]
+    )
+    candidates = pd.DataFrame(
+        [
+            {"flows": "09.01.02.01 Coal CHP", "is_subtotal": False, "esto_extended_parent_flow": "09.01.02 CHP plants", "esto_extended_source_leap_paths": "Transformation/CHP plants/Coal CHP"},
+        ]
+    )
+    catalogue = pd.DataFrame([{"rollup_mode": "DETACHED"}])
+
+    summary, details = build_extended_default_audits(base, base, generated, candidates, catalogue)
+
+    assert set(summary.loc[summary["status"] == "pass", "check_name"]) == {
+        "candidate_parent_closure",
+        "candidate_rows_not_subtotals",
+        "rollup_rows_are_subtotals",
+        "extended_duplicate_keys",
+    }
+    assert (details["status"] == "fail").sum() == 0
 
 
 #%%
