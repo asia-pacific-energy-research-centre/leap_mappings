@@ -1517,7 +1517,15 @@ def build_esto_extended(
         "lng_split_audit": output_dir / "esto_extended_lng_split_audit.csv",
     }
     extended.to_csv(output_paths["dataset"], index=False)
-    extended.to_csv(output_paths["data_dataset"], index=False)
+    # Keep the reusable production fixture compact.  Detailed provenance and
+    # review status remain available in the results/ audit artefacts and the
+    # full test dataset above, but are not part of the ESTO-shaped input that
+    # downstream mapping code consumes.
+    production_dataset = extended.drop(
+        columns=PROVENANCE_COLUMNS + ["candidate_status"],
+        errors="ignore",
+    )
+    production_dataset.to_csv(output_paths["data_dataset"], index=False)
     inventory.to_csv(output_paths["branch_inventory"], index=False)
     candidates.to_csv(output_paths["unmapped_candidates"], index=False)
     all_generated.to_csv(output_paths["generated_rows"], index=False)
