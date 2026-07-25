@@ -5,6 +5,7 @@ import pandas as pd
 from codebase.mapping_tools.source_parent_anchor_validation import (
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
+    build_failed_anchor_mapped_component_context_values,
     build_failed_anchor_raw_child_context_values,
     build_failed_anchor_raw_child_values,
     summarise_source_parent_anchors,
@@ -46,6 +47,17 @@ def test_exact_parent_children_match_without_double_counting() -> None:
     assert row["status"] == "passed"
     assert row["frontier_sum"] == 10
     assert row["frontier_row_count"] == 2
+
+
+def test_failed_anchor_mapped_component_context_exposes_each_common_component() -> None:
+    source, tree, mappings, common, comparison = _fixture(child_b_value=5)
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    components = build_failed_anchor_mapped_component_context_values(
+        detail, tree, mappings, common, comparison,
+    )
+    assert set(components["common_row_id"]) == {"c1", "c2"}
+    assert set(components["mapped_value"]) == {4.0, 5.0}
+    assert set(components["raw_child_code"]) == {"P.1", "P.2"}
 
 
 def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_covers_parent() -> None:

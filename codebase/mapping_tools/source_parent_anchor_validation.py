@@ -57,6 +57,13 @@ ANCHOR_CHILD_CONTEXT_COLUMNS = [
     "difference", "abs_error", "raw_child_value", "raw_child_row_count",
 ]
 
+ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS = [
+    "validation_axis", "comparison_scope", "source_system", "economy", "scenario", "year",
+    "other_axis_value", "parent_code", "raw_child_code", "resolved_source_flow",
+    "resolved_source_product", "component_esto_flow", "component_esto_product", "common_row_id",
+    "mapped_value", "mapping_status",
+]
+
 # A reviewed, manually-curated exception for a raw-source self-inconsistency
 # NINTH/LEAP/ESTO's own data cannot resolve automatically (see
 # _augment_with_data_quality_exceptions). Reuses the same
@@ -1501,6 +1508,138 @@ def build_failed_anchor_raw_child_values(
     """Summarise immediate raw-child values across failed anchor contexts."""
     context_values = build_failed_anchor_raw_child_context_values(detail_df, source_df, source_tree_df)
     return summarise_failed_anchor_raw_child_context_values(context_values)
+
+
+def build_failed_anchor_mapped_component_context_values(
+    detail_df: pd.DataFrame,
+    source_tree_df: pd.DataFrame,
+    source_mapping_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Expose the actual mapped frontier components for failed anchor contexts.
+
+    This is an inspection artifact only. A Common ESTO row can be reached from
+    more than one raw child, so consumers must de-duplicate by ``common_row_id``
+    before calculating a mapped total. ``raw_child_code`` preserves that
+    relationship without pretending a shared mapped value has been allocated.
+    """
+    required = {"status", "validation_axis", "comparison_scope", "source_system", "economy", "scenario", "year", "other_axis_value", "parent_code"}
+    if not required.issubset(detail_df.columns):
+        return pd.DataFrame(columns=ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+    failed = detail_df[detail_df["status"].astype(str).eq("failed")].copy()
+    if failed.empty:
+        return pd.DataFrame(columns=ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+    failed["economy"] = _normalize_economy(failed["economy"])
+    failed["year"] = pd.to_numeric(failed["year"], errors="coerce")
+    comparison = comparison_df.copy()
+    comparison["economy"] = _normalize_economy(comparison["economy"])
+    comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce")
+    comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
+    common_ids_by_component = (
+        common_rows_df.groupby(
+            ["comparison_scope", "component_esto_flow", "component_esto_product"], dropna=False,
+        )["common_row_id"].agg(lambda values: sorted(set(values.dropna().astype(str))))
+        .to_dict()
+    )
+    comparison_values = (
+        comparison.groupby(
+            ["source_system", "comparison_scope", "economy", "scenario", "year", "common_row_id"],
+            dropna=False,
+        )["value"].sum().to_dict()
+    )
+    rows: list[dict[str, object]] = []
+
+    for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
+        dataset = source_system.casefold()
+        system_failed = failed[failed["source_system"].astype(str).eq(source_system)]
+        system_mapping = source_mapping_df[source_mapping_df["source_system"].astype(str).eq(source_system)].copy()
+        if system_mapping.empty:
+            continue
+        for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
+            if dataset in {"leap", "ninth"}:
+                tree_axis = "sector" if validation_axis == "flow" else "fuel"
+            axis_failed = system_failed[system_failed["validation_axis"].astype(str).eq(validation_axis)].copy()
+            if axis_failed.empty:
+                continue
+            axis_col = "source_flow" if validation_axis == "flow" else "source_product"
+            other_col = "source_product" if validation_axis == "flow" else "source_flow"
+            aliases = build_tree_code_aliases(source_tree_df, dataset, tree_axis)
+            tree = source_tree_df[
+                source_tree_df["dataset"].astype(str).str.casefold().eq(dataset)
+                & source_tree_df["axis"].astype(str).str.casefold().eq(tree_axis)
+            ].copy()
+            if tree.empty:
+                continue
+            tree["code"] = canonicalize_tree_codes(tree["code"], aliases)
+            tree["parent_code"] = canonicalize_tree_codes(tree["parent_code"], aliases)
+            children = _children_map(tree, dataset, tree_axis)
+            system_mapping[axis_col] = canonicalize_tree_codes(system_mapping[axis_col], aliases)
+            direct_index = {
+                key: group for key, group in system_mapping.groupby([axis_col, other_col], dropna=False)
+            }
+            empty_mapping = system_mapping.iloc[0:0]
+            axis_failed["parent_code"] = canonicalize_tree_codes(axis_failed["parent_code"], aliases)
+            cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
+            for detail in axis_failed.itertuples(index=False):
+                parent = str(detail.parent_code)
+                other_value = str(detail.other_axis_value)
+                for raw_child in children.get(parent, []):
+                    resolved, missing = _mapped_descendants(
+                        raw_child, other_value, children, direct_index, empty_mapping, cache,
+                    )
+                    for missing_child in missing:
+                        rows.append({
+                            "validation_axis": validation_axis, "comparison_scope": detail.comparison_scope,
+                            "source_system": source_system, "economy": detail.economy,
+                            "scenario": detail.scenario, "year": detail.year,
+                            "other_axis_value": other_value, "parent_code": parent,
+                            "raw_child_code": raw_child, "resolved_source_flow": "",
+                            "resolved_source_product": "", "component_esto_flow": "",
+                            "component_esto_product": "", "common_row_id": "",
+                            "mapped_value": 0.0, "mapping_status": f"missing_source_mapping:{missing_child}",
+                        })
+                    for component in resolved.itertuples(index=False):
+                        common_ids = common_ids_by_component.get(
+                            (str(detail.comparison_scope), str(component.component_esto_flow), str(component.component_esto_product)),
+                            [],
+                        )
+                        if not common_ids:
+                            rows.append({
+                                "validation_axis": validation_axis, "comparison_scope": detail.comparison_scope,
+                                "source_system": source_system, "economy": detail.economy,
+                                "scenario": detail.scenario, "year": detail.year,
+                                "other_axis_value": other_value, "parent_code": parent,
+                                "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
+                                "resolved_source_product": component.source_product,
+                                "component_esto_flow": component.component_esto_flow,
+                                "component_esto_product": component.component_esto_product,
+                                "common_row_id": "", "mapped_value": 0.0,
+                                "mapping_status": "component_not_registered_in_common_esto",
+                            })
+                            continue
+                        for common_id in common_ids:
+                            mapped_value = comparison_values.get(
+                                (source_system, str(detail.comparison_scope), str(detail.economy),
+                                 str(detail.scenario), detail.year, common_id),
+                                0.0,
+                            )
+                            rows.append({
+                                "validation_axis": validation_axis, "comparison_scope": detail.comparison_scope,
+                                "source_system": source_system, "economy": detail.economy,
+                                "scenario": detail.scenario, "year": detail.year,
+                                "other_axis_value": other_value, "parent_code": parent,
+                                "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
+                                "resolved_source_product": component.source_product,
+                                "component_esto_flow": component.component_esto_flow,
+                                "component_esto_product": component.component_esto_product,
+                                "common_row_id": common_id,
+                                "mapped_value": float(mapped_value),
+                                "mapping_status": "mapped" if mapped_value != 0.0 else "mapped_but_no_context_value",
+                            })
+    if not rows:
+        return pd.DataFrame(columns=ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+    return pd.DataFrame(rows)[ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS].drop_duplicates()
 
 
 def summarise_failed_anchor_raw_child_context_values(context_values: pd.DataFrame) -> pd.DataFrame:
