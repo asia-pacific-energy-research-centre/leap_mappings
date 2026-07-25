@@ -11,6 +11,9 @@ from codebase.mapping_tools.build_esto_extended_test import (
     apply_parent_minus_children_rule,
     build_rollup_tree_edges,
     build_tree_based_extension_candidates,
+    build_template_driven_child_candidates,
+    load_esto_flow_tree,
+    load_rollup_catalogue,
     summarise_extension_candidate_sets,
 )
 
@@ -138,6 +141,71 @@ def test_rollup_tree_edges_keep_derived_parent_and_component_children_separate()
     assert set(edges["parent_flow"]) == {"09.01.02,09.02.02 CHP plants"}
     assert set(edges["child_flow"]) == {"09.01.02 CHP plants", "09.02.02 CHP plants"}
     assert set(edges["context_parent_flow"]) == {"09.01-09.02 Power sector"}
+
+
+def test_transmission_electricity_is_not_proposed_as_a_new_child():
+    from codebase.mapping_tools.build_esto_extended_test import (
+        BASE_ESTO_PATH,
+        MAPPING_WORKBOOK_PATH,
+    )
+
+    inventory = pd.DataFrame(
+        [
+            {
+                "branch_path": "Transformation/Transmission and Distribution",
+                "parent_path": "Transformation",
+                "depth": 2,
+                "leaf_label": "Transmission and Distribution",
+                "template_count": 1,
+                "template_files": "test",
+                "observed_as_leaf": False,
+            },
+            {
+                "branch_path": "Transformation/Transmission and Distribution/Processes",
+                "parent_path": "Transformation/Transmission and Distribution",
+                "depth": 3,
+                "leaf_label": "Processes",
+                "template_count": 1,
+                "template_files": "test",
+                "observed_as_leaf": False,
+            },
+            {
+                "branch_path": "Transformation/Transmission and Distribution/Processes/Electricity",
+                "parent_path": "Transformation/Transmission and Distribution/Processes",
+                "depth": 4,
+                "leaf_label": "Electricity",
+                "template_count": 1,
+                "template_files": "test",
+                "observed_as_leaf": False,
+            },
+            {
+                "branch_path": "Transformation/Transmission and Distribution/Processes/Electricity/Feedstock Fuels",
+                "parent_path": "Transformation/Transmission and Distribution/Processes/Electricity",
+                "depth": 5,
+                "leaf_label": "Feedstock Fuels",
+                "template_count": 1,
+                "template_files": "test",
+                "observed_as_leaf": False,
+            },
+            {
+                "branch_path": "Transformation/Transmission and Distribution/Processes/Electricity/Feedstock Fuels/Electricity",
+                "parent_path": "Transformation/Transmission and Distribution/Processes/Electricity/Feedstock Fuels",
+                "depth": 6,
+                "leaf_label": "Electricity",
+                "template_count": 1,
+                "template_files": "test",
+                "observed_as_leaf": True,
+            },
+        ]
+    )
+    candidates, _evidence = build_template_driven_child_candidates(
+        inventory,
+        MAPPING_WORKBOOK_PATH,
+        load_rollup_catalogue(MAPPING_WORKBOOK_PATH),
+        set(load_esto_flow_tree(BASE_ESTO_PATH)["esto_flow"]),
+    )
+
+    assert candidates.empty or not candidates["flows"].astype(str).str.contains("10.02.01", na=False).any()
 
 
 #%%

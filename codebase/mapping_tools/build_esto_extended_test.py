@@ -36,6 +36,7 @@ LEAP_INITIALISATION_ROOT = Path(r"C:\Users\Work\github\leap_initialisation")
 BASE_ESTO_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 MAPPING_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 TEMPLATE_DIR = LEAP_INITIALISATION_ROOT / "data" / "leap_export_templates"
+DEMAND_BRANCH_WORKBOOK_PATH = REPO_ROOT / "data" / "temp" / "new demand branches.xlsx"
 OUTPUT_DIR = REPO_ROOT / "results" / "esto_extended_test"
 
 ESTO_REQUIRED_COLUMNS = ["economy", "flows", "products"]
@@ -86,6 +87,9 @@ ESTABLISHED_LEAF_TARGETS = {
     "ng liquefaction": "09.06.02.01 Liquefaction",
 }
 FUEL_ROLE_LABELS = {"Feedstock Fuels", "Output Fuels", "Auxiliary Fuels"}
+SPECIAL_ALREADY_MAPPED_TEMPLATE_CHILDREN = {
+    ("transmission and distribution", "electricity"): "10.02 Transmission and distribution losses / 17 Electricity"
+}
 
 
 #%%
@@ -184,6 +188,68 @@ def read_leap_template_branch_inventory(template_dir: Path) -> pd.DataFrame:
         )
     )
     return presence.sort_values(["depth", "branch_path"]).reset_index(drop=True)
+
+
+def read_demand_branch_inventory(workbook_path: Path) -> pd.DataFrame:
+    """Read the externally supplied Demand branch tree as a LEAP path source."""
+    if not workbook_path.exists():
+        raise FileNotFoundError(f"Demand branch workbook not found: {workbook_path}")
+    frame = pd.read_excel(workbook_path, sheet_name=0, header=0, usecols=["Branch Path"], dtype=object)
+    paths = frame["Branch Path"].map(_normalise_path)
+    rows: list[dict[str, Any]] = []
+    for branch_path in sorted(set(paths[paths.ne("")])):
+        if branch_path.casefold() == "branch path":
+            continue
+        segments = branch_path.split("/")
+        for depth in range(1, len(segments) + 1):
+            node = "/".join(segments[:depth])
+            rows.append(
+                {
+                    "template_file": workbook_path.name,
+                    "branch_path": node,
+                    "parent_path": "/".join(segments[: depth - 1]),
+                    "depth": depth,
+                    "leaf_label": segments[-1] if depth == len(segments) else segments[depth - 1],
+                    "is_observed_leaf": depth == len(segments),
+                }
+            )
+    if not rows:
+        raise ValueError(f"No Demand Branch Path values found in {workbook_path}")
+    inventory = pd.DataFrame(rows).drop_duplicates()
+    return (
+        inventory.groupby("branch_path", as_index=False)
+        .agg(
+            parent_path=("parent_path", "first"),
+            depth=("depth", "first"),
+            leaf_label=("leaf_label", "first"),
+            template_count=("template_file", "nunique"),
+            template_files=("template_file", lambda values: "|".join(sorted(set(values)))),
+            observed_as_leaf=("is_observed_leaf", "any"),
+        )
+        .sort_values(["depth", "branch_path"])
+        .reset_index(drop=True)
+    )
+
+
+def combine_branch_inventories(*inventories: pd.DataFrame) -> pd.DataFrame:
+    """Combine template and externally supplied branch trees without losing provenance."""
+    frames = [frame for frame in inventories if frame is not None and not frame.empty]
+    if not frames:
+        return pd.DataFrame()
+    combined = pd.concat(frames, ignore_index=True)
+    return (
+        combined.groupby("branch_path", as_index=False)
+        .agg(
+            parent_path=("parent_path", "first"),
+            depth=("depth", "first"),
+            leaf_label=("leaf_label", "first"),
+            template_count=("template_count", "sum"),
+            template_files=("template_files", lambda values: "|".join(sorted(set("|".join(values).split("|"))))),
+            observed_as_leaf=("observed_as_leaf", "any"),
+        )
+        .sort_values(["depth", "branch_path"])
+        .reset_index(drop=True)
+    )
 
 
 def load_active_leap_esto_paths(mapping_workbook_path: Path) -> set[str]:
@@ -689,10 +755,29 @@ def _esto_flow_components(rollup_catalogue: pd.DataFrame, flow_label: str) -> li
     return sorted(set(components)) or [label]
 
 
+def _existing_child_flow_match(
+    existing_esto_flow_labels: set[str],
+    parent_code: str,
+    child_label: str,
+) -> str:
+    """Match template child names to existing ESTO labels despite punctuation/detail."""
+    child_key = re.sub(r"[^a-z0-9]+", "", _normalise_text(child_label).casefold())
+    matches: list[str] = []
+    for flow in existing_esto_flow_labels:
+        if not _esto_code(flow).startswith(parent_code + "."):
+            continue
+        existing_label = _normalise_text(flow).split(" ", 1)[-1]
+        existing_key = re.sub(r"[^a-z0-9]+", "", existing_label.casefold())
+        if existing_key == child_key or existing_key.startswith(child_key):
+            matches.append(flow)
+    return sorted(matches, key=lambda value: (_esto_code(value).count("."), value))[0] if matches else ""
+
+
 def build_template_driven_child_candidates(
     inventory: pd.DataFrame,
     mapping_workbook_path: Path,
     rollup_catalogue: pd.DataFrame,
+    existing_esto_flow_labels: set[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build reviewable child-flow candidates from Transformation/Demand trees.
 
@@ -704,6 +789,7 @@ def build_template_driven_child_candidates(
     """
     scoped = inventory[inventory["branch_path"].str.split("/").str[0].isin(["Transformation", "Demand"])].copy()
     mappings = _active_leap_mapping_rows(mapping_workbook_path)
+    existing_esto_flow_labels = existing_esto_flow_labels or set()
     candidate_rows: list[dict[str, Any]] = []
     evidence_rows: list[dict[str, Any]] = []
     seen_nodes: set[str] = set()
@@ -722,6 +808,8 @@ def build_template_driven_child_candidates(
                 continue
             sector_path = "/".join(parts[1:process_index]) or parts[1]
             child_label = parts[process_index + 1]
+            if (sector_path.casefold(), child_label.casefold()) in SPECIAL_ALREADY_MAPPED_TEMPLATE_CHILDREN:
+                continue
         else:
             if any(part in FUEL_ROLE_LABELS for part in parts):
                 continue
@@ -755,7 +843,9 @@ def build_template_driven_child_candidates(
             parent_code = _esto_code(component)
             if not parent_code:
                 continue
-            proposed_flow = f"{parent_code}.{component_index:02d} {child_label}"
+            existing_child = _existing_child_flow_match(existing_esto_flow_labels, parent_code, child_label)
+            proposed_flow = existing_child or f"{parent_code}.{component_index:02d} {child_label}"
+            child_status = "existing_esto_child" if existing_child else placement_status
             for item in mapped_products:
                 evidence_rows.append(
                     {
@@ -768,7 +858,7 @@ def build_template_driven_child_candidates(
                         "esto_component_flow": component,
                         "esto_product": item["esto_product"],
                         "proposed_child_flow": proposed_flow,
-                        "candidate_status": placement_status,
+                        "candidate_status": child_status,
                     }
                 )
                 candidate_rows.append(
@@ -780,7 +870,7 @@ def build_template_driven_child_candidates(
                         "esto_extended_parent_flow": component,
                         "esto_extended_derived_from": f"{path} | {item['fuel_role']}",
                         "esto_extended_source_leap_paths": path,
-                        "candidate_status": placement_status,
+                        "candidate_status": child_status,
                     }
                 )
     evidence = pd.DataFrame(evidence_rows).drop_duplicates().reset_index(drop=True)
@@ -793,7 +883,19 @@ def build_template_driven_child_candidates(
             for ordinal, child_label in enumerate(sorted(group["leap_child_label"].unique()), start=1):
                 ordinal_lookup[(component, child_label)] = ordinal
         evidence["proposed_child_flow"] = evidence.apply(
-            lambda row: f"{_esto_code(row['esto_component_flow'])}.{ordinal_lookup[(row['esto_component_flow'], row['leap_child_label'])]:02d} {row['leap_child_label']}",
+            lambda row: _existing_child_flow_match(
+                existing_esto_flow_labels,
+                _esto_code(row["esto_component_flow"]),
+                row["leap_child_label"],
+            ) or (
+                f"{_esto_code(row['esto_component_flow'])}.{ordinal_lookup[(row['esto_component_flow'], row['leap_child_label'])]:02d} {row['leap_child_label']}"
+            ),
+            axis=1,
+        )
+        evidence["candidate_status"] = evidence.apply(
+            lambda row: "existing_esto_child"
+            if row["proposed_child_flow"] in existing_esto_flow_labels
+            else row["candidate_status"],
             axis=1,
         )
         flow_lookup = {
@@ -804,6 +906,24 @@ def build_template_driven_child_candidates(
             row["flows"] = flow_lookup.get(
                 (row["esto_extended_parent_flow"], row["esto_extended_source_leap_paths"]),
                 row["flows"],
+            )
+        candidate_status_lookup = {
+            (row["esto_component_flow"], row["leap_sector_path"]): row["candidate_status"]
+            for _, row in evidence.drop_duplicates(["esto_component_flow", "leap_sector_path"]).iterrows()
+        }
+        candidate_rows = [
+            row
+            for row in candidate_rows
+            if candidate_status_lookup.get(
+                (row["esto_extended_parent_flow"], row["esto_extended_source_leap_paths"]),
+                row["candidate_status"],
+            )
+            != "existing_esto_child"
+        ]
+        for row in candidate_rows:
+            row["candidate_status"] = candidate_status_lookup.get(
+                (row["esto_extended_parent_flow"], row["esto_extended_source_leap_paths"]),
+                row["candidate_status"],
             )
     candidates = pd.DataFrame(candidate_rows).drop_duplicates().reset_index(drop=True)
     return candidates, evidence
@@ -843,7 +963,10 @@ def build_esto_extended(
     _require_columns(esto, ESTO_REQUIRED_COLUMNS, "Base ESTO data")
     esto = _with_provenance_columns(esto)
 
-    inventory = read_leap_template_branch_inventory(template_dir)
+    inventory = combine_branch_inventories(
+        read_leap_template_branch_inventory(template_dir),
+        read_demand_branch_inventory(DEMAND_BRANCH_WORKBOOK_PATH),
+    )
     mapped_paths = load_active_leap_esto_paths(mapping_workbook_path)
     candidates = build_unmapped_branch_candidates(inventory, mapped_paths)
     unmapped_paths = candidates.loc[~candidates["exact_active_esto_mapping"], "branch_path"].tolist()
@@ -865,6 +988,7 @@ def build_esto_extended(
         inventory,
         mapping_workbook_path,
         rollup_catalogue,
+        existing_esto_flow_labels=set(candidate_flows["esto_flow"]),
     )
     template_candidate_rows = materialise_template_candidate_rows(esto, template_child_candidates)
 
