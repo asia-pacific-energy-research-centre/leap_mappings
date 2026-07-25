@@ -59,7 +59,7 @@ ANCHOR_CHILD_CONTEXT_COLUMNS = [
 
 ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS = [
     "validation_axis", "comparison_scope", "source_system", "economy", "scenario", "year",
-    "other_axis_value", "parent_code", "raw_child_code", "resolved_source_flow",
+    "other_axis_value", "parent_code", "raw_node_role", "raw_child_code", "resolved_source_flow",
     "resolved_source_product", "component_esto_flow", "component_esto_product", "common_row_id",
     "mapped_value", "mapping_status",
 ]
@@ -1584,7 +1584,7 @@ def build_failed_anchor_mapped_component_context_values(
             for detail in axis_failed.itertuples(index=False):
                 parent = str(detail.parent_code)
                 other_value = str(detail.other_axis_value)
-                for raw_child in children.get(parent, []):
+                for raw_node_role, raw_child in [("parent", parent)] + [("child", child) for child in children.get(parent, [])]:
                     resolved, missing = _mapped_descendants(
                         raw_child, other_value, children, direct_index, empty_mapping, cache,
                     )
@@ -1594,7 +1594,7 @@ def build_failed_anchor_mapped_component_context_values(
                             "source_system": source_system, "economy": detail.economy,
                             "scenario": detail.scenario, "year": detail.year,
                             "other_axis_value": other_value, "parent_code": parent,
-                            "raw_child_code": raw_child, "resolved_source_flow": "",
+                            "raw_node_role": raw_node_role, "raw_child_code": raw_child, "resolved_source_flow": "",
                             "resolved_source_product": "", "component_esto_flow": "",
                             "component_esto_product": "", "common_row_id": "",
                             "mapped_value": 0.0, "mapping_status": f"missing_source_mapping:{missing_child}",
@@ -1610,7 +1610,7 @@ def build_failed_anchor_mapped_component_context_values(
                                 "source_system": source_system, "economy": detail.economy,
                                 "scenario": detail.scenario, "year": detail.year,
                                 "other_axis_value": other_value, "parent_code": parent,
-                                "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
+                                "raw_node_role": raw_node_role, "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
                                 "resolved_source_product": component.source_product,
                                 "component_esto_flow": component.component_esto_flow,
                                 "component_esto_product": component.component_esto_product,
@@ -1629,7 +1629,7 @@ def build_failed_anchor_mapped_component_context_values(
                                 "source_system": source_system, "economy": detail.economy,
                                 "scenario": detail.scenario, "year": detail.year,
                                 "other_axis_value": other_value, "parent_code": parent,
-                                "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
+                                "raw_node_role": raw_node_role, "raw_child_code": raw_child, "resolved_source_flow": component.source_flow,
                                 "resolved_source_product": component.source_product,
                                 "component_esto_flow": component.component_esto_flow,
                                 "component_esto_product": component.component_esto_product,

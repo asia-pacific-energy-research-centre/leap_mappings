@@ -57,7 +57,8 @@ def test_failed_anchor_mapped_component_context_exposes_each_common_component() 
     )
     assert set(components["common_row_id"]) == {"c1", "c2"}
     assert set(components["mapped_value"]) == {4.0, 5.0}
-    assert set(components["raw_child_code"]) == {"P.1", "P.2"}
+    assert set(components["raw_child_code"]) == {"P", "P.1", "P.2"}
+    assert set(components["raw_node_role"]) == {"parent", "child"}
 
 
 def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_covers_parent() -> None:
