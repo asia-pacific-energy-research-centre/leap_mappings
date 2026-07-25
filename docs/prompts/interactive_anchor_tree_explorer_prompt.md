@@ -18,6 +18,17 @@ This prompt is only for the future full-tree explorer. The separate task of
 making the existing paired diagnostic card show either a real mapped hierarchy
 or a direct mapping fan-out is handled independently.
 
+## Independence from ongoing dashboard work
+
+This exploration must be runnable while other agents are changing the anchor
+validator and the existing `mapping_diagnostics.html` cards. Do not wait for,
+modify, or depend on uncommitted work in those tasks. Use a new, separately
+named prototype page (for example `mapping_tree_explorer_prototype.html`) and
+read the latest committed/generated artifacts available when the exploration
+starts. If an input artifact is stale or internally inconsistent, record that
+limitation in the prototype rather than changing the shared dashboard page or
+validator to compensate.
+
 ## Required semantic model
 
 Keep these three things separate in the design and in every label:
