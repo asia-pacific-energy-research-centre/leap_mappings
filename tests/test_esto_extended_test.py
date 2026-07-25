@@ -9,6 +9,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     _esto_code,
     _normalise_path,
     apply_parent_minus_children_rule,
+    build_rollup_tree_edges,
     build_tree_based_extension_candidates,
     summarise_extension_candidate_sets,
 )
@@ -116,6 +117,27 @@ def test_established_lng_names_take_precedence_over_combined_parent_match():
 
     assert set(candidates["candidate_status"]) == {"review_existing_established_target"}
     assert set(candidates["esto_parent_code"]) == {"09.06.02.01", "09.06.02.02"}
+
+
+def test_rollup_tree_edges_keep_derived_parent_and_component_children_separate():
+    catalogue = pd.DataFrame(
+        [
+            {
+                "rule_sheet": "esto_rollup_rules",
+                "source_system": "ESTO",
+                "rollup_mode": "EXPANDING",
+                "rollup_group_id": "",
+                "rolled_flow": "09.01.02,09.02.02 CHP plants",
+                "parent_flow_label": "09.01-09.02 Power sector",
+                "child_flow_labels": "09.01.02 CHP plants; 09.02.02 CHP plants",
+            }
+        ]
+    )
+    edges = build_rollup_tree_edges(catalogue)
+
+    assert set(edges["parent_flow"]) == {"09.01.02,09.02.02 CHP plants"}
+    assert set(edges["child_flow"]) == {"09.01.02 CHP plants", "09.02.02 CHP plants"}
+    assert set(edges["context_parent_flow"]) == {"09.01-09.02 Power sector"}
 
 
 #%%

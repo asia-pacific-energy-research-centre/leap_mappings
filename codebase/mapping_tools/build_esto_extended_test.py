@@ -23,6 +23,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.mapping_tools.build_missing_mapped_esto_rows import build_lng_split_esto_rows
+from codebase.mapping_tools.non_expanding_rollups import (
+    ROLLUP_SHEET_CONFIGS,
+    build_esto_non_expanding_subtotal_rows,
+    get_rollup_mode,
+    load_non_expanding_rollup_rules,
+    non_expanding_rollup_id,
+)
 
 #%%
 LEAP_INITIALISATION_ROOT = Path(r"C:\Users\Work\github\leap_initialisation")
@@ -40,6 +47,8 @@ PROVENANCE_COLUMNS = [
     "esto_extended_parent_product",
     "esto_extended_derived_from",
     "esto_extended_source_leap_paths",
+    "esto_extended_rollup_mode",
+    "esto_extended_rollup_id",
 ]
 
 ESTABLISHED_FLOW_RULE = {
@@ -120,6 +129,8 @@ def _with_provenance_columns(df: pd.DataFrame) -> pd.DataFrame:
         "esto_extended_parent_product": "",
         "esto_extended_derived_from": "",
         "esto_extended_source_leap_paths": "",
+        "esto_extended_rollup_mode": "",
+        "esto_extended_rollup_id": "",
     }
     for column in PROVENANCE_COLUMNS:
         if column not in out.columns:
@@ -454,6 +465,134 @@ def restore_established_lng_rows(esto_df: pd.DataFrame, base_esto_path: Path) ->
     return missing.reindex(columns=list(esto_df.columns)), audit
 
 
+def load_rollup_catalogue(mapping_workbook_path: Path) -> pd.DataFrame:
+    """Compile all enabled rollup rules with their declared mode and lineage."""
+    rows: list[dict[str, Any]] = []
+    for sheet_name, config in ROLLUP_SHEET_CONFIGS.items():
+        rules = pd.read_excel(mapping_workbook_path, sheet_name=sheet_name, dtype=object).fillna("")
+        if "include" in rules.columns:
+            rules = rules[rules["include"].map(lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"})]
+        for _, rule in rules.iterrows():
+            rolled_flow = _normalise_text(rule.get(config["rolled_flow"], ""))
+            if not rolled_flow:
+                continue
+            rows.append(
+                {
+                    "rule_sheet": sheet_name,
+                    "source_system": config["source_system"],
+                    "rollup_mode": get_rollup_mode(rule),
+                    "input_flow": _normalise_text(rule.get(config["input_flow"], "")),
+                    "input_product": _normalise_text(rule.get(config["input_product"], "")),
+                    "rolled_flow": rolled_flow,
+                    "rolled_product": _normalise_text(rule.get(config["rolled_product"], "")),
+                    "parent_flow_label": _normalise_text(rule.get("parent_flow", rule.get("parent_flow_label", ""))),
+                    "child_flow_labels": _normalise_text(rule.get("child_flow_labels", "")),
+                    "rollup_context": _normalise_text(rule.get("rollup_context", "")),
+                    "rollup_group_id": _normalise_text(rule.get("rollup_group_id", "")),
+                    "note": _normalise_text(rule.get("Note", "")),
+                }
+            )
+    return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+
+
+def build_esto_rollup_rows(
+    base_esto: pd.DataFrame,
+    mapping_workbook_path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Materialise only safe ESTO non-expanding/detached rollup values."""
+    rules_by_sheet = load_non_expanding_rollup_rules(mapping_workbook_path)
+    esto_rules = rules_by_sheet.get("esto_rollup_rules", pd.DataFrame())
+    if esto_rules.empty:
+        return pd.DataFrame(columns=list(base_esto.columns)), pd.DataFrame()
+
+    long_rows = build_esto_non_expanding_subtotal_rows(
+        esto_wide_df=base_esto,
+        esto_non_expanding_rules_df=esto_rules,
+        year_columns=_year_columns(base_esto),
+    )
+    if long_rows.empty:
+        return pd.DataFrame(columns=list(base_esto.columns)), pd.DataFrame()
+
+    year_columns = _year_columns(base_esto)
+    keys = ["economy", "esto_flow", "esto_product"]
+    wide = long_rows.pivot_table(index=keys, columns="year", values="value", aggfunc="sum", fill_value=0.0).reset_index()
+    wide.columns = [str(column) for column in wide.columns]
+    rollup_ids = (
+        long_rows.groupby(["esto_flow", "esto_product"], dropna=False)["non_expanding_rollup_id"]
+        .first()
+        .to_dict()
+    )
+    rows: list[dict[str, Any]] = []
+    for _, row in wide.iterrows():
+        output = {column: pd.NA for column in base_esto.columns if column not in PROVENANCE_COLUMNS}
+        output["economy"] = row["economy"]
+        output["flows"] = row["esto_flow"]
+        output["products"] = row["esto_product"]
+        if "is_subtotal" in output:
+            output["is_subtotal"] = True
+        for year in year_columns:
+            output[year] = float(row.get(year, 0.0))
+        output.update(
+            {
+                "esto_extended_row_origin": "rollup_derived",
+                "esto_extended_rollup_mode": "NON_EXPANDING_OR_DETACHED",
+                "esto_extended_rollup_id": rollup_ids.get((row["esto_flow"], row["esto_product"]), non_expanding_rollup_id(row["esto_flow"])),
+                "esto_extended_derived_from": "declared ESTO rollup contributors",
+            }
+        )
+        rows.append(output)
+    generated = pd.DataFrame(rows, columns=[column for column in base_esto.columns if column not in PROVENANCE_COLUMNS] + PROVENANCE_COLUMNS)
+
+    existing_keys = {
+        tuple(row)
+        for row in base_esto[["economy", "flows", "products"]]
+        .assign(
+            economy=lambda frame: frame["economy"].map(_normalise_economy),
+            flows=lambda frame: frame["flows"].map(_esto_code),
+            products=lambda frame: frame["products"].map(_esto_code),
+        )
+        .itertuples(index=False, name=None)
+    }
+    generated_keys = list(
+        zip(
+            generated["economy"].map(_normalise_economy),
+            generated["flows"].map(_esto_code),
+            generated["products"].map(_esto_code),
+        )
+    )
+    generated = generated.loc[[key not in existing_keys for key in generated_keys]].reset_index(drop=True)
+    audit = long_rows.copy()
+    audit["row_origin"] = "rollup_derived"
+    return generated.reindex(columns=list(base_esto.columns)), audit
+
+
+def build_rollup_tree_edges(rollup_catalogue: pd.DataFrame) -> pd.DataFrame:
+    """Expose declared rollup parent/child relationships without changing values."""
+    rows: list[dict[str, Any]] = []
+    for _, rule in rollup_catalogue.iterrows():
+        # The rolled flow is the actual derived node.  parent_flow_label is
+        # retained as the surrounding tree context, not substituted for it.
+        parent = _normalise_text(rule.get("rolled_flow", ""))
+        context_parent = _normalise_text(rule.get("parent_flow_label", ""))
+        children = [child.strip() for child in _normalise_text(rule.get("child_flow_labels", "")).split(";") if child.strip()]
+        if not parent or not children:
+            continue
+        for child in children:
+            rows.append(
+                {
+                    "source_system": rule["source_system"],
+                    "rule_sheet": rule["rule_sheet"],
+                    "rollup_mode": rule["rollup_mode"],
+                    "rollup_group_id": rule["rollup_group_id"],
+                    "parent_flow": parent,
+                    "context_parent_flow": context_parent,
+                    "child_flow": child,
+                    "edge_type": "declared_rollup_hierarchy",
+                }
+            )
+    return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+
+
 def build_esto_extended(
     base_esto_path: Path,
     template_dir: Path,
@@ -477,12 +616,15 @@ def build_esto_extended(
     )
 
     generated, lng_audit = restore_established_lng_rows(esto, base_esto_path)
+    rollup_catalogue = load_rollup_catalogue(mapping_workbook_path)
+    rollup_generated, rollup_audit = build_esto_rollup_rows(esto, mapping_workbook_path)
+    all_generated = pd.concat([generated, rollup_generated], ignore_index=True)
     candidate_flows = load_esto_flow_tree(base_esto_path)
     extension_candidates = build_tree_based_extension_candidates(candidates, candidate_flows)
     candidate_sets = summarise_extension_candidate_sets(extension_candidates)
     leap_parent_sets = summarise_leap_parent_candidate_sets(extension_candidates)
 
-    extended = pd.concat([esto, generated], ignore_index=True)
+    extended = pd.concat([esto, all_generated], ignore_index=True)
     key_columns = ["economy", "flows", "products"]
     duplicate_keys = extended.duplicated(key_columns, keep=False)
     if duplicate_keys.any():
@@ -493,6 +635,10 @@ def build_esto_extended(
         "branch_inventory": output_dir / "leap_template_branch_inventory.csv",
         "unmapped_candidates": output_dir / "unmapped_leap_branch_candidates.csv",
         "generated_rows": output_dir / "esto_extended_generated_rows.csv",
+        "rollup_catalogue": output_dir / "esto_extended_rollup_catalogue.csv",
+        "rollup_rows": output_dir / "esto_extended_rollup_rows.csv",
+        "rollup_lineage": output_dir / "esto_extended_rollup_lineage.csv",
+        "rollup_tree_edges": output_dir / "esto_extended_rollup_tree_edges.csv",
         "rule_summary": output_dir / "esto_extended_rule_summary.csv",
         "extension_registry": output_dir / "esto_extended_extension_registry.csv",
         "extension_candidates": output_dir / "esto_extended_extension_candidates.csv",
@@ -503,7 +649,11 @@ def build_esto_extended(
     extended.to_csv(output_paths["dataset"], index=False)
     inventory.to_csv(output_paths["branch_inventory"], index=False)
     candidates.to_csv(output_paths["unmapped_candidates"], index=False)
-    generated.to_csv(output_paths["generated_rows"], index=False)
+    all_generated.to_csv(output_paths["generated_rows"], index=False)
+    rollup_catalogue.to_csv(output_paths["rollup_catalogue"], index=False)
+    rollup_generated.to_csv(output_paths["rollup_rows"], index=False)
+    rollup_audit.to_csv(output_paths["rollup_lineage"], index=False)
+    build_rollup_tree_edges(rollup_catalogue).to_csv(output_paths["rollup_tree_edges"], index=False)
     pd.DataFrame(
         [
             {
