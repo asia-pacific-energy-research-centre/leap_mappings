@@ -11,6 +11,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     apply_parent_minus_children_rule,
     build_rollup_tree_edges,
     build_extended_default_audits,
+    apply_general_subtotal_labels,
     build_transport_tree_candidates,
     build_tree_based_extension_candidates,
     build_template_driven_child_candidates,
@@ -257,11 +258,29 @@ def test_default_audits_check_parent_closure_and_subtotal_roles():
 
     assert set(summary.loc[summary["status"] == "pass", "check_name"]) == {
         "candidate_parent_closure",
-        "candidate_rows_not_subtotals",
+        "candidate_subtotal_roles",
         "rollup_rows_are_subtotals",
         "extended_duplicate_keys",
     }
     assert (details["status"] == "fail").sum() == 0
+
+
+def test_general_subtotal_label_promotes_flow_parents_and_product_parents():
+    frame = pd.DataFrame(
+        [
+            {"flows": "15.02.01 Freight road", "products": "17 Electricity", "is_subtotal": False},
+            {"flows": "15.02.01.01 LCVs", "products": "17 Electricity", "is_subtotal": False},
+            {"flows": "15.02.01.01.01 BEV", "products": "17 Electricity", "is_subtotal": False},
+            {"flows": "15.02.01.01.01 BEV", "products": "01 Coal", "is_subtotal": False},
+        ]
+    )
+    labelled = apply_general_subtotal_labels(
+        frame,
+        set(frame["flows"]) | {"15.02.01.02 Trucks"},
+        set(frame["products"]) | {"01.01 Coking coal"},
+    )
+
+    assert labelled["is_subtotal"].tolist() == [True, True, False, True]
 
 
 #%%

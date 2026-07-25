@@ -951,6 +951,32 @@ def materialise_template_candidate_rows(base_esto: pd.DataFrame, candidates: pd.
     return pd.DataFrame(rows, columns=source_columns + PROVENANCE_COLUMNS + ["candidate_status"])
 
 
+def apply_general_subtotal_labels(
+    frame: pd.DataFrame,
+    all_flow_labels: set[str],
+    all_product_labels: set[str],
+) -> pd.DataFrame:
+    """Mark rows subtotal when their flow or product has descendants."""
+    output = frame.copy()
+    flow_codes = {_esto_code(label): label for label in all_flow_labels if _esto_code(label)}
+    product_codes = {_esto_code(label): label for label in all_product_labels if _esto_code(label)}
+    flow_parent_codes = {
+        code for code in flow_codes if any(other.startswith(code + ".") for other in flow_codes)
+    }
+    product_parent_codes = {
+        code for code in product_codes if any(other.startswith(code + ".") for other in product_codes)
+    }
+    output["is_subtotal"] = output.apply(
+        lambda row: (
+            _normalise_text(row.get("is_subtotal", "")).casefold() in {"true", "1", "yes", "y"}
+            or _esto_code(row.get("flows", "")) in flow_parent_codes
+            or _esto_code(row.get("products", "")) in product_parent_codes
+        ),
+        axis=1,
+    )
+    return output
+
+
 def build_transport_tree_candidates(
     inventory: pd.DataFrame,
     mapping_workbook_path: Path,
@@ -1231,15 +1257,26 @@ def build_extended_default_audits(
             }
         )
     rollup_mask = generated.get("esto_extended_row_origin", pd.Series(dtype=object)).eq("rollup_derived")
-    candidate_subtotal_ok = template_candidates.empty or template_candidates.get("is_subtotal", pd.Series(False, index=template_candidates.index)).map(
-        lambda value: _normalise_text(value).casefold() not in {"true", "1", "yes", "y"}
-    ).all()
+    candidate_flow_labels = set(template_candidates.get("flows", pd.Series(dtype=object)).dropna().map(_normalise_text))
+    candidate_product_labels = set(template_candidates.get("products", pd.Series(dtype=object)).dropna().map(_normalise_text)) | set(base_esto["products"].dropna().map(_normalise_text))
+    expected_candidates = apply_general_subtotal_labels(
+        template_candidates,
+        base_flows | candidate_flow_labels,
+        candidate_product_labels,
+    )
+    candidate_subtotal_ok = template_candidates.empty or (
+        expected_candidates["is_subtotal"].astype(bool).eq(
+            template_candidates["is_subtotal"].map(
+                lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
+            )
+        ).all()
+    )
     rollup_subtotal_ok = not rollup_mask.any() or generated.loc[rollup_mask, "is_subtotal"].map(
         lambda value: _normalise_text(value).casefold() in {"true", "1", "yes", "y"}
     ).all()
     detail_rows.extend(
         [
-            {"check_name": "candidate_rows_not_subtotals", "item": "template_candidate_rows", "parent": "", "status": "pass" if candidate_subtotal_ok else "fail", "detail": "Structural candidates remain non-subtotal rows."},
+            {"check_name": "candidate_subtotal_roles", "item": "template_candidate_rows", "parent": "", "status": "pass" if candidate_subtotal_ok else "fail", "detail": "Flow and product parents are subtotals; leaves remain non-subtotals."},
             {"check_name": "rollup_rows_are_subtotals", "item": "rollup_derived", "parent": "", "status": "pass" if rollup_subtotal_ok else "fail", "detail": "Derived rollup rows remain subtotal rows."},
             {"check_name": "extended_duplicate_keys", "item": "economy/flows/products", "parent": "", "status": "pass" if not extended.duplicated(["economy", "flows", "products"]).any() else "fail", "detail": "No duplicate ESTO keys."},
         ]
@@ -1298,12 +1335,16 @@ def build_esto_extended(
     template_child_candidates = pd.concat([template_child_candidates, transport_candidates], ignore_index=True).drop_duplicates()
     template_child_evidence = pd.concat([template_child_evidence, transport_evidence], ignore_index=True).drop_duplicates()
     template_candidate_rows = materialise_template_candidate_rows(esto, template_child_candidates)
+    all_flow_labels = set(esto["flows"].dropna().map(_normalise_text)) | set(template_child_candidates["flows"].dropna().map(_normalise_text))
+    all_product_labels = set(esto["products"].dropna().map(_normalise_text)) | set(template_child_candidates["products"].dropna().map(_normalise_text))
+    template_candidate_rows = apply_general_subtotal_labels(template_candidate_rows, all_flow_labels, all_product_labels)
     mapping_candidate_outputs = build_mapping_candidates_from_template_evidence(
         template_child_evidence[template_child_evidence["candidate_status"].ne("existing_esto_child")],
         mapping_workbook_path,
     )
 
     extended = pd.concat([esto, all_generated], ignore_index=True)
+    extended = apply_general_subtotal_labels(extended, all_flow_labels, all_product_labels)
     key_columns = ["economy", "flows", "products"]
     duplicate_keys = extended.duplicated(key_columns, keep=False)
     if duplicate_keys.any():
