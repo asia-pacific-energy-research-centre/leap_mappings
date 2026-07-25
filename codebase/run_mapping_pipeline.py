@@ -67,6 +67,7 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
 
 WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
+ESTO_EXTENDED_CSV_PATH = REPO_ROOT / "data" / "esto_extended.csv"
 NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 SOURCE_BRANCH_FALLBACK_RULES_PATH = REPO_ROOT / "config" / "source_branch_fallback_rules.csv"
 ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregated_components.json"
@@ -81,6 +82,7 @@ LEAP_SOURCE_LINEAGE_PATH = REL_DIR / "leap_source_to_esto_component_lineage.csv"
 NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv"
 NINTH_SOURCE_LINEAGE_PATH = REL_DIR / "ninth_source_to_esto_component_lineage.csv"
 ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
+ESTO_EXTENDED_ROWS_PATH = REL_DIR / "esto_extended_results_exact_rows.csv"
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
 ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv"
@@ -440,14 +442,18 @@ def select_esto_comparison_rows(
     return esto_df[leaf_mask | pair_mask | flow_mask].copy()
 
 
-def run_esto_exact_rows() -> None:
+def run_esto_exact_rows_for_path(
+    data_path: Path,
+    output_path: Path,
+    source_system: str,
+) -> None:
     print("\n" + "-" * 40)
-    print("  ESTO exact rows")
-    if not ESTO_CSV_PATH.exists():
-        print(f"  WARNING: {ESTO_CSV_PATH.name} not found.")
+    print(f"  {source_system} exact rows")
+    if not data_path.exists():
+        print(f"  WARNING: {data_path.name} not found.")
         return
 
-    df = pd.read_csv(ESTO_CSV_PATH, dtype=object)
+    df = pd.read_csv(data_path, dtype=object)
     year_cols = [c for c in df.columns if str(c).isdigit()]
     for col in year_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -528,7 +534,7 @@ def run_esto_exact_rows() -> None:
     ).dropna(subset=["value"])
 
     long_df = long_df.rename(columns={"flows": "esto_flow", "products": "esto_product"})
-    long_df["source_system"] = "ESTO"
+    long_df["source_system"] = source_system
     long_df["scenario"] = "historical"
     long_df["year"] = long_df["year"].astype(int)
 
@@ -537,11 +543,23 @@ def run_esto_exact_rows() -> None:
         long_df["non_expanding_rollup_id"] = ""
         long_df = pd.concat([long_df, non_expanding_rows_df], ignore_index=True)
 
-    ESTO_ROWS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    long_df.to_csv(ESTO_ROWS_PATH, index=False)
-    print(f"  ESTO exact rows: {exact_row_count:,} -> {ESTO_ROWS_PATH.relative_to(REPO_ROOT)}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    long_df.to_csv(output_path, index=False)
+    print(f"  {source_system} exact rows: {exact_row_count:,} -> {output_path.relative_to(REPO_ROOT)}")
     print(f"  Derived non-expanding subtotal rows appended: {len(non_expanding_rows_df):,}")
     print(f"  Configured rollup reference pairs retained: {len(reference_pairs):,}")
+
+
+def run_esto_exact_rows() -> None:
+    run_esto_exact_rows_for_path(ESTO_CSV_PATH, ESTO_ROWS_PATH, "ESTO")
+
+
+def run_esto_extended_exact_rows() -> None:
+    run_esto_exact_rows_for_path(
+        ESTO_EXTENDED_CSV_PATH,
+        ESTO_EXTENDED_ROWS_PATH,
+        "ESTO_EXTENDED",
+    )
 
 
 def run_data_convert() -> None:
@@ -549,6 +567,7 @@ def run_data_convert() -> None:
     print("DATA CONVERT  LEAP, 9th, ESTO -> common input format")
     print("=" * 60)
     run_esto_exact_rows()
+    run_esto_extended_exact_rows()
     run_leap_to_esto()
     run_ninth_to_esto()
 
@@ -565,7 +584,10 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     print("=" * 60)
 
     missing = [
-        p for p in [LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH, COMMON_ROWS_PATH]
+        p for p in [
+            LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH,
+            ESTO_EXTENDED_ROWS_PATH, COMMON_ROWS_PATH,
+        ]
         if not p.exists()
     ]
     if missing:
@@ -614,6 +636,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         "LEAP":  LEAP_ESTO_PATH,
         "NINTH": NINTH_ESTO_PATH,
         "ESTO":  ESTO_ROWS_PATH,
+        "ESTO_EXTENDED": ESTO_EXTENDED_ROWS_PATH,
     }
     run_apply_common_esto_structure(
         source_paths=source_paths,
@@ -1041,6 +1064,11 @@ def main() -> None:
         help="Optional ESTO-style CSV override, allowing a fourth test dataset such as data/esto_extended.csv.",
     )
     parser.add_argument(
+        "--esto-extended-path",
+        default=None,
+        help="Optional additional ESTO Extended CSV override; it is loaded alongside the original ESTO input.",
+    )
+    parser.add_argument(
         "--mapping-workbook-path",
         default=None,
         help="Optional mapping workbook override for an isolated test mapping set.",
@@ -1062,9 +1090,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    global ESTO_CSV_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
+    global ESTO_CSV_PATH, ESTO_EXTENDED_CSV_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
     if args.esto_path:
         ESTO_CSV_PATH = Path(args.esto_path).resolve()
+    if args.esto_extended_path:
+        ESTO_EXTENDED_CSV_PATH = Path(args.esto_extended_path).resolve()
     if args.mapping_workbook_path:
         WORKBOOK_PATH = Path(args.mapping_workbook_path).resolve()
     if args.ninth_path:

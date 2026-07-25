@@ -27,8 +27,10 @@ from codebase.mapping_issue_exceptions import (
 
 COMPARISON_SCOPE_SYSTEMS = {
     "esto_leap": {"LEAP", "ESTO"},
+    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
     "leap_vs_ninth": {"LEAP", "NINTH"},
     "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
+    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
     "esto_only": {"ESTO"},
 }
 NONZERO_SOURCE_EVIDENCE_TOLERANCE = 1e-12

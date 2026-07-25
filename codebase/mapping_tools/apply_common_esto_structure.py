@@ -125,8 +125,10 @@ COMPONENT_RELEVANCE_COLUMNS = [
 ]
 COMPARISON_SCOPE_SYSTEMS = {
     "esto_leap": {"LEAP", "ESTO"},
+    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
     "leap_vs_ninth": {"LEAP", "NINTH"},
     "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
+    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
     "esto_only": {"ESTO"},
 }
 
@@ -334,7 +336,7 @@ def build_component_relevance(
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
     esto_years = working_df.loc[
-        (working_df["source_system"] == "ESTO") & working_df["year"].notna(),
+        working_df["source_system"].isin({"ESTO", "ESTO_EXTENDED"}) & working_df["year"].notna(),
         "year",
     ]
     resolved_esto_base_year = esto_base_year
@@ -343,7 +345,7 @@ def build_component_relevance(
 
     evidence_masks = {
         "esto_base_year_nonzero": (
-            (working_df["source_system"] == "ESTO")
+            working_df["source_system"].isin({"ESTO", "ESTO_EXTENDED"})
             & (working_df["year"] == resolved_esto_base_year)
             & nonzero_mask
         ),
