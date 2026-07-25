@@ -10,6 +10,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     _normalise_path,
     apply_parent_minus_children_rule,
     build_rollup_tree_edges,
+    build_transport_tree_candidates,
     build_tree_based_extension_candidates,
     build_template_driven_child_candidates,
     load_esto_flow_tree,
@@ -206,6 +207,31 @@ def test_transmission_electricity_is_not_proposed_as_a_new_child():
     )
 
     assert candidates.empty or not candidates["flows"].astype(str).str.contains("10.02.01", na=False).any()
+
+
+def test_transport_tree_builds_nested_road_children_from_demand_paths():
+    from codebase.mapping_tools.build_esto_extended_test import MAPPING_WORKBOOK_PATH
+
+    inventory = pd.DataFrame(
+        [
+            {"branch_path": "Demand/Freight road", "observed_as_leaf": False},
+            {"branch_path": "Demand/Freight road/Trucks", "observed_as_leaf": False},
+            {"branch_path": "Demand/Freight road/Trucks/ICE heavy", "observed_as_leaf": False},
+            {"branch_path": "Demand/Freight road/Trucks/ICE heavy/Motor gasoline", "observed_as_leaf": True},
+        ]
+    )
+    candidates, _evidence = build_transport_tree_candidates(
+        inventory,
+        MAPPING_WORKBOOK_PATH,
+        set(),
+    )
+
+    assert set(candidates["flows"]) == {
+        "15.02.01 Freight road",
+        "15.02.01.01 Trucks",
+        "15.02.01.01.01 ICE heavy",
+    }
+    assert set(candidates["products"]) == {"07.01 Motor gasoline"}
 
 
 #%%

@@ -951,6 +951,82 @@ def materialise_template_candidate_rows(base_esto: pd.DataFrame, candidates: pd.
     return pd.DataFrame(rows, columns=source_columns + PROVENANCE_COLUMNS + ["candidate_status"])
 
 
+def build_transport_tree_candidates(
+    inventory: pd.DataFrame,
+    mapping_workbook_path: Path,
+    existing_esto_flow_labels: set[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build nested Road child candidates from Freight/Passenger road branches."""
+    transport_roots = {"Demand/Freight road", "Demand/Passenger road"}
+    paths = sorted(
+        {
+            path
+            for path in inventory["branch_path"].drop_duplicates()
+            if any(path == root or path.startswith(root + "/") for root in transport_roots)
+        },
+        key=lambda value: (value.count("/"), value),
+    )
+    nodes = [path for path in paths if any(other.startswith(path + "/") for other in paths)]
+    if not nodes:
+        return pd.DataFrame(), pd.DataFrame()
+
+    mappings = _active_leap_mapping_rows(mapping_workbook_path)
+    code_lookup: dict[str, str] = {}
+    root_flow = "15.02 Road"
+    for path in nodes:
+        parent_path = "/".join(path.split("/")[:-1])
+        parent_flow = code_lookup.get(parent_path, root_flow)
+        parent_code = _esto_code(parent_flow)
+        sibling_labels = sorted(
+            {
+                child.split("/")[-1]
+                for child in nodes
+                if "/".join(child.split("/")[:-1]) == parent_path
+            },
+            key=str.casefold,
+        )
+        ordinal = sibling_labels.index(path.split("/")[-1]) + 1
+        code_lookup[path] = f"{parent_code}.{ordinal:02d} {path.split('/')[-1]}"
+
+    candidate_rows: list[dict[str, Any]] = []
+    evidence_rows: list[dict[str, Any]] = []
+    for path in nodes:
+        fuel_evidence = _extract_template_fuel_evidence(inventory, path)
+        if fuel_evidence.empty:
+            continue
+        proposed_flow = code_lookup[path]
+        for _, fuel_row in fuel_evidence.iterrows():
+            mapped = _mapping_rows_for_sector_and_fuel(mappings, "Road", fuel_row["fuel_label"])
+            for _, mapping in mapped.iterrows():
+                evidence_rows.append(
+                    {
+                        "leap_sector_path": path,
+                        "leap_parent_sector_path": "/".join(path.split("/")[:-1]),
+                        "leap_child_label": path.split("/")[-1],
+                        "fuel_role": fuel_row["fuel_role"],
+                        "leap_fuel_label": fuel_row["fuel_label"],
+                        "esto_parent_flow": root_flow,
+                        "esto_component_flow": root_flow,
+                        "esto_product": mapping["esto_product"],
+                        "proposed_child_flow": proposed_flow,
+                        "candidate_status": "review_transport_child",
+                    }
+                )
+                candidate_rows.append(
+                    {
+                        "flows": proposed_flow,
+                        "products": mapping["esto_product"],
+                        "esto_extended_row_origin": "template_driven_candidate",
+                        "esto_extended_rule_id": "transport_tree_child_inference",
+                        "esto_extended_parent_flow": root_flow if path in transport_roots else code_lookup["/".join(path.split("/")[:-1])],
+                        "esto_extended_derived_from": f"{path} | {fuel_row['fuel_role']}",
+                        "esto_extended_source_leap_paths": path,
+                        "candidate_status": "review_transport_child",
+                    }
+                )
+    return pd.DataFrame(candidate_rows).drop_duplicates().reset_index(drop=True), pd.DataFrame(evidence_rows).drop_duplicates().reset_index(drop=True)
+
+
 def build_esto_extended(
     base_esto_path: Path,
     template_dir: Path,
@@ -990,6 +1066,13 @@ def build_esto_extended(
         rollup_catalogue,
         existing_esto_flow_labels=set(candidate_flows["esto_flow"]),
     )
+    transport_candidates, transport_evidence = build_transport_tree_candidates(
+        inventory,
+        mapping_workbook_path,
+        set(candidate_flows["esto_flow"]),
+    )
+    template_child_candidates = pd.concat([template_child_candidates, transport_candidates], ignore_index=True).drop_duplicates()
+    template_child_evidence = pd.concat([template_child_evidence, transport_evidence], ignore_index=True).drop_duplicates()
     template_candidate_rows = materialise_template_candidate_rows(esto, template_child_candidates)
 
     extended = pd.concat([esto, all_generated], ignore_index=True)
