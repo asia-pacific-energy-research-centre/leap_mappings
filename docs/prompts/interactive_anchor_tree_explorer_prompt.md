@@ -8,16 +8,15 @@ and generated outputs owned by another agent.
 
 ## Purpose
 
-Explore, prototype, and assess an interactive diagnostic that lets a reviewer
-inspect source hierarchy values, their mapped Common ESTO representation, and
-the anchor comparison without confusing a mapping route with a hierarchy edge.
-This is a design-and-evidence task first. Do not change the canonical mapping
-workbook or silently change validator semantics.
+Explore, prototype, and assess an interactive **full all-level tree map** that
+lets a reviewer navigate source hierarchy values, their mapped Common ESTO
+representation, and the anchor comparison without confusing a mapping route
+with a hierarchy edge. This is a design-and-evidence task first. Do not change
+the canonical mapping workbook or silently change validator semantics.
 
-The current static `mapping_diagnostics.html` is useful but has an important
-presentation limitation: its right-hand panel can show the same Common ESTO row
-once as reached from a source parent and again as reached from a source child.
-Those are two **mapping routes**, not two values that should be added.
+This prompt is only for the future full-tree explorer. The separate task of
+making the existing paired diagnostic card show either a real mapped hierarchy
+or a direct mapping fan-out is handled independently.
 
 ## Required semantic model
 
