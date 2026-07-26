@@ -206,6 +206,8 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
         if synthetic_code in existing_codes:
             continue
         parent_code = _str(node.get("parent_label"))
+        if parent_code == synthetic_code:
+            parent_code = ""
         rows.append({
             "dataset": dataset,
             "axis": axis,
@@ -234,6 +236,8 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
 
     for synthetic_code, node in synthetic_nodes.items():
         for child_code in node.get("children", []):
+            if child_code == synthetic_code:
+                continue
             child_mask = df["code"].eq(child_code)
             if child_mask.any():
                 df.loc[child_mask, "parent_code"] = synthetic_code
@@ -1008,7 +1012,11 @@ def _merge_source_frontier_children(
         if not parent:
             continue
         merged.setdefault(parent, [])
-        merged[parent].extend(group["child_code"].astype(str).tolist())
+        merged[parent].extend(
+            child
+            for child in group["child_code"].astype(str).tolist()
+            if child != parent
+        )
         merged[parent] = _dedupe_preserve_order(merged[parent])
     return merged
 
