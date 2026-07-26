@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -74,6 +75,7 @@ ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregate
 
 REL_DIR             = REPO_ROOT / "results" / "mapping_relationships"
 COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
+STAGE3_RUN_MANIFEST_PATH = COMMON_ESTO_DIR / "stage3_run_manifest.json"
 
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
@@ -99,6 +101,14 @@ LEAP_EXPORTS_ROOT = resolve_balance_exports_root()
 # Output logging
 # ---------------------------------------------------------------------------
 _PIPELINE_LOG_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline.log"
+
+
+def _write_stage3_run_manifest(manifest: dict[str, object]) -> None:
+    """Write a compact machine-readable Stage 3 run/timing summary."""
+    STAGE3_RUN_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STAGE3_RUN_MANIFEST_PATH.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
 
 class _TeeWriter:
@@ -602,6 +612,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         LEAP_VAR_BASE_YEAR,
         _build_source_inconsistency_lookup,
         build_common_esto_tree,
+        build_common_esto_hierarchy_edges,
         build_esto_tree,
         build_leap_tree,
         build_ninth_tree,
@@ -638,6 +649,29 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         "ESTO":  ESTO_ROWS_PATH,
         "ESTO_EXTENDED": ESTO_EXTENDED_ROWS_PATH,
     }
+    comparison_scopes = sorted(
+        pd.read_csv(COMMON_ROWS_PATH, usecols=["comparison_scope"], dtype=object)
+        ["comparison_scope"].dropna().astype(str).unique().tolist()
+    )
+    run_manifest: dict[str, object] = {
+        "run_id": run_id,
+        "run_timestamp_utc": run_timestamp_utc,
+        "status": "running",
+        "comparison_scopes": comparison_scopes,
+        "datasets": {
+            name: {
+                "path": str(path.resolve()),
+                "exists": path.exists(),
+                "size_bytes": path.stat().st_size if path.exists() else None,
+            }
+            for name, path in source_paths.items()
+        },
+        "mapping_workbook": str(WORKBOOK_PATH.resolve()),
+        "timings_seconds": {},
+        "validation": {},
+    }
+    _write_stage3_run_manifest(run_manifest)
+    apply_t0 = time.perf_counter()
     run_apply_common_esto_structure(
         source_paths=source_paths,
         common_rows_path=COMMON_ROWS_PATH,
@@ -654,8 +688,28 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )
+    run_manifest["timings_seconds"]["apply_common_esto_structure"] = round(
+        time.perf_counter() - apply_t0, 3
+    )
 
     if skip_deep_validation:
+        from codebase.mapping_tools.build_dataset_tree_structure import (
+            build_common_esto_hierarchy_edges,
+            build_common_esto_tree,
+        )
+        tree_output_dir = REPO_ROOT / "results" / "tree_structure"
+        tree_output_dir.mkdir(parents=True, exist_ok=True)
+        common_tree = build_common_esto_tree(COMMON_ROWS_PATH, WORKBOOK_PATH)
+        hierarchy_edges_path = tree_output_dir / "common_esto_hierarchy_edges.csv"
+        build_common_esto_hierarchy_edges(common_tree, WORKBOOK_PATH).to_csv(
+            hierarchy_edges_path, index=False
+        )
+        run_manifest["hierarchy_edges_path"] = str(hierarchy_edges_path.resolve())
+        run_manifest["status"] = "completed_skip_deep_validation"
+        run_manifest["timings_seconds"]["stage3_total"] = round(
+            time.perf_counter() - stage3_t0, 3
+        )
+        _write_stage3_run_manifest(run_manifest)
         print("  Deep recursive-tree and source-anchor validations skipped by explicit test-mode flag.")
         print(f"  Common ESTO comparison output written to: {COMMON_ESTO_DIR}")
         return
@@ -688,7 +742,10 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     print("  Reading 9th wide CSV once for Stage 3 consumers …")
     ninth_wide = pd.read_csv(NINTH_CSV_PATH, dtype=object)
 
-    common_tree = build_common_esto_tree(COMMON_ROWS_PATH)
+    common_tree = build_common_esto_tree(COMMON_ROWS_PATH, WORKBOOK_PATH)
+    common_hierarchy_edges = build_common_esto_hierarchy_edges(
+        common_tree, WORKBOOK_PATH
+    )
     esto_tree = build_esto_tree(ESTO_CSV_PATH)
     esto_extended_tree = build_esto_tree(ESTO_EXTENDED_CSV_PATH)
     ninth_tree = build_ninth_tree(NINTH_CSV_PATH, data_df=ninth_wide)
@@ -704,6 +761,12 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     ninth_tree.to_csv(tree_output_dir / "ninth_tree.csv", index=False)
     leap_tree.to_csv(tree_output_dir / "leap_tree.csv", index=False)
     common_tree.to_csv(tree_output_dir / "common_esto_tree.csv", index=False)
+    common_hierarchy_edges.to_csv(
+        tree_output_dir / "common_esto_hierarchy_edges.csv", index=False
+    )
+    run_manifest["hierarchy_edges_path"] = str(
+        (tree_output_dir / "common_esto_hierarchy_edges.csv").resolve()
+    )
     validation_tree.to_csv(tree_output_dir / "all_dataset_trees.csv", index=False)
 
     print("  Running projection-only source hierarchy validation ...")
@@ -748,6 +811,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         ninth_fuel_validation,
     )
 
+    common_validation_t0 = time.perf_counter()
     detail_df, validation_summary = run_common_esto_validation_workflow(
         tree_df=validation_tree,
         comparison_data_path=comparison_path,
@@ -759,6 +823,9 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         source_inconsistencies=source_inconsistencies,
         leap_var_base_year=LEAP_VAR_BASE_YEAR,
         workbook_path=WORKBOOK_PATH,
+    )
+    run_manifest["timings_seconds"]["common_esto_validation"] = round(
+        time.perf_counter() - common_validation_t0, 3
     )
     validation_detail_row_count = len(detail_df)
 
@@ -915,6 +982,9 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
                 "skipped": 0,
                 "reason": "memory_error",
             }])
+            run_manifest["timings_seconds"]["source_parent_anchor_validation"] = round(
+                time.perf_counter() - anchor_t0, 3
+            )
         else:
             print(
                 f"  [timing] validate_source_parent_anchors: "
@@ -927,6 +997,9 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
             leaf_reconciliation_candidates.insert(0, "run_id", run_id)
             anchor_summary = summarise_source_parent_anchors(anchor_detail)
             anchor_summary.insert(0, "run_id", run_id)
+            run_manifest["timings_seconds"]["source_parent_anchor_validation"] = round(
+                time.perf_counter() - anchor_t0, 3
+            )
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
@@ -994,6 +1067,17 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
             f"{int(row['mismatch_count']):,} mismatches)"
         )
     print(f"  [timing] STAGE 3 total: {time.perf_counter() - stage3_t0:.1f}s")
+    run_manifest["status"] = "completed"
+    run_manifest["timings_seconds"]["stage3_total"] = round(
+        time.perf_counter() - stage3_t0, 3
+    )
+    run_manifest["validation"] = {
+        "common_esto_summary_path": str(summary_path.resolve()),
+        "anchor_summary_path": str(anchor_summary_path.resolve()),
+        "anchor_status": anchor_summary.to_dict(orient="records"),
+        "common_esto_status": validation_summary.to_dict(orient="records"),
+    }
+    _write_stage3_run_manifest(run_manifest)
 
 
 # ---------------------------------------------------------------------------

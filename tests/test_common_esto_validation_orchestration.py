@@ -64,6 +64,9 @@ def test_source_frontier_infers_unavailable_ninth_child(tmp_path: Path) -> None:
     ninth = frontier[frontier["source_system"].eq("NINTH")].set_index("child_code")
     assert ninth.loc["Child A", "frontier_status"] == "comparable"
     assert ninth.loc["Child B", "frontier_status"] == "source_unavailable"
+    extended = frontier[frontier["source_system"].eq("ESTO_EXTENDED")].set_index("child_code")
+    assert extended.loc["Child A", "frontier_status"] == "comparable"
+    assert extended.loc["Child B", "frontier_status"] == "comparable"
 
 
 def _rollup_workbook(path: Path) -> None:

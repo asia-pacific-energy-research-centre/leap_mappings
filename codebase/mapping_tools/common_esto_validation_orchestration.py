@@ -12,6 +12,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     COMMON_ESTO_VALIDATION_COLS,
     LEAP_VAR_BASE_YEAR,
     _common_esto_validation_children_map,
+    _merge_source_frontier_children,
     _validate_common_esto_axis_recursive_sums,
     build_ninth_subtotal_esto_flow_labels,
 )
@@ -657,7 +658,12 @@ def _count_eligible_checks(
     checks_by_source: dict[str, int] = {}
     parents_by_source: dict[str, set[str]] = {}
 
-    for parent_code, children in _common_esto_validation_children_map(tree_df, axis, exclude_parents).items():
+    children_map = _merge_source_frontier_children(
+        _common_esto_validation_children_map(tree_df, axis, exclude_parents),
+        source_frontier,
+        axis,
+    )
+    for parent_code, children in children_map.items():
         parent_rows = data[data[axis_col] == parent_code]
         expected_children = children
         if source_frontier is not None and axis == "flow":

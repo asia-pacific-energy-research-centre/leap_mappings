@@ -71,6 +71,32 @@ def test_esto_axis_tree_splices_synthetic_rollup_node() -> None:
     assert bool(tree.set_index("code").loc["16.01-16.02 Buildings", "is_subtotal"])
 
 
+def test_esto_axis_tree_attaches_descendants_to_composite_rollup_parent() -> None:
+    """Composite rollups attach declared member-parent descendants."""
+    tree = _build_esto_axis_tree(
+        codes=[
+            "09.01-09.02 Power sector",
+            "09.01.02,09.02.02 CHP plants",
+            "09.01.02.01 Coal CHP",
+            "09.02.02.01 Coal CHP",
+        ],
+        axis="flow",
+        dataset="common_esto",
+        subtotal_codes=set(),
+        synthetic_nodes={
+            "09.01.02,09.02.02 CHP plants": {
+                "parent_label": "09.01-09.02 Power sector",
+                "children": ["09.01.02 CHP plants", "09.02.02 CHP plants"],
+                "rollup_mode": "EXPANDING",
+            }
+        },
+    )
+
+    parent_by_code = tree.set_index("code")["parent_code"].to_dict()
+    assert parent_by_code["09.01.02.01 Coal CHP"] == "09.01.02,09.02.02 CHP plants"
+    assert parent_by_code["09.02.02.01 Coal CHP"] == "09.01.02,09.02.02 CHP plants"
+
+
 def test_common_esto_subtotal_status_uses_the_new_tree_not_esto_prefixes(tmp_path: Path) -> None:
     """A graph-generated Common ESTO leaf is not a subtotal by source-code shape."""
     common_rows_path = tmp_path / "common_esto_rows.csv"

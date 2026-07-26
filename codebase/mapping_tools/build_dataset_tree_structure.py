@@ -64,6 +64,9 @@ TREE_OUTPUT_DIR       = REPO_ROOT / "results" / "tree_structure"
 LEAP_VAR_BASE_YEAR    = 2022
 
 TREE_COLS = ["dataset", "axis", "code", "label", "level", "parent_code", "is_subtotal"]
+COMMON_ESTO_HIERARCHY_EDGE_COLS = [
+    "dataset", "axis", "parent_code", "child_code", "edge_type", "rollup_mode",
+]
 
 
 def combine_dataset_trees(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -234,6 +237,25 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
             child_mask = df["code"].eq(child_code)
             if child_mask.any():
                 df.loc[child_mask, "parent_code"] = synthetic_code
+        # Composite rollup parents often declare member parent labels such as
+        # ``09.01.02 CHP plants`` and ``09.02.02 CHP plants`` while the Common
+        # ESTO structure contains only the composite rolled label. Attach the
+        # available descendants beneath that canonical composite node without
+        # inventing the member parent rows as separate comparison categories.
+        child_prefixes = _dedupe_preserve_order(
+            [
+                prefix
+                for child in node.get("children", [])
+                if (prefix := _extract_esto_prefix(child))
+            ]
+        )
+        for child_prefix in child_prefixes:
+            descendant_mask = df["code"].map(
+                lambda value: (
+                    _extract_esto_prefix(_str(value)) or ""
+                ).startswith(f"{child_prefix}.")
+            )
+            df.loc[descendant_mask, "parent_code"] = synthetic_code
 
     leaf_mask = ~df["code"].isin(df["parent_code"].unique())
     df["is_leaf"] = leaf_mask
@@ -573,6 +595,40 @@ def build_common_esto_tree(
         tree["is_subtotal"] = tree["code"].isin(tree["parent_code"].dropna())
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
+
+
+def build_common_esto_hierarchy_edges(
+    tree_df: pd.DataFrame,
+    workbook_path: Path = OUTLOOK_MAPPINGS_PATH,
+) -> pd.DataFrame:
+    """Publish Common ESTO hierarchy edges with declared rollup semantics."""
+    common = tree_df[
+        (tree_df["dataset"] == "common_esto")
+        & tree_df["parent_code"].notna()
+        & tree_df["parent_code"].astype(str).ne("")
+    ].copy()
+    if common.empty:
+        return pd.DataFrame(columns=COMMON_ESTO_HIERARCHY_EDGE_COLS)
+    rollup_hierarchy = _load_rollup_hierarchy(workbook_path)
+    rows = []
+    for row in common.itertuples(index=False):
+        parent = _str(row.parent_code)
+        mode = _str(rollup_hierarchy.get(parent, {}).get("rollup_mode"))
+        if mode == "EXPANDING":
+            edge_type = "expanding_rollup"
+        elif mode in {"NON_EXPANDING", "DETACHED"}:
+            edge_type = "comparison_boundary"
+        else:
+            edge_type = "tree_edge"
+        rows.append({
+            "dataset": row.dataset,
+            "axis": row.axis,
+            "parent_code": parent,
+            "child_code": _str(row.code),
+            "edge_type": edge_type,
+            "rollup_mode": mode,
+        })
+    return pd.DataFrame(rows, columns=COMMON_ESTO_HIERARCHY_EDGE_COLS).drop_duplicates()
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +983,34 @@ def _common_esto_validation_children_map(
         if valid_children:
             filtered[parent] = valid_children
     return filtered
+
+
+def _merge_source_frontier_children(
+    children_map: dict[str, list[str]],
+    source_frontier: pd.DataFrame | None,
+    axis: str,
+) -> dict[str, list[str]]:
+    """Add source-specific frontier edges to the Common ESTO tree map.
+
+    Extended ESTO can contain valid children that do not exist in the original
+    ESTO tree.  The Common tree keeps those rows, but the source-tree filter
+    used by the legacy validator would otherwise discard their parents before
+    the source frontier had a chance to declare them comparable.
+    """
+    merged = {parent: list(children) for parent, children in children_map.items()}
+    if source_frontier is None or source_frontier.empty or axis != "flow":
+        return merged
+    comparable = source_frontier[
+        source_frontier["frontier_status"].astype(str).eq("comparable")
+    ]
+    for parent_code, group in comparable.groupby("parent_code", dropna=False):
+        parent = _str(parent_code)
+        if not parent:
+            continue
+        merged.setdefault(parent, [])
+        merged[parent].extend(group["child_code"].astype(str).tolist())
+        merged[parent] = _dedupe_preserve_order(merged[parent])
+    return merged
 
 
 def common_esto_non_esto_parent_child_edges(tree_df: pd.DataFrame) -> pd.DataFrame:
@@ -2338,6 +2422,7 @@ def _validate_common_esto_axis_recursive_sums(
             frontier_lookup[(str(source_system), str(parent_code))] = set(
                 group["child_code"].astype(str)
             )
+    children_map = _merge_source_frontier_children(children_map, source_frontier, axis)
     source_inconsistencies = source_inconsistencies or {}
     # Aggregate once, then validate from exact-slice dictionaries. The prior
     # implementation rebuilt a boolean mask over the full comparison frame for
