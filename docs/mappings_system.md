@@ -1069,13 +1069,18 @@ The status contract is:
 | `error` | Validation raised an exception; the status row contains the exception type and message. |
 
 `results/tree_structure/common_esto_validation_summary.csv` contains one compact
-row per validation axis and source system. It records checks performed,
-eligible parent count, mismatch count, reason, input and output paths, the exact
+row per validation axis and source system. Its headline checks and mismatches
+are grouped at one parent boundary within a comparison scope, source, economy,
+and scenario; fuel and year rows remain evidence for that one check. It also
+records the raw fuel/year row counts beside the grouped counts, plus eligible
+parent count, reason, input and output paths, the exact
 Stage 3 input modification time in nanoseconds and UTC, file size, run ID, and
 run timestamp. `common_esto_output_status.csv` includes the same validation rows
 beside the Stage 3 artifact rows, so consumers can require matching run IDs and
 input provenance. `common_esto_validation.csv` remains mismatch detail, now
-tagged with the run ID.
+tagged with the run ID. `common_esto_validation_grouped_checks.csv` is the
+compact review output: one row per parent-boundary check, including the number
+of affected fuels, years, and raw failed evidence rows.
 
 Stage 3 retains every mapped Common ESTO row, including exact parent rows and
 generated rollups whose display labels contain words such as `Total` or
@@ -1205,8 +1210,11 @@ Stage 3 implements both layers. `source_parent_anchor_validation.csv` compares
 eligible raw ESTO, LEAP, and 9th Outlook parents with mapped Common ESTO
 additive frontiers; its summary reports eligible, passed, failed, and skipped
 counts. `common_esto_validation.csv` records every eligible internal Common
-ESTO parent/child check, including passes, while its summary preserves
-current-run provenance and prevents stale outputs being reported as current.
+ESTO parent/child check, including passes. The raw detail remains fuel/year
+level, while its grouped-check output and summary treat those rows as evidence
+for one parent-boundary issue; this preserves coverage without inflating the
+headline check and failure counts. The summary preserves current-run provenance
+and prevents stale outputs being reported as current.
 
 `qa_common_esto_total_check.csv` is the mapped-row aggregation-preservation
 check. It proves only that rows already admitted to the mapped universe survive
@@ -1245,7 +1253,8 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 | `common_esto_tree.csv` | Same dot-notation logic as ESTO, filtered to common structure rows |
 | `esto_validation.csv` | Recursive sum check results: parent vs sum-of-children for ESTO products and flows |
 | `common_esto_validation.csv` | Current-run recursive sum mismatch detail, tagged with `run_id`; always replaced on pass, skip, or error |
-| `common_esto_validation_summary.csv` | Current-run status and provenance by validation axis and source system |
+| `common_esto_validation_grouped_checks.csv` | One reviewable parent-boundary check per comparison scope, source, economy, and scenario; fuel/year rows are retained as counts and failure evidence |
+| `common_esto_validation_summary.csv` | Current-run grouped-check status and provenance by validation axis and source system, with raw fuel/year evidence counts alongside it |
 | `common_esto_non_esto_parent_child_edges.csv` | Common ESTO parent-child edges that are not present in the source ESTO tree; review these as dashboard/additive-total risks, not subtotal validation failures |
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.

@@ -1061,11 +1061,15 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
             )
     print("  Internal Common ESTO parent/child consistency:")
     for _, row in validation_summary.iterrows():
+        raw_checks = int(row.get("raw_check_row_count", row["checks_performed"]))
+        raw_mismatches = int(row.get("raw_mismatch_row_count", row["mismatch_count"]))
         print(
             f"  {row['validation_axis']} / {row['source_system']}: {row['status']} "
-            f"({int(row['checks_performed']):,} checks, "
+            f"({int(row['checks_performed']):,} grouped checks, "
+            f"{raw_checks:,} fuel/year rows, "
             f"{int(row['eligible_parent_count']):,} eligible parents, "
-            f"{int(row['mismatch_count']):,} mismatches)"
+            f"{int(row['mismatch_count']):,} grouped mismatches, "
+            f"{raw_mismatches:,} raw mismatches)"
         )
     print(f"  [timing] STAGE 3 total: {time.perf_counter() - stage3_t0:.1f}s")
     run_manifest["status"] = "completed"

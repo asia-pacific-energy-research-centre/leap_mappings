@@ -38,8 +38,10 @@ VALIDATION_SUMMARY_COLUMNS = [
     "source_system",
     "status",
     "checks_performed",
+    "raw_check_row_count",
     "eligible_parent_count",
     "mismatch_count",
+    "raw_mismatch_row_count",
     "reason",
     "input_path",
     "input_mtime_ns",
@@ -57,6 +59,32 @@ _AGGREGATION_ID_COLS = [
     "other_axis_value",
     "parent_code",
     "child_count",
+]
+
+
+# A hierarchy issue is reviewed at its flow/product parent boundary, within one
+# source, economy, scenario, and comparison scope. Fuel and year rows are the
+# evidence for that issue, not separate headline checks.
+VALIDATION_CHECK_GROUP_COLS = [
+    "validation_axis",
+    "comparison_scope",
+    "source_system",
+    "economy",
+    "scenario",
+    "parent_code",
+]
+
+VALIDATION_CHECK_GROUP_COLUMNS = [
+    *VALIDATION_CHECK_GROUP_COLS,
+    "status",
+    "raw_check_row_count",
+    "raw_failed_row_count",
+    "fuel_count",
+    "year_count",
+    "failed_fuel_count",
+    "failed_year_count",
+    "total_abs_error",
+    "max_abs_error",
 ]
 
 
@@ -618,6 +646,40 @@ def _empty_validation_detail() -> pd.DataFrame:
     return pd.DataFrame(columns=COMMON_ESTO_VALIDATION_COLS)
 
 
+def build_validation_check_groups(detail_df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse fuel/year evidence into one reviewable hierarchy check.
+
+    A group fails if any of its detailed rows fails. This deliberately avoids
+    summing signed differences across fuels or years, which could make two
+    genuine errors cancel each other out.
+    """
+    if detail_df.empty:
+        return pd.DataFrame(columns=VALIDATION_CHECK_GROUP_COLUMNS)
+
+    rows = detail_df.copy()
+    rows["is_failed"] = rows["status"].eq("failed")
+    rows["failed_other_axis_value"] = rows["other_axis_value"].where(rows["is_failed"])
+    rows["failed_year"] = rows["year"].where(rows["is_failed"])
+    rows["failed_abs_error"] = rows["abs_error"].where(rows["is_failed"], 0.0)
+    grouped = rows.groupby(VALIDATION_CHECK_GROUP_COLS, dropna=False)
+    result = grouped.agg(
+        raw_check_row_count=("status", "size"),
+        raw_failed_row_count=("is_failed", "sum"),
+        fuel_count=("other_axis_value", "nunique"),
+        year_count=("year", "nunique"),
+        failed_fuel_count=("failed_other_axis_value", "nunique"),
+        failed_year_count=("failed_year", "nunique"),
+        total_abs_error=("failed_abs_error", "sum"),
+        max_abs_error=("failed_abs_error", "max"),
+    ).reset_index()
+    result["status"] = result["raw_failed_row_count"].gt(0).map(
+        {True: "failed", False: "passed"}
+    )
+    return result[VALIDATION_CHECK_GROUP_COLUMNS].sort_values(
+        VALIDATION_CHECK_GROUP_COLS
+    ).reset_index(drop=True)
+
+
 def _input_provenance(path: Path) -> dict[str, object]:
     """Return stable file provenance fields used by validation status records."""
     stat = path.stat()
@@ -730,7 +792,9 @@ def run_common_esto_validation_workflow(
     source_specific_exclude_parents = {"NINTH": ninth_subtotal_flow_labels}
     detail_path = output_dir / "common_esto_validation.csv"
     summary_path = output_dir / "common_esto_validation_summary.csv"
+    grouped_checks_path = output_dir / "common_esto_validation_grouped_checks.csv"
     detail_frames: list[pd.DataFrame] = []
+    grouped_check_frames: list[pd.DataFrame] = []
     summary_rows: list[dict[str, object]] = []
     provenance: dict[str, object] = {
         "input_path": str(comparison_data_path.resolve()),
@@ -805,31 +869,19 @@ def run_common_esto_validation_workflow(
                 detached_labels=detached_rollup_parents,
                 source_specific_exclude_parents=source_specific_exclude_parents,
             )
-            metrics = _count_eligible_checks(
-                tree_df,
-                comparison_data_path,
-                axis,
-                leap_var_base_year,
-                source_frontier=source_frontier,
-                exclude_parents=excluded_rollup_parents,
-                source_specific_exclude_parents=source_specific_exclude_parents,
-            )
+            grouped_axis_detail = build_validation_check_groups(axis_detail)
             detail_frames.append(axis_detail)
-            mismatch_counts = (
-                axis_detail[axis_detail["status"] == "failed"].groupby("source_system").size().to_dict()
-                if not axis_detail.empty
-                else {}
-            )
-            metrics_by_source = (
-                metrics.set_index("source_system").to_dict("index")
-                if not metrics.empty
-                else {}
-            )
+            grouped_check_frames.append(grouped_axis_detail)
             for source_system in source_systems:
-                metric = metrics_by_source.get(source_system, {})
-                checks = int(metric.get("checks_performed", 0))
-                eligible_parents = int(metric.get("eligible_parent_count", 0))
-                mismatches = int(mismatch_counts.get(source_system, 0))
+                source_detail = axis_detail[axis_detail["source_system"].eq(source_system)]
+                source_groups = grouped_axis_detail[
+                    grouped_axis_detail["source_system"].eq(source_system)
+                ]
+                checks = len(source_groups)
+                raw_checks = len(source_detail)
+                eligible_parents = int(source_groups["parent_code"].nunique())
+                mismatches = int(source_groups["status"].eq("failed").sum())
+                raw_mismatches = int(source_detail["status"].eq("failed").sum())
                 if checks == 0 or eligible_parents == 0:
                     status = "skipped"
                     reason = "No eligible parent/child checks were found."
@@ -845,8 +897,10 @@ def run_common_esto_validation_workflow(
                     "source_system": source_system,
                     "status": status,
                     "checks_performed": checks,
+                    "raw_check_row_count": raw_checks,
                     "eligible_parent_count": eligible_parents,
                     "mismatch_count": mismatches,
+                    "raw_mismatch_row_count": raw_mismatches,
                     "reason": reason,
                 })
         except Exception as exc:
@@ -869,6 +923,13 @@ def run_common_esto_validation_workflow(
     )
     detail_df.insert(0, "run_id", run_id)
     detail_df.to_csv(detail_path, index=False)
+    grouped_checks_df = (
+        pd.concat(grouped_check_frames, ignore_index=True)
+        if grouped_check_frames
+        else build_validation_check_groups(_empty_validation_detail())
+    )
+    grouped_checks_df.insert(0, "run_id", run_id)
+    grouped_checks_df.to_csv(grouped_checks_path, index=False)
 
     child_detail, issue_patterns, rollup_diagnosis = build_common_esto_child_diagnostics(
         validation_df=detail_df,
@@ -915,6 +976,8 @@ def run_common_esto_validation_workflow(
         pd.DataFrame().to_csv(totals_path, index=False)
 
     for row in summary_rows:
+        row.setdefault("raw_check_row_count", 0)
+        row.setdefault("raw_mismatch_row_count", 0)
         row.update({
             "run_id": run_id,
             "run_timestamp_utc": run_timestamp_utc,

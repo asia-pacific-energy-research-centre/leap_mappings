@@ -263,6 +263,63 @@ def test_eligible_checks_with_mismatches_fail(tmp_path: Path) -> None:
     assert product["mismatch_count"] == 1
 
 
+def test_grouped_checks_treat_fuel_year_rows_as_one_flow_issue() -> None:
+    detail = pd.DataFrame([
+        {
+            "validation_axis": "flow", "comparison_scope": "esto_leap",
+            "source_system": "ESTO", "economy": "20_USA", "scenario": "historical",
+            "parent_code": "09 Total transformation sector", "other_axis_value": "08.01 Natural gas",
+            "year": "2023", "status": "failed", "abs_error": 10.0,
+        },
+        {
+            "validation_axis": "flow", "comparison_scope": "esto_leap",
+            "source_system": "ESTO", "economy": "20_USA", "scenario": "historical",
+            "parent_code": "09 Total transformation sector", "other_axis_value": "08.01 Natural gas",
+            "year": "2024", "status": "passed", "abs_error": 0.0,
+        },
+        {
+            "validation_axis": "flow", "comparison_scope": "esto_leap",
+            "source_system": "ESTO", "economy": "20_USA", "scenario": "historical",
+            "parent_code": "09 Total transformation sector", "other_axis_value": "17 Electricity",
+            "year": "2024", "status": "failed", "abs_error": 5.0,
+        },
+    ])
+
+    grouped = validation_module.build_validation_check_groups(detail)
+
+    assert len(grouped) == 1
+    result = grouped.iloc[0]
+    assert result["status"] == "failed"
+    assert result["raw_check_row_count"] == 3
+    assert result["raw_failed_row_count"] == 2
+    assert result["fuel_count"] == 2
+    assert result["year_count"] == 2
+    assert result["failed_fuel_count"] == 2
+    assert result["failed_year_count"] == 2
+    assert result["total_abs_error"] == 15.0
+
+
+def test_summary_uses_grouped_checks_and_keeps_raw_evidence_counts(tmp_path: Path) -> None:
+    comparison_path = tmp_path / "comparison.csv"
+    _write_comparison(comparison_path, parent_value=11.0, year=2023)
+    second_year = pd.read_csv(comparison_path)
+    second_year["year"] = 2024
+    pd.concat([pd.read_csv(comparison_path), second_year], ignore_index=True).to_csv(
+        comparison_path, index=False
+    )
+
+    _, summary = _run(tmp_path, comparison_path)
+    product = summary[summary["validation_axis"] == "product"].iloc[0]
+
+    assert product["checks_performed"] == 1
+    assert product["raw_check_row_count"] == 2
+    assert product["mismatch_count"] == 1
+    assert product["raw_mismatch_row_count"] == 2
+    grouped = pd.read_csv(tmp_path / "common_esto_validation_grouped_checks.csv")
+    assert len(grouped) == 1
+    assert grouped.loc[0, "year_count"] == 2
+
+
 def test_no_eligible_checks_are_skipped(tmp_path: Path) -> None:
     comparison_path = tmp_path / "comparison.csv"
     _write_comparison(comparison_path, parent_value=10.0, include_children=False)
