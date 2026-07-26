@@ -50,6 +50,8 @@ as needing verification before acting on it.
 | `esto_extended_dataset_prompt.md` | Design (gates implementation) | Not started | Scopes a new "ESTO extended" dataset/detail extension; explicitly requires a design note (`esto_extended_dataset_design.md`) before any implementation. | The gating design note does not exist yet. Queued as its own task — produce the design note first, do not implement directly. |
 | `whole_work_queue_smart_agent_prompt.md` | Master implementation prompt | Ready | End-to-end smart-agent handoff covering source-coverage candidates, clean Stage 1–3 baseline, anchor reliability flags, semantic review queues, canonical migration, and workflow/documentation cleanup. | Use as an orchestrating prompt, not as permission to make ambiguous workbook or dashboard decisions without review. |
 
+| `investigate_anchor_validator_memory_prompt.md` | Investigation + performance fix | Active | Profile and reduce the `MemoryError` that skipped the latest source-parent anchor validation, without changing validation coverage or semantics. | The dashboard currently displays zero failures for this skipped run; do not treat that as a clean anchor result. Requires real-data parity checks and a successful full validation before completion. |
+
 ## Recommended Tackling Order
 
 1. `run_mapping_pipeline_future_prompt.md`
