@@ -859,6 +859,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
                 raw_leap_path=RAW_LEAP_PATH,
                 workbook_path=WORKBOOK_PATH,
                 leap_var_base_year=LEAP_VAR_BASE_YEAR,
+                anchor_target_years=set(range(2030, 2071, 10)),
             )
             common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
             comparison_data = pd.read_csv(comparison_path, dtype=object)

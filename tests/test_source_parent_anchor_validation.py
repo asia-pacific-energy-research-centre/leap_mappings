@@ -3,6 +3,7 @@
 import pandas as pd
 
 from codebase.mapping_tools.source_parent_anchor_validation import (
+    ANCHOR_COLUMNS,
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
     build_leaf_reconciliation_exception_candidates,
@@ -48,6 +49,34 @@ def test_exact_parent_children_match_without_double_counting() -> None:
     assert row["status"] == "passed"
     assert row["frontier_sum"] == 10
     assert row["frontier_row_count"] == 2
+
+
+def test_preselected_anchor_year_input_matches_validator_year_filter() -> None:
+    """Loading only the production anchor slice must not alter its findings."""
+    source, tree, mappings, common, comparison = _fixture()
+    extra_year = source.copy()
+    extra_year["year"] = 2023
+    source_with_extra_year = pd.concat([source, extra_year], ignore_index=True)
+
+    baseline = validate_source_parent_anchors(
+        source_with_extra_year,
+        tree,
+        mappings,
+        common,
+        comparison,
+        years_by_system={"ESTO": {2022}},
+    )
+    preselected = validate_source_parent_anchors(
+        source_with_extra_year[source_with_extra_year["year"].eq(2022)].copy(),
+        tree,
+        mappings,
+        common,
+        comparison,
+    )
+    pd.testing.assert_frame_equal(
+        baseline.sort_values(ANCHOR_COLUMNS).reset_index(drop=True),
+        preselected.sort_values(ANCHOR_COLUMNS).reset_index(drop=True),
+    )
 
 
 def test_failed_anchor_mapped_component_context_exposes_each_common_component() -> None:

@@ -1542,8 +1542,19 @@ def _resolve_most_specific(df: pd.DataFrame, columns_least_to_most_specific: lis
     return result
 
 
-def _melt_years(df: pd.DataFrame, id_columns: list[str]) -> pd.DataFrame:
+def _melt_years(
+    df: pd.DataFrame,
+    id_columns: list[str],
+    target_years: set[int] | None = None,
+    include_latest_year: bool = False,
+) -> pd.DataFrame:
+    """Melt only the raw years required by an anchor-validation run."""
     year_columns = [column for column in df.columns if str(column).isdigit()]
+    if target_years is not None:
+        allowed = {str(year) for year in target_years}
+        if include_latest_year and year_columns:
+            allowed.add(str(max(int(column) for column in year_columns)))
+        year_columns = [column for column in year_columns if str(column) in allowed]
     return df.melt(id_vars=id_columns, value_vars=year_columns, var_name="year", value_name="value")
 
 
@@ -1564,13 +1575,22 @@ def load_raw_source_anchor_inputs(
     workbook_path,
     esto_extended_data_path=None,
     leap_var_base_year: int = 2022,
+    anchor_target_years: set[int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load raw ESTO, Ninth, and LEAP values plus their source-to-component mappings."""
+    """Load raw ESTO, Ninth, and LEAP values plus their source-to-component mappings.
+
+    ``anchor_target_years`` is the existing production validation slice (the
+    decade years). ESTO-family inputs also retain their latest available year,
+    preserving the caller's base-year-plus-decades comparison without first
+    materialising every historical/modelled year as a long object dataframe.
+    """
     source_frames: list[pd.DataFrame] = []
     mapping_frames: list[pd.DataFrame] = []
 
     esto = pd.read_csv(esto_data_path, dtype=object)
-    esto_long = _melt_years(esto, ["economy", "flows", "products"])
+    esto_long = _melt_years(
+        esto, ["economy", "flows", "products"], anchor_target_years, include_latest_year=True,
+    )
     esto_long = esto_long.rename(columns={"flows": "source_flow", "products": "source_product"})
     esto_long["source_system"] = "ESTO"
     esto_long["scenario"] = "historical"
@@ -1585,7 +1605,9 @@ def load_raw_source_anchor_inputs(
 
     if esto_extended_data_path is not None and Path(esto_extended_data_path).exists():
         esto_extended = pd.read_csv(esto_extended_data_path, dtype=object)
-        extended_long = _melt_years(esto_extended, ["economy", "flows", "products"])
+        extended_long = _melt_years(
+            esto_extended, ["economy", "flows", "products"], anchor_target_years, include_latest_year=True,
+        )
         extended_long = extended_long.rename(columns={"flows": "source_flow", "products": "source_product"})
         extended_long["source_system"] = "ESTO_EXTENDED"
         extended_long["scenario"] = "historical"
@@ -1610,7 +1632,9 @@ def load_raw_source_anchor_inputs(
         f"  [timing] 9th source_flow/source_product resolved in "
         f"{time.perf_counter() - ninth_load_start:.2f}s ({len(ninth):,} rows)"
     )
-    ninth_long = _melt_years(ninth, ["economy", "scenarios", "source_flow", "source_product"])
+    ninth_long = _melt_years(
+        ninth, ["economy", "scenarios", "source_flow", "source_product"], anchor_target_years,
+    )
     ninth_long = ninth_long.rename(columns={"scenarios": "scenario"})
     ninth_long["year"] = pd.to_numeric(ninth_long["year"], errors="coerce")
     ninth_long = ninth_long[ninth_long["year"] > leap_var_base_year]
@@ -1640,6 +1664,8 @@ def load_raw_source_anchor_inputs(
         })
         leap["year"] = pd.to_numeric(leap["year"], errors="coerce")
         leap = leap[leap["year"] > leap_var_base_year]
+        if anchor_target_years is not None:
+            leap = leap[leap["year"].isin(anchor_target_years)]
         leap["source_system"] = "LEAP"
         source_frames.append(leap)
         leap_map = _active_mapping_rows(
@@ -1653,8 +1679,13 @@ def load_raw_source_anchor_inputs(
 
     source_columns = ["source_system", "economy", "scenario", "year", "source_flow", "source_product", "value"]
     mapping_columns = ["source_system", "source_flow", "source_product", "component_esto_flow", "component_esto_product"]
+    source = pd.concat(source_frames, ignore_index=True)[source_columns]
+    source["year"] = pd.to_numeric(source["year"], errors="coerce").astype("Int16")
+    source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
+    for column in ["source_system", "economy", "scenario", "source_flow", "source_product"]:
+        source[column] = source[column].astype("category")
     return (
-        pd.concat(source_frames, ignore_index=True)[source_columns],
+        source,
         pd.concat(mapping_frames, ignore_index=True)[mapping_columns].drop_duplicates(),
     )
 
