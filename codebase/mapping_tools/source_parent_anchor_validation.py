@@ -401,7 +401,12 @@ def validate_source_parent_anchors(
     if years_by_system is not None:
         # Keep only the requested years per source system (systems absent from
         # the mapping fall through unrestricted).
-        keep = source["source_system"].map(years_by_system)
+        # Source-system can arrive as a pandas Categorical after concatenating
+        # the raw inputs. Mapping categorical values directly to set objects
+        # can make pandas treat the sets as category labels and raise
+        # ``TypeError: unhashable type: 'set'``. Normalize to plain strings
+        # before applying the per-system year sets.
+        keep = source["source_system"].astype(str).map(years_by_system)
         mask = pd.Series(True, index=source.index)
         has_limit = keep.notna()
         mask.loc[has_limit] = [
