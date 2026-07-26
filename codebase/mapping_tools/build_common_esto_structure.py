@@ -319,10 +319,15 @@ def included_esto_relationships(
     """Return included ESTO-target relationships and rows excluded by coverage rules."""
     relationships_df = relationships_df.copy()
     relationships_df["include_in_use_case"] = relationships_df["include_in_use_case"].astype(str).str.lower().isin(["true", "1", "yes"])
+    requested_dataset = "ESTO_EXTENDED" if comparison_scope.startswith("esto_extended_") else "ESTO"
+    mapping_scope = relationships_df.get(
+        "esto_dataset_scope", pd.Series("BOTH", index=relationships_df.index)
+    ).fillna("BOTH").astype(str).str.upper().str.strip()
     included_df = relationships_df[
         relationships_df["include_in_use_case"]
         & relationships_df["use_case"].isin(use_cases)
         & relationships_df["target_system"].eq("ESTO")
+        & mapping_scope.isin(["BOTH", requested_dataset])
     ].copy()
     if included_df.empty:
         return included_df, pd.DataFrame()

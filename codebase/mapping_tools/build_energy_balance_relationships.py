@@ -73,6 +73,7 @@ RELATIONSHIP_COLUMNS = [
     "use_case",
     "include_in_use_case",
     "source_system",
+    "esto_dataset_scope",
     "source_flow",
     "source_product",
     "source_sector_path",
@@ -537,6 +538,11 @@ def build_relationship_rows(
         "notes",
     ]:
         normalised_df[column] = normalised_df[column].fillna("").astype(str).str.strip()
+    if "esto_dataset_scope" not in normalised_df.columns:
+        normalised_df["esto_dataset_scope"] = "BOTH"
+    normalised_df["esto_dataset_scope"] = (
+        normalised_df["esto_dataset_scope"].fillna("BOTH").astype(str).str.strip().str.upper()
+    )
 
     relationship_rows: list[dict[str, Any]] = []
     for _, row in normalised_df.iterrows():
@@ -561,6 +567,7 @@ def build_relationship_rows(
                     "use_case": use_case,
                     "include_in_use_case": include_in_use_case,
                     "source_system": source_system,
+                    "esto_dataset_scope": row["esto_dataset_scope"],
                     "source_flow": row["source_sector_path"],
                     "source_product": row["source_fuel"],
                     "source_sector_path": row["source_sector_path"],

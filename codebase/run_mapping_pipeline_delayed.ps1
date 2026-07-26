@@ -20,7 +20,7 @@ Write-Output "Starting full mapping pipeline at $(Get-Date -Format o)"
     --skip leap_parse `
     --esto-path data\00APEC_2025_low_with_subtotals.csv `
     --esto-extended-path data\esto_extended.csv `
-    --mapping-workbook-path config\outlook_mappings_master_esto_extended_test.xlsx `
+    --mapping-workbook-path config\outlook_mappings_master_combined_esto.xlsx `
     --ninth-path data\merged_file_energy_ALL_20251106.csv `
     --raw-leap-path results\mapping_relationships\raw_leap_results.csv `
     *>&1 | Tee-Object -FilePath $log
