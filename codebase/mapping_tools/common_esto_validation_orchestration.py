@@ -127,7 +127,12 @@ def build_source_comparison_frontier(
     adding artificial unavailable mappings to the workbook.
     """
     rows: list[dict[str, str]] = []
-    mapped_flows: dict[str, set[str]] = {"ESTO": set(), "LEAP": set(), "NINTH": set()}
+    mapped_flows: dict[str, set[str]] = {
+        "ESTO": set(),
+        "ESTO_EXTENDED": set(),
+        "LEAP": set(),
+        "NINTH": set(),
+    }
     if workbook_path is not None and workbook_path.exists():
         sheet_sources = {
             "leap_combined_esto": "LEAP",
@@ -184,7 +189,7 @@ def build_source_comparison_frontier(
     for parent_code, children in children_by_parent.items():
         for source_system, source_flows in mapped_flows.items():
             for child_code in children:
-                if source_system == "ESTO" or child_code in source_flows:
+                if source_system in {"ESTO", "ESTO_EXTENDED"} or child_code in source_flows:
                     status = "comparable"
                     reason = "active_source_to_esto_mapping"
                 else:
