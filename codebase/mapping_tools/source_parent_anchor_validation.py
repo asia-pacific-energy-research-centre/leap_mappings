@@ -1815,6 +1815,28 @@ def build_failed_anchor_mapped_component_context_values(
         system_mapping = source_mapping_df[source_mapping_df["source_system"].astype(str).eq(source_system)].copy()
         if system_mapping.empty:
             continue
+        applicable_scopes = [
+            scope for scope in common_rows_df["comparison_scope"].dropna().astype(str).unique()
+            if source_system in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system})
+        ]
+        system_comparison = comparison[
+            comparison["source_system"].astype(str).eq(source_system)
+            & comparison["comparison_scope"].astype(str).isin(applicable_scopes)
+        ]
+        ids_with_data = set(system_comparison["common_row_id"].astype(str))
+        scoped_components = common_rows_df[
+            common_rows_df["comparison_scope"].astype(str).isin(applicable_scopes)
+        ]
+        has_data_pairs = set(zip(
+            scoped_components.loc[
+                scoped_components["common_row_id"].astype(str).isin(ids_with_data),
+                "component_esto_flow",
+            ].astype(str),
+            scoped_components.loc[
+                scoped_components["common_row_id"].astype(str).isin(ids_with_data),
+                "component_esto_product",
+            ].astype(str),
+        ))
         for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
             if dataset in {"leap", "ninth"}:
                 tree_axis = "sector" if validation_axis == "flow" else "fuel"
@@ -1846,6 +1868,7 @@ def build_failed_anchor_mapped_component_context_values(
                 for raw_node_role, raw_child in [("parent", parent)] + [("child", child) for child in children.get(parent, [])]:
                     resolved, missing = _mapped_descendants(
                         raw_child, other_value, children, direct_index, empty_mapping, cache,
+                        has_data_pairs,
                     )
                     for missing_child in missing:
                         rows.append({
