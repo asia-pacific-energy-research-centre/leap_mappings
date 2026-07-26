@@ -17,6 +17,7 @@ import pandas as pd
 
 from codebase.mapping_issue_exceptions import EXCEPTION_WORKBOOK_PATH, split_allowed_rows
 from codebase.mapping_tools.non_expanding_rollups import (
+    build_rollup_edge_catalogue,
     build_non_expanding_rollup_catalogue,
     build_unresolved_non_expanding_qa,
     non_expanding_rolled_labels,
@@ -1964,6 +1965,11 @@ def run_relationship_workflow(
     )
     qa_dir.mkdir(parents=True, exist_ok=True)
     non_expanding_catalogue_df.to_csv(qa_dir / "non_expanding_rollups.csv", index=False)
+    build_rollup_edge_catalogue({
+        "leap_rollup_rules": leap_rules,
+        "esto_rollup_rules": esto_rules,
+        "ninth_rollup_rules": ninth_rules,
+    }).to_csv(qa_dir / "rollup_edges.csv", index=False)
     non_expanding_unresolved_df.to_csv(qa_dir / "qa_non_expanding_rollup_unresolved.csv", index=False)
     print(
         f"Non-expanding rollup rules: {len(non_expanding_catalogue_df):,} contributor rows across "

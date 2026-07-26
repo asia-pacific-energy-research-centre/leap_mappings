@@ -69,6 +69,12 @@ CATALOGUE_COLUMNS = [
     "note",
 ]
 
+ROLLUP_EDGE_COLUMNS = [
+    "rule_sheet", "source_system", "rollup_mode", "rollup_id",
+    "rolled_flow_label", "rolled_product_label", "input_flow", "input_product",
+    "parent_flow_label", "child_flow_labels", "note",
+]
+
 UNRESOLVED_COLUMNS = [
     "rule_sheet",
     "source_system",
@@ -274,6 +280,32 @@ def build_non_expanding_rollup_catalogue(rules_by_sheet: dict[str, pd.DataFrame]
                 }
             )
     return pd.DataFrame(rows, columns=CATALOGUE_COLUMNS)
+
+
+def build_rollup_edge_catalogue(rules_by_sheet: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Compile every active rollup contributor for dashboard/tree presentation."""
+    rows: list[dict[str, Any]] = []
+    for sheet_name, config in ROLLUP_SHEET_CONFIGS.items():
+        rules_df = rules_by_sheet.get(sheet_name, pd.DataFrame())
+        for _, rule in rules_df.iterrows():
+            rolled_flow = _str(rule.get(config["rolled_flow"]))
+            if not rolled_flow:
+                continue
+            rolled_product = _str(rule.get(config["rolled_product"]))
+            rows.append({
+                "rule_sheet": sheet_name,
+                "source_system": config["source_system"],
+                "rollup_mode": get_rollup_mode(rule),
+                "rollup_id": non_expanding_rollup_id(rolled_flow, rolled_product).replace("nonexp_", "rollup_"),
+                "rolled_flow_label": rolled_flow,
+                "rolled_product_label": rolled_product,
+                "input_flow": _str(rule.get(config["input_flow"])),
+                "input_product": _str(rule.get(config["input_product"])),
+                "parent_flow_label": _str(rule.get("parent_flow_label")),
+                "child_flow_labels": _str(rule.get("child_flow_labels")),
+                "note": _str(rule.get("Note")),
+            })
+    return pd.DataFrame(rows, columns=ROLLUP_EDGE_COLUMNS)
 
 
 def build_unresolved_non_expanding_qa(
