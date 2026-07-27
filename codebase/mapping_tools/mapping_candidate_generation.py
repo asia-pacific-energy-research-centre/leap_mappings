@@ -22,6 +22,17 @@ LEAP_ESTO_EXCLUDED_FUEL_NAMES: frozenset[str] = frozenset({
     "Solid biomass",
 })
 
+# Columns every active-source-pair summary must expose. Candidate generation
+# merges on these, so an empty summary still needs them present or the merge
+# raises instead of simply yielding no candidates.
+ACTIVE_SOURCE_PAIR_COLUMNS = [
+    "source_flow",
+    "source_product",
+    "source_nonzero_row_count",
+    "source_nonzero_economy_count",
+    "source_abs_sum",
+]
+
 CANDIDATE_OUTPUT_COLUMNS = [
     "candidate_context",
     "candidate_status",
@@ -98,13 +109,7 @@ def summarise_nonzero_leap_pairs(
     value_tolerance: float,
 ) -> pd.DataFrame:
     """Summarise observed non-zero LEAP branch/fuel pairs."""
-    columns = [
-        "source_flow",
-        "source_product",
-        "source_nonzero_row_count",
-        "source_nonzero_economy_count",
-        "source_abs_sum",
-    ]
+    columns = ACTIVE_SOURCE_PAIR_COLUMNS
     if raw_leap_df.empty:
         return pd.DataFrame(columns=columns)
     working_df = raw_leap_df.copy()
@@ -130,13 +135,7 @@ def summarise_nonzero_ninth_projection_pairs(
     value_tolerance: float,
 ) -> pd.DataFrame:
     """Read the 9th wide table and summarise active projection source pairs."""
-    columns = [
-        "source_flow",
-        "source_product",
-        "source_nonzero_row_count",
-        "source_nonzero_economy_count",
-        "source_abs_sum",
-    ]
+    columns = ACTIVE_SOURCE_PAIR_COLUMNS
     if not ninth_csv_path.exists():
         return pd.DataFrame(columns=columns)
     header = pd.read_csv(ninth_csv_path, nrows=0).columns.tolist()
@@ -242,6 +241,12 @@ def generate_partial_coverage_candidates_for_system(
     """Suggest observed source pairs whose two axes independently match a target."""
     if issues_df.empty:
         return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
+    if active_source_pairs_df.empty:
+        # A source system with no observed non-zero pairs is a legitimate state
+        # (e.g. the 9th source file is absent). Reindex so the merges below yield
+        # no candidates instead of raising on the missing join keys; each issue
+        # still reports as unresolved.
+        active_source_pairs_df = active_source_pairs_df.reindex(columns=ACTIVE_SOURCE_PAIR_COLUMNS)
     source_flow_normaliser = normalise_path if mapping_sheet == "leap_combined_esto" else normalise_text
     flow_profile = build_axis_profile(mapping_df, source_flow_column, "esto_flow", source_flow_normaliser)
     product_profile = build_axis_profile(mapping_df, source_product_column, "esto_product", normalise_text)
@@ -395,6 +400,11 @@ def generate_partial_coverage_mapping_candidates(
     max_candidates_per_issue: int = 5,
 ) -> pd.DataFrame:
     """Generate copy-friendly candidates for LEAP and NINTH coverage gaps."""
+    if issues_df.empty:
+        # No actionable partial coverage is a normal outcome, and the caller may
+        # pass a column-less frame in that case, so return before touching
+        # "source_system".
+        return pd.DataFrame(columns=CANDIDATE_OUTPUT_COLUMNS)
     leap_active_df = summarise_nonzero_leap_pairs(raw_leap_df, value_tolerance)
     frames = [
         generate_partial_coverage_candidates_for_system(

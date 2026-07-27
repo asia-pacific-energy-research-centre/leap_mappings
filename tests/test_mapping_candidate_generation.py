@@ -1,9 +1,61 @@
 import pandas as pd
 
 from codebase.mapping_tools.mapping_candidate_generation import (
+    CANDIDATE_OUTPUT_COLUMNS,
     generate_partial_coverage_candidates_for_system,
+    generate_partial_coverage_mapping_candidates,
     generate_unmapped_leap_branch_candidates,
     select_highly_recommended_candidates,
+)
+
+# Shared fixtures for the partial-coverage entry point. The LEAP axes each map to
+# one of the target ESTO axes, and the observed non-zero pair combines them.
+PARTIAL_COVERAGE_ISSUE_COLUMNS = [
+    "comparison_scope",
+    "use_case",
+    "source_system",
+    "common_row_id",
+    "missing_component_esto_flow",
+    "missing_component_esto_product",
+]
+
+LEAP_ESTO_MAPPING_DF = pd.DataFrame(
+    [
+        {
+            "leap_sector_name_full_path": "Target branch",
+            "raw_leap_fuel_name": "Other fuel",
+            "esto_flow": "Target flow",
+            "esto_product": "Other product",
+        },
+        {
+            "leap_sector_name_full_path": "Other branch",
+            "raw_leap_fuel_name": "Target fuel",
+            "esto_flow": "Other flow",
+            "esto_product": "Target product",
+        },
+    ]
+)
+
+NINTH_ESTO_MAPPING_DF = pd.DataFrame(
+    [
+        {
+            "ninth_sector": "01_buildings",
+            "ninth_fuel": "17_electricity",
+            "esto_flow": "Other flow",
+            "esto_product": "Other product",
+        }
+    ]
+)
+
+RAW_LEAP_DF = pd.DataFrame(
+    [
+        {
+            "leap_flow": "Target branch",
+            "leap_product": "Target fuel",
+            "value": 12.0,
+            "economy": "01_AUS",
+        }
+    ]
 )
 
 
@@ -169,6 +221,106 @@ def test_partial_candidate_explains_when_axes_exist_but_no_observed_pair_combine
     assert candidate["missing_axis_evidence"] == "no_nonzero_source_pair_combines_the_two_axes"
     assert "Target branch" in candidate["flow_axis_alternatives"]
     assert "Target fuel" in candidate["product_axis_alternatives"]
+
+
+def test_partial_coverage_entry_point_tolerates_issues_frame_without_columns() -> None:
+    """An absent or empty structural partial-coverage file is a legitimate state.
+
+    `filter_partial_coverage_by_relevance` returns a column-less frame then, so
+    the entry point must not index "source_system" before checking for rows.
+    """
+    candidates_df = generate_partial_coverage_mapping_candidates(
+        issues_df=pd.DataFrame(),
+        raw_leap_df=RAW_LEAP_DF,
+        active_ninth_pairs_df=pd.DataFrame(),
+        leap_esto_df=LEAP_ESTO_MAPPING_DF,
+        ninth_esto_df=NINTH_ESTO_MAPPING_DF,
+        value_tolerance=1e-6,
+    )
+
+    assert candidates_df.empty
+    assert list(candidates_df.columns) == CANDIDATE_OUTPUT_COLUMNS
+
+
+def test_partial_coverage_entry_point_tolerates_empty_issues_frame_with_columns() -> None:
+    candidates_df = generate_partial_coverage_mapping_candidates(
+        issues_df=pd.DataFrame(columns=PARTIAL_COVERAGE_ISSUE_COLUMNS),
+        raw_leap_df=RAW_LEAP_DF,
+        active_ninth_pairs_df=pd.DataFrame(),
+        leap_esto_df=LEAP_ESTO_MAPPING_DF,
+        ninth_esto_df=NINTH_ESTO_MAPPING_DF,
+        value_tolerance=1e-6,
+    )
+
+    assert candidates_df.empty
+    assert list(candidates_df.columns) == CANDIDATE_OUTPUT_COLUMNS
+
+
+def test_partial_coverage_entry_point_still_generates_candidates_when_populated() -> None:
+    issues_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "leap_vs_ninth",
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "common_row_id": "common_1",
+                "missing_component_esto_flow": "Target flow",
+                "missing_component_esto_product": "Target product",
+            }
+        ]
+    )
+
+    candidates_df = generate_partial_coverage_mapping_candidates(
+        issues_df=issues_df,
+        raw_leap_df=RAW_LEAP_DF,
+        active_ninth_pairs_df=pd.DataFrame(),
+        leap_esto_df=LEAP_ESTO_MAPPING_DF,
+        ninth_esto_df=NINTH_ESTO_MAPPING_DF,
+        value_tolerance=1e-6,
+    )
+
+    assert list(candidates_df.columns) == CANDIDATE_OUTPUT_COLUMNS
+    candidate = candidates_df.iloc[0]
+    assert candidate["candidate_status"] == "proposed"
+    assert candidate["mapping_sheet"] == "leap_combined_esto"
+    assert candidate["leap_sector_name_full_path"] == "Target branch"
+    assert candidate["raw_leap_fuel_name"] == "Target fuel"
+    assert candidate["esto_flow"] == "Target flow"
+    assert candidate["esto_product"] == "Target product"
+
+
+def test_partial_candidates_report_unresolved_when_source_pairs_frame_has_no_columns() -> None:
+    """A missing 9th source file leaves `active_ninth_pairs_df` column-less.
+
+    The NINTH issue rows must fall through to the unresolved status rather than
+    raising on the absent merge keys.
+    """
+    issues_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "leap_vs_ninth",
+                "use_case": "ninth_to_esto_balance_conversion",
+                "source_system": "NINTH",
+                "common_row_id": "common_9",
+                "missing_component_esto_flow": "Other flow",
+                "missing_component_esto_product": "Other product",
+            }
+        ]
+    )
+
+    candidates_df = generate_partial_coverage_candidates_for_system(
+        issues_df=issues_df,
+        active_source_pairs_df=pd.DataFrame(),
+        mapping_df=NINTH_ESTO_MAPPING_DF,
+        source_flow_column="ninth_sector",
+        source_product_column="ninth_fuel",
+        mapping_sheet="ninth_pairs_to_esto_pairs",
+        max_candidates_per_issue=5,
+    )
+
+    candidate = candidates_df.iloc[0]
+    assert candidate["candidate_status"] == "no_observed_source_pair_matches_both_axes"
+    assert candidate["missing_axis_evidence"] == "no_nonzero_source_pair_combines_the_two_axes"
 
 
 def test_highly_recommended_output_excludes_incomplete_and_medium_candidates() -> None:
