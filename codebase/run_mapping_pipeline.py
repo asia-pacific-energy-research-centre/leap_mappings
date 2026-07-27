@@ -80,14 +80,14 @@ STAGE3_RUN_MANIFEST_PATH = COMMON_ESTO_DIR / "stage3_run_manifest.json"
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
 LEAP_ROLLUP_AUDIT_PATH = REL_DIR / "leap_source_rollup_audit.csv"
-LEAP_SOURCE_LINEAGE_PATH = REL_DIR / "leap_source_to_esto_component_lineage.csv"
-NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv"
-NINTH_SOURCE_LINEAGE_PATH = REL_DIR / "ninth_source_to_esto_component_lineage.csv"
-ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv"
-ESTO_EXTENDED_ROWS_PATH = REL_DIR / "esto_extended_results_exact_rows.csv"
+LEAP_SOURCE_LINEAGE_PATH = REL_DIR / "leap_source_to_esto_component_lineage.csv.gz"
+NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv.gz"
+NINTH_SOURCE_LINEAGE_PATH = REL_DIR / "ninth_source_to_esto_component_lineage.csv.gz"
+ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv.gz"
+ESTO_EXTENDED_ROWS_PATH = REL_DIR / "esto_extended_results_exact_rows.csv.gz"
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
-ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv"
+ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv.gz"
 
 # Aggregate comparisons that require the exact ESTO parent alongside the
 # ordinary non-subtotal frontier. Other dashboard totals are currently built
@@ -601,18 +601,21 @@ def run_data_convert() -> None:
 
 def run_stage_3(skip_deep_validation: bool = False) -> None:
     import time
+    from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+
     stage3_t0 = time.perf_counter()
     print("\n" + "=" * 60)
     print("STAGE 3  Apply common ESTO structure to source data")
     print("=" * 60)
 
-    missing = [
-        p for p in [
+    stage3_input_paths = [
+        prefer_compressed_csv_path(path)
+        for path in [
             LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH,
             ESTO_EXTENDED_ROWS_PATH, COMMON_ROWS_PATH,
         ]
-        if not p.exists()
     ]
+    missing = [path for path in stage3_input_paths if not path.exists()]
     if missing:
         print("  WARNING: Missing input files for Stage 3:")
         for p in missing:
@@ -647,6 +650,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         build_failed_anchor_mapped_component_context_values,
         build_failed_anchor_raw_child_context_values,
         load_raw_source_anchor_inputs,
+        select_source_parent_anchor_findings,
         summarise_failed_anchor_raw_child_context_values,
         summarise_source_parent_anchors,
         validate_source_parent_anchors,
@@ -657,10 +661,10 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     run_id = run_timestamp.strftime("common_esto_%Y%m%dT%H%M%S%fZ")
 
     source_paths = {
-        "LEAP":  LEAP_ESTO_PATH,
-        "NINTH": NINTH_ESTO_PATH,
-        "ESTO":  ESTO_ROWS_PATH,
-        "ESTO_EXTENDED": ESTO_EXTENDED_ROWS_PATH,
+        "LEAP": prefer_compressed_csv_path(LEAP_ESTO_PATH),
+        "NINTH": prefer_compressed_csv_path(NINTH_ESTO_PATH),
+        "ESTO": prefer_compressed_csv_path(ESTO_ROWS_PATH),
+        "ESTO_EXTENDED": prefer_compressed_csv_path(ESTO_EXTENDED_ROWS_PATH),
     }
     comparison_scopes = sorted(
         pd.read_csv(COMMON_ROWS_PATH, usecols=["comparison_scope"], dtype=object)
@@ -843,6 +847,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     validation_detail_row_count = len(detail_df)
 
     anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
+    anchor_full_detail_path = tree_output_dir / "source_parent_anchor_validation_full.csv.gz"
     anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
     anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
     anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.csv"
@@ -1017,7 +1022,9 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
-    anchor_detail.to_csv(anchor_detail_path, index=False)
+    anchor_findings = select_source_parent_anchor_findings(anchor_detail)
+    anchor_findings.to_csv(anchor_detail_path, index=False)
+    anchor_detail.to_csv(anchor_full_detail_path, index=False)
     anchor_child_values.to_csv(anchor_child_values_path, index=False)
     anchor_child_context_values.to_csv(anchor_child_context_values_path, index=False)
     anchor_mapped_component_context_values.to_csv(anchor_mapped_component_context_values_path, index=False)
@@ -1092,6 +1099,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     run_manifest["validation"] = {
         "common_esto_summary_path": str(summary_path.resolve()),
         "anchor_summary_path": str(anchor_summary_path.resolve()),
+        "anchor_full_detail_path": str(anchor_full_detail_path.resolve()),
         "anchor_status": anchor_summary.to_dict(orient="records"),
         "common_esto_status": validation_summary.to_dict(orient="records"),
     }

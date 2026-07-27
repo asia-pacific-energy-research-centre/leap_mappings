@@ -236,15 +236,18 @@ def build_source_comparison_frontier(
 
 def _load_diagnostic_source_values(output_dir: Path) -> dict[str, pd.DataFrame]:
     """Load converted ESTO-shaped source rows used for child-level evidence."""
+    from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+
     relationship_dir = output_dir.parent / "mapping_relationships"
     paths = {
-        "ESTO": relationship_dir / "esto_results_exact_rows.csv",
+        "ESTO": relationship_dir / "esto_results_exact_rows.csv.gz",
         "LEAP": relationship_dir / "leap_results_converted_to_esto.csv",
-        "NINTH": relationship_dir / "ninth_results_converted_to_esto.csv",
+        "NINTH": relationship_dir / "ninth_results_converted_to_esto.csv.gz",
     }
     result: dict[str, pd.DataFrame] = {}
     group_cols = ["economy", "scenario", "year", "esto_flow", "esto_product"]
     for system, path in paths.items():
+        path = prefer_compressed_csv_path(path)
         if not path.exists():
             continue
         columns = pd.read_csv(path, nrows=0).columns.tolist()

@@ -21,6 +21,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (  # noqa: E402
     NINTH_PROJECTION_START_YEAR,
     run_common_esto_comparison_fast_path,
 )
+from codebase.mapping_tools.result_storage import prefer_compressed_csv_path  # noqa: E402
 
 #%%
 # Stable paths.
@@ -29,8 +30,12 @@ COMMON_ESTO_DIR = REPO_ROOT / "results" / "common_esto"
 
 SOURCE_PATHS = {
     "LEAP": RELATIONSHIP_DIR / "leap_results_converted_to_esto.csv",
-    "NINTH": RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv",
-    "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv",
+    "NINTH": prefer_compressed_csv_path(
+        RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv.gz"
+    ),
+    "ESTO": prefer_compressed_csv_path(
+        RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz"
+    ),
 }
 COMMON_ROWS_PATH = COMMON_ESTO_DIR / "common_esto_rows.csv"
 OUTPUT_DIR = COMMON_ESTO_DIR

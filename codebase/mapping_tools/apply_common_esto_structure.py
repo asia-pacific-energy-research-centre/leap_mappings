@@ -32,6 +32,7 @@ from codebase.mapping_tools.mapping_candidate_generation import (
     select_highly_recommended_candidates,
     summarise_nonzero_ninth_projection_pairs,
 )
+from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 
 #%%
 OUTPUT_COLUMNS = [
@@ -1271,13 +1272,31 @@ def drop_internal_common_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=[column for column in COMPARISON_INTERNAL_COLUMNS if column in df.columns])
 
 
+def tagged_output_path(output_path: Path, tag: str) -> Path:
+    """Insert a tag before ``.csv`` or ``.csv.gz`` without mangling suffixes."""
+    name = output_path.name
+    for suffix in [".csv.gz", ".csv"]:
+        if name.lower().endswith(suffix):
+            return output_path.with_name(f"{name[:-len(suffix)]}_{tag}{name[-len(suffix):]}")
+    return output_path.with_name(f"{output_path.stem}_{tag}{output_path.suffix}")
+
+
+def logical_artifact_name(output_path: Path) -> str:
+    """Return a stable artifact name for plain or gzip-compressed CSV paths."""
+    name = output_path.name
+    for suffix in [".csv.gz", ".csv"]:
+        if name.lower().endswith(suffix):
+            return name[:-len(suffix)]
+    return output_path.stem
+
+
 def write_csv_with_locked_fallback(df: pd.DataFrame, output_path: Path) -> Path:
     """Write a CSV, falling back to a rebuilt filename if the target is locked."""
     try:
         df.to_csv(output_path, index=False)
         return output_path
     except PermissionError:
-        fallback_path = output_path.with_name(f"{output_path.stem}_rebuilt{output_path.suffix}")
+        fallback_path = tagged_output_path(output_path, "rebuilt")
         print(f"Could not overwrite locked CSV: {output_path}")
         print(f"Writing rebuilt CSV instead: {fallback_path}")
         df.to_csv(fallback_path, index=False)
@@ -1288,7 +1307,7 @@ def error_tagged_path(output_path: Path, error_occurred: bool) -> Path:
     """Add an error tag to output filenames when QA errors occurred."""
     if not error_occurred:
         return output_path
-    return output_path.with_name(f"{output_path.stem}_needs_mapping_review{output_path.suffix}")
+    return tagged_output_path(output_path, "needs_mapping_review")
 
 
 def save_outputs(
@@ -1354,7 +1373,7 @@ def save_outputs(
             "run_id": resolved_run_id,
             "run_timestamp_utc": resolved_timestamp,
             "record_type": "stage3_output",
-            "artifact_name": path.stem,
+            "artifact_name": logical_artifact_name(path),
             "validation_name": "",
             "validation_axis": "",
             "source_system": "",
@@ -1405,7 +1424,7 @@ def save_fast_path_outputs(
             "run_id": resolved_run_id,
             "run_timestamp_utc": resolved_timestamp,
             "record_type": "fast_path_output",
-            "artifact_name": path.stem,
+            "artifact_name": logical_artifact_name(path),
             "validation_name": "",
             "validation_axis": "",
             "source_system": "",
@@ -1771,8 +1790,12 @@ OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 
 SOURCE_PATHS = {
     "LEAP": RELATIONSHIP_DIR / "leap_results_converted_to_esto.csv",
-    "NINTH": RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv",
-    "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv",
+    "NINTH": RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv.gz",
+    "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz",
+}
+SOURCE_PATHS = {
+    system: prefer_compressed_csv_path(path)
+    for system, path in SOURCE_PATHS.items()
 }
 DEFAULT_ECONOMY = "20_USA"
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50

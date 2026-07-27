@@ -1999,4 +1999,36 @@ def summarise_source_parent_anchors(detail_df: pd.DataFrame) -> pd.DataFrame:
     )
     return summary[columns + ["eligible", "passed", "failed", "skipped", "status"]]
 
+
+def select_source_parent_anchor_findings(detail_df: pd.DataFrame) -> pd.DataFrame:
+    """Return the compact reviewer-facing subset of the full anchor audit.
+
+    Keep actionable failures, source-inconsistency flags, and reviewed
+    data-quality exceptions. The pipeline stores the complete frame separately
+    as a compressed audit artifact.
+    """
+    if detail_df.empty:
+        return detail_df.copy()
+
+    status = detail_df["status"].fillna("").astype(str)
+    reason = detail_df["reason"].fillna("").astype(str)
+    if "known_data_quality_exception" in detail_df.columns:
+        reviewed_exception = (
+            detail_df["known_data_quality_exception"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+    else:
+        reviewed_exception = pd.Series(False, index=detail_df.index)
+
+    keep = (
+        status.eq("failed")
+        | reason.eq("source_internal_recursive_sum_inconsistency")
+        | reviewed_exception
+    )
+    return detail_df.loc[keep].copy()
+
 #%%

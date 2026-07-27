@@ -55,6 +55,7 @@ from typing import Any, Iterable, Iterator
 
 import pandas as pd
 
+from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 from codebase.mapping_tools.structural_resolver import build_tree_index
 
 
@@ -956,8 +957,12 @@ def default_slice_years(converted_by_system: dict[str, pd.DataFrame]) -> dict[st
 
 DEFAULT_CONVERTED_PATHS = {
     "LEAP": REPO_ROOT / "results/mapping_relationships/leap_results_converted_to_esto.csv",
-    "NINTH": REPO_ROOT / "results/mapping_relationships/ninth_results_converted_to_esto.csv",
-    "ESTO": REPO_ROOT / "results/mapping_relationships/esto_results_exact_rows.csv",
+    "NINTH": REPO_ROOT / "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz",
+    "ESTO": REPO_ROOT / "results/mapping_relationships/esto_results_exact_rows.csv.gz",
+}
+DEFAULT_CONVERTED_PATHS = {
+    system: prefer_compressed_csv_path(path)
+    for system, path in DEFAULT_CONVERTED_PATHS.items()
 }
 DEFAULT_RAW_PATHS = {
     "LEAP": REPO_ROOT / "results/mapping_relationships/raw_leap_results.csv",

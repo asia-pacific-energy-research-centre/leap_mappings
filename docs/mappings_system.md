@@ -413,7 +413,7 @@ does not match fails the Stage 2 build rather than silently applying to a new
 structure.
 
 Use `esto_to_common_esto_map.csv` and
-`esto_component_to_common_row_lineage.csv` to inspect or reverse the real
+`esto_component_to_common_row_lineage.csv.gz` to inspect or reverse the real
 component mapping. Labels are presentation fields, not mapping keys. The
 workbook `rollup_label_overrides` sheet remains reserved; it is not an input to
 this display-label mechanism.
@@ -1291,8 +1291,8 @@ did not match the mapped vocabulary. The reconciler instead compares two
   `00APEC_*_low_with_subtotals` balances).
 - **right** — the converted-to-ESTO total for the common boundary that parent
   maps into, read from the already-correct conversion outputs
-  (`leap_results_converted_to_esto.csv`, `ninth_results_converted_to_esto.csv`,
-  `esto_results_exact_rows.csv`).
+  (`leap_results_converted_to_esto.csv`, `ninth_results_converted_to_esto.csv.gz`,
+  `esto_results_exact_rows.csv.gz`).
 
 Both sides come from **different files**, so a fabricated mismatch on either
 side is detectable — the check is not a tautology. Boundaries are classified

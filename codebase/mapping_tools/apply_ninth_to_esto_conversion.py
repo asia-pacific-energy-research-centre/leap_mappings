@@ -380,7 +380,7 @@ REPO_ROOT = _find_repo_root(SCRIPT_PATH.parent)
 RELATIONSHIP_DIR = REPO_ROOT / "results" / "mapping_relationships"
 NINTH_RESULTS_PATH = RELATIONSHIP_DIR / "raw_ninth_results_placeholder.csv"
 RELATIONSHIPS_PATH = RELATIONSHIP_DIR / "energy_balance_relationships.csv"
-OUTPUT_PATH = RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv"
+OUTPUT_PATH = RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv.gz"
 
 RUN_NINTH_TO_ESTO_CONVERSION = False
 

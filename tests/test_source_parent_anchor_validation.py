@@ -11,6 +11,7 @@ from codebase.mapping_tools.source_parent_anchor_validation import (
     build_failed_anchor_raw_child_context_values,
     build_failed_anchor_raw_child_values,
     summarise_source_parent_anchors,
+    select_source_parent_anchor_findings,
     validate_source_parent_anchors,
 )
 
@@ -386,6 +387,22 @@ def test_missing_intermediate_resolves_to_grandchildren() -> None:
 def test_zero_eligible_summary_is_not_passed() -> None:
     summary = summarise_source_parent_anchors(pd.DataFrame())
     assert summary.empty
+
+
+def test_select_source_parent_anchor_findings_keeps_only_review_rows() -> None:
+    detail = pd.DataFrame(
+        [
+            {"status": "passed", "reason": "within_tolerance", "known_data_quality_exception": False},
+            {"status": "skipped", "reason": "no_anchorable_common_esto_boundary", "known_data_quality_exception": False},
+            {"status": "failed", "reason": "difference_exceeds_tolerance", "known_data_quality_exception": False},
+            {"status": "skipped", "reason": "source_internal_recursive_sum_inconsistency", "known_data_quality_exception": False},
+            {"status": "skipped", "reason": "reviewed", "known_data_quality_exception": True},
+        ]
+    )
+
+    result = select_source_parent_anchor_findings(detail)
+
+    assert result.index.tolist() == [2, 3, 4]
 
 
 # --- Focused tests for the vectorized restructure of the anchor loop ---

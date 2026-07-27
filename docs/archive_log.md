@@ -8,6 +8,22 @@ design task — see that file's note).
 
 Format: date, original path, new path, one-line reason.
 
+## 2026-07-27
+
+Gitignored and recoverable from a verified ZIP:
+
+| Original path | New path | Reason |
+|---|---|---|
+| Six stale plain recurring outputs: `ninth_results_converted_to_esto.csv`, both `esto*_results_exact_rows.csv`, both source-lineage CSVs, and `esto_component_to_common_row_lineage.csv` | `results/_quarantine_archives/2026-07-27/legacy_uncompressed_pipeline_outputs_pre_20260727.zip` | Superseded by verified `.csv.gz` outputs. The 4,428.7 MB of plain CSVs were stored in a 471.7 MB ZIP with repository-relative paths and an embedded SHA-256 manifest; every entry was read back and hash-verified before the live copies were sent to the Windows Recycle Bin. |
+| `results/tree_structure/anchor_diagnostics/` | `results/_quarantine_archives/2026-07-27/results_tree_artifacts_20260727.zip` | Outputs from the superseded tree-walk anchor methodology. ZIP members retain repository-relative paths and SHA-256 values in `archive_manifest.json`. |
+| `results/tree_structure/source_parent_anchor_MISSING_children.csv`, `source_parent_anchor_MISSING_parent_pairs.csv` | Same ZIP | Obsolete output names not written or consumed by current code. |
+| `results/tree_structure/source_parent_anchor_validation_SLICE.csv`, `source_parent_anchor_validation_SLICE_summary.csv` | Same ZIP | Manual slices superseded by the current validator output and dashboard findings view. |
+
+Extract the ZIP at the repository root to restore every original path. All 14 entries were read
+back and hash-verified before they were moved out of the live tree. A redundant uncompressed copy
+is temporarily retained under the same dated quarantine folder because direct deletion was blocked
+by the execution environment.
+
 ## 2026-07-23
 
 Git-tracked (fully recoverable via `git log`/`git mv` history regardless of this log):

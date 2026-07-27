@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -10,8 +12,18 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     filter_partial_coverage_by_relevance,
     normalise_source_columns,
     should_ignore_missing_common_map_flow,
+    tagged_output_path,
 )
 from codebase.mapping_issue_exceptions import filter_unmodelled_source_rows
+
+
+def test_tagged_output_path_preserves_plain_and_compressed_csv_suffixes() -> None:
+    assert tagged_output_path(
+        Path("lineage.csv.gz"), "rebuilt"
+    ) == Path("lineage_rebuilt.csv.gz")
+    assert tagged_output_path(
+        Path("comparison.csv"), "needs_mapping_review"
+    ) == Path("comparison_needs_mapping_review.csv")
 
 
 def test_normalise_source_columns_uses_one_economy_code_for_compact_and_underscored_inputs() -> None:
