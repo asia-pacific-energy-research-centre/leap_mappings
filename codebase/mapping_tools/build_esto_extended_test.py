@@ -36,7 +36,11 @@ LEAP_INITIALISATION_ROOT = Path(r"C:\Users\Work\github\leap_initialisation")
 BASE_ESTO_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
 MAPPING_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 TEMPLATE_DIR = LEAP_INITIALISATION_ROOT / "data" / "leap_export_templates"
-DEMAND_BRANCH_WORKBOOK_PATH = REPO_ROOT / "data" / "temp" / "new demand branches.xlsx"
+NEW_LEAP_ROWS_WORKBOOK_PATH = REPO_ROOT / "data" / "temp" / "new leap rows.xlsx"
+# Backwards-compatible name retained for callers that already import this
+# constant. The workbook now contains explicit ``demand`` and ``power`` tabs.
+DEMAND_BRANCH_WORKBOOK_PATH = NEW_LEAP_ROWS_WORKBOOK_PATH
+NEW_LEAP_ROW_SHEETS = ("demand", "power")
 OUTPUT_DIR = REPO_ROOT / "results" / "esto_extended_test"
 
 ESTO_REQUIRED_COLUMNS = ["economy", "flows", "products"]
@@ -190,31 +194,55 @@ def read_leap_template_branch_inventory(template_dir: Path) -> pd.DataFrame:
     return presence.sort_values(["depth", "branch_path"]).reset_index(drop=True)
 
 
-def read_demand_branch_inventory(workbook_path: Path) -> pd.DataFrame:
-    """Read the externally supplied Demand branch tree as a LEAP path source."""
+def read_demand_branch_inventory(
+    workbook_path: Path,
+    sheet_names: tuple[str, ...] = NEW_LEAP_ROW_SHEETS,
+) -> pd.DataFrame:
+    """Read named demand/power branch tabs as a LEAP path source.
+
+    The source workbook is deliberately kept separate from the mapping
+    workbook. Each row retains its source tab so candidate additions and
+    later removals can be audited without mutating the master mappings.
+    """
     if not workbook_path.exists():
         raise FileNotFoundError(f"Demand branch workbook not found: {workbook_path}")
-    frame = pd.read_excel(workbook_path, sheet_name=0, header=0, usecols=["Branch Path"], dtype=object)
-    paths = frame["Branch Path"].map(_normalise_path)
+    available_sheets = set(pd.ExcelFile(workbook_path).sheet_names)
+    missing_sheets = [sheet_name for sheet_name in sheet_names if sheet_name not in available_sheets]
+    if missing_sheets:
+        raise ValueError(
+            f"Branch workbook {workbook_path} is missing required sheet(s): "
+            f"{', '.join(missing_sheets)}. Available sheets: {sorted(available_sheets)}"
+        )
+
     rows: list[dict[str, Any]] = []
-    for branch_path in sorted(set(paths[paths.ne("")])):
-        if branch_path.casefold() == "branch path":
-            continue
-        segments = branch_path.split("/")
-        for depth in range(1, len(segments) + 1):
-            node = "/".join(segments[:depth])
-            rows.append(
-                {
-                    "template_file": workbook_path.name,
-                    "branch_path": node,
-                    "parent_path": "/".join(segments[: depth - 1]),
-                    "depth": depth,
-                    "leaf_label": segments[-1] if depth == len(segments) else segments[depth - 1],
-                    "is_observed_leaf": depth == len(segments),
-                }
-            )
+    for sheet_name in sheet_names:
+        frame = pd.read_excel(
+            workbook_path,
+            sheet_name=sheet_name,
+            header=0,
+            usecols=["Branch Path"],
+            dtype=object,
+        )
+        paths = frame["Branch Path"].map(_normalise_path)
+        for branch_path in sorted(set(paths[paths.ne("")])):
+            if branch_path.casefold() == "branch path":
+                continue
+            segments = branch_path.split("/")
+            for depth in range(1, len(segments) + 1):
+                node = "/".join(segments[:depth])
+                rows.append(
+                    {
+                        "template_file": workbook_path.name,
+                        "source_sheet": sheet_name,
+                        "branch_path": node,
+                        "parent_path": "/".join(segments[: depth - 1]),
+                        "depth": depth,
+                        "leaf_label": segments[-1] if depth == len(segments) else segments[depth - 1],
+                        "is_observed_leaf": depth == len(segments),
+                    }
+                )
     if not rows:
-        raise ValueError(f"No Demand Branch Path values found in {workbook_path}")
+        raise ValueError(f"No branch paths found in {workbook_path}")
     inventory = pd.DataFrame(rows).drop_duplicates()
     return (
         inventory.groupby("branch_path", as_index=False)
@@ -224,6 +252,7 @@ def read_demand_branch_inventory(workbook_path: Path) -> pd.DataFrame:
             leaf_label=("leaf_label", "first"),
             template_count=("template_file", "nunique"),
             template_files=("template_file", lambda values: "|".join(sorted(set(values)))),
+            source_sheets=("source_sheet", lambda values: "|".join(sorted(set(values)))),
             observed_as_leaf=("is_observed_leaf", "any"),
         )
         .sort_values(["depth", "branch_path"])
