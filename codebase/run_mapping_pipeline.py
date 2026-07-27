@@ -111,6 +111,17 @@ def _write_stage3_run_manifest(manifest: dict[str, object]) -> None:
     )
 
 
+def _stage3_completion_status(validation_summary: pd.DataFrame) -> str:
+    """Do not report a Stage 3 run as cleanly completed after validator errors."""
+    if (
+        not validation_summary.empty
+        and "status" in validation_summary.columns
+        and validation_summary["status"].astype(str).str.casefold().eq("error").any()
+    ):
+        return "completed_with_validation_errors"
+    return "completed"
+
+
 class _TeeWriter:
     def __init__(self, file_obj, stream):
         self._file = file_obj
@@ -1072,7 +1083,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
             f"{raw_mismatches:,} raw mismatches)"
         )
     print(f"  [timing] STAGE 3 total: {time.perf_counter() - stage3_t0:.1f}s")
-    run_manifest["status"] = "completed"
+    run_manifest["status"] = _stage3_completion_status(validation_summary)
     run_manifest["timings_seconds"]["stage3_total"] = round(
         time.perf_counter() - stage3_t0, 3
     )

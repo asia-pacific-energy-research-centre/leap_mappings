@@ -1,4 +1,9 @@
-from codebase.run_mapping_pipeline import expand_requested_stages
+import pandas as pd
+
+from codebase.run_mapping_pipeline import (
+    _stage3_completion_status,
+    expand_requested_stages,
+)
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:
@@ -16,3 +21,21 @@ def test_explicit_skip_is_honoured() -> None:
     assert expand_requested_stages(["1", "2", "3"], {"data_convert"}) == [
         "1", "2", "leap_parse", "3"
     ]
+
+
+def test_stage3_manifest_reports_validation_errors() -> None:
+    summary = pd.DataFrame([
+        {"validation_axis": "product", "status": "passed"},
+        {"validation_axis": "flow", "status": "error"},
+    ])
+
+    assert _stage3_completion_status(summary) == "completed_with_validation_errors"
+
+
+def test_stage3_manifest_keeps_completed_for_non_error_validation_results() -> None:
+    summary = pd.DataFrame([
+        {"validation_axis": "product", "status": "passed"},
+        {"validation_axis": "flow", "status": "failed"},
+    ])
+
+    assert _stage3_completion_status(summary) == "completed"

@@ -788,6 +788,14 @@ def run_common_esto_validation_workflow(
     source_frontier.to_csv(output_dir / "common_esto_source_frontier.csv", index=False)
     excluded_rollup_parents = _excluded_rollup_parents(workbook_path)
     detached_rollup_parents = _detached_rollup_parents(workbook_path)
+    try:
+        rollup_modes = (
+            load_rollup_mode_labels(Path(workbook_path))
+            if workbook_path is not None and Path(workbook_path).exists()
+            else {}
+        )
+    except Exception:
+        rollup_modes = {}
     ninth_subtotal_flow_labels = build_ninth_subtotal_esto_flow_labels(tree_df, workbook_path)
     source_specific_exclude_parents = {"NINTH": ninth_subtotal_flow_labels}
     detail_path = output_dir / "common_esto_validation.csv"
@@ -867,6 +875,7 @@ def run_common_esto_validation_workflow(
                 source_frontier=source_frontier,
                 exclude_parents=excluded_rollup_parents,
                 detached_labels=detached_rollup_parents,
+                rollup_modes=rollup_modes,
                 source_specific_exclude_parents=source_specific_exclude_parents,
             )
             grouped_axis_detail = build_validation_check_groups(axis_detail)

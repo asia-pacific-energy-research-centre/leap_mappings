@@ -2297,6 +2297,8 @@ def _resolve_to_comparison_data(
     children_map: dict[str, list[str]],
     detached_labels: set[str] | None = None,
     parent_of: dict[str, str] | None = None,
+    rollup_modes: dict[str, str] | None = None,
+    active_path: frozenset[str] | None = None,
 ) -> list[str]:
     """
     Expand any codes absent from comparison data to their tree descendants.
@@ -2308,10 +2310,10 @@ def _resolve_to_comparison_data(
 
     A NON_EXPANDING rollup re-parents a base flow's real descendants under its
     inclusive ``"<code> (including own use)"`` label rather than the base code
-    itself (see ``_common_esto_validation_children_map``). A code resolved
-    this way still means "the real value for the base code", so this falls
-    back to that inclusive sibling label -- both as a direct data hit and as
-    an alternate key into ``children_map`` -- before giving up on it.
+    itself (see ``_common_esto_validation_children_map``). The inclusive label
+    is an explicit fallback, not an ordinary graph edge: real descendants are
+    preferred, and the inclusive representation is used only when the declared
+    rollup mode is ``NON_EXPANDING`` and no descendant resolves.
 
     A DETACHED rollup is different: its own-use contributors are an
     intentionally separate accounting boundary, not folded into the ordinary
@@ -2325,30 +2327,65 @@ def _resolve_to_comparison_data(
     """
     detached_labels = detached_labels or set()
     parent_of = parent_of or {}
+    rollup_modes = rollup_modes or {}
+    active_path = active_path or frozenset()
     resolved: list[str] = []
     for code in codes:
+        if code in active_path:
+            continue
+
+        # A detached boundary is authoritative for the whole source-tree
+        # branch. Apply it before direct data hits or inclusive fallback so a
+        # NON_EXPANDING descendant cannot leak back into an ordinary ancestor.
+        ancestor = code
+        ancestor_path: set[str] = set()
+        below_detached_boundary = False
+        while ancestor and ancestor not in ancestor_path:
+            if ancestor in detached_labels:
+                below_detached_boundary = True
+                break
+            ancestor_path.add(ancestor)
+            ancestor = parent_of.get(ancestor, "")
+        if below_detached_boundary:
+            continue
+
+        next_active_path = active_path | {code}
         if code in data_codes:
             resolved.append(code)
-        elif code in children_map:
-            resolved.extend(
-                _resolve_to_comparison_data(
-                    children_map[code], data_codes, children_map, detached_labels, parent_of
-                )
-            )
-        elif parent_of.get(code) in detached_labels:
-            continue
         else:
             inclusive_variant = f"{code} (including own use)"
-            if inclusive_variant in data_codes:
-                resolved.append(inclusive_variant)
-            elif inclusive_variant in children_map:
-                resolved.extend(
-                    _resolve_to_comparison_data(
-                        children_map[inclusive_variant], data_codes, children_map,
-                        detached_labels, parent_of,
+            ordinary_children = [
+                child
+                for child in children_map.get(code, [])
+                if child != inclusive_variant
+            ]
+            descendant_resolution = _resolve_to_comparison_data(
+                ordinary_children,
+                data_codes,
+                children_map,
+                detached_labels,
+                parent_of,
+                rollup_modes,
+                next_active_path,
+            )
+            if descendant_resolution:
+                resolved.extend(descendant_resolution)
+            elif rollup_modes.get(inclusive_variant) == "NON_EXPANDING":
+                if inclusive_variant in data_codes:
+                    resolved.append(inclusive_variant)
+                elif inclusive_variant in children_map:
+                    resolved.extend(
+                        _resolve_to_comparison_data(
+                            children_map[inclusive_variant],
+                            data_codes,
+                            children_map,
+                            detached_labels,
+                            parent_of,
+                            rollup_modes,
+                            next_active_path,
+                        )
                     )
-                )
-    return resolved
+    return _dedupe_preserve_order(resolved)
 
 
 def _validate_common_esto_axis_recursive_sums(
@@ -2364,6 +2401,7 @@ def _validate_common_esto_axis_recursive_sums(
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
     detached_labels: set[str] | None = None,
+    rollup_modes: dict[str, str] | None = None,
     source_specific_exclude_parents: dict[str, set[str]] | None = None,
 ) -> pd.DataFrame:
     """
@@ -2471,7 +2509,12 @@ def _validate_common_esto_axis_recursive_sums(
                 # A zero-valued aggregate placeholder must not mask a nonzero
                 # detailed base input in this exact source slice.
                 resolved = _resolve_to_comparison_data(
-                    expected_children, sys_codes, children_map, detached_labels, parent_of
+                    expected_children,
+                    sys_codes,
+                    children_map,
+                    detached_labels,
+                    parent_of,
+                    rollup_modes,
                 )
                 if not resolved:
                     continue
@@ -2568,6 +2611,7 @@ def validate_common_esto_recursive_sums(
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
     detached_labels: set[str] | None = None,
+    rollup_modes: dict[str, str] | None = None,
     source_specific_exclude_parents: dict[str, set[str]] | None = None,
 ) -> pd.DataFrame:
     """
@@ -2595,6 +2639,7 @@ def validate_common_esto_recursive_sums(
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
                 detached_labels=detached_labels,
+                rollup_modes=rollup_modes,
                 source_specific_exclude_parents=source_specific_exclude_parents,
             ),
             _validate_common_esto_axis_recursive_sums(
@@ -2607,6 +2652,7 @@ def validate_common_esto_recursive_sums(
                 source_frontier=source_frontier,
                 exclude_parents=exclude_parents,
                 detached_labels=detached_labels,
+                rollup_modes=rollup_modes,
                 source_specific_exclude_parents=source_specific_exclude_parents,
             ),
         ],
@@ -2771,6 +2817,7 @@ def run_tree_structure_workflow(
                 label for label, mode in mode_labels.items() if mode == DETACHED_MODE
             }
         except Exception:
+            mode_labels = {}
             rollup_parents = set()
             detached_parents = set()
         ninth_subtotal_flow_labels = build_ninth_subtotal_esto_flow_labels(
@@ -2783,6 +2830,7 @@ def run_tree_structure_workflow(
             leap_var_base_year=leap_var_base_year,
             exclude_parents=rollup_parents,
             detached_labels=detached_parents,
+            rollup_modes=mode_labels,
             source_specific_exclude_parents={"NINTH": ninth_subtotal_flow_labels},
         )
         common_validation.to_csv(common_val_path, index=False)

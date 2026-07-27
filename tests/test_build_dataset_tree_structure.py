@@ -11,6 +11,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     OUTLOOK_MAPPINGS_PATH,
     _build_esto_axis_tree,
     _build_source_inconsistency_lookup,
+    _resolve_to_comparison_data,
     build_common_esto_tree,
     build_esto_tree,
     build_ninth_subtotal_esto_flow_labels,
@@ -623,6 +624,9 @@ def test_common_flow_validation_resolves_second_level_rollup_leaf_via_inclusive_
         tree,
         comparison_path,
         leap_var_base_year=2022,
+        rollup_modes={
+            "09.06.01 Gas works plants (including own use)": "NON_EXPANDING",
+        },
     )
 
     # The default (failures-only) view must show no mismatch: the leaf's
@@ -681,6 +685,9 @@ def test_common_flow_validation_excludes_detached_rollup_leaf_from_ancestor_sum(
         tree,
         comparison_path,
         leap_var_base_year=2022,
+        rollup_modes={
+            "09.08.01 Coke ovens (including own use)": "NON_EXPANDING",
+        },
     )
     buggy_check = buggy_result[buggy_result["parent_code"] == "09 Total transformation sector"]
     assert len(buggy_check) == 1
@@ -694,9 +701,83 @@ def test_common_flow_validation_excludes_detached_rollup_leaf_from_ancestor_sum(
         comparison_path,
         leap_var_base_year=2022,
         detached_labels={"09.08 Coal transformation"},
+        rollup_modes={
+            "09.08.01 Coke ovens (including own use)": "NON_EXPANDING",
+        },
     )
     fixed_check = fixed_result[fixed_result["parent_code"] == "09 Total transformation sector"]
     assert fixed_check.empty
+
+
+def test_rollup_resolution_non_expanding_leaf_breaks_base_inclusive_cycle() -> None:
+    """A declared inclusive fallback resolves once and never follows its back edge."""
+    base = "09.06.01 Gas works plants"
+    inclusive = f"{base} (including own use)"
+    children_map = {
+        base: [inclusive],
+        inclusive: [base],
+    }
+
+    assert _resolve_to_comparison_data(
+        [base],
+        {inclusive},
+        children_map,
+        rollup_modes={inclusive: "NON_EXPANDING"},
+    ) == [inclusive]
+    assert _resolve_to_comparison_data(
+        [base],
+        {inclusive},
+        children_map,
+    ) == []
+
+
+def test_rollup_resolution_non_expanding_parent_retains_extended_children() -> None:
+    """Detailed ESTO Extended children win over the alternative inclusive view."""
+    base = "09.06.02 Liquefaction/regasification plants"
+    inclusive = f"{base} (including own use)"
+    liquefaction = "09.06.02.01 Liquefaction"
+    regasification = "09.06.02.02 Regasification"
+    children_map = {
+        base: [inclusive, liquefaction, regasification],
+        inclusive: [base],
+    }
+
+    assert _resolve_to_comparison_data(
+        [base],
+        {inclusive, liquefaction, regasification},
+        children_map,
+        rollup_modes={inclusive: "NON_EXPANDING"},
+    ) == [liquefaction, regasification]
+
+
+def test_rollup_resolution_detached_boundary_excludes_direct_contributors() -> None:
+    """A direct data hit below a detached parent is not part of an ordinary sum."""
+    detached_parent = "09.08 Coal transformation"
+    contributor = "09.08.01 Coke ovens"
+
+    assert _resolve_to_comparison_data(
+        [contributor],
+        {contributor},
+        {},
+        detached_labels={detached_parent},
+        parent_of={contributor: detached_parent},
+    ) == []
+
+
+def test_rollup_resolution_detached_boundary_wins_over_descendant_mode() -> None:
+    """NON_EXPANDING metadata below a detached parent cannot restore the branch."""
+    detached_parent = "09.08 Coal transformation"
+    base = "09.08.01 Coke ovens"
+    inclusive = f"{base} (including own use)"
+
+    assert _resolve_to_comparison_data(
+        [base],
+        {inclusive},
+        {base: [inclusive], inclusive: [base]},
+        detached_labels={detached_parent},
+        parent_of={base: detached_parent},
+        rollup_modes={inclusive: "NON_EXPANDING"},
+    ) == []
 
 
 def test_build_ninth_subtotal_esto_flow_labels_maps_subtotal_sectors_to_esto_flows(tmp_path: Path) -> None:

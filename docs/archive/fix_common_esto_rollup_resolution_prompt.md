@@ -160,4 +160,3 @@ If changing status behavior, use a clear status such as `completed_with_validati
 ```text
 codex: fix rollup-aware Common ESTO validation recursion
 ```
-
