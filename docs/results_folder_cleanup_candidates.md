@@ -98,3 +98,127 @@ the kind of near-duplicate diagnostic file that task is meant to evaluate system
 vs. consolidate vs. archive may have different right answers depending on that design). Treat
 `config/archive/` pruning as a separate, lower-risk "retention policy" decision independent of
 that design work.
+
+## 2026-07-27 continuation handoff: conservative cleanup plan
+
+This section records the follow-up investigation and the agreed direction for a future agent.
+It does **not** mean that the listed files have been moved or deleted. At the time of writing,
+this repository's cleanup candidates remain in place. The user asked to proceed cautiously and
+not interrupt active work.
+
+### What was checked
+
+- All 45 Markdown files in this repository were reviewed for outstanding work, cleanup notes,
+  active prompts, and results-folder ownership.
+- The sibling `C:\Users\Work\github\leap_initialisation` repository was inspected read-only
+  because it recently performed a similar audit. Its dedicated reference is
+  `docs/prompts/repo_cleanup_and_consolidation_plan_20260723.md`.
+- Candidate paths in the tables above were rechecked against current `codebase/` and `tests/`
+  references. The confirmed-orphan candidates still had no current code references.
+- The initial inspection found an active `leap_initialisation`
+  `supply_reconciliation_workflow.py` process (PID 48596). No cleanup mutation was made while
+  it was active, because that workflow may consume the shared mappings configuration. A later
+  check found no related Python/Jupyter process. Future agents must make this check again
+  immediately before any filesystem move.
+
+### Measured current candidate inventory
+
+These measurements were taken on 2026-07-26. They are planning evidence only; re-measure before
+acting because `results/` can change with a pipeline run.
+
+| Candidate | Files | Approx. size | Proposed treatment |
+|---|---:|---:|---|
+| `results/tree_structure/anchor_diagnostics/` | 10 | 285 KB | Quarantine after confirming `anchor_reconciliation/` is the current replacement. |
+| `source_parent_anchor_MISSING_children.csv` and `_MISSING_parent_pairs.csv` | 2 | 319 KB | Quarantine as obsolete output names. |
+| `source_parent_anchor_validation_SLICE.csv` and `_SLICE_summary.csv` | 2 | 14.2 MB | Quarantine as manual slices, not regenerated outputs. |
+| `common_esto_validation_baseline_20260708.csv` and its summary | 2 | 63.2 MB | Quarantine as dated comparison snapshots; do not delete until the owner confirms no historical comparison is needed. |
+| Top-level `results/missing_mapped_esto_rows/` | 15 | 2.0 MB | Quarantine only after a content/recency comparison with `results/maintenance/missing_mapped_esto_rows/`. |
+| `common_esto_comparison_wide_rebuilt.csv` | 1 | 27.0 MB | Leave until diagnostic-consolidation design decides whether it is an archival snapshot or a redundant variant. |
+| `qa_common_esto_partial_coverage_mapping_candidates_rebuilt.csv` | 1 | 1.5 KB | Same as the preceding rebuilt variant. |
+| `results/common_esto/inverted_conservation.building/` | 4 | 2.7 MB | Strong duplicate candidate, but keep pending byte/content comparison of every file with `inverted_conservation/`. |
+| `config/archive/` workbook backups | 79 | 19.6 MB | Keep; introduce a retention policy rather than a one-off purge. |
+| Four unreferenced config candidates (`leap_results_expected_sheets.json`, `mapping_coverage_gaps.csv`, `missing_zero_branch_mapping_candidates.xlsx`, `subtotal_labels/subtotal_labels.csv`) | 4 | 327 KB | Quarantine only after one final whole-repo consumer check, including notebooks and documentation. |
+
+The confirmed-orphan and clearly redundant rows total roughly 130 MB if the dated baseline and
+rebuilt variants are included. This is useful cleanup but not a disk-emergency; correctness and
+recoverability matter more than saving the space.
+
+### Lessons from `leap_initialisation`
+
+The initialisation cleanup is a useful pattern, but it was not a blanket deletion exercise.
+Its plan classified candidates as **safe to delete**, **archive candidate**, **protected**, or
+**uncertain/human decision**. Only its highest-confidence dead-code subset was executed:
+commit `81119c0` deleted four modules after creating a backup ZIP and running the full test
+suite. That test run caught two false positives (a supposedly dead utility and a package whose
+own `__init__.py` imported apparently unused modules), and those files were restored.
+
+Apply the transferable lessons here:
+
+1. Do not equate “no obvious references” with “safe to delete.” Check code, tests, documented
+   manual workflows, and package-level imports where applicable.
+2. Keep intentional diagnostic drill-downs (for example summary -> breakdown -> lineage) even
+   if they share a subject. Consolidation should remove duplicated *views*, not useful evidence.
+3. Make consolidation additive first: create a supported primary output or a compatibility view,
+   update consumers and documentation, validate a current run, then retire old outputs.
+4. Prefer reversible handling for ignored output: a dated quarantine or external archive before
+   any deletion, plus a documented manifest of every move.
+5. For accumulating backups, use an explicit retention tool with a dry-run/preview mode. The
+   initialisation repository uses both a bounded timing-history pattern and opt-in, dry-run-first
+   history pruning. Do not silently auto-delete mapping-workbook backups.
+
+The initialisation-specific proposal to merge diagnostics across parallel economy workers does
+**not** transfer directly to this repository. The relevant part is its output-contract and
+classification discipline, not its `parallel_economy_merge.py` implementation.
+
+### Recommended execution order
+
+1. **Safety gate.** Run `git status --short`; check for active mapping or initialisation Python
+   processes; do not touch `config/`, `results/`, or code while a related workflow is active.
+   Preserve unrelated changes. This checkout already has user-owned edits to mapping code,
+   workbooks, JSON configuration, and documentation.
+2. **Create a tracked cleanup manifest.** For every candidate, record source path, replacement
+   path (if any), producing script, known consumers, size, classification, and action. Update
+   this document and `docs/archive_log.md` in the same commit as an actual move.
+3. **Conservative quarantine batch.** After rechecking the path list, move only the
+   evidence-backed orphaned tree artifacts and the stale top-level
+   `missing_mapped_esto_rows/` duplicate into a dated, clearly ignored quarantine location,
+   such as `results/_quarantine_YYYY-MM-DD/`. Do not use a recursive glob; resolve and verify
+   every absolute source and destination path first. Do not hard-delete in this batch.
+4. **Diagnostic-file design.** Build a producer/consumer inventory for the approximately 103
+   diagnostic/QA CSVs. Group them by reviewer question and identify the supported primary output,
+   optional detail/lineage outputs, one-off snapshots, and obsolete aliases. This is a separate
+   code/output-contract task, not a file-moving task.
+5. **Implement consolidation only where it is real.** Keep compatibility outputs where a script,
+   notebook, dashboard, or human procedure may consume the old name. Validate with focused tests
+   and a current relevant pipeline run before stopping production of an old diagnostic.
+6. **Retention policy.** Treat `config/archive/` separately. Design a preview/dry-run-first
+   policy (for example, retain recent backups plus periodic snapshots) and ask for confirmation
+   before applying it. These are a safety net for workbook edits, not ordinary clutter.
+7. **Final cleanup and handoff.** Only after the design and validation should rebuilt variants,
+   copy-suffixed diagnostics, and experimental inverted-conservation folders be quarantined or
+   removed. Update README links, this file, and the archive log with exact actions.
+
+### Explicitly out of scope for the first conservative batch
+
+- `config/outlook_mappings_master new*.xlsx` variants: one was recently an active review copy;
+  a human must confirm each is no longer in use.
+- Hex-named Office recovery files (`config/E0E85740`, `E2F1A260`, `6AC9DA10`, `FDC59700`, and
+  any new equivalent): leave them alone. They can reappear when Excel is opened, so moving them
+  has little practical benefit.
+- Active result directories, current `mapping_pipeline.log`, named standalone-tool outputs, and
+  the separate `inverted_conservation_variant_verification/` output.
+- Broken/unused code (`build_canonical_mapping_views.py`, `unified_name_lookup.py`) until a
+  dedicated code review verifies imports, tests, and intended manual use. Do not combine that
+  work with output cleanup.
+
+### Estimated scope and success criteria
+
+- Conservative audit + quarantine + documentation: about one working day.
+- Diagnostic-output contract/design and any compatible writer changes: roughly one to three
+  further working days, depending on current consumers and the required pipeline verification.
+
+The first phase is complete only when every moved item is recoverable, the manifest records the
+old and new paths and reason, no active workflow was disturbed, and the generated-output folder
+still has a clear current path for each routine diagnostic. The wider consolidation is complete
+only when its supported output set is documented, consumers are updated or deliberately retained,
+and a relevant current run verifies the new contract.
