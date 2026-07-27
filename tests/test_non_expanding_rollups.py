@@ -166,6 +166,22 @@ class TestScenario1AgricultureFishing:
         assert diesel_2020 == 6.0
         assert (derived["non_expanding_rollup_id"] == "nonexp_16_03_16_04_agriculture_and_fishing").all()
 
+    def test_derived_subtotals_preserve_requested_source_system(self) -> None:
+        rules = _esto_rules({"NON_EXPANDING_ROLLUP": "True"})
+        _, non_expanding = split_non_expanding_rules(rules)
+        esto_wide = pd.DataFrame(
+            [{"economy": "01AUS", "flows": "16.03 Agriculture", "products": "07.07 Gas/diesel oil", "2020": 5.0}]
+        )
+
+        derived = build_esto_non_expanding_subtotal_rows(
+            esto_wide,
+            non_expanding,
+            ["2020"],
+            source_system="ESTO_EXTENDED",
+        )
+
+        assert set(derived["source_system"]) == {"ESTO_EXTENDED"}
+
     def test_flagged_common_rows(self) -> None:
         common_rows = pd.DataFrame(
             [

@@ -380,13 +380,16 @@ def build_esto_non_expanding_subtotal_rows(
     esto_wide_df: pd.DataFrame,
     esto_non_expanding_rules_df: pd.DataFrame,
     year_columns: list[str],
+    source_system: str = "ESTO",
 ) -> pd.DataFrame:
     """Derive named ESTO subtotal rows for non-expanding ESTO rollup groups.
 
     For each enabled non-expanding ESTO rule group, sums the raw ESTO rows of
     exactly the declared contributor flows (and products where specified) into
     one derived row per economy/product/year. Products are automatic: only
-    products actually present in the contributors appear in the output.
+    products actually present in the contributors appear in the output. The
+    caller supplies the source-system identity so rows generated for ESTO
+    Extended remain separate from the ordinary ESTO comparison axis.
     """
     output_columns = [
         "economy",
@@ -447,7 +450,7 @@ def build_esto_non_expanding_subtotal_rows(
             summed["esto_product"] = rolled_product
             summed = summed.groupby(["economy", "esto_product", "year"], as_index=False)["value"].sum()
         summed["esto_flow"] = rolled_flow
-        summed["source_system"] = "ESTO"
+        summed["source_system"] = source_system
         summed["scenario"] = "historical"
         summed["non_expanding_rollup_id"] = non_expanding_rollup_id(rolled_flow)
         summed["year"] = summed["year"].astype(int)

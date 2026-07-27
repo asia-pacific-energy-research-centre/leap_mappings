@@ -999,8 +999,10 @@ The common ESTO structure is built separately for each comparison scope:
 | Scope | What it covers |
 | --- | --- |
 | `esto_leap` | LEAP and ESTO only (enabled by default) |
+| `esto_extended_leap` | LEAP and ESTO Extended only |
 | `leap_vs_ninth` | LEAP and 9th Outlook, bridged via ESTO |
 | `esto_leap_ninth` | LEAP, ESTO, and 9th Outlook (enabled by default) |
+| `esto_extended_leap_ninth` | LEAP, ESTO Extended, and 9th Outlook |
 | `esto_only` | ESTO reference only |
 
 Common row labels are generated mechanically from compressed component codes and a useful parent name where possible:
@@ -1093,6 +1095,21 @@ parent, child, and rolled rows together. The former
 it removed valid generated comparison categories.
 
 This stage is separate from Stage 2 because Stage 2 defines which comparison rows to use and can be run independently to check the structure without needing data. Stage 3 can then be re-run with new source data without rebuilding the structure.
+
+### ESTO and ESTO Extended source identity
+
+`ESTO` and `ESTO_EXTENDED` are separate source axes. The Extended input can
+contain both ordinary rows and generated rollup rows, but all rows produced
+while building its exact-row artifact must carry `source_system = ESTO_EXTENDED`.
+This is essential: Stage 3 reads ordinary ESTO and Extended ESTO inputs together,
+then admits each source only to the comparison scopes configured for that source.
+If an Extended-derived rollup is labelled `ESTO`, it is added to the ordinary
+ESTO scope as a second copy of the same rollup value.
+
+The exact-row builder therefore passes its requested source-system identity into
+`build_esto_non_expanding_subtotal_rows()`. When reviewing a regenerated
+`esto_extended_results_exact_rows.csv`, verify that derived rows with a
+non-empty `non_expanding_rollup_id` are labelled `ESTO_EXTENDED`.
 ### Stage 4 - Dashboard / comparison tools
 
 The dashboard and comparison tools consume the final common comparison dataset. They should not consume raw LEAP rows, raw 9th rows, or direct `relationship_id -> graph_id` links.

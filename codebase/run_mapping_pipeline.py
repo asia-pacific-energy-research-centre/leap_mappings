@@ -516,6 +516,7 @@ def run_esto_exact_rows_for_path(
         df,
         esto_boundary_rules,
         year_columns=year_cols,
+        source_system=source_system,
     )
     # EXPANDING-mode rolled labels (e.g. "09.01-09.02 Power sector", created
     # because NINTH/LEAP can't distinguish 09.01 Main activity producer from
@@ -537,6 +538,7 @@ def run_esto_exact_rows_for_path(
         df,
         expanding_esto_rules,
         year_columns=year_cols,
+        source_system=source_system,
     )
     non_expanding_rows_df = pd.concat(
         [non_expanding_rows_df, expanding_rows_df], ignore_index=True
