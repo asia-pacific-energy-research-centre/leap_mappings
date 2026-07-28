@@ -120,6 +120,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-025 | — | **delegated** to the sibling repos' own handover audits | `leap_dashboard` + `leap_initialisation` | — | n/a | 2026-07-28 |
 | MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010, MAPQ-027 | W2 | 2026-07-28 |
 | MAPQ-027 | P2 | `human_decision` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-028 | P2 | `deferred_active_processes` | `leap_mappings` + `leap_initialisation` + `leap_dashboard` | MAPQ-015, MAPQ-016, MAPQ-027 | W3 | 2026-07-28 |
 
 ---
 
@@ -346,6 +347,20 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Also in scope:** the third blank-fuel row, `Heat plant interim/Heat plant interim` + `Bitumen` → `09_x_heat_plants`, blank in **both** workbooks; `Bitumen` resolves to `07_x_other_petroleum_products` in 23/23 other active rows.
 - **Next action:** Human sign-off, then edit the canonical workbook directly — do **not** import from the variant, which carries 228 unwanted inactive rows.
 - **Completion criteria:** Zero active rows with a populated `ninth_sector` and a blank `ninth_fuel`; a pipeline rerun confirms the newly active mappings produce no new validation failures. This is a behaviour change, not a cosmetic edit — the rows are currently inert on the fuel axis.
+
+### MAPQ-028 — Rewrite the workbook Guide and adopt directional mapping-sheet names
+
+- **Priority / status / week:** P2 · `deferred_active_processes` · W3
+- **Owner repos:** `leap_mappings`, `leap_initialisation`, and `leap_dashboard` · **Depends on:** MAPQ-015, MAPQ-016, MAPQ-027
+- **Human decisions (2026-07-28):**
+  - Rewrite `Guide` as a concise workbook entry point and add a separate `Column reference` sheet.
+  - Rename `leap_combined_esto` → `leap_to_esto`, `ninth_pairs_to_esto_pairs` → `ninth_to_esto`, and `leap_combined_ninth` → `leap_to_ninth`.
+  - Delete the unused legacy sheets `other branches` and `deleted rows - might regret`.
+  - Describe `rollup_label_overrides` as **reserved—not currently applied**.
+- **Evidence:** The existing Guide contains stale/nonexistent names (`leap_dusplay_names`, `display_name_overrides`), omits five live/reference sheets, predates `ROLLUP_MODE` (`EXPANDING` / `NON_EXPANDING` / `DETACHED`), and describes rollup-context and cardinality behaviour that no longer matches the workbook. Cross-repo search found the three current core sheet names hard-coded throughout active `leap_mappings` and `leap_initialisation` readers; `leap_dashboard` mainly receives them as QA/display labels rather than reading the workbook directly.
+- **Why deferred:** All three repositories currently have running work. Do not rename sheets, delete sheets, or change cross-repo loader contracts until those processes have finished and each checkout has a safe implementation window.
+- **Next action:** First introduce central sheet-name constants plus temporary old-name aliases in the active loaders, then update direct readers and tests. Rename/delete workbook sheets only after both producer and consumer code accepts the new contract; update QA `source_sheet` / `mapping_sheet_to_review` labels and maintained documentation in the same coordinated change.
+- **Completion criteria:** The canonical workbook has the agreed 13-sheet order; the new Guide and Column reference accurately document every sheet and control column; no runtime code depends only on an old name; active tests in all three repositories pass; the formatting-preservation proof is repeated after the workbook edits; and compatibility aliases have an explicit retirement point.
 
 ---
 
