@@ -282,8 +282,56 @@ The following still need explicit review:
 
 - how parent-only Electricity, CHP, and Heat output rows should relate to
   detailed process children;
-- the exact Electricity Generation boundary for Other plus solid biomass;
 - the maintained location and initial contents of the stable category registry;
 - which new categories can receive defensible ESTO historical values and which
   should remain structural or LEAP/Ninth-only;
 - all proposed subtotal flags, pending the separate workbook-wide review.
+- how `Municipal solid waste non and renewable` under
+  `Electricity Generation/Processes/Others` should coexist with its renewable
+  and non-renewable sibling fuels. Do not force it to one product.
+
+## 15. Mapping implementation checkpoint: 2026-07-28
+
+The first reviewed implementation pass was applied to
+`config/outlook_mappings_master todo.xlsx`.
+
+Completed treatments:
+
+- split the new `Agriculture` and `Fishing` branches to their exact ESTO and
+  Ninth children;
+- mapped the renamed `Non energy use` and `Non specified others` branches;
+- completed the new Buildings branches;
+- repaired the shifted Buildings product block and physically removed the one
+  wrong row that would otherwise duplicate the correct Bagasse row;
+- completed the LEAP transport mappings and the non-zero, non-subtotal
+  Ninth-to-ESTO Extended transport bridge using the confirmed vehicle and drive
+  rules;
+- removed the rejected CHP/heat direct fan-out rows;
+- replaced them with one combined main-activity/autoproducer target per
+  process;
+- implemented explicit non-expanding Other + solid-biomass boundaries:
+  `09_02_04_biomass + 09_02_05_others` for CHP,
+  `09_x_04_biomass + 09_x_05_others` for heat, and
+  `09_01_06_biomass + 09_01_10_otherrenewable +
+  09_01_11_otherfuel` for electricity generation;
+- left the three detailed iron-and-steel routes absent from the Ninth axes, as
+  decided;
+- treated `_do not use` power branches as legacy and left them unmapped.
+
+The power-process identifier registry is currently explicit in
+`codebase/mapping_tools/build_esto_extended_test.py`. This prevents
+alphabetical renumbering and makes aliases share one identifier, but a later
+cleanup may move the registry to maintained configuration without changing any
+assigned identifiers.
+
+The only unresolved source pair from the supplied inventory is:
+
+```text
+Electricity Generation/Processes/Others
+  + Municipal solid waste non and renewable
+```
+
+It overlaps the separately supplied renewable and non-renewable municipal
+waste fuels. The current rollup engine has no reviewed product-only fallback
+for choosing between an aggregate fuel and its split siblings. This row stays
+unmapped until that source-boundary decision is explicit.

@@ -95,6 +95,53 @@ SPECIAL_ALREADY_MAPPED_TEMPLATE_CHILDREN = {
     ("transmission and distribution", "electricity"): "10.02 Transmission and distribution losses / 17 Electricity"
 }
 
+# Stable, append-only identifiers for detailed power-process children.
+#
+# These are deliberately explicit. The previous prototype assigned ordinals by
+# alphabetically sorting the available LEAP branches. Adding or renaming a
+# branch could therefore silently renumber every later ESTO Extended flow.
+# Aliases share one identifier; legacy ``*_do not use`` branches are excluded
+# before this registry is consulted.
+POWER_PROCESS_EXTENSION_REGISTRY = {
+    "Electricity Generation": {
+        "Coal": ("01", "Coal power"),
+        "Coal_CCUS": ("02", "Coal power CCS"),
+        "Coal_H2_blended": ("03", "Coal hydrogen blended"),
+        "Gas": ("04", "Gas power"),
+        "Gas_CCUS": ("05", "Gas power CCS"),
+        "Geothermal": ("06", "Geothermal"),
+        "Hydro": ("07", "Hydro"),
+        "Nuclear": ("08", "Nuclear"),
+        "Others": ("09", "Others"),
+        "Petroleum products": ("10", "Oil"),
+        "Solar": ("11", "Solar"),
+        "Solar CSP": ("12", "Solar CSP"),
+        "Solar PV": ("13", "Solar utility PV"),
+        "Solar rooftop": ("14", "Solar rooftop"),
+        "Solar_rooftop": ("14", "Solar rooftop"),
+        "Solid biomass": ("15", "Solid biomass"),
+        "Battery": ("16", "Storage"),
+        "Batteries": ("16", "Storage"),
+        "Distributed storage": ("16", "Storage"),
+        "Wind": ("17", "Wind"),
+        "Wind offshore": ("18", "Wind offshore"),
+    },
+    "CHP plants": {
+        "Coal CHP": ("01", "Coal CHP"),
+        "Gas CHP": ("02", "Gas CHP"),
+        "Others CHP": ("03", "Others CHP"),
+        "Petroleum products CHP": ("04", "Petroleum products CHP"),
+        "Solid Biomass CHP": ("05", "Solid biomass CHP"),
+    },
+    "Heat plants": {
+        "Coal HP": ("01", "Coal HP"),
+        "Gas HP": ("02", "Gas HP"),
+        "Others HP": ("03", "Others HP"),
+        "Petroleum products HP": ("04", "Petroleum products HP"),
+        "Solid biomass HP": ("05", "Solid biomass HP"),
+    },
+}
+
 
 #%%
 def _normalise_text(value: object) -> str:
@@ -802,6 +849,22 @@ def _existing_child_flow_match(
     return sorted(matches, key=lambda value: (_esto_code(value).count("."), value))[0] if matches else ""
 
 
+def _stable_power_child_flow(
+    component_flow: str,
+    sector_path: str,
+    child_label: str,
+) -> str:
+    """Return the reviewed stable ESTO Extended child for a power process."""
+    family = _normalise_path(sector_path).split("/")[-1]
+    family_registry = POWER_PROCESS_EXTENSION_REGISTRY.get(family, {})
+    registered = family_registry.get(_normalise_text(child_label))
+    parent_code = _esto_code(component_flow)
+    if not registered or not parent_code:
+        return ""
+    ordinal, display_label = registered
+    return f"{parent_code}.{ordinal} {display_label}"
+
+
 def build_template_driven_child_candidates(
     inventory: pd.DataFrame,
     mapping_workbook_path: Path,
@@ -837,6 +900,8 @@ def build_template_driven_child_candidates(
                 continue
             sector_path = "/".join(parts[1:process_index]) or parts[1]
             child_label = parts[process_index + 1]
+            if child_label.casefold().endswith("_do not use"):
+                continue
             if (sector_path.casefold(), child_label.casefold()) in SPECIAL_ALREADY_MAPPED_TEMPLATE_CHILDREN:
                 continue
         else:
@@ -873,7 +938,8 @@ def build_template_driven_child_candidates(
             if not parent_code:
                 continue
             existing_child = _existing_child_flow_match(existing_esto_flow_labels, parent_code, child_label)
-            proposed_flow = existing_child or f"{parent_code}.{component_index:02d} {child_label}"
+            stable_power_child = _stable_power_child_flow(component, sector_path, child_label)
+            proposed_flow = existing_child or stable_power_child or f"{parent_code}.{component_index:02d} {child_label}"
             child_status = "existing_esto_child" if existing_child else placement_status
             for item in mapped_products:
                 evidence_rows.append(
@@ -916,7 +982,13 @@ def build_template_driven_child_candidates(
                 existing_esto_flow_labels,
                 _esto_code(row["esto_component_flow"]),
                 row["leap_child_label"],
-            ) or (
+            )
+            or _stable_power_child_flow(
+                row["esto_component_flow"],
+                row["leap_parent_sector_path"],
+                row["leap_child_label"],
+            )
+            or (
                 f"{_esto_code(row['esto_component_flow'])}.{ordinal_lookup[(row['esto_component_flow'], row['leap_child_label'])]:02d} {row['leap_child_label']}"
             ),
             axis=1,
@@ -1297,6 +1369,18 @@ def build_mapping_candidates_from_template_evidence(
     ninth_esto_rows: list[dict[str, Any]] = []
     for _, evidence in template_evidence.drop_duplicates().iterrows():
         branch_path = evidence["leap_sector_path"]
+        normalised_branch_path = _normalise_path(branch_path)
+        if normalised_branch_path.startswith(
+            (
+                "Transformation/Electricity Generation/Processes/",
+                "Transformation/CHP plants/Processes/",
+                "Transformation/Heat plants/Processes/",
+            )
+        ):
+            # Detailed power mappings require producer-type target rollups and,
+            # for Other/biomass, explicit source rollups. Never recreate the
+            # old direct fan-out candidates from individual ESTO components.
+            continue
         fuel = evidence["leap_fuel_label"]
         source_path = "/".join(_normalise_path(branch_path).split("/")[1:])
         proposed_flow = evidence["proposed_child_flow"]
