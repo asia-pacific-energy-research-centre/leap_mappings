@@ -36,6 +36,13 @@ The helper operates after both datasets have passed through
 Reconstruction applies the overlay to relabelled base rows. Row order is deliberately not semantic;
 the reconstructed row set, identities, values, metadata, and source identity are exact.
 
+The implementation uses bounded hash partitions rather than materializing Python dictionaries for
+every row. Full-frame work is limited to compact integer partition IDs. Each partition builds
+null-safe, scalar-type-aware identity keys and performs a vectorized one-to-one join; only affected
+row positions are retained between partitions. The default target is approximately 100,000 rows
+per partition, and tests can provide an explicit `partition_count` without changing the existing
+DataFrame input/output API.
+
 ## Downstream semantics
 
 This representation preserves the separate `ESTO_EXTENDED` source axis required by Common ESTO
@@ -57,7 +64,9 @@ The producer and consumer paths were inspected in code. Synthetic samples verify
 - new rows and changed values represented by `upsert`;
 - former leaves represented by `delete`;
 - rollup IDs retained as part of row identity; and
-- exact reconstruction after mixed operations.
+- null identities kept distinct from literal empty/`"nan"`/`"<null>"` strings;
+- duplicate identities rejected in base, Extended, and delta inputs; and
+- exact reconstruction after mixed operations through multiple partitions.
 
 The data fixtures and live result artifacts were intentionally not scanned or rewritten. They are
 not present in this worktree, and the task excludes live-results scanning. Therefore semantic
