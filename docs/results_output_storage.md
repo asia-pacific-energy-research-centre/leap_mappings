@@ -98,8 +98,9 @@ changed by the storage-format work.
 
 1. Migrate the `leap_dashboard` loader and fixtures to the additive Common ESTO v1 contract, verify
    rendered equivalence, and only then consider retiring the legacy denormalized comparison.
-2. Test whether ESTO_EXTENDED can be represented as ESTO base rows plus a delta rather than a
-   second full dataset.
+2. Measure the exact ESTO Extended row-overlay design documented in
+   `docs/esto_extended_delta_storage_design.md` during a quiet window; semantic feasibility is
+   established, but real compression, runtime, and memory costs remain unmeasured.
 3. Add retention rules for `rollup_mode_ab_exploration/`, `common_esto/test_slice/`, and
    `esto_extended_test/`.
 4. Resolve or approve the remaining Common ESTO flow-hierarchy issue patterns before treating
