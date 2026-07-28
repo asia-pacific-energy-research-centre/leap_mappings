@@ -30,12 +30,19 @@ the compact findings view is selected.
 
 `results/common_esto/common_esto_comparison_data.csv` remains the canonical production dashboard
 input with its existing denormalized schema. It is intentionally not compressed or normalized in
-this change because `leap_dashboard` and mapping diagnostics read its labels and structural fields
-directly.
+this transition because `leap_dashboard` and mapping diagnostics read its labels and structural
+fields directly.
 
-The next storage phase should introduce a narrow fact table keyed by `common_row_id` plus a stable
-Common-row metadata table, update the dashboard loader to join them, verify rendered equivalence,
-and only then retire repeated metadata from the canonical comparison file.
+Stage 3 and the Common ESTO fast path now also publish an additive v1 output contract:
+
+- `common_esto_comparison_fact.csv.gz` contains observed values keyed by comparison scope, source,
+  economy, scenario, year, and Common-row ID.
+- `common_esto_row_metadata.csv` contains one row per comparison-scope/Common-row-ID key.
+- `common_esto_output_contract.json` records the ordered schemas, keys, row counts, byte sizes, and
+  SHA-256 values. It is promoted last and is the commit marker for the two data artifacts.
+
+The legacy comparison remains unchanged while the dashboard loader migrates to the joined
+fact/metadata representation and verifies rendered equivalence.
 
 ## Cleanup archives
 
@@ -86,8 +93,8 @@ changed by the storage-format work.
 
 ## Remaining work queue
 
-1. Normalize the Common ESTO comparison data only with coordinated `leap_dashboard` loader and
-   fixture changes.
+1. Migrate the `leap_dashboard` loader and fixtures to the additive Common ESTO v1 contract, verify
+   rendered equivalence, and only then consider retiring the legacy denormalized comparison.
 2. Test whether ESTO_EXTENDED can be represented as ESTO base rows plus a delta rather than a
    second full dataset.
 3. Add retention rules for `rollup_mode_ab_exploration/`, `common_esto/test_slice/`, and

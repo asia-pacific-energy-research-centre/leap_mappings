@@ -391,8 +391,20 @@ def test_stage3_and_validation_records_share_run_identifier(tmp_path: Path) -> N
     comparison_path = tmp_path / "comparison.csv"
     _write_comparison(comparison_path, parent_value=10.0)
     empty = pd.DataFrame()
+    contract_ready_comparison = pd.DataFrame([{
+        "comparison_scope": "all_sources", "source_system": "ESTO",
+        "economy": "20_USA", "scenario": "historical", "year": 2023,
+        "common_flow_code": "14", "common_flow_name": "Industry",
+        "common_flow_label": "14 Industry", "common_product_code": "01",
+        "common_product_name": "Parent product", "common_product_label": "01 Parent product",
+        "common_row_id": "common_parent", "common_row_basis": "exact_esto_row",
+        "is_exact_row": True, "requires_rollup": False,
+        "is_non_expanding_rollup": False, "non_expanding_rollup_id": "",
+        "rollup_mode": "", "source_aggregate_labels": "",
+        "source_aggregate_group_ids": "", "value": 10.0,
+    }])
     stage3_status = save_outputs(
-        comparison_df=pd.read_csv(comparison_path),
+        comparison_df=contract_ready_comparison,
         wide_year_df=empty,
         total_check_df=empty,
         source_coverage_check_df=empty,

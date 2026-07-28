@@ -108,15 +108,21 @@ def test_fast_path_writes_final_outputs_without_qa_artifacts(tmp_path: Path) -> 
     assert missing_map_df.empty
     assert (common_dir / "common_esto_comparison_data.csv").exists()
     assert (common_dir / "common_esto_comparison_wide.csv").exists()
+    assert (common_dir / "common_esto_comparison_fact.csv.gz").exists()
+    assert (common_dir / "common_esto_row_metadata.csv").exists()
+    assert (common_dir / "common_esto_output_contract.json").exists()
     assert (common_dir / "common_esto_output_status.csv").exists()
     assert not (common_dir / "diagnostics").exists()
     assert not (common_dir / "qa_common_esto_total_check.csv").exists()
 
     status_df = pd.read_csv(common_dir / "common_esto_output_status.csv")
-    assert status_df["record_type"].tolist() == ["fast_path_output", "fast_path_output"]
+    assert set(status_df["record_type"]) == {"fast_path_output"}
     assert set(status_df["artifact_name"]) == {
         "common_esto_comparison_data",
         "common_esto_comparison_wide",
+        "common_esto_comparison_fact",
+        "common_esto_row_metadata",
+        "common_esto_output_contract",
     }
 
 

@@ -25,6 +25,10 @@ from codebase.mapping_issue_exceptions import (
     row_is_allowed,
 )
 from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
+from codebase.mapping_tools.common_esto_output_contract import (
+    LEGACY_COMPARISON_COLUMNS,
+    write_common_esto_output_contract,
+)
 from codebase.mapping_tools.mapping_candidate_generation import (
     collapsed_path,
     generate_partial_coverage_mapping_candidates,
@@ -35,29 +39,7 @@ from codebase.mapping_tools.mapping_candidate_generation import (
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 
 #%%
-OUTPUT_COLUMNS = [
-    "comparison_scope",
-    "source_system",
-    "economy",
-    "scenario",
-    "year",
-    "common_flow_code",
-    "common_flow_name",
-    "common_flow_label",
-    "common_product_code",
-    "common_product_name",
-    "common_product_label",
-    "common_row_id",
-    "common_row_basis",
-    "is_exact_row",
-    "requires_rollup",
-    "is_non_expanding_rollup",
-    "non_expanding_rollup_id",
-    "rollup_mode",
-    "source_aggregate_labels",
-    "source_aggregate_group_ids",
-    "value",
-]
+OUTPUT_COLUMNS = LEGACY_COMPARISON_COLUMNS
 ESTO_COMPONENT_LINEAGE_COLUMNS = [
     "comparison_scope",
     "source_system",
@@ -1328,8 +1310,9 @@ def save_outputs(
     resolved_timestamp = run_timestamp_utc or datetime.now(timezone.utc).isoformat()
     resolved_run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     written_paths = []
+    legacy_comparison_df = drop_internal_common_columns(comparison_df)
     written_paths.append(write_csv_with_locked_fallback(
-        drop_internal_common_columns(comparison_df),
+        legacy_comparison_df,
         error_tagged_path(output_dir / "common_esto_comparison_data.csv", error_occurred),
     ))
     written_paths.append(write_csv_with_locked_fallback(
@@ -1357,6 +1340,13 @@ def save_outputs(
             esto_component_lineage_df,
             error_tagged_path(esto_component_lineage_output_path, error_occurred),
         ))
+    _, contract_paths = write_common_esto_output_contract(
+        legacy_comparison_df=legacy_comparison_df,
+        output_dir=output_dir,
+        run_id=resolved_run_id,
+        run_timestamp_utc=resolved_timestamp,
+    )
+    written_paths.extend(contract_paths)
     # This legacy output was produced by an unreliable label-based subtotal
     # filter. Remove it so a stale file cannot be mistaken for current QA.
     legacy_filtered_path = output_dir / "common_esto_subtotal_rows_filtered.csv"
@@ -1409,9 +1399,10 @@ def save_fast_path_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     resolved_timestamp = run_timestamp_utc or datetime.now(timezone.utc).isoformat()
     resolved_run_id = run_id or datetime.now(timezone.utc).strftime("common_esto_fast_path_%Y%m%dT%H%M%S%fZ")
+    legacy_comparison_df = drop_internal_common_columns(comparison_df)
     written_paths = [
         write_csv_with_locked_fallback(
-            drop_internal_common_columns(comparison_df),
+            legacy_comparison_df,
             output_dir / "common_esto_comparison_data.csv",
         ),
         write_csv_with_locked_fallback(
@@ -1419,6 +1410,13 @@ def save_fast_path_outputs(
             output_dir / "common_esto_comparison_wide.csv",
         ),
     ]
+    _, contract_paths = write_common_esto_output_contract(
+        legacy_comparison_df=legacy_comparison_df,
+        output_dir=output_dir,
+        run_id=resolved_run_id,
+        run_timestamp_utc=resolved_timestamp,
+    )
+    written_paths.extend(contract_paths)
     status_df = pd.DataFrame([
         {
             "run_id": resolved_run_id,
