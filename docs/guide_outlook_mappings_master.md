@@ -14,6 +14,32 @@ Ground rules:
   file on disk — unsaved buffers have burned us (a "fixed" sheet that was never saved).
 - `config/E0E85740`-style files and `~$outlook_mappings_master.xlsx` are Excel lock artifacts;
   ignore them.
+- Boolean control columns must contain real Boolean values and display them as
+  Excel in-cell checkboxes throughout the populated table. This includes
+  `*_is_subtotal`, `duplicate_to_remove`, rollup `include`, and any other
+  maintained true/false control column. Do not leave literal `True` or `False`
+  text visible beside checkbox-formatted rows.
+
+### Checkbox preservation when adding rows
+
+Writing a Boolean value is not enough to create the workbook's checkbox
+representation. When adding or inserting mapping rows:
+
+1. identify an existing, correctly formatted row on the same sheet;
+2. copy the complete cell formatting and checkbox metadata for every Boolean
+   column into the new row;
+3. set the copied cell to an actual Boolean value, not the strings `"True"` or
+   `"False"` and not a checkbox glyph;
+4. save and reopen the workbook;
+5. visually verify the edited area and confirm that every populated Boolean
+   cell renders as a checkbox.
+
+Do not assume that copying values, number formats, data validation, or ordinary
+cell styles alone preserves an in-cell checkbox. Copy the proven checkbox cell
+representation used by the workbook. If the selected spreadsheet library
+cannot preserve or create it, stop before editing the maintained workbook and
+use Excel or another lossless route. Mixed literal Booleans and checkboxes in
+one control column are an incomplete workbook edit.
 
 ## 1. The sheets at a glance
 
@@ -250,6 +276,8 @@ Restrictions:
      equals the sum of the components from the ESTO balance.
    - `results/tree_structure/esto_tree.csv` and `results/tree_structure/common_esto_tree.csv`
      include the rolled label when `parent_flow_label` / `child_flow_labels` are populated.
+   - all populated Boolean control cells in the edited rows display as
+     checkboxes after save and reopen; no literal `True` or `False` is visible.
 
 ### 6a. Reviewed mapping-change lifecycle
 

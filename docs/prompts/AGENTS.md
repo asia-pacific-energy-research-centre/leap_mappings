@@ -18,6 +18,17 @@ prompt into a current decision without re-measuring them.
 - Require source schema verification and `git status --short` before edits.
 - Prefer searchable symbol names to line numbers.
 - Preserve unrelated changes and require reviewed workbook decisions.
+- For any prompt that can add or edit rows in a mapping workbook, require all
+  maintained Boolean columns to remain real Boolean cells displayed as Excel
+  in-cell checkboxes. New rows must copy the complete checkbox cell
+  formatting/metadata from an existing row on the same sheet before their
+  Boolean value is set. A plain displayed `True` or `False` is a formatting
+  failure, even when the underlying value is logically correct.
+- Require a post-save, post-reopen visual check covering every edited Boolean
+  column. If the editing library cannot preserve or create the workbook's
+  checkbox representation, stop and use a proven formatting-preserving route
+  or request a manual Excel edit; do not leave mixed checkboxes and literal
+  Boolean text in one column.
 
 ## Archiving prompts
 

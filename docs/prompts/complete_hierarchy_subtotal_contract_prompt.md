@@ -453,6 +453,17 @@ changes only after explicit approval, using exact row identities and a
 formatting-preserving workbook path. Physically remove rejected mappings;
 do not retain incorrect relationships as inactive guardrails.
 
+All Boolean mapping columns must remain actual Boolean values displayed as
+Excel in-cell checkboxes. When a reviewed write adds rows or changes Boolean
+cells, copy the complete checkbox representation from a correctly formatted
+cell on the same sheet before setting the value. Copying only `True`/`False`,
+ordinary styles, or data validation is not sufficient. After saving, reopen
+and visually inspect every edited Boolean column. Any literal displayed
+`True`/`False`, or a mixture of literal Booleans and checkboxes in the same
+populated column, is a failed workbook write. If the editing library cannot
+preserve the checkbox representation, stop and use a proven lossless Excel
+editing route.
+
 ### Phase 6 — Audit and redesign subtotal exceptions
 
 Audit:
@@ -615,6 +626,9 @@ The work is complete only when:
   unexplained regression;
 - approved workbook edits preserve layout, formatting, formulas, validations,
   filters, and exact mapping identity;
+- every populated maintained Boolean cell in edited mapping rows displays as
+  an in-cell checkbox after save and reopen, with no literal `True`/`False`
+  remaining in checkbox columns;
 - all targeted tests and agreed end-to-end checks pass, with pre-existing
   failures documented separately.
 
