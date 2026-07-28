@@ -4,6 +4,13 @@ If you're new to this repo, read in this order: root `README.md` → `mappings_s
 `guide_outlook_mappings_master.md`. Everything else here is reference material or a working
 backlog, not required reading up front.
 
+## Work queue and handover
+
+| File | What it covers |
+|---|---|
+| [`work_queue.md`](work_queue.md) | **Current work starts here.** Dated repository/worktree status, prioritized queue, and four-week handover plan. |
+| [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions. |
+
 ## System design and reference
 
 | File | What it covers |
