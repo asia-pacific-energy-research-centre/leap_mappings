@@ -171,6 +171,35 @@ template-backed, update the resolver deliberately to use the reviewed
 per-economy template set and add focused coverage for differences between
 economies.
 
+The following separates the current source of structural authority from the
+archived Stage 0 resolver's present behavior:
+
+```mermaid
+flowchart TD
+    CHANGE["LEAP structural change in an economy"]
+    EXPORT["Refresh that economy's LEAP export template"]
+    AUTHORITY["Per-economy templates are the current structural authority"]
+    INITCHECK["Initialisation validates paths, logical keys, and import IDs"]
+    STAGE0["Archived Stage 0 maintenance resolver"]
+    RETIRED{"Retired full-model export found?"}
+    PATHS["No: infer subtotal structure from active mapping paths"]
+    LEGACY["Yes: read the legacy workbook"]
+    LIMIT["Current limitation: Stage 0 is not template-backed"]
+    FUTURE["MAPQ-032: resolve and compare reviewed per-economy templates"]
+    REVIEW["Review missing paths, new leaves, subtotal changes, and cardinality"]
+
+    CHANGE --> EXPORT --> AUTHORITY --> INITCHECK
+    STAGE0 --> RETIRED
+    RETIRED -- "No in current checkout" --> PATHS --> LIMIT
+    RETIRED -- "Only if a legacy file is restored" --> LEGACY --> LIMIT
+    LIMIT -. "planned replacement" .-> FUTURE
+    AUTHORITY -. "future Stage 0 input" .-> FUTURE --> REVIEW
+```
+
+The dotted route is planned work, not a claim that Stage 0 already consumes the
+template set. Until that resolver is implemented, mapping-path inference cannot
+prove that a mapped branch exists in every economy's real LEAP area.
+
 See the current template inventory and retirement record in
 [`leap_initialisation/data/README.md`](../../leap_initialisation/data/README.md#full-model-exportxlsx-retired-legacy-filename)
 and

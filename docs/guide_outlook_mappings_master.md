@@ -251,6 +251,49 @@ Restrictions:
    - `results/tree_structure/esto_tree.csv` and `results/tree_structure/common_esto_tree.csv`
      include the rolled label when `parent_flow_label` / `child_flow_labels` are populated.
 
+### 6a. Reviewed mapping-change lifecycle
+
+Manual edits and computer-generated candidates converge on the same semantic
+and pipeline checks. Generated candidates first have a narrower eligibility
+gate: a candidate is evidence for review and never writes to the workbook
+automatically.
+
+```mermaid
+flowchart TD
+    FINDING["Manual finding or review-only candidate"]
+    GENERATED{"Computer-generated candidate?"}
+    EVIDENCE{"Complete, high-confidence, non-zero, independently supported axes?"}
+    QA["Keep in QA as incomplete or ambiguous"]
+    SEMANTICS["Review hierarchy, subtotal scope, siblings, and external definitions"]
+    EXISTING{"Would this add another target to an already-mapped source pair?"}
+    CARDINALITY{"Is the many-target relationship intentional and fully allocated?"}
+    DECIDE["Record the human decision and intended mapping sheet"]
+    EDIT["Edit and save outlook_mappings_master.xlsx"]
+    STAGE0["Run Stage 0 maintenance"]
+    PIPELINE["Run Stages 1-3"]
+    CHECK["Inspect cardinality, unresolved rollups, hierarchy, and value preservation"]
+    PASS{"All relevant checks pass?"}
+    ACCEPT["Keep the relationship"]
+    REVISE["Revise or remove the attempted relationship; preserve review evidence"]
+
+    FINDING --> GENERATED
+    GENERATED -- "Yes" --> EVIDENCE
+    EVIDENCE -- "No" --> QA
+    EVIDENCE -- "Yes" --> SEMANTICS
+    GENERATED -- "No: human-proposed edit" --> SEMANTICS
+    SEMANTICS --> EXISTING
+    EXISTING -- "No" --> DECIDE
+    EXISTING -- "Yes" --> CARDINALITY
+    CARDINALITY -- "No or unresolved" --> QA
+    CARDINALITY -- "Yes" --> DECIDE
+    DECIDE --> EDIT --> STAGE0 --> PIPELINE --> CHECK --> PASS
+    PASS -- "Yes" --> ACCEPT
+    PASS -- "No" --> REVISE --> SEMANTICS
+```
+
+Rejected relationships belong in QA evidence, decision notes, or Git history.
+Do not retain them as inactive guardrail rows in a maintained mapping sheet.
+
 ## 7. Known open edges (2026-07-09)
 
 - **NINTH rolled source rows** (`09_08_coal_transformation_incl_own_use` etc.) can reproduce
