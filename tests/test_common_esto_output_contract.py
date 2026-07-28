@@ -199,6 +199,32 @@ def test_manifest_matches_published_artifacts(tmp_path: Path) -> None:
         assert record["sha256"] == _sha256(artifact_path)
 
 
+def test_manifest_references_selected_hierarchy_subtotal_contract(tmp_path: Path) -> None:
+    structural_manifest = tmp_path / "structural_manifest.json"
+    structural_manifest.write_text(
+        json.dumps({
+            "contract_name": "aperc_hierarchy_subtotal_contract",
+            "schema_version": "hierarchy_subtotal_contract_v1",
+            "build_id": "structural-build-1",
+            "validation_result": "passed",
+        }),
+        encoding="utf-8",
+    )
+
+    manifest, _ = write_common_esto_output_contract(
+        legacy_comparison_df=_legacy_comparison(),
+        output_dir=tmp_path / "common",
+        run_id="run_1",
+        run_timestamp_utc="2026-07-28T00:00:00+00:00",
+        structural_contract_manifest_path=structural_manifest,
+    )
+
+    reference = manifest["hierarchy_subtotal_contract"]
+    assert reference["build_id"] == "structural-build-1"
+    assert reference["schema_version"] == "hierarchy_subtotal_contract_v1"
+    assert reference["manifest_sha256"] == _sha256(structural_manifest)
+
+
 def test_failed_atomic_promotion_restores_previous_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

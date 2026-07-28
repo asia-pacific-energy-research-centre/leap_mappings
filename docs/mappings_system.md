@@ -1310,6 +1310,35 @@ The maintenance workflow builds hierarchical tree structures for all four datase
 
 Tree CSV columns: `dataset`, `axis`, `code`, `label`, `level`, `parent_code`, `is_leaf`, `is_subtotal`. `is_subtotal` is derived from tree structure (node has children), not the data's mapping-context flag.
 
+### Canonical hierarchy/subtotal contract
+
+MAPQ-030 adds a separate versioned structural contract under
+`results/hierarchy_subtotal_contract/current/`. It is owned by
+`leap_mappings` and consumed by the dashboard and initialisation repositories.
+Its normalized adapters cover ESTO, Ninth, the available LEAP structure, ESTO
+Extended, and Common ESTO. Dataset parsing stays in adapters; the core
+classifier has no dataset-specific branches.
+
+The structural rule is:
+
+```text
+pair_is_subtotal = any(axis_node_is_structural_parent)
+```
+
+This rule is independent of numerical additivity. Ninth parents such as
+`09_06_gas_processing_plants` and `09_08_coal_transformation` remain
+structural subtotals when their published values do not reconcile with
+declared children. Those contexts are retained as failed value-conformance
+diagnostics.
+
+Ordinary hierarchy edges are serialized separately from additive synthetic
+rollups, aliases, expanding rollups, non-expanding replacements, detached
+diagnostic boundaries, and graph-generated comparison categories. The Common
+ESTO output manifest references the selected structural build rather than
+placing component-grain hierarchy data in its observed-row metadata member.
+See `hierarchy_subtotal_contract_reference.md` for the schema and
+`hierarchy_subtotal_contract_diagnosis.md` for the migration inventory.
+
 ### Anchor reconciliation against converted outputs (`reconcile_anchor_validation.py`)
 
 `codebase/mapping_tools/reconcile_anchor_validation.py` **replaces the earlier

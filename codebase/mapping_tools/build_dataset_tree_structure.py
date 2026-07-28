@@ -392,8 +392,11 @@ def _ninth_sector_tree(df: pd.DataFrame, subtotal_sector_codes: set[str]) -> pd.
     Level is determined by how many non-'x' sector columns a row uses.
     Node code: slash-joined non-'x' values, e.g. '09_electricity/09_01_main_activity'.
 
-    is_subtotal is True when the node's full path appears in subtotal_sector_codes,
-    which is derived from subtotal_results in the source data.
+    ``subtotal_sector_codes`` is retained as source evidence for callers that
+    still inspect it, but structural subtotal status is determined only after
+    the complete edge set is built: every node with a declared child is a
+    subtotal.  ``subtotal_results`` is period-specific value evidence and must
+    not erase a declared parent-child relationship.
     """
     seen: dict[str, dict] = {}
 
@@ -419,7 +422,7 @@ def _ninth_sector_tree(df: pd.DataFrame, subtotal_sector_codes: set[str]) -> pd.
                 "label": segments[depth - 1],
                 "level": depth,
                 "parent_code": parent_code,
-                "is_subtotal": code in subtotal_sector_codes,
+                "is_subtotal": False,
             }
 
     if not seen:
@@ -428,6 +431,7 @@ def _ninth_sector_tree(df: pd.DataFrame, subtotal_sector_codes: set[str]) -> pd.
     result = pd.DataFrame(seen.values())
     leaf_mask = ~result["code"].isin(result["parent_code"].unique())
     result["is_leaf"] = leaf_mask
+    result["is_subtotal"] = ~leaf_mask
     return result[TREE_COLS].reset_index(drop=True)
 
 
@@ -490,9 +494,9 @@ def build_ninth_tree(
     """
     Build 9th Edition sector and fuel hierarchy from the balance data CSV.
 
-    is_subtotal is derived solely from the subtotal_results column in the source
-    data: a node is marked True if subtotal_results is True for any row with that
-    sector path or fuel code across all economies and scenarios.
+    Structural subtotal status is derived from declared hierarchy edges.
+    ``subtotal_layout`` and ``subtotal_results`` remain source evidence for
+    value-period diagnostics; neither field defines structural parenthood.
     """
     df = data_df.copy() if data_df is not None else pd.read_csv(data_csv_path, dtype=object)
     subtotal_sector_codes, subtotal_fuel_codes = _build_ninth_subtotal_results_sets(df)

@@ -278,6 +278,7 @@ def write_common_esto_output_contract(
     output_dir: Path,
     run_id: str,
     run_timestamp_utc: str,
+    structural_contract_manifest_path: Path | None = None,
 ) -> tuple[dict[str, object], list[Path]]:
     """Write the fact, metadata, and commit-marker manifest as one transaction.
 
@@ -331,6 +332,25 @@ def write_common_esto_output_contract(
                 len(metadata_df),
             ),
         }
+        if structural_contract_manifest_path is not None:
+            structural_manifest_path = Path(structural_contract_manifest_path)
+            if not structural_manifest_path.exists():
+                raise FileNotFoundError(
+                    "Selected hierarchy/subtotal contract manifest does not exist: "
+                    f"{structural_manifest_path}"
+                )
+            structural_manifest = json.loads(
+                structural_manifest_path.read_text(encoding="utf-8")
+            )
+            if structural_manifest.get("validation_result") != "passed":
+                raise ValueError("Selected hierarchy/subtotal contract is invalid")
+            manifest["hierarchy_subtotal_contract"] = {
+                "contract_name": structural_manifest.get("contract_name", ""),
+                "schema_version": structural_manifest.get("schema_version", ""),
+                "build_id": structural_manifest.get("build_id", ""),
+                "manifest_path": str(structural_manifest_path.resolve()),
+                "manifest_sha256": _sha256(structural_manifest_path),
+            }
         staged_manifest.write_text(
             json.dumps(manifest, indent=2, sort_keys=False) + "\n",
             encoding="utf-8",

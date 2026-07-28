@@ -14,6 +14,7 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
     _resolve_to_comparison_data,
     build_common_esto_tree,
     build_esto_tree,
+    build_ninth_tree,
     build_ninth_subtotal_esto_flow_labels,
     _load_rollup_hierarchy,
     validate_common_esto_recursive_sums,
@@ -39,6 +40,32 @@ def _write_mapping_workbook(
             "leap_sector_name_full_path", "raw_leap_fuel_name",
             "esto_flow", "esto_product",
         ]).to_excel(writer, sheet_name="leap_combined_esto", index=False)
+
+
+def test_ninth_structural_parenthood_does_not_depend_on_subtotal_results() -> None:
+    """Declared 09.06/09.08 parents remain subtotals when value flags are false."""
+    rows = []
+    for parent, child in [
+        ("09_06_gas_processing_plants", "09_06_01_gas_processing"),
+        ("09_08_coal_transformation", "09_08_01_coke_ovens"),
+    ]:
+        rows.append({
+            "sectors": parent,
+            "sub1sectors": child,
+            "sub2sectors": "x",
+            "sub3sectors": "x",
+            "sub4sectors": "x",
+            "fuels": "08_gas",
+            "subfuels": "x",
+            "subtotal_layout": False,
+            "subtotal_results": False,
+        })
+
+    tree = build_ninth_tree(data_df=pd.DataFrame(rows))
+    sectors = tree[tree["axis"].eq("sector")].set_index("code")
+
+    for parent in ["09_06_gas_processing_plants", "09_08_coal_transformation"]:
+        assert bool(sectors.loc[parent, "is_subtotal"])
 
 
 def test_esto_axis_tree_splices_synthetic_rollup_node() -> None:

@@ -148,7 +148,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-027 | P2 | `human_decision` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
 | MAPQ-028 | P2 | `deferred_active_processes` | `leap_mappings` + `leap_initialisation` + `leap_dashboard` | MAPQ-015, MAPQ-016, MAPQ-027 | W3 | 2026-07-28 |
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
-| MAPQ-030 | P1 | `deferred_human_review` | `leap_mappings` | MAPQ-029, MAPQ-031 | later | 2026-07-28 |
+| MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
 
 ---
@@ -410,12 +410,24 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets
 
-- **Priority / status / timing:** P1 · `deferred_human_review` · after the current ESTO Extended mapping work has a stable workbook base
+- **Priority / status / timing:** P1 · `contract_and_review_ready` · human hierarchy review and workbook approval required
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-029, MAPQ-031
 - **Problem:** Current `leap_is_subtotal`, `ninth_pair_is_subtotal`, and `esto_pair_is_subtotal` values contain historical assumptions and mistakes. Existing QA behaviour and decision-log descriptions must not be read as approval of those classifications.
 - **Scope:** Re-derive subtotal status for every row in `leap_combined_esto`, `ninth_pairs_to_esto_pairs`, and `leap_combined_ninth`, including parent/child and rollup-generated targets. Review coherent sibling groups together rather than applying bulk inference one cell at a time.
 - **Safety:** Start from a frozen, backed-up workbook; prove formatting-preserving round-trip behaviour first; produce a review table of proposed changes; apply only reviewed classifications; and compare mapping cardinality and additive frontiers before and after.
 - **Completion criteria:** Every subtotal flag has an auditable hierarchy basis; no partial sibling group is classified inconsistently; Stage 0 subtotal QA is reviewed rather than merely empty; and Stages 1–3 pass source-total, hierarchy, and frontier checks.
+- **2026-07-28 implementation:** Added the adapter-based
+  `hierarchy_subtotal_contract_v1`, strict producer/consumer loaders, a separate
+  value-conformance member, real `09.06`/`09.08` evidence, and a cell-level
+  review workbook. The review currently contains 9,121 canonical pairs, 3,410
+  proposed cell changes, 520 current cross-sheet conflicts, and 1,055
+  unresolved pairs. No maintained workbook cells were written.
+- **Next decision:** Review the bounded unresolved queue, beginning with the
+  missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
+  sibling groups before any workbook application. See
+  `hierarchy_subtotal_contract_diagnosis.md`,
+  `hierarchy_subtotal_contract_reference.md`, and
+  `hierarchy_subtotal_contract_verification_20260728.md`.
 
 ### MAPQ-031 — Build complete ESTO Extended mappings from the new LEAP rows
 
