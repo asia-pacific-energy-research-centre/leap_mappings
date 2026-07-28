@@ -56,7 +56,7 @@ raw-source anchor inputs.
 The current fast-path workflow does not include ESTO Extended among its cached sources, so no
 fast-path behavior is changed by this investigation.
 
-## Evidence and limits
+## Evidence
 
 The producer and consumer paths were inspected in code. Synthetic samples verify:
 
@@ -68,26 +68,23 @@ The producer and consumer paths were inspected in code. Synthetic samples verify
 - duplicate identities rejected in base, Extended, and delta inputs; and
 - exact reconstruction after mixed operations through multiple partitions.
 
-The data fixtures and live result artifacts were intentionally not scanned or rewritten. They are
-not present in this worktree, and the task excludes live-results scanning. Therefore semantic
-feasibility is established, but the real compression ratio and runtime cost are not yet measured.
+The 2026-07-28 isolated measurement used matching Stage 3 exact-row artifacts without modifying
+the live checkout. The 5,320,932-row Extended file was 24,448,125 compressed bytes. Its exact
+552,126-row delta (338,436 deletes and 213,690 upserts) was 3,445,322 bytes, or 14.092% of the
+full file. Exact reconstruction passed a bounded identity-and-value comparison across every row.
+Reading took 14.726 seconds, delta construction 84.585 seconds, and reconstruction plus comparison
+129.897 seconds.
 
-## Required quiet-window measurement before changing defaults
+## Remaining requirements before changing defaults
 
-During a future quiet window:
+The isolated measurement completes the storage-size and exact-reconstruction gates. Before a
+default change:
 
-1. Regenerate the existing base and Extended exact-row gzip files with the same pipeline run.
-2. Build the overlay from those two finalized frames without replacing either file.
-3. Record inherited, upsert, delete, and value-change row counts.
-4. Write the overlay as gzip CSV and compare its compressed size with the current full Extended
-   gzip file.
-5. Reconstruct Extended, sort both frames by the full row identity, and require exact equality of
-   every column and value.
-6. Run the existing Stage 3 application once with the full Extended file and once with the
+1. Run the existing Stage 3 application once with the full Extended file and once with the
    reconstructed frame; require identical Common ESTO rows and totals for both Extended scopes.
-7. Measure reconstruction wall time and peak memory. The change is worthwhile only if the storage
-   reduction is material and the extra in-memory copy does not worsen Stage 3 reliability.
-8. Retain the full-file path as a fallback during any later migration and add a manifest tying the
+2. Measure peak memory in that Stage 3 integration; the measured wall time is acceptable, but the
+   extra in-memory copy must not worsen reliability.
+3. Retain the full-file path as a fallback during migration and add a manifest tying the
    delta to the exact base artifact identity and hash.
 
-No default output or consumer should change until all eight checks pass.
+No default output or consumer should change until these checks pass.

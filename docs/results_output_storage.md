@@ -94,13 +94,42 @@ most diagnosed rows to children intentionally obscured or replaced by `NON_EXPAN
 work. They are preserved in `results/tree_structure/common_esto_validation*.csv` and are not
 changed by the storage-format work.
 
+## Verified 2026-07-28 output-contract run
+
+An isolated Stage 2/3 run verified the additive Common ESTO contract against the corrected
+non-expanding frontier:
+
+- the legacy comparison was 975,673,793 bytes;
+- the contract fact, metadata, and manifest totalled 58,162,083 bytes;
+- the contract therefore saved 917,511,710 bytes (94.04%);
+- the fact contained 3,952,646 rows and metadata contained 6,173 rows;
+- member sizes and SHA-256 hashes matched the manifest;
+- fact keys were unique and the non-expanding frontier QA had zero violations.
+
+The strict dashboard loader reconstructed exactly the legacy rows selected for `20_USA` and
+`02_BD` (462,940 rows). Full isolated renders also matched exactly: 390 charts and 3,427 traces,
+with equal manifests, page assignments, sign summaries, normalized series, and zero page-noise
+flags. The contract remains explicit opt-in while the legacy output is retained for rollback.
+
+The real ESTO Extended overlay measurement also completed on the isolated exact-row artifacts:
+
+| Artifact | Rows | Compressed size |
+|---|---:|---:|
+| ESTO base | 5,445,678 | 24,231,019 bytes |
+| ESTO Extended | 5,320,932 | 24,448,125 bytes |
+| Exact delta | 552,126 | 3,445,322 bytes |
+
+The delta contains 338,436 deletes and 213,690 upserts. It is 14.092% of the full compressed
+Extended artifact, an 85.908% reduction for that recurring file. Exact reconstruction was
+independently checked by bounded identity partitions. Reading took 14.726 seconds, delta
+construction 84.585 seconds, and reconstruction plus comparison 129.897 seconds.
+
 ## Remaining work queue
 
-1. Migrate the `leap_dashboard` loader and fixtures to the additive Common ESTO v1 contract, verify
-   rendered equivalence, and only then consider retiring the legacy denormalized comparison.
-2. Measure the exact ESTO Extended row-overlay design documented in
-   `docs/esto_extended_delta_storage_design.md` during a quiet window; semantic feasibility is
-   established, but real compression, runtime, and memory costs remain unmeasured.
+1. Run the opt-in Common ESTO contract through one or two normal publication cycles before
+   considering retirement of the legacy denormalized comparison.
+2. Add base-artifact hash binding and a fallback path before making the ESTO Extended delta the
+   default recurring representation.
 3. Add retention rules for `rollup_mode_ab_exploration/`, `common_esto/test_slice/`, and
    `esto_extended_test/`.
 4. Resolve or approve the remaining Common ESTO flow-hierarchy issue patterns before treating
