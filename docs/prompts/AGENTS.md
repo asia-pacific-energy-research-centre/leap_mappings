@@ -20,15 +20,17 @@ prompt into a current decision without re-measuring them.
 - Preserve unrelated changes and require reviewed workbook decisions.
 - For any prompt that can add or edit rows in a mapping workbook, require all
   maintained Boolean columns to remain real Boolean cells displayed as Excel
-  in-cell checkboxes. New rows must copy the complete checkbox cell
-  formatting/metadata from an existing row on the same sheet before their
-  Boolean value is set. A plain displayed `True` or `False` is a formatting
-  failure, even when the underlying value is logically correct.
+  in-cell checkboxes. New rows must copy only the checkbox capability from a
+  clean existing Boolean cell on the same sheet, while retaining the ordinary
+  unfilled style of surrounding cells. Each required Boolean cell must contain
+  `True` or `False`; blanks are not acceptable on complete active rows.
 - Require a post-save, post-reopen visual check covering every edited Boolean
   column. If the editing library cannot preserve or create the workbook's
   checkbox representation, stop and use a proven formatting-preserving route
   or request a manual Excel edit; do not leave mixed checkboxes and literal
-  Boolean text in one column.
+  Boolean text in one column. Reject black/solid fills, hidden-text number
+  formats, font masking, or any other extra formatting in Boolean cells; the
+  checkbox is the only special presentation.
 
 ## Archiving prompts
 

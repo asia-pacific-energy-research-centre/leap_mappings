@@ -455,14 +455,15 @@ do not retain incorrect relationships as inactive guardrails.
 
 All Boolean mapping columns must remain actual Boolean values displayed as
 Excel in-cell checkboxes. When a reviewed write adds rows or changes Boolean
-cells, copy the complete checkbox representation from a correctly formatted
-cell on the same sheet before setting the value. Copying only `True`/`False`,
-ordinary styles, or data validation is not sufficient. After saving, reopen
-and visually inspect every edited Boolean column. Any literal displayed
-`True`/`False`, or a mixture of literal Booleans and checkboxes in the same
-populated column, is a failed workbook write. If the editing library cannot
-preserve the checkbox representation, stop and use a proven lossless Excel
-editing route.
+cells, copy only the checkbox capability from a clean cell on the same sheet
+before setting the value; do not copy accidental fills or masking formats.
+Every required cell must contain `True` or `False`, not a blank. After saving,
+reopen and visually inspect every edited Boolean column. Literal displayed
+Booleans mixed with checkboxes, black or solid-filled Boolean cells,
+hidden-value number formats, font masking, or blanks on complete active rows
+are failed workbook writes. If the editing library cannot preserve the
+checkbox representation without extra formatting, stop and use a proven
+lossless Excel editing route.
 
 ### Phase 6 — Audit and redesign subtotal exceptions
 
@@ -627,8 +628,8 @@ The work is complete only when:
 - approved workbook edits preserve layout, formatting, formulas, validations,
   filters, and exact mapping identity;
 - every populated maintained Boolean cell in edited mapping rows displays as
-  an in-cell checkbox after save and reopen, with no literal `True`/`False`
-  remaining in checkbox columns;
+  an in-cell checkbox after save and reopen, with no black/solid fills, masked
+  values, literal Boolean text, or required Boolean blanks;
 - all targeted tests and agreed end-to-end checks pass, with pre-existing
   failures documented separately.
 
