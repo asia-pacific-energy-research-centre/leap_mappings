@@ -64,8 +64,9 @@ Active documentation being developed:
 - The former transfer-maintenance pair
   `codebase/scrapbook/transfers_mapping_exploration.py` /
   `codebase/transfers_workflow.py` is not present in this repository. Treat
-  references to it as legacy history; do not recreate or run it without a
-  separately reviewed task and an identified current owner.
+  local references to it as legacy history. Transfer configuration is now
+  owned by the sibling `leap_initialisation` repository, where both files
+  currently exist.
 - When referring to files in replies, prefer paths relative to the active repo root
   (for example, `outputs/example.csv`) instead of absolute `/mnt/c/...` or
   `C:\...` paths. Use absolute paths only for files outside the repo or when needed
@@ -73,23 +74,13 @@ Active documentation being developed:
 
 ## Converting documentation to Word
 
-`scripts/convert_docs.py` converts Markdown files in `docs/` to `.docx` using Pandoc.
-It fixes encoding mojibake, renders Mermaid diagrams to PNG, and suppresses auto-captions.
+This repository does not currently contain `scripts/convert_docs.py`. The
+maintained converter is in the sibling `leap_initialisation` repository and
+writes to that repository's configured `docs/docx/` tree. For a mapping-doc
+conversion task, review and set its input/output locations explicitly rather
+than following the former local commands.
 
-```powershell
-# Convert all .md files individually
-python scripts/convert_docs.py
-
-# Combine the main docs into one Word document
-python scripts/convert_docs.py --combine
-
-# Convert only a subdirectory
-python scripts/convert_docs.py --docs-dir docs/transformation_supply_docs
-```
-
-Output goes to `docs/docx/`. Mermaid PNGs go to `docs/docx/mermaid/`.
-
-Requirements (one-time install):
+Pandoc and Mermaid CLI remain the underlying requirements:
 
 - `winget install JohnMacFarlane.Pandoc`
 - `npm install -g @mermaid-js/mermaid-cli`
@@ -150,16 +141,20 @@ structure in mind when adding new transformations or debugging data issues.
 - Usage in transformations:
   - Supports detailed subsector selection (e.g., LNG uses `sub2sectors` and `subfuels`).
   - Filtered to `scenarios == reference` before calculations.
-- Subtotals are removed using the subtotal mapping in `config/ESTO_subtotal_mapping.xlsx`.
+- ESTO subtotal status comes from the source table's `is_subtotal` column; the
+  9th Outlook uses `subtotal_layout` and `subtotal_results`. There is no live
+  `config/ESTO_subtotal_mapping.xlsx` dependency in this repository.
 
 ### ESTO (Matt) structure (flow/product table)
 
-- Source file: `data/00APEC_2024_low.csv` (loaded as "ESTO (Matt) data" in the script).
+- Primary source file:
+  `data/00APEC_2025_low_with_subtotals.csv`. The maintained 2024-with-subtotals
+  file is also checked by Stage 0 where a second ESTO vintage is required.
 - Key columns:
   - `economy`
   - `flows` (balance rows like production, transformation, own use, losses)
   - `products` (fuel/product codes)
-  - Year columns: `1990` ... `2022`
+  - Year columns in the primary 2025 file: `1990` ... `2023`
 - Coding style:
   - Economy codes are compact (e.g., `01AUS`), normalized to `01_AUS` to align with 9th.
   - Flow codes match the 09/10 transformation and loss lists (e.g., `09.08.01 Coke ovens`, `10.01.05 Coke ovens`).
@@ -178,8 +173,9 @@ structure in mind when adding new transformations or debugging data issues.
 This section describes sibling-repository behaviour in
 `C:\Users\Work\github\leap_initialisation\codebase\functions\patch_baseline_seeds.py`;
 there is no local `patch_baseline_seeds.py` in `leap_mappings`.
-`validate_seed_files()` checks all `leap_import_baseline_seed_*.xlsx` files against the full
-model export template.  Two ignore sets control which rows are silently skipped:
+`validate_seed_files()` checks `leap_import_baseline_seed_*.xlsx` files against
+the LEAP export template resolved for the target economy. Two ignore sets
+control which rows are silently skipped:
 
 - **`VALIDATION_IGNORE_PREFIXES`** — branch path *prefixes* for sectors known to be absent from
   the template (e.g. `Transformation\Biofuels processing\` — confirmed zero energy in ESTO).

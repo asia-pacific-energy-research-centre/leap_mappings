@@ -118,11 +118,12 @@ files are actually required to run the pipeline.
 
 ## Finding Your Way Around `codebase/`
 
-`codebase/` mixes the live pipeline with standalone maintenance tools, a legacy refresh
-workflow, dashboard-prototype code that (per `AGENTS.md`) belongs in the sibling
-`leap_dashboard` repo instead, and at least one currently-broken script. See
-`docs/workflow_inventory.md` for which is which before assuming a file is part of the active
-pipeline just because it's under `codebase/`.
+`codebase/` mixes the live pipeline with standalone maintenance tools, a legacy
+refresh workflow, dashboard-prototype code that belongs in the sibling
+`leap_dashboard` repository, and retained scripts with known limitations. See
+`docs/workflow_inventory.md` for the maintained status of each entry point;
+location under `codebase/` alone does not make a script part of the active
+pipeline.
 
 ## Finding Your Way Around the Rest of the Repo
 

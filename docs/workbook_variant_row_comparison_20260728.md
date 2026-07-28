@@ -50,14 +50,15 @@ Two earlier apparent differences were artifacts and are not real:
 
 | | Count | Meaning |
 |---|---:|---|
-| `duplicate_to_remove = True` | **228** | Inactive. Adopting them changes no mapping behaviour. Per `AGENTS.md`, removed rows in `leap_combined_ninth` are often deliberate many-to-many guardrails rather than obsolete data. |
+| `duplicate_to_remove = True` | **228** | Inactive historical rows. Adopting them changes no current mapping behaviour, but the maintained-workbook policy now requires rejected relationships to be absent rather than retained as guardrails. |
 | `duplicate_to_remove = False` | **3** | Would change behaviour. Assessed individually below. |
 
-The 228 are concentrated in `Passenger road` / `Freight road` vehicle-technology
-branches (129 rows under `15_02_`), `Iron and steel` process routes (63 rows
-under `14_03_`), and CHP/heat-plant processes. These are exactly the branch
-families where LEAP models more detail than the 9th edition, which is the
-documented reason such rows are deactivated. **Recommend not adopting.**
+The 228 are concentrated in `Passenger road` / `Freight road`
+vehicle-technology branches (129 rows under `15_02_`), `Iron and steel`
+process routes (63 rows under `14_03_`), and CHP/heat-plant processes. These
+are branch families where LEAP models more detail than the 9th edition.
+**Do not import these rows into the maintained workbook.** Preserve this
+comparison as the review record instead.
 
 ## 2. Recommended: fill two blank fuels (not new rows)
 

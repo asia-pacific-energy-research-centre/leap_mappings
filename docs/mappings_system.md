@@ -1,6 +1,8 @@
 # Mappings System
 
-This document explains how the APERC Outlook mappings system works, why it is structured the way it is, and what each part does. It is intended for people who need to maintain, extend, or reason about comparison outputs across energy-balance datasets.
+This document explains how the APERC Outlook mappings system works, why it is
+structured this way, and what each part does. It is for people maintaining,
+extending, or reviewing comparison outputs across energy-balance datasets.
 
 ## Contents
 
@@ -73,7 +75,8 @@ This document is the canonical mapping reference for the APERC project. `leap_in
 
 Base mappings say what rows correspond.
 
-Rollup rules provide extra aggregated categories that known categories that have differnet levels of detail can be compared at.
+Rollup rules create shared aggregate categories when source systems describe
+the same concept at different levels of detail.
 
 Graph partitioning finds the smallest safe common comparison rows when source aggregates overlap across datasets.
 
@@ -87,7 +90,8 @@ The compilation pipeline produces the final comparison-ready dataset.
 
 ### `config/outlook_mappings_master.xlsx`
 
-This is the central workbook for the newer mapping system. Researchers should treat it as the main human-maintained workbook for APERC Outlook mapping maintenance.
+This is the current, central human-maintained workbook for APERC Outlook
+mapping maintenance.
 
 It contains:
 
@@ -123,7 +127,15 @@ Rows with `enabled` set to true are used for matching. Blank match cells are ign
 
 Each base mapping sheet records source-to-target relationships. The aim is for each row to stay simple: one source row maps to one target row where this is possible. Extra comparison logic belongs in rollup or adjustment sheets.
 
-The direction of the mapping is important. For example LEAP>ESTO mappings mean that LEAP categories cant be mapped to multiple ESTO categories, otherwise an allocation rule would be required. However mapping multiple leap categories to only one ESTO category leaves just a simple sum to be done. This is a key design principle of the system: do not split source aggregates unless there is an explicit allocation method (which for now seems unlikely to be developed). If a single LEAP branch corresponds to multiple ESTO rows, the system should use the roll up funcitonality to aggregtes the esto categories to a common comparison category rather than pretending to know how to split the LEAP branch across the ESTO rows. 
+Mapping direction matters. A single LEAP source must not map to several ESTO
+targets unless an explicit allocation rule defines how to split its value.
+Many LEAP sources may map to one ESTO target because that operation is a
+straightforward sum.
+
+This is a central design rule: do not split a source aggregate without an
+explicit allocation method. When one LEAP branch corresponds conceptually to
+several more-detailed ESTO rows, roll those ESTO rows up to a shared comparison
+category. Do not invent a split of the LEAP value.
 
 ### Source data files
 
@@ -164,11 +176,11 @@ See the current template inventory and retirement record in
 and
 [`leap_initialisation/docs/full_model_export_retirement_scope.md`](../../leap_initialisation/docs/full_model_export_retirement_scope.md).
 
-Refresh the export after a LEAP structural change, including adding, deleting,
-renaming, moving, or recreating a branch; changing a process or transformation
-fuel leaf; moving a Resources fuel between `Primary` and `Secondary`; or
-changing variables or scenarios. Numerical result changes alone do not require
-a hierarchy refresh.
+Refresh the affected economy template after a LEAP structural change,
+including adding, deleting, renaming, moving, or recreating a branch; changing
+a process or transformation fuel leaf; moving a Resources fuel between
+`Primary` and `Secondary`; or changing variables or scenarios. Numerical
+result changes alone do not require a hierarchy refresh.
 
 After a refresh, mapping maintenance must review:
 
@@ -176,7 +188,8 @@ After a refresh, mapping maintenance must review:
 - new LEAP leaves with no active mapping;
 - paths whose parent/leaf (`leap_is_subtotal`) status changed;
 - rollups and cardinality affected by a changed hierarchy boundary; and
-- old mapping rows retained only as deliberate removed-row guardrails.
+- formerly rejected relationships recorded in QA, decision notes, or Git
+  history. They should not be restored merely because they are absent.
 
 LEAP import-workbook duplicates and `-1` IDs are not mapping relationships and
 must not be added to `outlook_mappings_master.xlsx` as fixes. A mapping row
@@ -1611,7 +1624,7 @@ These files are written to `results/mapping_relationships/`:
 | `esto_targets_without_leap_source.csv` | ESTO target rows that have no active LEAP source mapping. Check whether the gap is expected or a missing mapping. |
 | `leap_sources_without_esto_target.csv` | LEAP source rows that have no active ESTO target mapping. |
 | `missing_dataset_pairs_by_use_case.csv` | For each use case, rows present in one dataset but absent or excluded in another. Useful for finding coverage gaps by use case. |
-| `leap_to_esto_excluded_source_audit.csv` | All excluded LEAP source rows with their exclusion reasons. Use this to check whether removed rows are intentional guardrails or gaps. |
+| `leap_to_esto_excluded_source_audit.csv` | All excluded LEAP source rows with their exclusion reasons. Use this to distinguish reviewed exclusions from genuine coverage gaps. |
 | `leap_to_esto_coverage_summary.csv` | Summary of mapping coverage per use case: how many source and target pairs are included, excluded, or missing. |
 | `coverage_exclusions.csv` | Explicit coverage exclusions declared in the workflow, with reason. |
 | `not_considered_esto_rows.csv` | ESTO rows that were present in the source data but not considered in any relationship row. Usually empty if coverage is complete. |

@@ -9,6 +9,11 @@
 > Use that matrix for current document status; retain this file as evidence of
 > how the cleanup decisions were reached.
 
+> **Editorial follow-up:** A second readability and accuracy pass corrected
+> live ESTO filenames and subtotal guidance, removed retained-guardrail
+> language that contradicted current mapping policy, clarified the Stage 0
+> template limitation, and simplified the canonical system overview.
+
 ## Scope and method
 
 This audit covers all 74 tracked Markdown files found by

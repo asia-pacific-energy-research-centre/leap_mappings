@@ -202,7 +202,7 @@ aliases swallow output and report unreliable exit codes.
 | Dashboard input file missing or unreadable | `leap_mappings` | `common_esto_output_status.csv` → `current_output_file`; then whether the workbook was locked during the run. |
 | Dashboard reads a `_rebuilt` file / values look stale | `leap_mappings` | Excel lock on the master workbook during the run. Re-run with the workbook closed. |
 | Comparison row duplicated across source systems | `leap_mappings` | `source_system` / `non_expanding_rollup_id` in the exact-rows files. This is the MAPQ-004 guard's failure class. |
-| A LEAP branch or fuel is unmapped or wrongly mapped | `leap_mappings` | `config/outlook_mappings_master.xlsx`, then `config/mapping_issue_exception_sets.xlsx` — a "missing" row may be a curated exception or a deliberate removed-row guardrail. |
+| A LEAP branch or fuel is unmapped or wrongly mapped | `leap_mappings` | `config/outlook_mappings_master.xlsx`, then `config/mapping_issue_exception_sets.xlsx` and QA/decision history. A formerly rejected row is not restored merely because it is absent. |
 | Chart routing, page layout, or label presentation is wrong | `leap_dashboard` | `config/common_esto_dashboard/`. Do not fix by changing mapping labels. |
 | A category exists in mapping output but the dashboard cannot place it | joint — escalate via MAPQ-021 | Component membership is the source of truth for generated categories; the dashboard must not infer hierarchy from display labels. |
 | LEAP import IDs, baseline seeds, or supply reconciliation are wrong | `leap_initialisation` | Its own `docs/work_queue.md`. |
