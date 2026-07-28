@@ -1,12 +1,18 @@
 """Tests for NON_EXPANDING_ROLLUP handling across Stage 1 and Stage 2 helpers."""
 
 import pandas as pd
+import pytest
 
+from codebase.mapping_tools.apply_common_esto_structure import apply_common_structure
 from codebase.mapping_tools.build_common_esto_structure import (
     apply_non_expanding_flags,
+    build_common_rows,
+    build_connected_components,
     build_manual_override_edges,
     build_non_expanding_frontier_check,
     build_source_aggregate_edges,
+    isolate_non_expanding_frontiers,
+    save_outputs,
 )
 from codebase.mapping_tools.build_energy_balance_relationships import build_esto_overrides
 from codebase.mapping_tools.non_expanding_rollups import (
@@ -263,6 +269,121 @@ class TestScenario3FrontierCheck:
         assert row["check_status"] == "violation"
         assert "subtotal_shares_common_row_with_declared_child" in row["violation_reason"]
         assert "row_merged" in row["violating_common_row_ids"]
+
+    def test_mixed_agriculture_frontier_is_split_without_fact_value_doubling(self) -> None:
+        product = "07.07 Gas/diesel oil"
+        subtotal = "16.03-16.04 Agriculture and fishing"
+        agriculture = "16.03 Agriculture"
+        fishing = "16.04 Fishing"
+        required_components = pd.DataFrame(
+            [
+                {"component_esto_flow": subtotal, "component_esto_product": product},
+                {"component_esto_flow": agriculture, "component_esto_product": product},
+                {"component_esto_flow": fishing, "component_esto_product": product},
+            ]
+        )
+        components = build_connected_components(
+            required_components,
+            [
+                ((subtotal, product), (agriculture, product)),
+                ((subtotal, product), (fishing, product)),
+            ],
+        )
+        rollup_id = "nonexp_16_03_16_04_agriculture_and_fishing"
+        labels = {subtotal: rollup_id}
+        isolated = isolate_non_expanding_frontiers(components, labels)
+        common_rows = build_common_rows(
+            isolated,
+            aggregate_groups_df=pd.DataFrame(),
+            label_overrides_df=pd.DataFrame(),
+            flow_code_to_name={},
+            product_code_to_name={},
+            comparison_scope="esto_leap_ninth",
+        )
+        common_rows = apply_non_expanding_flags(common_rows, labels)
+
+        frontier = build_non_expanding_frontier_check(
+            common_rows,
+            labels,
+            {subtotal: [agriculture, fishing]},
+            "esto_leap_ninth",
+        )
+        assert list(frontier["check_status"]) == ["ok"]
+        assert common_rows["common_row_id"].nunique() == 2
+        assert common_rows.groupby("common_row_id").size().sort_values().tolist() == [1, 2]
+
+        source_df = pd.DataFrame(
+            [
+                {
+                    "comparison_scope": "esto_leap_ninth",
+                    "source_system": "ESTO",
+                    "economy": "20_USA",
+                    "scenario": "historical",
+                    "year": 2022,
+                    "esto_flow": subtotal,
+                    "esto_product": product,
+                    "value": 30.0,
+                },
+                {
+                    "comparison_scope": "esto_leap_ninth",
+                    "source_system": "ESTO",
+                    "economy": "20_USA",
+                    "scenario": "historical",
+                    "year": 2022,
+                    "esto_flow": agriculture,
+                    "esto_product": product,
+                    "value": 10.0,
+                },
+                {
+                    "comparison_scope": "esto_leap_ninth",
+                    "source_system": "ESTO",
+                    "economy": "20_USA",
+                    "scenario": "historical",
+                    "year": 2022,
+                    "esto_flow": fishing,
+                    "esto_product": product,
+                    "value": 20.0,
+                },
+            ]
+        )
+        comparison, missing, _ = apply_common_structure(source_df, common_rows)
+        fact_key = [
+            "comparison_scope",
+            "source_system",
+            "economy",
+            "scenario",
+            "year",
+            "common_row_id",
+        ]
+
+        assert missing.empty
+        assert len(comparison) == 2
+        assert not comparison.duplicated(fact_key).any()
+        assert sorted(comparison["value"].tolist()) == [30.0, 30.0]
+
+    def test_frontier_violation_blocks_trusted_output_publish(self, tmp_path) -> None:
+        frontier = pd.DataFrame(
+            [
+                {
+                    "comparison_scope": "esto_leap_ninth",
+                    "non_expanding_rollup_id": "nonexp_agriculture_and_fishing",
+                    "rolled_flow_label": "16.03-16.04 Agriculture and fishing",
+                    "declared_child_flow_labels": "16.03 Agriculture",
+                    "check_status": "violation",
+                    "violation_reason": "subtotal_shares_common_row_with_declared_child",
+                    "violating_common_row_ids": "row_merged",
+                }
+            ]
+        )
+
+        with pytest.raises(ValueError, match="Refusing to publish Common ESTO structure"):
+            save_outputs(
+                pd.DataFrame(),
+                pd.DataFrame(),
+                {"qa_common_esto_non_expanding_frontier_check": frontier},
+                tmp_path,
+            )
+        assert not any(tmp_path.iterdir())
 
 
 class TestScenario7SuppressedEdges:

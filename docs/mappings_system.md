@@ -357,6 +357,13 @@ confused:
   children in one additive total. The subtotal and its children are alternative
   views.
 
+Stage 2 enforces that boundary structurally. If source-aggregate graph edges
+connect a named subtotal to its detailed frontier, graph partitioning keeps the
+detail components together but splits the subtotal into its own
+`common_row_id`. The frontier QA is a blocking publish gate: any remaining
+`subtotal_shares_common_row_*` violation prevents the trusted Common ESTO
+structure files from being written.
+
 Full mechanics live in [rollup_rules_system.md](rollup_rules_system.md). The
 dedicated QA outputs are:
 

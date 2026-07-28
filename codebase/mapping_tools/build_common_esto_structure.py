@@ -619,6 +619,40 @@ def build_connected_components(
     return components_by_root
 
 
+def isolate_non_expanding_frontiers(
+    components_by_root: dict[tuple[str, str], list[tuple[str, str]]],
+    non_expanding_labels: dict[str, str],
+) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """Keep named subtotal components separate from their additive frontier.
+
+    Source aggregates can connect a named subtotal to the detailed components
+    that provide its alternative representation. Preserve the detail frontier
+    as one common row, but split each named subtotal pair into its own row so
+    parent and children can never be summed under one fact identity.
+    """
+    boundary_flows = {
+        normalise_text(label)
+        for label in non_expanding_labels
+        if normalise_text(label)
+    }
+    if not boundary_flows:
+        return components_by_root
+
+    isolated_components: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for component_pairs in components_by_root.values():
+        subtotal_pairs = sorted(
+            pair for pair in component_pairs if normalise_text(pair[0]) in boundary_flows
+        )
+        detail_pairs = sorted(
+            pair for pair in component_pairs if normalise_text(pair[0]) not in boundary_flows
+        )
+        if detail_pairs:
+            isolated_components[detail_pairs[0]] = detail_pairs
+        for subtotal_pair in subtotal_pairs:
+            isolated_components[subtotal_pair] = [subtotal_pair]
+    return isolated_components
+
+
 def aggregate_metadata_for_component(
     component_pairs: list[tuple[str, str]],
     aggregate_groups_df: pd.DataFrame,
@@ -1502,7 +1536,30 @@ def save_outputs(
     qa_outputs: dict[str, pd.DataFrame],
     output_dir: Path,
 ) -> None:
-    """Write common structure and QA outputs."""
+    """Write common structure and QA outputs after blocking frontier validation."""
+    frontier_df = qa_outputs.get(
+        "qa_common_esto_non_expanding_frontier_check",
+        pd.DataFrame(columns=NON_EXPANDING_FRONTIER_COLUMNS),
+    )
+    violations = (
+        frontier_df[frontier_df["check_status"].eq("violation")]
+        if not frontier_df.empty and "check_status" in frontier_df.columns
+        else pd.DataFrame()
+    )
+    if not violations.empty:
+        examples = violations[
+            [
+                "comparison_scope",
+                "rolled_flow_label",
+                "violation_reason",
+                "violating_common_row_ids",
+            ]
+        ].head(10).to_dict("records")
+        raise ValueError(
+            "Refusing to publish Common ESTO structure because named "
+            f"non-expanding subtotal frontiers are not isolated: {examples}"
+        )
+
     output_dir.mkdir(parents=True, exist_ok=True)
     common_rows_df.to_csv(output_dir / "common_esto_rows.csv", index=False)
     common_rows_df.to_csv(output_dir / "common_esto_row_components.csv", index=False)
@@ -1557,6 +1614,10 @@ def build_common_esto_for_scope(
     )
     aggregate_groups_df = pd.concat([source_aggregates_df, manual_aggregates_df], ignore_index=True)
     components_by_root = build_connected_components(required_components_df, source_edges + override_edges)
+    components_by_root = isolate_non_expanding_frontiers(
+        components_by_root,
+        non_expanding_labels,
+    )
     common_rows_df = build_common_rows(
         components_by_root,
         aggregate_groups_df,
@@ -1754,17 +1815,10 @@ def run_common_esto_structure_workflow(
         print(f"{row['comparison_scope']} {row['metric']}: {row['value']}")
     frontier_df = qa_outputs.get("qa_common_esto_non_expanding_frontier_check", pd.DataFrame())
     if not frontier_df.empty:
-        violations = frontier_df[frontier_df["check_status"] == "violation"]
-        if not violations.empty:
-            print(
-                f"WARNING: {len(violations):,} non-expanding subtotals share a common row with other "
-                "components. See qa_common_esto_non_expanding_frontier_check.csv"
-            )
-        else:
-            print(
-                f"Non-expanding frontier check: {frontier_df['non_expanding_rollup_id'].nunique()} subtotals, "
-                "no subtotal shares a common row with its children."
-            )
+        print(
+            f"Non-expanding frontier check: {frontier_df['non_expanding_rollup_id'].nunique()} subtotals, "
+            "no subtotal shares a common row with its children."
+        )
     print("before/after total differences: run apply_common_esto_structure.py with source data")
     print(f"Wrote common ESTO structure to: {output_dir}")
     return common_rows_df, map_df, qa_outputs
