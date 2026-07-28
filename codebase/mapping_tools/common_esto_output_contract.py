@@ -8,8 +8,10 @@ import json
 import os
 import shutil
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -48,6 +50,11 @@ METADATA_COLUMNS = [
     "source_aggregate_group_ids",
 ]
 METADATA_KEY_COLUMNS = METADATA_COLUMNS[:2]
+BOOLEAN_METADATA_COLUMNS = [
+    "is_exact_row",
+    "requires_rollup",
+    "is_non_expanding_rollup",
+]
 
 LEGACY_COMPARISON_COLUMNS = [
     "comparison_scope",
@@ -87,17 +94,96 @@ def _duplicate_key_examples(frame: pd.DataFrame, key_columns: list[str]) -> list
     return frame.loc[duplicate_mask, key_columns].drop_duplicates().head(10).to_dict("records")
 
 
-def build_common_esto_output_tables(
-    legacy_comparison_df: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split the denormalized legacy comparison into fact and metadata tables."""
+def _validate_publication_identity(run_id: str, run_timestamp_utc: str) -> None:
+    """Certify the run identity fields required by strict consumers."""
+    if not str(run_id).strip():
+        raise ValueError("Common ESTO output contract run_id must be nonempty.")
+    timestamp_text = str(run_timestamp_utc).strip()
+    try:
+        parsed_timestamp = datetime.fromisoformat(timestamp_text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            "Common ESTO output contract run_timestamp_utc must be a valid ISO timestamp."
+        ) from exc
+    if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+        raise ValueError(
+            "Common ESTO output contract run_timestamp_utc must be timezone-aware."
+        )
+
+
+def _validate_nonempty_keys(frame: pd.DataFrame, key_columns: list[str], table_name: str) -> None:
+    """Reject null, blank, or whitespace-only public key values."""
+    for column in key_columns:
+        if column == "year":
+            continue
+        invalid = frame[column].isna() | frame[column].astype(str).str.strip().eq("")
+        if invalid.any():
+            raise ValueError(f"{table_name} key column {column!r} contains empty values.")
+
+
+def _strict_boolean(value: object, column: str) -> bool:
+    """Normalize only genuine booleans and canonical CSV boolean strings."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise ValueError(
+        f"Common ESTO metadata column {column!r} must contain strict boolean values."
+    )
+
+
+def _certify_legacy_comparison(legacy_comparison_df: pd.DataFrame) -> pd.DataFrame:
+    """Return a dashboard-safe normalized copy of the legacy comparison."""
     _require_columns(
         legacy_comparison_df,
         LEGACY_COMPARISON_COLUMNS,
         "Legacy Common ESTO comparison",
     )
+    certified = legacy_comparison_df[LEGACY_COMPARISON_COLUMNS].copy()
+    _validate_nonempty_keys(certified, FACT_KEY_COLUMNS, "Common ESTO fact")
 
-    metadata_candidates = legacy_comparison_df[METADATA_COLUMNS].drop_duplicates()
+    numeric_years = pd.to_numeric(certified["year"], errors="coerce")
+    invalid_years = (
+        numeric_years.isna()
+        | numeric_years.mod(1).ne(0)
+        | numeric_years.lt(1000)
+        | numeric_years.gt(9999)
+    )
+    if invalid_years.any():
+        raise ValueError("Common ESTO fact year must contain integer four-digit years.")
+    certified["year"] = numeric_years.astype("int64")
+
+    boolean_values = certified["value"].map(lambda value: isinstance(value, (bool, np.bool_)))
+    numeric_values = pd.to_numeric(certified["value"], errors="coerce")
+    if not np.isfinite(numeric_values.to_numpy(dtype="float64")).all():
+        raise ValueError("Common ESTO fact value must contain finite numeric values.")
+    if boolean_values.any():
+        raise ValueError("Common ESTO fact value must contain finite numeric values, not booleans.")
+    certified["value"] = numeric_values.astype("float64")
+
+    for column in BOOLEAN_METADATA_COLUMNS:
+        certified[column] = certified[column].map(
+            lambda value, column=column: _strict_boolean(value, column)
+        ).astype(bool)
+    return certified
+
+
+def build_common_esto_output_tables(
+    legacy_comparison_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split the denormalized legacy comparison into fact and metadata tables."""
+    certified = _certify_legacy_comparison(legacy_comparison_df)
+
+    metadata_candidates = certified[METADATA_COLUMNS].drop_duplicates()
+    _validate_nonempty_keys(
+        metadata_candidates,
+        METADATA_KEY_COLUMNS,
+        "Common ESTO metadata",
+    )
     if metadata_candidates.duplicated(METADATA_KEY_COLUMNS, keep=False).any():
         examples = _duplicate_key_examples(metadata_candidates, METADATA_KEY_COLUMNS)
         raise ValueError(
@@ -105,7 +191,7 @@ def build_common_esto_output_tables(
             f"Examples: {examples}"
         )
 
-    fact_df = legacy_comparison_df[FACT_COLUMNS].copy()
+    fact_df = certified[FACT_COLUMNS].copy()
     if fact_df.duplicated(FACT_KEY_COLUMNS, keep=False).any():
         examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
         raise ValueError(
@@ -124,6 +210,8 @@ def reconstruct_common_esto_comparison(
     """Reconstruct the legacy denormalized comparison in its exact column order."""
     _require_columns(fact_df, FACT_COLUMNS, "Common ESTO fact")
     _require_columns(metadata_df, METADATA_COLUMNS, "Common ESTO metadata")
+    _validate_nonempty_keys(fact_df, FACT_KEY_COLUMNS, "Common ESTO fact")
+    _validate_nonempty_keys(metadata_df, METADATA_KEY_COLUMNS, "Common ESTO metadata")
     if fact_df.duplicated(FACT_KEY_COLUMNS, keep=False).any():
         examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
         raise ValueError(f"Common ESTO fact contains duplicate keys. Examples: {examples}")
@@ -197,9 +285,10 @@ def write_common_esto_output_contract(
     verify its hashes, so a partially promoted pair is never a valid generation.
     Existing files are restored if any promotion or final verification fails.
     """
+    _validate_publication_identity(run_id, run_timestamp_utc)
     fact_df, metadata_df = build_common_esto_output_tables(legacy_comparison_df)
     reconstructed_df = reconstruct_common_esto_comparison(fact_df, metadata_df)
-    expected_df = legacy_comparison_df[LEGACY_COMPARISON_COLUMNS].reset_index(drop=True)
+    expected_df = _certify_legacy_comparison(legacy_comparison_df).reset_index(drop=True)
     if not reconstructed_df.equals(expected_df):
         raise ValueError("Fact and metadata reconstruction does not exactly match the legacy comparison.")
 

@@ -41,6 +41,9 @@ Stage 3 and the Common ESTO fast path now also publish an additive v1 output con
 - `common_esto_output_contract.json` records the ordered schemas, keys, row counts, byte sizes, and
   SHA-256 values. It is promoted last and is the commit marker for the two data artifacts.
 
+Only certified, QA-successful runs replace this canonical contract. A review-tagged run preserves
+the previous contract and records that decision in `common_esto_output_status.csv`.
+
 The legacy comparison remains unchanged while the dashboard loader migrates to the joined
 fact/metadata representation and verifies rendered equivalence.
 

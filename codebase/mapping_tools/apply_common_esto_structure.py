@@ -27,6 +27,7 @@ from codebase.mapping_issue_exceptions import (
 from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
 from codebase.mapping_tools.common_esto_output_contract import (
     LEGACY_COMPARISON_COLUMNS,
+    MANIFEST_FILENAME,
     write_common_esto_output_contract,
 )
 from codebase.mapping_tools.mapping_candidate_generation import (
@@ -1311,6 +1312,14 @@ def save_outputs(
     resolved_run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     written_paths = []
     legacy_comparison_df = drop_internal_common_columns(comparison_df)
+    if not error_occurred:
+        _, contract_paths = write_common_esto_output_contract(
+            legacy_comparison_df=legacy_comparison_df,
+            output_dir=output_dir,
+            run_id=resolved_run_id,
+            run_timestamp_utc=resolved_timestamp,
+        )
+        written_paths.extend(contract_paths)
     written_paths.append(write_csv_with_locked_fallback(
         legacy_comparison_df,
         error_tagged_path(output_dir / "common_esto_comparison_data.csv", error_occurred),
@@ -1340,13 +1349,6 @@ def save_outputs(
             esto_component_lineage_df,
             error_tagged_path(esto_component_lineage_output_path, error_occurred),
         ))
-    _, contract_paths = write_common_esto_output_contract(
-        legacy_comparison_df=legacy_comparison_df,
-        output_dir=output_dir,
-        run_id=resolved_run_id,
-        run_timestamp_utc=resolved_timestamp,
-    )
-    written_paths.extend(contract_paths)
     # This legacy output was produced by an unreliable label-based subtotal
     # filter. Remove it so a stale file cannot be mistaken for current QA.
     legacy_filtered_path = output_dir / "common_esto_subtotal_rows_filtered.csv"
@@ -1358,7 +1360,7 @@ def save_outputs(
                 "WARNING: Retired label-filter output is open and could not be removed. "
                 f"It is not listed in the current output status: {legacy_filtered_path}"
             )
-    status_df = pd.DataFrame([
+    status_records = [
         {
             "run_id": resolved_run_id,
             "run_timestamp_utc": resolved_timestamp,
@@ -1371,7 +1373,11 @@ def save_outputs(
             "checks_performed": "",
             "eligible_parent_count": "",
             "mismatch_count": "",
-            "reason": "Stage 3 output written successfully.",
+            "reason": (
+                "Stage 3 review-tagged output written; canonical outputs were not replaced."
+                if error_occurred
+                else "Stage 3 output written successfully."
+            ),
             "current_output_file": path.name,
             "output_path": str(path.resolve()),
             "output_mtime_ns": path.stat().st_mtime_ns,
@@ -1381,7 +1387,40 @@ def save_outputs(
             "input_size_bytes": "",
         }
         for path in written_paths
-    ])
+    ]
+    if error_occurred:
+        prior_manifest_path = output_dir / MANIFEST_FILENAME
+        prior_contract_exists = prior_manifest_path.exists()
+        status_records.append({
+            "run_id": resolved_run_id,
+            "run_timestamp_utc": resolved_timestamp,
+            "record_type": "output_contract_publication",
+            "artifact_name": "common_esto_output_contract",
+            "validation_name": "",
+            "validation_axis": "",
+            "source_system": "",
+            "status": (
+                "preserved_previous_contract"
+                if prior_contract_exists
+                else "not_published_needs_mapping_review"
+            ),
+            "checks_performed": "",
+            "eligible_parent_count": "",
+            "mismatch_count": "",
+            "reason": (
+                "Current run needs mapping review; the prior canonical output contract was preserved."
+                if prior_contract_exists
+                else "Current run needs mapping review; no canonical output contract was published."
+            ),
+            "current_output_file": prior_manifest_path.name if prior_contract_exists else "",
+            "output_path": str(prior_manifest_path.resolve()) if prior_contract_exists else "",
+            "output_mtime_ns": prior_manifest_path.stat().st_mtime_ns if prior_contract_exists else "",
+            "input_path": "",
+            "input_mtime_ns": "",
+            "input_mtime_utc": "",
+            "input_size_bytes": "",
+        })
+    status_df = pd.DataFrame(status_records)
     # The manifest must never fall back to a second filename: leaving an older
     # canonical manifest in place would make stale artifacts appear current.
     status_df.to_csv(output_dir / "common_esto_output_status.csv", index=False)
@@ -1400,7 +1439,14 @@ def save_fast_path_outputs(
     resolved_timestamp = run_timestamp_utc or datetime.now(timezone.utc).isoformat()
     resolved_run_id = run_id or datetime.now(timezone.utc).strftime("common_esto_fast_path_%Y%m%dT%H%M%S%fZ")
     legacy_comparison_df = drop_internal_common_columns(comparison_df)
+    _, contract_paths = write_common_esto_output_contract(
+        legacy_comparison_df=legacy_comparison_df,
+        output_dir=output_dir,
+        run_id=resolved_run_id,
+        run_timestamp_utc=resolved_timestamp,
+    )
     written_paths = [
+        *contract_paths,
         write_csv_with_locked_fallback(
             legacy_comparison_df,
             output_dir / "common_esto_comparison_data.csv",
@@ -1410,13 +1456,6 @@ def save_fast_path_outputs(
             output_dir / "common_esto_comparison_wide.csv",
         ),
     ]
-    _, contract_paths = write_common_esto_output_contract(
-        legacy_comparison_df=legacy_comparison_df,
-        output_dir=output_dir,
-        run_id=resolved_run_id,
-        run_timestamp_utc=resolved_timestamp,
-    )
-    written_paths.extend(contract_paths)
     status_df = pd.DataFrame([
         {
             "run_id": resolved_run_id,

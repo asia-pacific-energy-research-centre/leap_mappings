@@ -98,6 +98,78 @@ def test_duplicate_fact_key_is_rejected() -> None:
         build_common_esto_output_tables(pd.concat([legacy, legacy.iloc[[0]]], ignore_index=True))
 
 
+@pytest.mark.parametrize(
+    ("column", "invalid_value", "error_text"),
+    [
+        ("comparison_scope", " ", "contains empty values"),
+        ("source_system", "", "contains empty values"),
+        ("economy", None, "contains empty values"),
+        ("scenario", "", "contains empty values"),
+        ("common_row_id", "", "contains empty values"),
+        ("year", 23, "integer four-digit years"),
+        ("year", 2023.5, "integer four-digit years"),
+        ("value", float("nan"), "finite numeric values"),
+        ("value", float("inf"), "finite numeric values"),
+        ("value", True, "not booleans"),
+        ("is_exact_row", 1, "strict boolean values"),
+        ("requires_rollup", "yes", "strict boolean values"),
+        ("is_non_expanding_rollup", "", "strict boolean values"),
+    ],
+)
+def test_contract_certification_rejects_invalid_public_values(
+    column: str,
+    invalid_value: object,
+    error_text: str,
+) -> None:
+    legacy = _legacy_comparison()
+    legacy[column] = legacy[column].astype(object)
+    legacy.loc[0, column] = invalid_value
+
+    with pytest.raises(ValueError, match=error_text):
+        build_common_esto_output_tables(legacy)
+
+
+def test_contract_certification_normalizes_year_values_and_csv_boolean_strings() -> None:
+    legacy = _legacy_comparison()
+    legacy["year"] = legacy["year"].astype(str)
+    legacy["value"] = legacy["value"].astype(str)
+    legacy["is_exact_row"] = "true"
+    legacy["requires_rollup"] = "FALSE"
+    legacy["is_non_expanding_rollup"] = "false"
+
+    fact, metadata = build_common_esto_output_tables(legacy)
+
+    assert fact["year"].tolist() == [2022, 2060]
+    assert fact["value"].tolist() == [10.0, 11.0]
+    assert bool(metadata.loc[0, "is_exact_row"]) is True
+    assert bool(metadata.loc[0, "requires_rollup"]) is False
+    assert bool(metadata.loc[0, "is_non_expanding_rollup"]) is False
+
+
+@pytest.mark.parametrize(
+    ("run_id", "timestamp", "error_text"),
+    [
+        ("", "2026-07-28T00:00:00+00:00", "run_id must be nonempty"),
+        ("run_1", "2026-07-28T00:00:00", "must be timezone-aware"),
+        ("run_1", "not-a-timestamp", "must be a valid ISO timestamp"),
+    ],
+)
+def test_manifest_identity_requires_run_id_and_timezone_aware_timestamp(
+    tmp_path: Path,
+    run_id: str,
+    timestamp: str,
+    error_text: str,
+) -> None:
+    with pytest.raises(ValueError, match=error_text):
+        write_common_esto_output_contract(
+            _legacy_comparison(),
+            tmp_path,
+            run_id=run_id,
+            run_timestamp_utc=timestamp,
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_manifest_matches_published_artifacts(tmp_path: Path) -> None:
     manifest, paths = write_common_esto_output_contract(
         legacy_comparison_df=_legacy_comparison(),
@@ -188,3 +260,104 @@ def test_normal_save_flow_emits_and_registers_additive_contract(tmp_path: Path) 
         "common_esto_row_metadata",
         "common_esto_output_contract",
     }.issubset(set(status["artifact_name"]))
+
+
+def test_qa_failed_save_preserves_prior_contract_and_canonical_legacy(tmp_path: Path) -> None:
+    empty = pd.DataFrame()
+    save_outputs(
+        comparison_df=_legacy_comparison(value=10),
+        wide_year_df=empty,
+        total_check_df=empty,
+        source_coverage_check_df=empty,
+        missing_map_df=empty,
+        output_dir=tmp_path,
+        error_occurred=False,
+        run_id="successful_run",
+        run_timestamp_utc="2026-07-28T00:00:00+00:00",
+    )
+    preserved_names = [
+        FACT_FILENAME,
+        METADATA_FILENAME,
+        MANIFEST_FILENAME,
+        "common_esto_comparison_data.csv",
+    ]
+    previous = {name: (tmp_path / name).read_bytes() for name in preserved_names}
+
+    status = save_outputs(
+        comparison_df=_legacy_comparison(value=99),
+        wide_year_df=empty,
+        total_check_df=empty,
+        source_coverage_check_df=empty,
+        missing_map_df=empty,
+        output_dir=tmp_path,
+        error_occurred=True,
+        run_id="failed_run",
+        run_timestamp_utc="2026-07-28T01:00:00+00:00",
+    )
+
+    assert {name: (tmp_path / name).read_bytes() for name in preserved_names} == previous
+    assert (tmp_path / "common_esto_comparison_data_needs_mapping_review.csv").exists()
+    contract_status = status[status["record_type"].eq("output_contract_publication")].iloc[0]
+    assert contract_status["status"] == "preserved_previous_contract"
+    assert contract_status["current_output_file"] == MANIFEST_FILENAME
+
+
+def test_qa_failed_save_without_prior_contract_does_not_publish_one(tmp_path: Path) -> None:
+    empty = pd.DataFrame()
+
+    status = save_outputs(
+        comparison_df=_legacy_comparison(value=99),
+        wide_year_df=empty,
+        total_check_df=empty,
+        source_coverage_check_df=empty,
+        missing_map_df=empty,
+        output_dir=tmp_path,
+        error_occurred=True,
+        run_id="failed_run",
+        run_timestamp_utc="2026-07-28T01:00:00+00:00",
+    )
+
+    assert not (tmp_path / FACT_FILENAME).exists()
+    assert not (tmp_path / METADATA_FILENAME).exists()
+    assert not (tmp_path / MANIFEST_FILENAME).exists()
+    contract_status = status[status["record_type"].eq("output_contract_publication")].iloc[0]
+    assert contract_status["status"] == "not_published_needs_mapping_review"
+
+
+def test_contract_construction_failure_cannot_replace_canonical_legacy(tmp_path: Path) -> None:
+    empty = pd.DataFrame()
+    save_outputs(
+        comparison_df=_legacy_comparison(value=10),
+        wide_year_df=empty,
+        total_check_df=empty,
+        source_coverage_check_df=empty,
+        missing_map_df=empty,
+        output_dir=tmp_path,
+        error_occurred=False,
+        run_id="successful_run",
+        run_timestamp_utc="2026-07-28T00:00:00+00:00",
+    )
+    preserved_names = [
+        FACT_FILENAME,
+        METADATA_FILENAME,
+        MANIFEST_FILENAME,
+        "common_esto_comparison_data.csv",
+    ]
+    previous = {name: (tmp_path / name).read_bytes() for name in preserved_names}
+    invalid = _legacy_comparison(value=99)
+    invalid.loc[0, "year"] = 23
+
+    with pytest.raises(ValueError, match="integer four-digit years"):
+        save_outputs(
+            comparison_df=invalid,
+            wide_year_df=empty,
+            total_check_df=empty,
+            source_coverage_check_df=empty,
+            missing_map_df=empty,
+            output_dir=tmp_path,
+            error_occurred=False,
+            run_id="invalid_run",
+            run_timestamp_utc="2026-07-28T01:00:00+00:00",
+        )
+
+    assert {name: (tmp_path / name).read_bytes() for name in preserved_names} == previous
