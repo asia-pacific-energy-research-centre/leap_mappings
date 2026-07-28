@@ -118,7 +118,8 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-023 | P1 | `superseded_cleanup` | `leap_mappings` | MAPQ-004, MAPQ-008 | W1–W2 | 2026-07-28 |
 | MAPQ-024 | P2 | `not_started` | `leap_mappings` | — | W1 | 2026-07-28 |
 | MAPQ-025 | — | **delegated** to the sibling repos' own handover audits | `leap_dashboard` + `leap_initialisation` | — | n/a | 2026-07-28 |
-| MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010 | W2 | 2026-07-28 |
+| MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010, MAPQ-027 | W2 | 2026-07-28 |
+| MAPQ-027 | P2 | `human_decision` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
 
 ---
 
@@ -333,9 +334,18 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Evidence (2026-07-28):** This workbook was part of the unit D deletion set but was **restored rather than deleted**, because it has two live dependencies that the other four variants do not:
   - `codebase/run_mapping_pipeline_delayed.ps1:23` passes it as `--mapping-workbook-path`. Deleting it breaks that script silently.
   - `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md:52` names it as evidence to inspect (sheets `esto_rollup_rules`, `leap_combined_esto`) — that prompt is queued and unstarted as MAPQ-010.
-  - `config/outlook_mappings_master.xlsx` does contain both named sheets, so the canonical workbook is a plausible replacement, but content equivalence has **not** been demonstrated.
-- **Next action:** Run MAPQ-010 first — it needs this workbook as evidence. Afterwards decide either to repoint the delayed-pipeline script at the canonical workbook and delete the variant, or to keep the variant and document why a second workbook is required.
+  - Content equivalence has now been **measured** — see [`workbook_variant_row_comparison_20260728.md`](workbook_variant_row_comparison_20260728.md). The canonical workbook is a strict superset on every mapping sheet except `leap_combined_ninth`; the variant's `esto_rollup_rules` sheet is a *subset* of canonical, so it is not needed as MAPQ-010 evidence. Of 231 rows the variant holds and canonical lacks, 228 are inactive (`duplicate_to_remove = True`), 1 is rejected (parent/child CHP double-count), and 2 are blank-fuel fills recommended for adoption.
+- **Next action:** (a) decide the two `Gas works plants` blank-fuel fills — see MAPQ-027; (b) recover the `IS_LEAP_ROLLUP_NAME` column, blank in all 605 canonical rows but populated in the variant; then (c) repoint `run_mapping_pipeline_delayed.ps1:23` and the MAPQ-010 prompt at the canonical workbook and delete the variant.
 - **Completion criteria:** No script or active prompt references a non-canonical workbook, and either the variant is deleted or its continued existence has a written justification in `docs/special_rules_and_design_decisions.md`.
+
+### MAPQ-027 — Fill two blank `ninth_fuel` values on `leap_combined_ninth`
+
+- **Priority / status / week:** P2 · `human_decision` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005 (rerun to validate)
+- **Evidence (2026-07-28):** Full working in [`workbook_variant_row_comparison_20260728.md`](workbook_variant_row_comparison_20260728.md) §2. `Gas works plants/Gas works plants` + `Blast furnace gas` and + `Other recovered gases` are active canonical rows with `ninth_sector` set and `ninth_fuel` **blank**. Both axes resolve unambiguously to `02_coal_products` (36/36 and 35/35 other active rows respectively; three sibling fuels in the same block already use that target). Only 3 of 2711 active rows have a blank `ninth_fuel`, so this is an anomaly rather than a convention. No many-to-many risk — the result is many-to-one aggregation.
+- **Also in scope:** the third blank-fuel row, `Heat plant interim/Heat plant interim` + `Bitumen` → `09_x_heat_plants`, blank in **both** workbooks; `Bitumen` resolves to `07_x_other_petroleum_products` in 23/23 other active rows.
+- **Next action:** Human sign-off, then edit the canonical workbook directly — do **not** import from the variant, which carries 228 unwanted inactive rows.
+- **Completion criteria:** Zero active rows with a populated `ninth_sector` and a blank `ninth_fuel`; a pipeline rerun confirms the newly active mappings produce no new validation failures. This is a behaviour change, not a cosmetic edit — the rows are currently inert on the fuel axis.
 
 ---
 
