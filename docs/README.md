@@ -43,11 +43,12 @@ See also `results/README.md` (and the `README.md` in each `results/` subfolder),
 and `data/README.md` — placed directly in those folders so the guide is right there when you
 open them, rather than only discoverable from here.
 
-Not yet created: a dedicated `docs/diagnostic_file_review_signals.md` tracing which
-`results/common_esto/`/`results/maintenance/` diagnostic CSVs are actually consumed vs. never
-read — that work is intentionally being designed together with a separate anchor-validator
-data-reliability-flag task (see `docs/prompts/` for that design task once it lands), rather than
-done in isolation here.
+[`diagnostic_file_review_signals.md`](diagnostic_file_review_signals.md) now
+preserves the path proposed by the 2026-07-22 cleanup handoff and routes readers
+to current diagnostic guidance. It is explicitly a status/navigation page, not
+a claim that the proposed file-by-file consumption and consolidation study has
+already been completed; that work remains coordinated through the controlling
+queue.
 
 ## Backlog
 

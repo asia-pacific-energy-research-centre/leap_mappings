@@ -172,8 +172,8 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 - **Priority / status / week:** P0 · `partial` · W1–W4 (weekly)
 - **Owner repo:** `leap_mappings` · **Depends on:** —
-- **Evidence (2026-07-28):** 76 tracked Markdown files. `docs/README.md` already links this queue and the audit (that audit action is done). One genuine broken relative link remains, confirmed by a full scan of all tracked Markdown: `docs/REPO_CLEANUP_AND_NAVIGATION_NOTES.md` → `diagnostic_file_review_signals.md`. `docs/README.md` still describes `improvement_todo.md` as "The active backlog", contradicting the audit.
-- **Next action:** Work the sequence in `documentation_audit_20260728.md` §"Documentation cleanup sequence"; re-date this queue at each weekly review.
+- **Evidence (2026-07-28, preservation audit update):** `docs/README.md` links this queue and the audit, labels `improvement_todo.md` as historical, and now links a real `diagnostic_file_review_signals.md` status page. That page preserves the path proposed by the historical cleanup handoff without claiming the planned file-by-file consolidation study is finished. A full tracked-Markdown relative-link scan now reports zero broken links.
+- **Next action:** Continue the sequence in `documentation_audit_20260728.md` §"Documentation cleanup sequence"; distinguish live instructions from explicitly dated/archived evidence, and re-date this queue at each weekly review.
 - **Completion criteria:** Active docs contain only current instructions or clearly dated historical context; `docs/prompts/` holds only active prompts; zero broken relative links.
 
 ### MAPQ-007 — Reconcile ESTO Extended work
