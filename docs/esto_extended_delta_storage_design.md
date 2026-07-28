@@ -75,16 +75,42 @@ full file. Exact reconstruction passed a bounded identity-and-value comparison a
 Reading took 14.726 seconds, delta construction 84.585 seconds, and reconstruction plus comparison
 129.897 seconds.
 
+The subsequent Stage 3 integration binds the base and delta sizes, schemas, row counts, operation
+counts, and SHA-256 values in
+`esto_extended_results_exact_rows.delta.json`. The manifest is promoted after exact reconstruction
+verification. Stage 3 can explicitly materialize that contract into a temporary gzip CSV; an
+invalid contract falls back to the retained full Extended artifact, while an invalid contract
+without a full fallback stops the run.
+
+The first real integration comparison exposed an important precision boundary: pandas' default CSV
+parser collapsed adjacent float64 text values such as `2.7068499999999998` and `2.70685`. Reading
+delta inputs with `float_precision="round_trip"` preserves those distinct values. A regression test
+covers this case.
+
+After that correction, the isolated delta-backed Stage 3 run produced exactly the full-file
+baseline:
+
+- 3,952,646 fact rows and 6,173 metadata rows;
+- identical fact schema, compound key, and decompressed fact SHA-256
+  (`7f51fc59af69d938d48501cc6f98b4acf8e07a07afb9776d1a2463d8cd278536`);
+- identical metadata SHA-256
+  (`46d41147f63d7e9ec147c71c8f58037be6e8b3217a07f66d265ce4c026ea7892`);
+- 100% mapped-row aggregation preservation for every scope/source pair.
+
+The shortened corrected run took 1,912.028 seconds, including 1,771.377 seconds for Common ESTO
+application and temporary materialization. The maximum sampled process memory was approximately
+4.50 GB working set and 6.00 GB private bytes. The prior full-file run's application step was
+1,162.107 seconds, so the storage saving currently carries a material runtime cost and remains
+opt-in.
+
 ## Remaining requirements before changing defaults
 
-The isolated measurement completes the storage-size and exact-reconstruction gates. Before a
+The storage, exact reconstruction, and Stage 3 output-equivalence gates are complete. Before a
 default change:
 
-1. Run the existing Stage 3 application once with the full Extended file and once with the
-   reconstructed frame; require identical Common ESTO rows and totals for both Extended scopes.
-2. Measure peak memory in that Stage 3 integration; the measured wall time is acceptable, but the
-   extra in-memory copy must not worsen reliability.
-3. Retain the full-file path as a fallback during migration and add a manifest tying the
-   delta to the exact base artifact identity and hash.
+1. Exercise the opt-in path during one or two normal publication cycles.
+2. Decide whether the 85.9% storage saving justifies the observed Stage 3 runtime increase, or
+   optimize materialization/application before enabling it by default.
+3. Retain the full-file fallback through that migration period.
 
 No default output or consumer should change until these checks pass.

@@ -1,12 +1,18 @@
 """Tests for exact ESTO-base plus ESTO-Extended row overlays."""
 
+import gzip
+
 import pandas as pd
 import pytest
 
 from codebase.mapping_tools.esto_extended_delta import (
     DELTA_OPERATION_COLUMN,
     build_esto_extended_exact_row_delta,
+    load_esto_extended_delta_contract,
+    materialize_esto_extended_delta_contract,
+    prepare_esto_extended_stage3_path,
     reconstruct_esto_extended_exact_rows,
+    write_esto_extended_delta_contract,
 )
 
 
@@ -257,3 +263,193 @@ def test_reconstruction_rejects_unknown_delete_and_operation() -> None:
     unknown[DELTA_OPERATION_COLUMN] = "replace"
     with pytest.raises(ValueError, match="Unsupported"):
         reconstruct_esto_extended_exact_rows(base, unknown)
+
+
+def test_delta_contract_binds_base_and_reconstructs_exactly(tmp_path) -> None:
+    base = pd.DataFrame(
+        [
+            _row("09.01 Unchanged", 10, "ESTO"),
+            _row("09.02 Changed", 20, "ESTO"),
+            _row("09.03 Former leaf", 30, "ESTO"),
+        ],
+        columns=COLUMNS,
+    )
+    extended = pd.DataFrame(
+        [
+            _row("09.01 Unchanged", 10, "ESTO_EXTENDED"),
+            _row("09.02 Changed", 22, "ESTO_EXTENDED"),
+            _row("09.03.01 New child", 30, "ESTO_EXTENDED"),
+        ],
+        columns=COLUMNS,
+    )
+    base_path = tmp_path / "esto_results_exact_rows.csv.gz"
+    extended_path = tmp_path / "esto_extended_results_exact_rows.csv.gz"
+    delta_path = tmp_path / "esto_extended_results_exact_rows.delta.csv.gz"
+    manifest_path = tmp_path / "esto_extended_results_exact_rows.delta.json"
+    reconstructed_path = tmp_path / "reconstructed.csv.gz"
+    base.to_csv(base_path, index=False)
+    extended.to_csv(extended_path, index=False)
+
+    manifest = write_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        esto_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+    reconstructed, loaded_manifest = load_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+    materialize_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+        output_path=reconstructed_path,
+    )
+
+    assert manifest == loaded_manifest
+    assert manifest["exact_reconstruction_verified"] is True
+    assert manifest["delta"]["operation_counts"] == {"upsert": 2, "delete": 1}
+    assert len(reconstructed) == len(extended)
+    pd.testing.assert_frame_equal(
+        _sort(pd.read_csv(reconstructed_path)),
+        _sort(pd.read_csv(extended_path)),
+        check_dtype=False,
+    )
+
+
+def test_delta_contract_rejects_changed_base_and_delta(tmp_path) -> None:
+    base = pd.DataFrame([_row("09.01 Row", 10, "ESTO")], columns=COLUMNS)
+    extended = base.copy()
+    extended["source_system"] = "ESTO_EXTENDED"
+    base_path = tmp_path / "esto_results_exact_rows.csv.gz"
+    extended_path = tmp_path / "esto_extended_results_exact_rows.csv.gz"
+    delta_path = tmp_path / "esto_extended_results_exact_rows.delta.csv.gz"
+    manifest_path = tmp_path / "esto_extended_results_exact_rows.delta.json"
+    base.to_csv(base_path, index=False)
+    extended.to_csv(extended_path, index=False)
+    write_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        esto_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+    original_base_bytes = base_path.read_bytes()
+
+    changed_base = base.copy()
+    changed_base.loc[0, "value"] = 99
+    changed_base.to_csv(base_path, index=False)
+    with pytest.raises(ValueError, match="base (size|hash)"):
+        load_esto_extended_delta_contract(
+            esto_base_path=base_path,
+            delta_path=delta_path,
+            manifest_path=manifest_path,
+        )
+
+    base_path.write_bytes(original_base_bytes)
+    with delta_path.open("ab") as file_obj:
+        file_obj.write(b"tamper")
+    with pytest.raises(ValueError, match="delta (size|hash)"):
+        load_esto_extended_delta_contract(
+            esto_base_path=base_path,
+            delta_path=delta_path,
+            manifest_path=manifest_path,
+        )
+
+
+def test_stage3_delta_selection_uses_verified_contract_and_safe_fallback(
+    tmp_path,
+) -> None:
+    base = pd.DataFrame([_row("09.01 Row", 10, "ESTO")], columns=COLUMNS)
+    extended = base.copy()
+    extended["source_system"] = "ESTO_EXTENDED"
+    base_path = tmp_path / "esto_results_exact_rows.csv.gz"
+    extended_path = tmp_path / "esto_extended_results_exact_rows.csv.gz"
+    delta_path = tmp_path / "esto_extended_results_exact_rows.delta.csv.gz"
+    manifest_path = tmp_path / "esto_extended_results_exact_rows.delta.json"
+    base.to_csv(base_path, index=False)
+    extended.to_csv(extended_path, index=False)
+    write_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        esto_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+
+    selected_path, temporary_dir, status = prepare_esto_extended_stage3_path(
+        esto_base_path=base_path,
+        full_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+        use_delta=True,
+    )
+    assert status["mode"] == "delta"
+    assert selected_path.exists()
+    pd.testing.assert_frame_equal(
+        pd.read_csv(selected_path),
+        pd.read_csv(extended_path),
+        check_dtype=False,
+    )
+    assert temporary_dir is not None
+    temporary_dir.cleanup()
+
+    changed_base = base.copy()
+    changed_base.loc[0, "value"] = 99
+    changed_base.to_csv(base_path, index=False)
+    selected_path, temporary_dir, status = prepare_esto_extended_stage3_path(
+        esto_base_path=base_path,
+        full_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+        use_delta=True,
+    )
+    assert selected_path == extended_path
+    assert temporary_dir is None
+    assert status["mode"] == "full_fallback"
+    assert "base" in status["fallback_reason"]
+
+    extended_path.unlink()
+    with pytest.raises(RuntimeError, match="no full Extended"):
+        prepare_esto_extended_stage3_path(
+            esto_base_path=base_path,
+            full_extended_path=extended_path,
+            delta_path=delta_path,
+            manifest_path=manifest_path,
+            use_delta=True,
+        )
+
+
+def test_delta_contract_preserves_adjacent_float64_csv_values(tmp_path) -> None:
+    """Round-trip parsing must not collapse adjacent float values into inheritance."""
+    base_path = tmp_path / "esto_results_exact_rows.csv.gz"
+    extended_path = tmp_path / "esto_extended_results_exact_rows.csv.gz"
+    delta_path = tmp_path / "esto_extended_results_exact_rows.delta.csv.gz"
+    manifest_path = tmp_path / "esto_extended_results_exact_rows.delta.json"
+    header = ",".join(COLUMNS)
+    identity = "20USA,09.01 Row,17 Electricity,2022"
+    suffix_base = ",ESTO,historical,"
+    suffix_extended = ",ESTO_EXTENDED,historical,"
+    with gzip.open(base_path, "wt", encoding="utf-8", newline="") as file_obj:
+        file_obj.write(f"{header}\n")
+        file_obj.write(f"{identity},2.70685{suffix_base}\n")
+    with gzip.open(extended_path, "wt", encoding="utf-8", newline="") as file_obj:
+        file_obj.write(f"{header}\n")
+        file_obj.write(f"{identity},2.7068499999999998{suffix_extended}\n")
+
+    manifest = write_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        esto_extended_path=extended_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+    reconstructed, _ = load_esto_extended_delta_contract(
+        esto_base_path=base_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+
+    assert manifest["delta"]["operation_counts"] == {"upsert": 1}
+    assert reconstructed.loc[0, "value"].hex() == float(
+        "2.7068499999999998"
+    ).hex()

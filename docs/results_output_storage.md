@@ -124,12 +124,22 @@ Extended artifact, an 85.908% reduction for that recurring file. Exact reconstru
 independently checked by bounded identity partitions. Reading took 14.726 seconds, delta
 construction 84.585 seconds, and reconstruction plus comparison 129.897 seconds.
 
+The opt-in Stage 3 integration now publishes a base-bound delta manifest and safely reconstructs
+to a temporary input. The corrected real run matched the archived full-file Common ESTO contract
+exactly: identical decompressed fact and metadata SHA-256 values, schemas, keys, row counts, and
+mapped totals. Round-trip float parsing is required to preserve adjacent float64 values.
+
+The corrected shortened Stage 3 run took 1,912.028 seconds and reached approximately 4.50 GB
+sampled working memory / 6.00 GB private memory. Its Common ESTO application step was slower than
+the archived full-file run (1,771.377 versus 1,162.107 seconds). The delta therefore remains
+explicit opt-in with the full artifact retained as fallback.
+
 ## Remaining work queue
 
 1. Run the opt-in Common ESTO contract through one or two normal publication cycles before
    considering retirement of the legacy denormalized comparison.
-2. Add base-artifact hash binding and a fallback path before making the ESTO Extended delta the
-   default recurring representation.
+2. Exercise the hash-bound ESTO Extended delta during normal publication cycles and resolve its
+   runtime trade-off before making it the default recurring representation.
 3. Add retention rules for `rollup_mode_ab_exploration/`, `common_esto/test_slice/`, and
    `esto_extended_test/`.
 4. Resolve or approve the remaining Common ESTO flow-hierarchy issue patterns before treating

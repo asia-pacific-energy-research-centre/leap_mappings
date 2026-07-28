@@ -85,6 +85,10 @@ NINTH_ESTO_PATH     = REL_DIR / "ninth_results_converted_to_esto.csv.gz"
 NINTH_SOURCE_LINEAGE_PATH = REL_DIR / "ninth_source_to_esto_component_lineage.csv.gz"
 ESTO_ROWS_PATH      = REL_DIR / "esto_results_exact_rows.csv.gz"
 ESTO_EXTENDED_ROWS_PATH = REL_DIR / "esto_extended_results_exact_rows.csv.gz"
+ESTO_EXTENDED_DELTA_PATH = REL_DIR / "esto_extended_results_exact_rows.delta.csv.gz"
+ESTO_EXTENDED_DELTA_MANIFEST_PATH = (
+    REL_DIR / "esto_extended_results_exact_rows.delta.json"
+)
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
 ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv.gz"
@@ -585,12 +589,36 @@ def run_esto_extended_exact_rows() -> None:
     )
 
 
-def run_data_convert() -> None:
+def run_esto_extended_delta_contract() -> dict[str, object]:
+    """Publish the optional verified base-plus-delta representation."""
+    from codebase.mapping_tools.esto_extended_delta import (
+        write_esto_extended_delta_contract,
+    )
+
+    print("\n" + "-" * 40)
+    print("  ESTO Extended exact-row delta contract")
+    manifest = write_esto_extended_delta_contract(
+        esto_base_path=ESTO_ROWS_PATH,
+        esto_extended_path=ESTO_EXTENDED_ROWS_PATH,
+        delta_path=ESTO_EXTENDED_DELTA_PATH,
+        manifest_path=ESTO_EXTENDED_DELTA_MANIFEST_PATH,
+    )
+    print(
+        "  Verified delta: "
+        f"{int(manifest['delta']['row_count']):,} rows, "
+        f"{int(manifest['delta']['size_bytes']):,} bytes"
+    )
+    return manifest
+
+
+def run_data_convert(write_esto_extended_delta: bool = False) -> None:
     print("\n" + "=" * 60)
     print("DATA CONVERT  LEAP, 9th, ESTO -> common input format")
     print("=" * 60)
     run_esto_exact_rows()
     run_esto_extended_exact_rows()
+    if write_esto_extended_delta:
+        run_esto_extended_delta_contract()
     run_leap_to_esto()
     run_ninth_to_esto()
 
@@ -599,8 +627,14 @@ def run_data_convert() -> None:
 # Stage 3 — Apply common ESTO structure
 # ---------------------------------------------------------------------------
 
-def run_stage_3(skip_deep_validation: bool = False) -> None:
+def run_stage_3(
+    skip_deep_validation: bool = False,
+    use_esto_extended_delta: bool = False,
+) -> None:
     import time
+    from codebase.mapping_tools.esto_extended_delta import (
+        prepare_esto_extended_stage3_path,
+    )
     from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 
     stage3_t0 = time.perf_counter()
@@ -608,11 +642,31 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
     print("STAGE 3  Apply common ESTO structure to source data")
     print("=" * 60)
 
+    esto_extended_stage3_path, esto_extended_temp_dir, esto_extended_storage = (
+        prepare_esto_extended_stage3_path(
+            esto_base_path=ESTO_ROWS_PATH,
+            full_extended_path=ESTO_EXTENDED_ROWS_PATH,
+            delta_path=ESTO_EXTENDED_DELTA_PATH,
+            manifest_path=ESTO_EXTENDED_DELTA_MANIFEST_PATH,
+            use_delta=use_esto_extended_delta,
+        )
+    )
+    # Keep the TemporaryDirectory referenced until every Stage 3 reader has
+    # finished. It cleans itself on normal return or exception unwinding.
+    _ = esto_extended_temp_dir
+    if esto_extended_storage["mode"] == "full_fallback":
+        print(
+            "  WARNING: ESTO Extended delta validation failed; using the full "
+            f"artifact instead. {esto_extended_storage['fallback_reason']}"
+        )
+    elif esto_extended_storage["mode"] == "delta":
+        print("  ESTO Extended input: verified base-plus-delta reconstruction.")
+
     stage3_input_paths = [
         prefer_compressed_csv_path(path)
         for path in [
             LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH,
-            ESTO_EXTENDED_ROWS_PATH, COMMON_ROWS_PATH,
+            esto_extended_stage3_path, COMMON_ROWS_PATH,
         ]
     ]
     missing = [path for path in stage3_input_paths if not path.exists()]
@@ -664,7 +718,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         "LEAP": prefer_compressed_csv_path(LEAP_ESTO_PATH),
         "NINTH": prefer_compressed_csv_path(NINTH_ESTO_PATH),
         "ESTO": prefer_compressed_csv_path(ESTO_ROWS_PATH),
-        "ESTO_EXTENDED": prefer_compressed_csv_path(ESTO_EXTENDED_ROWS_PATH),
+        "ESTO_EXTENDED": esto_extended_stage3_path,
     }
     comparison_scopes = sorted(
         pd.read_csv(COMMON_ROWS_PATH, usecols=["comparison_scope"], dtype=object)
@@ -675,6 +729,7 @@ def run_stage_3(skip_deep_validation: bool = False) -> None:
         "run_timestamp_utc": run_timestamp_utc,
         "status": "running",
         "comparison_scopes": comparison_scopes,
+        "esto_extended_storage": esto_extended_storage,
         "datasets": {
             name: {
                 "path": str(path.resolve()),
@@ -1204,6 +1259,22 @@ def main() -> None:
         action="store_true",
         help="Test mode: stop after common-structure application and skip the full recursive/anchor validation pass.",
     )
+    parser.add_argument(
+        "--write-esto-extended-delta",
+        action="store_true",
+        help=(
+            "After data conversion, publish a verified ESTO-base plus "
+            "ESTO-Extended delta contract alongside the full fallback artifact."
+        ),
+    )
+    parser.add_argument(
+        "--use-esto-extended-delta",
+        action="store_true",
+        help=(
+            "For Stage 3, validate and reconstruct ESTO Extended from its delta "
+            "contract; fall back to the full artifact if contract validation fails."
+        ),
+    )
     args = parser.parse_args()
 
     global ESTO_CSV_PATH, ESTO_EXTENDED_CSV_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
@@ -1243,8 +1314,15 @@ def main() -> None:
                 run_stage_0(apply_subtotal_changes=args.apply_maintenance)
             elif stage == "leap_parse":
                 run_leap_parse(economies=leap_economies)
+            elif stage == "data_convert":
+                run_data_convert(
+                    write_esto_extended_delta=args.write_esto_extended_delta
+                )
             elif stage == "3":
-                run_stage_3(skip_deep_validation=args.skip_deep_validation)
+                run_stage_3(
+                    skip_deep_validation=args.skip_deep_validation,
+                    use_esto_extended_delta=args.use_esto_extended_delta,
+                )
             else:
                 _STAGE_RUNNERS[stage]()
 

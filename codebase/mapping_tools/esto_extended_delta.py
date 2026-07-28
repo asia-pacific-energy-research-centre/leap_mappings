@@ -3,7 +3,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import os
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,6 +22,7 @@ DELTA_OPERATION_COLUMN = "delta_operation"
 DELETE_OPERATION = "delete"
 UPSERT_OPERATION = "upsert"
 DEFAULT_PARTITION_ROW_TARGET = 100_000
+DELTA_CONTRACT_VERSION = "esto_extended_exact_row_delta_v1"
 REQUIRED_EXACT_ROW_COLUMNS = [
     "source_system",
     "economy",
@@ -427,6 +434,266 @@ def reconstruct_esto_extended_exact_rows(
         [inherited_rows, upsert_rows],
         ignore_index=True,
     ).reindex(columns=columns)
+
+
+#%%
+def _sha256(path: Path) -> str:
+    """Return a streaming SHA-256 digest for one artifact."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_exact_rows(path: Path) -> pd.DataFrame:
+    """Read a finalized exact-row artifact with bounded dimension memory."""
+    path = Path(path)
+    header = pd.read_csv(path, nrows=0).columns.tolist()
+    dtypes = {
+        column: ("float64" if column == "value" else "category")
+        for column in header
+    }
+    return pd.read_csv(
+        path,
+        dtype=dtypes,
+        keep_default_na=False,
+        float_precision="round_trip",
+    )
+
+
+def _artifact_identity(
+    path: Path,
+    frame: pd.DataFrame,
+) -> dict[str, object]:
+    """Describe one exact artifact without relying on mutable timestamps."""
+    path = Path(path)
+    return {
+        "file": path.name,
+        "size_bytes": path.stat().st_size,
+        "sha256": _sha256(path),
+        "row_count": len(frame),
+        "schema": frame.columns.tolist(),
+    }
+
+
+def assert_exact_row_frames_equal(
+    actual: pd.DataFrame,
+    expected: pd.DataFrame,
+    partition_count: int | None = None,
+) -> None:
+    """Require exact identity/value equivalence without a full-frame sort."""
+    if list(actual.columns) != list(expected.columns):
+        raise AssertionError("Exact-row schemas differ.")
+    identity_columns = _row_identity_columns(expected.columns.tolist())
+    selected_partition_count = _partition_count(
+        [len(actual), len(expected)],
+        partition_count,
+    )
+    actual_partitions = _identity_partition_ids(
+        actual,
+        identity_columns,
+        selected_partition_count,
+    )
+    expected_partitions = _identity_partition_ids(
+        expected,
+        identity_columns,
+        selected_partition_count,
+    )
+    for partition_number in range(selected_partition_count):
+        merged = _partition_join(
+            actual,
+            expected,
+            np.flatnonzero(actual_partitions == partition_number),
+            np.flatnonzero(expected_partitions == partition_number),
+            identity_columns,
+            "reconstructed ESTO Extended rows",
+            "expected ESTO Extended rows",
+        )
+        if (
+            not merged["_merge"].eq("both").all()
+            or not _matching_values(merged).all()
+        ):
+            raise AssertionError(
+                "Reconstructed ESTO Extended rows differ from the exact-row artifact."
+            )
+
+
+def write_esto_extended_delta_contract(
+    esto_base_path: Path,
+    esto_extended_path: Path,
+    delta_path: Path,
+    manifest_path: Path,
+) -> dict[str, object]:
+    """Atomically publish a verified base-bound ESTO Extended delta contract."""
+    esto_base_path = Path(esto_base_path)
+    esto_extended_path = Path(esto_extended_path)
+    delta_path = Path(delta_path)
+    manifest_path = Path(manifest_path)
+    if delta_path.parent != manifest_path.parent:
+        raise ValueError("Delta and manifest must share one publication directory.")
+
+    base = _read_exact_rows(esto_base_path)
+    extended = _read_exact_rows(esto_extended_path)
+    delta = build_esto_extended_exact_row_delta(base, extended)
+    reconstructed = reconstruct_esto_extended_exact_rows(base, delta)
+    assert_exact_row_frames_equal(reconstructed, extended)
+
+    output_dir = delta_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=".esto_extended_delta_staging_",
+        dir=output_dir,
+    ) as staging_name:
+        staging_dir = Path(staging_name)
+        staged_delta = staging_dir / delta_path.name
+        staged_manifest = staging_dir / manifest_path.name
+        delta.to_csv(
+            staged_delta,
+            index=False,
+            compression={"method": "gzip", "mtime": 0},
+        )
+        operation_counts = (
+            delta[DELTA_OPERATION_COLUMN].value_counts(dropna=False).to_dict()
+        )
+        manifest = {
+            "version": DELTA_CONTRACT_VERSION,
+            "created_utc": datetime.now(timezone.utc).isoformat(),
+            "exact_reconstruction_verified": True,
+            "base": _artifact_identity(esto_base_path, base),
+            "full_extended": _artifact_identity(esto_extended_path, extended),
+            "delta": {
+                **_artifact_identity(staged_delta, delta),
+                "operation_counts": {
+                    str(operation): int(count)
+                    for operation, count in operation_counts.items()
+                },
+            },
+        }
+        staged_manifest.write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(staged_delta, delta_path)
+        os.replace(staged_manifest, manifest_path)
+    return manifest
+
+
+def load_esto_extended_delta_contract(
+    esto_base_path: Path,
+    delta_path: Path,
+    manifest_path: Path,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Validate a delta contract and reconstruct exact ESTO Extended rows."""
+    esto_base_path = Path(esto_base_path)
+    delta_path = Path(delta_path)
+    manifest_path = Path(manifest_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("version") != DELTA_CONTRACT_VERSION:
+        raise ValueError(
+            f"Unsupported ESTO Extended delta contract: {manifest.get('version')!r}"
+        )
+    if manifest.get("exact_reconstruction_verified") is not True:
+        raise ValueError("ESTO Extended delta manifest is not reconstruction-verified.")
+
+    for label, path in [("base", esto_base_path), ("delta", delta_path)]:
+        entry = manifest.get(label)
+        if not isinstance(entry, dict):
+            raise ValueError(f"ESTO Extended delta manifest is missing {label!r}.")
+        if entry.get("file") != path.name:
+            raise ValueError(f"ESTO Extended {label} filename does not match manifest.")
+        if entry.get("size_bytes") != path.stat().st_size:
+            raise ValueError(f"ESTO Extended {label} size does not match manifest.")
+        if entry.get("sha256") != _sha256(path):
+            raise ValueError(f"ESTO Extended {label} hash does not match manifest.")
+
+    base = _read_exact_rows(esto_base_path)
+    delta = _read_exact_rows(delta_path)
+    base_entry = manifest["base"]
+    delta_entry = manifest["delta"]
+    if base_entry.get("schema") != base.columns.tolist():
+        raise ValueError("ESTO Extended base schema does not match manifest.")
+    if delta_entry.get("schema") != delta.columns.tolist():
+        raise ValueError("ESTO Extended delta schema does not match manifest.")
+    if base_entry.get("row_count") != len(base):
+        raise ValueError("ESTO Extended base row count does not match manifest.")
+    if delta_entry.get("row_count") != len(delta):
+        raise ValueError("ESTO Extended delta row count does not match manifest.")
+
+    operation_counts = {
+        str(operation): int(count)
+        for operation, count in (
+            delta[DELTA_OPERATION_COLUMN].value_counts(dropna=False).to_dict()
+        ).items()
+    }
+    if delta_entry.get("operation_counts") != operation_counts:
+        raise ValueError("ESTO Extended delta operation counts do not match manifest.")
+    return reconstruct_esto_extended_exact_rows(base, delta), manifest
+
+
+def materialize_esto_extended_delta_contract(
+    esto_base_path: Path,
+    delta_path: Path,
+    manifest_path: Path,
+    output_path: Path,
+) -> dict[str, object]:
+    """Validate and materialize a delta contract for path-based Stage 3 readers."""
+    reconstructed, manifest = load_esto_extended_delta_contract(
+        esto_base_path=esto_base_path,
+        delta_path=delta_path,
+        manifest_path=manifest_path,
+    )
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    reconstructed.to_csv(output_path, index=False)
+    return manifest
+
+
+#%%
+def prepare_esto_extended_stage3_path(
+    esto_base_path: Path,
+    full_extended_path: Path,
+    delta_path: Path,
+    manifest_path: Path,
+    use_delta: bool,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None, dict[str, object]]:
+    """Choose full or verified delta-backed ESTO Extended input for Stage 3."""
+    from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+
+    full_extended_path = prefer_compressed_csv_path(full_extended_path)
+    if not use_delta:
+        return full_extended_path, None, {"mode": "full"}
+
+    temporary_dir = tempfile.TemporaryDirectory(
+        prefix="leap_mappings_esto_extended_delta_"
+    )
+    reconstructed_path = (
+        Path(temporary_dir.name) / "esto_extended_results_exact_rows.csv.gz"
+    )
+    try:
+        manifest = materialize_esto_extended_delta_contract(
+            esto_base_path=prefer_compressed_csv_path(esto_base_path),
+            delta_path=delta_path,
+            manifest_path=manifest_path,
+            output_path=reconstructed_path,
+        )
+        return reconstructed_path, temporary_dir, {
+            "mode": "delta",
+            "manifest_path": str(Path(manifest_path).resolve()),
+            "base_sha256": manifest["base"]["sha256"],
+            "delta_sha256": manifest["delta"]["sha256"],
+        }
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        temporary_dir.cleanup()
+        if full_extended_path.exists():
+            return full_extended_path, None, {
+                "mode": "full_fallback",
+                "fallback_reason": str(exc),
+            }
+        raise RuntimeError(
+            "The requested ESTO Extended delta contract is invalid and no full "
+            "Extended exact-row fallback exists."
+        ) from exc
 
 
 #%%
