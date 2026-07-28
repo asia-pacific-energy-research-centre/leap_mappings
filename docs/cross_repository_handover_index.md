@@ -205,10 +205,14 @@ aliases swallow output and report unreliable exit codes.
 
 1. **Both sibling repositories are single-point-of-failure local checkouts.**
    `leap_dashboard` is 55 commits ahead of its remote; `leap_initialisation` is
-   142 ahead. 197 commits of work exist only on this machine. Tracked as
-   MAPQ-025. This audit does not push them.
-2. **`leap_mappings` local `master` is 4 commits ahead of `origin/master`**,
-   including the canonical workbook merge. Tracked as MAPQ-002.
+   142 ahead. 197 commits of work exist only on this machine.
+   **Delegated 2026-07-28** to the handover audits running inside those
+   repositories — see MAPQ-025, which records the evidence but does not track
+   the work. This risk is retired when those audits report back, not by any
+   action in `leap_mappings`. Until then, treat every schema in §3 as depending
+   on two consumers whose only copy is local. This audit does not push them.
+2. **`leap_mappings` local `master` is 7 commits ahead of `origin/master`**,
+   including the canonical workbook merge and this audit. Tracked as MAPQ-002.
 3. **Two structural reference documents live outside version control**
    (`C:\Users\Work\.codex\AGENTS_LEAP_EXPORT.md` and `AGENTS_BALANCE_TABLES.md`).
    A clean-checkout handover would not include them. Either vendor them into

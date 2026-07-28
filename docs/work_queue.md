@@ -38,18 +38,22 @@ clean, ready-to-integrate worktree.
 All statements below were re-derived from git and the working tree on
 2026-07-28; none are carried forward from older notes.
 
-- Local `master` is at `76e280f`, **four commits ahead of `origin/master`**
-  (`947742d`, `2e39cca`, `34858fe`, `76e280f`). `origin/master` is at `5c960c9`.
-- The main checkout is dirty: 6 modified tracked files, 5 deleted tracked
-  workbook variants, 6 untracked paths. These form **four independent units**
-  plus environment noise — see MAPQ-001.
+- Local `master` is **seven commits ahead of `origin/master`** (`5c960c9`):
+  `947742d`, `2e39cca`, `34858fe`, `76e280f`, then this audit's three —
+  `5bb66f0` (verified audit + cross-repository index), `6dc0ee5` (unit A
+  demand-scope restructure), `78c3f8d` (unit D, four workbook deletions).
+- The main checkout started dirty with 17 paths across **five independent
+  units** (A–E, see MAPQ-001). After the 2026-07-28 sign-off it holds **three
+  tracked changes**: the draft LNG fallback (unit B), the results-cleanup doc
+  (unit C), and this queue; plus five untracked environment paths (unit E).
 - **No Python process was running** at snapshot time. No pipeline run is in
   flight, so git and results state can be treated as static.
-- `config/~$outlook_mappings_master.xlsx` exists (165 bytes, 2026-07-28 10:21).
-  This is an Excel owner-lock file: **the canonical mapping workbook is open in
-  Excel.** This is the mechanism behind the `_rebuilt` fallback CSVs — current
-  code writes a `_rebuilt` variant when the canonical output is locked. Close
-  the workbook before any run intended as a baseline.
+- **Excel workbook lock:** `config/~$outlook_mappings_master.xlsx` was present
+  at the start of this audit (165 bytes, 2026-07-28 10:21) and has since been
+  released. That lock file is the mechanism behind the `_rebuilt` fallback
+  CSVs — current code writes a `_rebuilt` variant when the canonical output is
+  locked, which is why `_rebuilt` files are **not** evidence of a stale manual
+  copy. Confirm the workbook is closed before any run intended as a baseline.
 - **Five non-master worktrees exist and all five are clean** (`git status
   --porcelain` empty in each). A sixth branch has no worktree.
 - `leap_dashboard` local `master` is **55 commits ahead** of its remote, with one
@@ -76,10 +80,10 @@ Verified by reading each diff. These must not be committed as one change.
 
 | Unit | Paths | Assessment |
 |---|---|---|
-| **A — demand-scope restructure** | `config/source_coverage_scopes.json`, `config/all_demand_aggregated_components.json`, `docs/rollup_rules_system.md`, `docs/source_coverage_audit.md` | Coherent and self-consistent: `Freight road` + `Passenger road` collapse into `Road`; `International transport` is added as a separate component. Both docs were updated to match. **This is a semantic mapping decision and needs human sign-off before commit.** |
-| **B — draft qualitative LNG fallback** | `codebase/mapping_tools/build_missing_mapped_esto_rows.py` | Adds `LNG_TRADE_DIRECTION` (21 economies) and `_qualitative_lng_shares()`. Its own comment says "Needs a human pass to confirm/correct before relying on it for a real run." **Draft; do not commit as production behaviour.** |
-| **C — results cleanup verification pass** | `docs/results_folder_cleanup_candidates.md` | Documentation-only. Records the 2026-07-27 verification, corrects the `_rebuilt` classification (it is an automatic lock fallback, not a manual copy), and removes `missing_mapped_esto_rows/` from the quarantine batch. Committable on its own once reviewed. |
-| **D — non-canonical workbook deletions** | 5 deleted `config/outlook_mappings_master*.xlsx` variants | Deletions of superseded workbook variants. **Verify each is genuinely superseded by `config/outlook_mappings_master.xlsx` before committing**; these are tracked binary files and the deletion is the only remaining copy in the working tree. |
+| **A — demand-scope restructure** ✅ **committed `6dc0ee5`** | `config/source_coverage_scopes.json`, `config/all_demand_aggregated_components.json`, `docs/rollup_rules_system.md`, `docs/source_coverage_audit.md` | Coherent and self-consistent: `Freight road` + `Passenger road` collapse into `Road`; `International transport` is added as a separate component. Human sign-off given 2026-07-28. Verified before commit: both JSON files parse, the six declared components match the documentation, 66 tests pass, and LEAP branch names in `config/leap_results_expected_sheets.json` are deliberately unchanged. **Requires a pipeline rerun to reach outputs — MAPQ-005.** |
+| **B — draft qualitative LNG fallback** | `codebase/mapping_tools/build_missing_mapped_esto_rows.py` | Adds `LNG_TRADE_DIRECTION` (21 economies) and `_qualitative_lng_shares()`. Its own comment says "Needs a human pass to confirm/correct before relying on it for a real run." **Still uncommitted. Draft; do not commit as production behaviour.** |
+| **C — results cleanup verification pass** | `docs/results_folder_cleanup_candidates.md` | Documentation-only. Records the 2026-07-27 verification, corrects the `_rebuilt` classification (it is an automatic lock fallback, not a manual copy), and removes `missing_mapped_esto_rows/` from the quarantine batch. **Still uncommitted.** Committable on its own once reviewed; fold into MAPQ-013. |
+| **D — non-canonical workbook deletions** ✅ **four of five committed `78c3f8d`** | 5 deleted `config/outlook_mappings_master*.xlsx` variants | Human sign-off given 2026-07-28. Four deleted after verifying no code references them: `... new.xlsx`, `... new_with_other_branches_review.xlsx`, `... v2.xlsx`, `..._esto_extended_test.xlsx`. **`outlook_mappings_master_combined_esto.xlsx` was restored, not deleted** — it has live dependencies. See MAPQ-026. |
 | **E — environment noise** | `config/9098DA00`, `config/FDC59700`, `config/~$outlook_mappings_master.xlsx`, `.codex/`, `.codex-remote-attachments/`, `node_modules/` | Not project content. The two hex files are Office crash-recovery blobs; `~$...` is the live Excel lock. They appear as untracked because `.gitignore:205` `!config/*` un-ignores everything directly under `config/`. Fix with a narrow re-ignore (MAPQ-024). |
 
 ## Prioritized queue
@@ -113,7 +117,8 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-022 | P0 | `not_started` | `leap_mappings` | all above | W4 | 2026-07-28 |
 | MAPQ-023 | P1 | `superseded_cleanup` | `leap_mappings` | MAPQ-004, MAPQ-008 | W1–W2 | 2026-07-28 |
 | MAPQ-024 | P2 | `not_started` | `leap_mappings` | — | W1 | 2026-07-28 |
-| MAPQ-025 | P1 | `human_decision` | `leap_dashboard` + `leap_initialisation` | MAPQ-015 | W3 | 2026-07-28 |
+| MAPQ-025 | — | **delegated** to the sibling repos' own handover audits | `leap_dashboard` + `leap_initialisation` | — | n/a | 2026-07-28 |
+| MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010 | W2 | 2026-07-28 |
 
 ---
 
@@ -121,8 +126,9 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 - **Priority / status / week:** P0 · `partial_uncommitted` · W1
 - **Owner repo:** `leap_mappings` · **Depends on:** —
-- **Evidence (2026-07-28):** `git status --porcelain` shows 6 modified, 5 deleted, 6 untracked paths, classified into units A–E in the table above. Diffs read individually.
-- **Next action:** Get human sign-off on unit A (demand-scope restructure) and unit D (workbook deletions); commit unit C on its own; move unit B (draft LNG table) to a dedicated branch or leave it explicitly parked with a note; apply MAPQ-024 for unit E.
+- **Evidence (2026-07-28):** `git status --porcelain` originally showed 6 modified, 5 deleted, 6 untracked paths, classified into units A–E above. Diffs read individually. **Units A and D were signed off and committed on 2026-07-28** (`6dc0ee5`, `78c3f8d`), less the one workbook held back as MAPQ-026.
+- **Remaining:** unit B (draft LNG table), unit C (cleanup doc), unit E (environment noise).
+- **Next action:** Commit unit C on its own under MAPQ-013; move unit B to a dedicated branch or leave it explicitly parked with a note; apply MAPQ-024 for unit E.
 - **Completion criteria:** `git status --short` is either clean or every remaining path has a named owner and a queue ID recorded here.
 
 ### MAPQ-002 — Reconcile local `master` with `origin/master`
@@ -309,13 +315,27 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Next action:** Add narrow re-ignore rules after the negation (`config/~$*`, plus a rule for 8-hex-character extensionless blobs), and gitignore `.codex/`, `.codex-remote-attachments/`, and `node_modules/`.
 - **Completion criteria:** A clean `git status` in an otherwise-clean checkout with the workbook open in Excel.
 
-### MAPQ-025 — Resolve sibling-repository remote and worktree divergence
+### MAPQ-025 — Sibling-repository remote and worktree divergence · **delegated**
 
-- **Priority / status / week:** P1 · `human_decision` · W3
-- **Owner repo:** `leap_dashboard` + `leap_initialisation` · **Depends on:** MAPQ-015
-- **Evidence (2026-07-28):** `leap_dashboard` `master` is 55 commits ahead of `origin/master` with `codebase/common_esto_dashboard_mapping_diagnostics.py` modified, plus worktrees `claude/nz-leap-9th-discrepancies-b9c5b1` and `codex/output-contract-phase-2`. `leap_initialisation` `master` is 142 commits ahead, clean, with **nine** worktrees including three branches at the initial commit (`claude/electricity-interim-use-values-0979e2`, `claude/esto-2026-nz-rows-63f3de`, `claude/feedstock-fuel-share-normalize-0641c7`, all at `04b6ec2`) and two detached `.codex` worktrees.
-- **Next action:** Confirm whether those 197 combined local-only commits exist anywhere else. Until then, **both sibling repositories are single-point-of-failure local checkouts.**
-- **Completion criteria:** Every sibling repo commit is either on its remote or explicitly recorded as intentionally local, and stray worktrees are pruned with confirmation. Implementation work inside those repositories stays in their own queues.
+- **Priority / status / week:** P1 · `human_decision` · **owned elsewhere**
+- **Owner repo:** `leap_dashboard` and `leap_initialisation` — **not this queue**
+- **Decision, 2026-07-28:** These findings are **handed to the handover audits running in those repositories themselves.** This queue records the evidence so nothing is lost in transit, but does not track the work or its completion. Do not re-open it here.
+- **Evidence to hand over (verified 2026-07-28):**
+  - `leap_dashboard` `master` is **55 commits ahead** of `origin/master`, with `codebase/common_esto_dashboard_mapping_diagnostics.py` modified, plus worktrees `claude/nz-leap-9th-discrepancies-b9c5b1` and `codex/output-contract-phase-2`.
+  - `leap_initialisation` `master` is **142 commits ahead**, working tree clean, with **nine** worktrees — including three branches still at the initial commit `04b6ec2` (`claude/electricity-interim-use-values-0979e2`, `claude/esto-2026-nz-rows-63f3de`, `claude/feedstock-fuel-share-normalize-0641c7`) and two detached `.codex` worktrees.
+  - Combined, **197 commits exist only on this machine.**
+- **What this queue still owns:** the *consequence* for mapping handover only — that the cross-repository contract in [`cross_repository_handover_index.md`](cross_repository_handover_index.md) currently depends on two repositories whose only copy is local. That risk is recorded in §6 of that document and is retired when the sibling audits report back, not when this queue acts.
+
+### MAPQ-026 — Decide the fate of `outlook_mappings_master_combined_esto.xlsx`
+
+- **Priority / status / week:** P2 · `human_decision` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-010
+- **Evidence (2026-07-28):** This workbook was part of the unit D deletion set but was **restored rather than deleted**, because it has two live dependencies that the other four variants do not:
+  - `codebase/run_mapping_pipeline_delayed.ps1:23` passes it as `--mapping-workbook-path`. Deleting it breaks that script silently.
+  - `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md:52` names it as evidence to inspect (sheets `esto_rollup_rules`, `leap_combined_esto`) — that prompt is queued and unstarted as MAPQ-010.
+  - `config/outlook_mappings_master.xlsx` does contain both named sheets, so the canonical workbook is a plausible replacement, but content equivalence has **not** been demonstrated.
+- **Next action:** Run MAPQ-010 first — it needs this workbook as evidence. Afterwards decide either to repoint the delayed-pipeline script at the canonical workbook and delete the variant, or to keep the variant and document why a second workbook is required.
+- **Completion criteria:** No script or active prompt references a non-canonical workbook, and either the variant is deleted or its continued existence has a written justification in `docs/special_rules_and_design_decisions.md`.
 
 ---
 
