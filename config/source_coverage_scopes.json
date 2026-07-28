@@ -7,17 +7,8 @@
       "mapping_root": "All demand aggregated",
       "components": [
         {
-          "name": "Freight road",
-          "ninth": {"sub2sectors": ["15_02_02_freight"]},
-          "esto_flow_prefixes": ["15.02 Road"],
-          "mapping_ninth_sectors": ["15_02_road"],
-          "ninth_pair_is_subtotal_default": true,
-          "mapping_ninth_sector_to_esto_flows": {"15_02_road": ["15.02 Road"]},
-          "mapping_esto_flows": ["15.02 Road"]
-        },
-        {
-          "name": "Passenger road",
-          "ninth": {"sub2sectors": ["15_02_01_passenger"]},
+          "name": "Road",
+          "ninth": {"sub2sectors": ["15_02_01_passenger", "15_02_02_freight"]},
           "esto_flow_prefixes": ["15.02 Road"],
           "mapping_ninth_sectors": ["15_02_road"],
           "ninth_pair_is_subtotal_default": true,
@@ -26,24 +17,32 @@
         },
         {
           "name": "Transport non road",
-          "ninth_any_of": [
-            {"sectors": ["04_international_marine_bunkers"]},
-            {"sectors": ["05_international_aviation_bunkers"]},
-            {"sub1sectors": ["15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"]}
-          ],
-          "esto_flow_prefixes": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"],
-          "mapping_ninth_sectors": ["04_international_marine_bunkers", "05_international_aviation_bunkers", "15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"],
-          "ninth_pair_is_subtotal_default": false,
+          "ninth": {"sub1sectors": ["15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"]},
+          "esto_flow_prefixes": ["15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"],
+          "mapping_ninth_sectors": ["15_01_domestic_air_transport", "15_03_rail", "15_04_domestic_navigation", "15_05_pipeline_transport", "15_06_nonspecified_transport"],
+          "ninth_pair_is_subtotal_default": true,
           "mapping_ninth_sector_to_esto_flows": {
-            "04_international_marine_bunkers": ["04 International marine bunkers"],
-            "05_international_aviation_bunkers": ["05 International aviation bunkers"],
             "15_01_domestic_air_transport": ["15.01 Domestic air transport"],
             "15_03_rail": ["15.03 Rail"],
             "15_04_domestic_navigation": ["15.04 Domestic navigation"],
             "15_05_pipeline_transport": ["15.05 Pipeline transport"],
             "15_06_nonspecified_transport": ["15.06 Non-specified transport"]
           },
-          "mapping_esto_flows": ["04 International marine bunkers", "05 International aviation bunkers", "15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"]
+          "mapping_esto_flows": ["15.01 Domestic air transport", "15.03 Rail", "15.04 Domestic navigation", "15.05 Pipeline transport", "15.06 Non-specified transport"]
+        },
+        {
+          "name": "International transport",
+          "ninth_any_of": [
+            {"sectors": ["04_international_marine_bunkers", "05_international_aviation_bunkers"]}
+          ],
+          "esto_flow_prefixes": ["04 International marine bunkers", "05 International aviation bunkers"],
+          "mapping_ninth_sectors": ["04_international_marine_bunkers", "05_international_aviation_bunkers"],
+          "ninth_pair_is_subtotal_default": false,
+          "mapping_ninth_sector_to_esto_flows": {
+            "04_international_marine_bunkers": ["04 International marine bunkers"],
+            "05_international_aviation_bunkers": ["05 International aviation bunkers"]
+          },
+          "mapping_esto_flows": ["04 International marine bunkers", "05 International aviation bunkers"]
         },
         {
           "name": "Industry",

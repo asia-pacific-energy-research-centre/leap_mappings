@@ -9,9 +9,9 @@
       "economy_overrides": {}
     },
     {
-      "component_branch": "Freight road",
+      "component_branch": "Road",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Freight road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. If Road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
       "economy_overrides": {}
     },
     {
@@ -27,15 +27,15 @@
       "economy_overrides": {}
     },
     {
-      "component_branch": "Passenger road",
-      "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Passenger road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
-      "economy_overrides": {}
-    },
-    {
       "component_branch": "Transport non road",
       "include_by_default": true,
       "note": "Declared as included in All demand aggregated. If Transport non road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "economy_overrides": {}
+    },
+    {
+      "component_branch": "International transport",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated. International marine and aviation bunker demand is kept separate from domestic non-road transport; values retain their source sign.",
       "economy_overrides": {}
     }
   ]

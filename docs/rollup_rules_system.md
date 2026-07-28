@@ -258,8 +258,8 @@ The warning must show the configured component list, the components observed
 as non-zero, the All-demand total, each observed component total, and a
 reminder to verify that the configured attribution matches the LEAP model. The
 initial configuration should cover the Total final energy consumption rollup
-branches where applicable: Buildings, Freight road, Industry, Other sector,
-Passenger road, and Transport non road.
+branches where applicable: Buildings, Road, Industry, Other sector,
+Transport non road, and International transport.
 
 ## Own-Use Rollups
 

@@ -28,8 +28,8 @@ Scopes are defined in `config/source_coverage_scopes.json`. The initial scope is
 
 ```text
 Demand\All demand aggregated
-├── Freight road
-├── Passenger road
+├── Road
+├── International transport
 ├── Transport non road
 ├── Industry
 ├── Other sector
