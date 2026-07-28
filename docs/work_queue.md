@@ -150,6 +150,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
+| MAPQ-034 | P1 | `ready_for_investigation` | `leap_mappings` + read-only `leap_initialisation` | MAPQ-032 | before pair-authority migration | 2026-07-29 |
 
 ---
 
@@ -472,6 +473,33 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   conflicting economy structures are explicit diagnostics; no live code or
   canonical guide treats either retired workbook filename as current; and
   subtotal/path QA passes on the reviewed template census.
+
+### MAPQ-034 — Establish reusable valid sector/fuel pair authority
+
+- **Priority / status / timing:** P1 · `ready_for_investigation` · before any
+  pair-registry or consumer migration
+- **Owner repo:** `leap_mappings`, with read-only consumer analysis in
+  `leap_initialisation` · **Depends on:** MAPQ-032 and the separate-axis
+  prototype at commit `23392e5`
+- **Prompt:** [`prompts/investigate_valid_sector_fuel_pair_authority_20260729.md`](prompts/investigate_valid_sector_fuel_pair_authority_20260729.md)
+- **Problem:** Existing code uses "pair exists" for several different claims:
+  structural availability, observed non-zero activity, zero-only presence,
+  scenario/economy/vintage availability, reviewed reservation, and mapping
+  acceptance. Similar most-specific-pair and non-zero checks exist in both
+  repositories and may not have identical semantics.
+- **Safety:** Keep structure, observation, scope, and review authority separate.
+  Do not infer exact LEAP pairs by taking a branch/fuel Cartesian product, treat
+  one economy's absence as global invalidity, edit maintained workbooks, or
+  migrate production consumers during the investigation.
+- **Next action:** Inventory all implementations and callers; independently
+  validate the separate-axis registry prototype; measure disagreement and
+  false-positive/false-negative families; then propose the smallest
+  mappings-owned, versioned pair-authority contract with focused tests.
+- **Completion criteria:** The two repositories' checks are inventoried; current
+  data and prototype results are independently validated; a scoped state model
+  distinguishes structural, non-zero, zero-only, reserved, pending, dormant,
+  and rejected evidence; ownership and refresh provenance are explicit; and a
+  staged, rollback-safe reuse plan is ready for human review.
 
 ---
 

@@ -43,13 +43,14 @@ prompt into a current decision without re-measuring them.
 
 ## Current inventory
 
-Verified against local `master` on 2026-07-28 after the documentation
-disposition audit.
+Verified against local `master` on 2026-07-29 after adding the valid-pair
+authority investigation.
 
 | Prompt | Status | Purpose / next use |
 |---|---|---|
 | `data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` | Active design input | Reconcile reliability attribution, exception curation, output-contract evidence, and diagnostic retention under MAPQ-012. It is explicitly a proposal, not implemented authority. |
 | `complete_hierarchy_subtotal_contract_prompt.md` | Active implementation prompt | Complete MAPQ-030 with an adapter-based, mappings-owned structural contract; keep structural subtotal classification separate from numerical additivity, then integrate the dashboard and initialisation consumers. |
+| `investigate_valid_sector_fuel_pair_authority_20260729.md` | Active investigation prompt | Complete MAPQ-034 by validating the meaning and evidence behind sector/fuel pair existence checks across mappings and initialisation, reusing and challenging the separate-axis prototype, and designing a mappings-owned reusable pair-authority contract without changing production consumers. |
 | `mirror_row_gap_exception_curation_handoff_20260727.md` | Paused | Resume the reviewed NINTH source-mismatch curation only after a clean baseline and the handoff's safety gate. |
 | `review_non_expanding_vs_detached_rollups_prompt.md` | Active review | Review every live manual rollup mode under MAPQ-010. Repoint any absent optional evidence to the canonical workbook before use. |
 | `run_mapping_pipeline_future_prompt.md` | Reusable run procedure | Use for a requested current run. First reconcile it with the maintained agent runbook and verify workbook/process state. |
