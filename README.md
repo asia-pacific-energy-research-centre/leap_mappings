@@ -2,6 +2,13 @@
 
 This repo is the active home for LEAP / ESTO / 9th Outlook mapping maintenance. It keeps the human mapping task simple while letting scripts generate the more complex relationship tables, common-denominator ESTO structures, and QA outputs needed for fair comparisons.
 
+New to the connected mappings, LEAP-initialisation, and dashboard system? Start
+with [`docs/handover/README.md`](docs/handover/README.md). Analysts can continue
+to the
+[`end-to-end system guide`](docs/handover/end_to_end_system_guide.md); agents
+should use the
+[`operations guide`](docs/handover/agent_operations_guide.md).
+
 Researchers should maintain simple editable mapping sheets such as:
 
 - `leap_combined_esto`: LEAP rows mapped to exact ESTO flow/product components.
@@ -93,9 +100,11 @@ to this repository's `results/`; the local path above is legacy/reference only
 and is not selected by the pipeline. Set `LEAP_BALANCE_EXPORTS_ROOT` only for a
 non-standard checkout layout.
 
-`config/leap_mappings.xlsx` and `config/master_config.xlsx` are legacy reference
-workbooks. New mapping pipeline work should use `config/outlook_mappings_master.xlsx`
-unless a script is explicitly documented as legacy.
+`config/master_config.xlsx` is a legacy reference workbook.
+`config/leap_mappings.xlsx` is a retired legacy filename and is not present in
+the current checkout. New mapping pipeline work should use
+`config/outlook_mappings_master.xlsx` unless a script is explicitly documented
+as legacy.
 
 Run notebook-style from the repo root, following `AGENTS.md`.
 

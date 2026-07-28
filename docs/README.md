@@ -1,15 +1,23 @@
 # `docs/` index
 
-If you're new to this repo, read in this order: root `README.md` → `mappings_system.md` →
-`guide_outlook_mappings_master.md`. Everything else here is reference material or a working
-backlog, not required reading up front.
+If you're new to the three-repository system, start with
+[`handover/README.md`](handover/README.md). If you are working only on mappings,
+continue with root `README.md` → `mappings_system.md` →
+`guide_outlook_mappings_master.md`. Everything else here is reference material
+or a working backlog.
 
 ## Work queue and handover
 
 | File | What it covers |
 |---|---|
 | [`work_queue.md`](work_queue.md) | **Current work starts here.** Dated repository/worktree status, prioritized queue, and four-week handover plan. This is the controlling backlog — nothing else is. |
-| [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Ownership boundary with `leap_dashboard` and `leap_initialisation`: produced/consumed files, schemas, refresh order, and failure ownership. |
+| [`handover/README.md`](handover/README.md) | Level 1 start-here overview, repository chooser, glossary, worked example, and first-day reading order. |
+| [`handover/end_to_end_system_guide.md`](handover/end_to_end_system_guide.md) | Level 2 connected-system guide for mappings, reconciliation, dashboard, ownership, and diagnostics. |
+| [`handover/cross_repository_data_contracts.md`](handover/cross_repository_data_contracts.md) | Producer/consumer schemas, keys, staleness, provenance, and coordinated change protocol. |
+| [`handover/agent_operations_guide.md`](handover/agent_operations_guide.md) | Level 3 operational and safety guide across all three repositories. |
+| [`handover/mapping_pipeline_guide.md`](handover/mapping_pipeline_guide.md) | Reader-friendly mapping-pipeline guide. |
+| [`handover/mapping_pipeline_agent_guide.md`](handover/mapping_pipeline_agent_guide.md) | Exact mapping run, rerun, validation, and human-stop guidance. |
+| [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Dated evidence snapshot retained for audit history; the maintained contract is now under `handover/`. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions, plus a dated verification addendum. |
 
 ## System design and reference

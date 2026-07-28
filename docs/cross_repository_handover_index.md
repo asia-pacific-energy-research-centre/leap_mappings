@@ -1,5 +1,12 @@
 # Cross-repository handover index
 
+> **Dated audit snapshot.** The maintained start page is
+> [`handover/README.md`](handover/README.md), and the maintained producer/
+> consumer contract is
+> [`handover/cross_repository_data_contracts.md`](handover/cross_repository_data_contracts.md).
+> This file remains as the evidence snapshot that initiated that documentation
+> set.
+
 **Snapshot date:** 2026-07-28
 **Last verified:** 2026-07-28 — schemas read from current output files; path
 constants read from `leap_dashboard/codebase/common_esto_dashboard_workflow.py`;
@@ -167,7 +174,8 @@ outputs.
    writes, producing a run whose canonical outputs are stale.
 2. **`leap_initialisation`** — refresh LEAP balance exports if the LEAP model
    changed. Only needed when LEAP-side data must move; otherwise skip.
-3. **`leap_mappings` maintenance** — `codebase/outlook_mapping_maintenance_workflow.py`
+3. **`leap_mappings` maintenance** —
+   `codebase/archive/outlook_mapping_maintenance_workflow.py`
    after any edit to `config/outlook_mappings_master.xlsx`.
 4. **`leap_mappings` Stages 1–3** — `codebase/run_mapping_pipeline.py`:
    `run_stage_0` → `run_stage_1` → `run_stage_2` → `run_leap_parse` →

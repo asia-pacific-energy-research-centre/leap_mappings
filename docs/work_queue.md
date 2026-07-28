@@ -67,7 +67,7 @@ All statements below were re-derived from git and the working tree on
 | Branch / worktree | Verified evidence 2026-07-28 | Classification | Required action |
 |---|---|---|---|
 | `master` (main checkout) | 4 commits ahead of `origin/master`; dirty checkout; workbook lock file present | `complete_unpushed` + `partial_uncommitted` | Separate completed commits from draft work (MAPQ-001, MAPQ-002). |
-| `codex/output-contract-phase-2` (`4f53662`) | Clean; 3 commits ahead, 1 behind; adds `codebase/mapping_tools/common_esto_output_contract.py` (285 lines) and `tests/test_common_esto_output_contract.py` (190 lines) | `complete_in_worktree` | Integrate the contract before changing output publication (MAPQ-003). Keep the exact ESTO Extended row delta non-default. |
+| `codex/output-contract-phase-2` (`4f53662`) | Historical implementation worktree; its contract commits have been superseded by the integrated `master` implementation | `superseded_cleanup` | Retain only until normal branch/worktree cleanup confirms no unique changes remain. |
 | `claude/zen-pike-39adbf` (`add312d`) | Clean; 1 commit ahead, 3 behind | `complete_in_worktree` | Integrate the empty-partial-coverage guard (MAPQ-004). |
 | `codex/esto-rollup-source-identity-guard` (`8b169de`) | Clean; 1 commit ahead, 5 behind; `git cherry master` reports **`+`** (not on master); touches `non_expanding_rollups.py` (+161), `run_mapping_pipeline.py` (+20), `tests/test_non_expanding_rollups.py` (+151) | `complete_in_worktree` | Integrate the regression guard (MAPQ-004). The `_source_identity` symbols on `master` are in `apply_partitioned_common_esto.py` and are a **different** cache-identity concept — they do not supersede this guard. |
 | `claude/mapping-diagnostics-dashboard-a55009` (`7de6cd1`) | Clean; 6 commits ahead, 5 behind; contains its own copy of the guard (`23cd8b0`) and a workbook merge already landed differently as `947742d` | `partial_reconciliation` | Do not merge wholesale (MAPQ-008). **Its commit message "record the source-identity guard as merged to master" is factually wrong** — verified above. Salvage only the deferred-work docs. |
@@ -95,7 +95,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 |---|---|---|---|---|---|---|
 | MAPQ-001 | P0 | `partial_uncommitted` | `leap_mappings` | — | W1 | 2026-07-28 |
 | MAPQ-002 | P0 | `complete_unpushed` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
-| MAPQ-003 | P0 | `complete_in_worktree` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
+| MAPQ-003 | P0 | `complete_unpushed` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
 | MAPQ-004 | P0 | `complete_in_worktree` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
 | MAPQ-005 | P0 | `partial` | `leap_mappings` | MAPQ-001…004, MAPQ-024 | W1–W2 | 2026-07-28 |
 | MAPQ-006 | P0 | `partial` | `leap_mappings` | — | W1–W4 | 2026-07-28 |
@@ -146,10 +146,10 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-003 — Integrate the Common ESTO output contract
 
-- **Priority / status / week:** P0 · `complete_in_worktree` · W1
+- **Priority / status / week:** P0 · `complete_unpushed` · W1
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
-- **Evidence (2026-07-28):** `codex/output-contract-phase-2` is clean at `4f53662`, 3 ahead / 1 behind. `68e770a` adds `common_esto_output_contract.py` (285 lines) plus 190 lines of tests; `98b5638` certifies publication; `4f53662` prototypes the exact ESTO Extended row delta.
-- **Next action:** Rebase or reconcile onto current `master`, run `tests/test_common_esto_output_contract.py` and the fast-path/orchestration tests, then integrate.
+- **Evidence (2026-07-28):** `master` now contains `1f48790` (contract implementation) and `4f41ecc` (certified publication). The latter records 56 focused tests passed and 320 broader tests passed with 1 skipped and 4 unrelated pre-existing/environment failures. Current `results/common_esto/` artifacts predate those commits and contain no contract manifest/fact/metadata generation.
+- **Next action:** After MAPQ-001 and the Stage 3 safety work are settled, run a QA-successful Stage 3 publication, verify the manifest hashes, and perform one dashboard render with explicit contract selection.
 - **Completion criteria:** Contract code and tests on `master`; dashboard-required identities, keys, years, values, booleans, manifest hashes, and rollback behaviour confirmed against the consumers listed in the cross-repository index. The exact ESTO Extended delta stays non-default unless separately approved.
 
 ### MAPQ-004 — Integrate two small Stage 3 safety fixes
@@ -236,16 +236,16 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 - **Priority / status / week:** P1 · `partial` · W3
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-015
-- **Evidence (2026-07-28):** `docs/mappings_system.md` is the canonical reference; `docs/QA plan.md` is too thin to serve as a QA gate; no start-here or runbook document exists.
-- **Next action:** Create a short start-here guide, a pipeline runbook, a workbook editing guide (link the existing `guide_outlook_mappings_master.md`), a validation-interpretation guide, and a known-risks list.
+- **Evidence (2026-07-28):** The progressive-disclosure set now exists under `docs/handover/`: Level 1 start page, Level 2 connected-system and mapping guides, producer/consumer contract, and Level 3 cross-repository/mapping runbooks. It links rather than copies `mappings_system.md`, `guide_outlook_mappings_master.md`, the initialisation check/rule guides, and dashboard-owned configuration. The remaining completion gate is the clean-checkout rehearsal, not more first-draft files.
+- **Next action:** Execute MAPQ-022 from the new runbooks, record every undocumented dependency, and correct any gap before freezing the set.
 - **Completion criteria:** All five exist, link to canonical detail rather than copying it, and survive the MAPQ-022 rehearsal without the rehearser needing to ask a question that the set should have answered.
 
 ### MAPQ-015 — Define the cross-repository ownership boundary
 
 - **Priority / status / week:** P1 · `partial` · W3
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-003
-- **Evidence (2026-07-28):** [`cross_repository_handover_index.md`](cross_repository_handover_index.md) now records ownership, produced/consumed files, schemas, refresh order, and failure ownership, verified against `leap_dashboard/codebase/common_esto_dashboard_workflow.py` path constants.
-- **Next action:** Have the dashboard and initialisation owners confirm the consumed-file list, then freeze the schemas alongside MAPQ-003.
+- **Evidence (2026-07-28):** [`handover/cross_repository_data_contracts.md`](handover/cross_repository_data_contracts.md) supersedes the dated index as the maintained contract and is linked from all three repository README/doc indexes. It was checked against current producer headers, the integrated v1 contract schemas/hashes, dashboard strict opt-in loaders and provenance handling, initialisation templates, and real run outputs.
+- **Next action:** Validate the first published v1 generation during the three-repository clean-checkout rehearsal and record the selected contract run ID in the dashboard evidence.
 - **Completion criteria:** The index is confirmed by all three repositories and referenced from each repository's `AGENTS.md`.
 
 ### MAPQ-016 — Finish canonical-workbook migration
