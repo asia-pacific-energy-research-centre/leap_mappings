@@ -22,6 +22,7 @@ or a working backlog.
 | [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Dated evidence snapshot retained for audit history; the maintained contract is now under `handover/`. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions, plus a dated verification addendum. |
 | [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | Dated exhaustive register for the Markdown files present in the 2026-07-28 audit, with evidence, unique information, and keep/update/archive decisions. Documents added later are governed by the maintained index and queue. |
+| [`documentation_consolidation_plan_20260728.md`](documentation_consolidation_plan_20260728.md) | Preservation-first cross-repository merge/archive proposal. It identifies safe merge families, archive-only evidence, and documents that must remain separate; no source move is authorized merely by the plan. |
 
 ## System design and reference
 
