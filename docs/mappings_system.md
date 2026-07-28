@@ -140,22 +140,29 @@ The date suffix in the 9th Outlook filenames (e.g. `20251106`) records when the 
 ## LEAP structure export and mapping maintenance
 
 The mapping system identifies LEAP categories by normalized branch/category and
-fuel labels, not by LEAP's numeric import IDs. It nevertheless depends on a
-current full-model Analysis export to determine the real LEAP hierarchy,
-parent/child status, branch existence, and available transformation and
-Resources leaves.
+fuel labels, not by LEAP's numeric import IDs. Real LEAP hierarchy evidence is
+now held in the per-economy export templates under
+`leap_initialisation/data/leap_export_templates/`; template ownership and LEAP
+import-ID integrity belong to `leap_initialisation`.
 
-The maintenance workflow checks, in order:
+The archived Stage 0 maintenance implementation still checks two retired
+literal filenames, in order:
 
-1. `leap_mappings/data/full model export.xlsx`, when present; then
-2. `leap_initialisation/data/full model export.xlsx` as the shared canonical
-   fallback.
+1. `leap_mappings/data/full model export.xlsx`; then
+2. `leap_initialisation/data/full model export.xlsx`.
 
-Operational ownership of the canonical export and its ID rules belongs to
-`leap_initialisation`. See `CROSS-001` in
-[`leap_initialisation/docs/special_rules_and_design_decisions.md`](../../leap_initialisation/docs/special_rules_and_design_decisions.md#cross-001-full-model-export-and-leap-import-id-integrity)
-and the detailed lifecycle in
-[`leap_initialisation/data/README.md`](../../leap_initialisation/data/README.md#maintaining-full-model-exportxlsx).
+Neither file is present in the current checkout. Consequently, that workflow
+currently derives subtotal structure from active mapping paths rather than from
+a live full-model export. Do not recreate either retired filename merely to
+satisfy the old resolver. Before treating Stage 0 hierarchy validation as
+template-backed, update the resolver deliberately to use the reviewed
+per-economy template set and add focused coverage for differences between
+economies.
+
+See the current template inventory and retirement record in
+[`leap_initialisation/data/README.md`](../../leap_initialisation/data/README.md#full-model-exportxlsx-retired-legacy-filename)
+and
+[`leap_initialisation/docs/full_model_export_retirement_scope.md`](../../leap_initialisation/docs/full_model_export_retirement_scope.md).
 
 Refresh the export after a LEAP structural change, including adding, deleting,
 renaming, moving, or recreating a branch; changing a process or transformation
@@ -732,7 +739,14 @@ Each source dataset flags subtotals differently:
 
 - **ESTO** (`data/00APEC_2025_low_with_subtotals.csv`): a single `is_subtotal` column.
 - **9th Outlook** (`data/merged_file_energy_ALL_20251106.csv`): two columns — `subtotal_layout` for historical years (pre-2022) and `subtotal_results` for projection years. The maintenance workflow takes the logical OR of both to determine whether a 9th row is a subtotal.
-- **LEAP**: subtotal status is derived from the branch structure — any branch that has children is a subtotal. The maintenance workflow reads `full model export.xlsx` first, normalizes LEAP `Branch Path` values to the mapping-sheet path style, and uses that hierarchy where the mapped path exists in the export. If the export does not contain a mapped path, the workflow falls back to the mapping-sheet path hierarchy for that path so incomplete exports do not erase known demand-side parent/child relationships.
+- **LEAP**: subtotal status is derived from the branch structure — any branch
+  that has children is a subtotal. The archived maintenance workflow can
+  normalize `Branch Path` values from either of its two retired
+  `full model export.xlsx` locations, but neither workbook is present in the
+  current checkout. It therefore uses the mapping-sheet path hierarchy today.
+  The per-economy templates in `leap_initialisation` are the current LEAP
+  structure evidence, but they are not yet wired into this Stage 0 subtotal
+  resolver.
 
 The mapping sheets (`leap_combined_esto`, `leap_combined_ninth`, `ninth_pairs_to_esto_pairs`) each include computed columns recording subtotal status:
 

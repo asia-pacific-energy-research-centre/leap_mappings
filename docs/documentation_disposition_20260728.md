@@ -29,8 +29,8 @@ fresh work.
 
 | Decision | Count |
 |---|---:|
-| KEEP | 27 |
-| UPDATE | 18 |
+| KEEP | 25 |
+| UPDATE | 20 |
 | ARCHIVE | 20 |
 | KEEP-HISTORICAL | 24 |
 | DEFER | 1 |
@@ -58,7 +58,7 @@ fresh work.
 | `docs/handover/mapping_pipeline_agent_guide.md` | Exact mapping rerun/validation/human-stop guidance. | **KEEP**. |
 | `docs/handover/mapping_pipeline_guide.md` | Reader-friendly Stage 0–3 mapping guide. | **KEEP**. |
 | `docs/improvement_todo.md` | Older semantic backlog with unique rationale and a live code citation to item 8; point-in-time statuses are stale. | **UPDATE** — prominent historical/not-controlling banner; content retained. |
-| `docs/mappings_system.md` | Canonical deep system reference, including structure, stages, rollups, schemas, and validations. | **KEEP**; long-form content remains uniquely useful despite overlap with concise handover docs. |
+| `docs/mappings_system.md` | Canonical deep system reference, including structure, stages, rollups, schemas, and validations. Its full-model-export section conflicted with the current initialisation inventory: both hard-coded workbooks are retired and absent, while the per-economy templates are not yet wired into the archived Stage 0 resolver. | **UPDATE** — retain the uniquely useful long-form reference while documenting the actual mapping-sheet fallback and current template ownership. |
 | `docs/new_leap_rows_mapping_progress_20260728.md` | Dated evidence of current new-row mapping work and backup path. | **KEEP** as dated progress, not canonical instructions. |
 | `docs/prompts/AGENTS.md` | Active-prompt rules and inventory. The old table contradicted prompt resolution notes and current master. | **UPDATE** — now lists exactly the five runnable/paused prompts and archival results. |
 | `docs/prompts/data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` | Active design proposal; uniquely connects reliability attribution and diagnostic consolidation. Explicitly not implemented authority. | **UPDATE** — retained active; corrected its archived findings path. |
@@ -73,7 +73,7 @@ fresh work.
 | `docs/results_output_storage.md` | Current compressed-output and retention contract. | **KEEP**. |
 | `docs/rollup_rules_system.md` | Canonical rollup semantics, modes, exclusions, and pipeline boundaries. | **KEEP**. |
 | `docs/source_coverage_audit.md` | Current source-first coverage workflow/config/output guide. | **KEEP**. |
-| `docs/special_rules_and_design_decisions.md` | Authoritative settled/provisional semantic decision log with stable IDs. | **KEEP**. |
+| `docs/special_rules_and_design_decisions.md` | Authoritative settled/provisional semantic decision log with stable IDs. Its cross-repository note still described the retired shared full-model workbook as a live mapping input. | **UPDATE** — preserve the decisions while recording per-economy template ownership and the current Stage 0 mapping-sheet fallback. |
 | `docs/subtotal_columns_rebuild_plan.md` | Review-only MAPQ-030 plan; clearly says no subtotal cells were changed. | **KEEP**. |
 | `docs/work_queue.md` | Controlling backlog and dated handover plan. Its repository/prompt/contract state preceded more than twenty later commits. | **UPDATE** — current-state addendum and obsolete delayed-runner correction; detailed historical rationale retained. |
 | `docs/workbook_variant_row_comparison_20260728.md` | Unique measured row-level comparison supporting MAPQ-026/027. | **UPDATE** — delayed runner is now historical after `ac33daa`; remaining evidence preserved. |

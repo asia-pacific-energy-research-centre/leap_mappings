@@ -431,6 +431,27 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Next action:** Finish the short list of blunt hierarchy decisions with the user, generate an exact row-level proposed change set against the todo workbook, and review it before any workbook write.
 - **Completion criteria:** Every new LEAP leaf pair has a reviewed ESTO Extended target or an explicit reason it is outside scope; all mapped sibling groups are complete under the agreed coarse crosswalk; rejected rows are absent; and structural/value validation passes after the workbook is enacted.
 
+### MAPQ-032 — Replace the retired Stage 0 full-model-export resolver
+
+- **Priority / status / week:** P1 · `ready_for_implementation` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
+- **Evidence (2026-07-28):**
+  `codebase/archive/outlook_mapping_maintenance_workflow.py` still checks
+  `leap_mappings/data/full model export.xlsx` and
+  `leap_initialisation/data/full model export.xlsx`. Both retired files are
+  absent, so Stage 0 currently falls back to hierarchy inferred from active
+  mapping paths. The maintained structure evidence is the 21-workbook
+  per-economy template set under
+  `leap_initialisation/data/leap_export_templates/`.
+- **Next action:** Define the intended cross-economy hierarchy policy, update
+  the resolver to consume reviewed per-economy templates with provenance, and
+  add focused tests for branches whose parent/leaf status differs by economy.
+  Do not silently select USA as the structural authority for all economies.
+- **Completion criteria:** Stage 0 reports the exact templates used; missing or
+  conflicting economy structures are explicit diagnostics; no live code or
+  canonical guide treats either retired workbook filename as current; and
+  subtotal/path QA passes on the reviewed template census.
+
 ---
 
 ## Four-week handover sequence
