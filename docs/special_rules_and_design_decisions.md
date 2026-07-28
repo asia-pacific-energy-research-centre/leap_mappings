@@ -403,3 +403,75 @@ Record these sectors/fuels in `config/mapping_issue_exception_sets.xlsx` so QA a
 ### History
 
 - 2026-07-22 (approx.): Rule captured in a standalone working note (`prompts 5-7.md`, since archived to `docs/archive/`) during the same session that reviewed the mapping-issue exception workflow; folded into this decision log on 2026-07-23 so it doesn't rely on a loose root-level file for discoverability.
+
+## MAP-012: Detailed power processes use semantic targets and explicit alias boundaries
+
+**Status:** Decided; implementation deferred
+**Owner:** `leap_mappings`
+**Type:** Mapping / comparison boundary
+**Affected areas:** `config/outlook_mappings_master.xlsx`; ESTO Extended power
+categories; LEAP-to-Ninth and Ninth-to-ESTO mappings; power-source fallback
+rules
+
+### Situation
+
+The consolidated LEAP power structure contains detailed Electricity Generation,
+CHP, and Heat plant processes. It also contains alternative names and legacy
+branches that must not be treated as additive processes. Some LEAP `Others`
+processes still contain biomass, biogas, and waste fuels despite the presence
+of dedicated solid-biomass processes, so those branches cannot always be
+separated cleanly at the Ninth Outlook's biomass/other boundary.
+
+### Current rule
+
+- `Electricity Generation/Processes/Imported electricity` is an electricity
+  import, not a generation technology. Map it to Ninth `02_imports` and ESTO
+  `02 Imports`, with the electricity fuel/product. Do not map it to
+  `09_01_electricity_plants` or an ESTO electricity-plant flow.
+- Treat `Battery`, `Batteries`, and `Distributed storage` as alternative LEAP
+  names for the same storage concept, targeting Ninth `09_01_12_storage`.
+  They are not additive categories. A future LEAP structure cleanup should
+  retain one canonical process name and retire the aliases.
+- Treat `Solar_rooftop` and `Solar rooftop` as alternative names for the same
+  rooftop-solar process. They are not additive categories. A future LEAP
+  structure cleanup should retain one canonical spelling.
+- Map `Coal_H2_blended` within the coal-power family, rather than the Ninth
+  other-fuel category. Its initial Ninth comparison target is
+  `09_01_01_coal_power`; preserve the hydrogen fuel mapping on the product
+  axis.
+- Use an explicit combined **Other + solid biomass** comparison boundary where
+  a LEAP `Others` process still overlaps the dedicated solid-biomass process.
+  For CHP this combines Ninth `09_02_04_biomass` and `09_02_05_others`; for
+  Heat plants it combines `09_x_04_biomass` and `09_x_05_others`. The LEAP
+  contributors are the corresponding `Solid Biomass` and `Others` process
+  branches. This is a declared rollup, not a direct many-to-many base mapping.
+  Apply the same principle to Electricity Generation after confirming the
+  exact Ninth contributor set, because its `Others` branch spans biomass,
+  other-renewable, and other-fuel products.
+- Branches whose names end in `_do not use` are legacy/alternative structures.
+  Do not activate them alongside their replacement branches.
+
+Main-activity and autoproducer ESTO power children must be combined through
+reviewed ESTO/ESTO_EXTENDED rollups before mapping LEAP or Ninth categories
+that do not distinguish producer type. Do not express that mismatch as two
+active direct targets from one source pair.
+
+### Validation required before implementation
+
+- Confirm alias pairs are mutually exclusive, or add a source fallback that
+  selects one branch per economy/scenario/year.
+- Confirm every detailed power comparison uses a non-overlapping source
+  frontier; parent and detailed process rows must not be counted together.
+- Confirm the Other + solid biomass contributor sets reconcile to the
+  corresponding source parent for every available economy.
+- Preserve ESTO Extended child identifiers through a stable registry; adding
+  a new alphabetically sorted LEAP process must not renumber existing
+  categories.
+- Rerun mapping cardinality, source-total preservation, and parent/child
+  validation after the mappings and rollups are implemented.
+
+### History
+
+- 2026-07-28: Recorded the decisions from the read-only review of
+  `data/temp/new demand branches remapping plan.xlsx` and
+  `data/temp/new leap rows.xlsx`. No mapping workbook changes were made.
