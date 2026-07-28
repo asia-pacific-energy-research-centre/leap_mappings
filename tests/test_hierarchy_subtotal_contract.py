@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from codebase.mapping_tools.hierarchy_subtotal_adapters import (
+    build_esto_family_conformance,
     build_ninth_family_conformance,
 )
 from codebase.mapping_tools.hierarchy_subtotal_contract import (
@@ -235,6 +236,63 @@ def test_ninth_0906_and_0908_real_semantics_fixture_are_failed_but_structural(
         "09_total_transformation_sector/09_06_gas_processing_plants",
         "09_total_transformation_sector/09_08_coal_transformation",
     }
+
+
+def test_esto_0906_and_0908_compare_immediate_children_at_fixed_product(
+    tmp_path: Path,
+) -> None:
+    rows = []
+    family_children = {
+        "09.06 Gas processing plants": [
+            "09.06.01 Gas works plants",
+            "09.06.02 Liquefaction/regasification plants",
+        ],
+        "09.08 Coal transformation": [
+            "09.08.01 Coke ovens",
+            "09.08.02 Blast furnaces",
+        ],
+    }
+    for parent, children in family_children.items():
+        for product, parent_value in [("08 Gas", 5), ("17 Electricity", 6)]:
+            rows.extend([
+                {
+                    "economy": "20USA",
+                    "flows": parent,
+                    "products": product,
+                    "is_subtotal": True,
+                    "2022": parent_value,
+                },
+                {
+                    "economy": "20USA",
+                    "flows": children[0],
+                    "products": product,
+                    "is_subtotal": False,
+                    "2022": 2,
+                },
+                {
+                    "economy": "20USA",
+                    "flows": children[1],
+                    "products": product,
+                    "is_subtotal": False,
+                    "2022": 3,
+                },
+            ])
+    data_path = tmp_path / "esto.csv"
+    pd.DataFrame(rows).to_csv(data_path, index=False)
+
+    diagnostics = build_esto_family_conformance(data_path)
+
+    assert set(diagnostics["parent_node_id"]) == set(family_children)
+    assert set(diagnostics["fixed_opposite_axis_node_id"]) == {
+        "08 Gas",
+        "17 Electricity",
+    }
+    assert set(diagnostics.query("fixed_opposite_axis_node_id == '08 Gas'")["status"]) == {
+        "passed"
+    }
+    assert set(
+        diagnostics.query("fixed_opposite_axis_node_id == '17 Electricity'")["status"]
+    ) == {"failed"}
 
 
 def test_same_pair_in_two_mapping_sheets_gets_one_canonical_flag(tmp_path: Path) -> None:

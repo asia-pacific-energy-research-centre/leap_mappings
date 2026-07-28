@@ -695,4 +695,142 @@ def build_ninth_family_conformance(
     })
 
 
+def build_esto_family_conformance(
+    data_path: Path,
+    family_codes: tuple[str, ...] = (
+        "09.06 Gas processing plants",
+        "09.08 Coal transformation",
+    ),
+    years: tuple[str, ...] | None = None,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Return exact-context ESTO flow additivity evidence for named families.
+
+    ESTO flow parenthood comes from the same dot-code tree used by the ESTO
+    contract adapter. Each parent is compared with its immediate flow children
+    while economy, product, and year remain fixed.
+    """
+    data_path = Path(data_path)
+    tree = build_esto_tree(data_csv_path=data_path)
+    flow_edges = tree[
+        tree["axis"].eq("flow")
+        & tree["parent_code"].astype(str).isin(family_codes)
+    ][["parent_code", "code"]].drop_duplicates()
+    children_by_parent = (
+        flow_edges.groupby("parent_code")["code"]
+        .agg(lambda values: tuple(sorted(set(map(str, values)))))
+        .to_dict()
+    )
+    missing_families = sorted(set(family_codes) - set(children_by_parent))
+    if missing_families:
+        raise ValueError(
+            "ESTO conformance families have no declared immediate children: "
+            + ", ".join(missing_families)
+        )
+
+    header = pd.read_csv(data_path, nrows=0)
+    year_columns = [column for column in header.columns if str(column).isdigit()]
+    if years is not None:
+        year_columns = [column for column in year_columns if str(column) in years]
+    relevant_flows = set(family_codes)
+    for children in children_by_parent.values():
+        relevant_flows.update(children)
+    data = pd.read_csv(
+        data_path,
+        usecols=["economy", "flows", "products", *year_columns],
+        dtype=object,
+    )
+    data = data[data["flows"].isin(relevant_flows)].copy()
+    data[year_columns] = data[year_columns].apply(pd.to_numeric, errors="coerce")
+    long = data.melt(
+        id_vars=["economy", "flows", "products"],
+        value_vars=year_columns,
+        var_name="year_or_period",
+        value_name="value",
+    )
+    source_version = _source_version(data_path)
+    result_frames: list[pd.DataFrame] = []
+    context_columns = ["economy", "products", "year_or_period"]
+    for parent_node_id, children in children_by_parent.items():
+        family = long[long["flows"].isin({parent_node_id, *children})]
+        parents = (
+            family[family["flows"].eq(parent_node_id)]
+            .groupby(context_columns, dropna=False)["value"]
+            .sum(min_count=1)
+            .rename("parent_value")
+            .reset_index()
+        )
+        child_rows = family[family["flows"].isin(children)]
+        child_rows = child_rows.assign(
+            positive_value=child_rows["value"].where(child_rows["value"].gt(0), 0),
+            negative_value=child_rows["value"].where(child_rows["value"].lt(0), 0),
+        )
+        child_totals = (
+            child_rows.groupby(context_columns, dropna=False)
+            .agg(
+                child_sum=("value", lambda values: values.sum(min_count=1)),
+                positive_child_sum=("positive_value", "sum"),
+                negative_child_sum=("negative_value", "sum"),
+                observed_child_count=("flows", "nunique"),
+            )
+            .reset_index()
+        )
+        result = parents.merge(child_totals, on=context_columns, how="outer")
+        result["expected_child_count"] = len(children)
+        result["missing_child_count"] = (
+            result["expected_child_count"]
+            - result["observed_child_count"].fillna(0)
+        ).clip(lower=0)
+        result["signed_difference"] = result["parent_value"] - result["child_sum"]
+        result["absolute_difference"] = result["signed_difference"].abs()
+        unavailable = result["parent_value"].isna() | result["child_sum"].isna()
+        incomplete = result["missing_child_count"].gt(0)
+        result["status"] = "passed"
+        result.loc[result["absolute_difference"].gt(tolerance), "status"] = "failed"
+        result.loc[incomplete, "status"] = "children_incomplete"
+        result.loc[unavailable, "status"] = "unavailable"
+        result["reason"] = result["status"].map({
+            "passed": "within_tolerance",
+            "failed": "difference_exceeds_tolerance",
+            "children_incomplete": "declared_children_missing",
+            "unavailable": "parent_or_children_unavailable",
+        })
+        result_frames.append(pd.DataFrame({
+            "dataset_id": "esto",
+            "source_version": source_version,
+            "economy": result["economy"],
+            "scenario": "historical",
+            "year_or_period": result["year_or_period"],
+            "validation_axis": "axis_1",
+            "parent_node_id": parent_node_id,
+            "fixed_opposite_axis_node_id": result["products"],
+            "parent_value": result["parent_value"],
+            "child_sum": result["child_sum"],
+            "signed_difference": result["signed_difference"],
+            "absolute_difference": result["absolute_difference"],
+            "positive_child_sum": result["positive_child_sum"],
+            "negative_child_sum": result["negative_child_sum"],
+            "expected_child_count": result["expected_child_count"],
+            "observed_child_count": result["observed_child_count"],
+            "missing_child_count": result["missing_child_count"],
+            "mapped_child_count": result["observed_child_count"],
+            "tolerance": tolerance,
+            "status": result["status"],
+            "reason": result["reason"],
+            "inherited_source_inconsistency": result["status"].eq("failed"),
+            "exception_status": "",
+            "exception_reason": "",
+            "provenance": f"{data_path.resolve()} dot-code immediate-child additivity",
+        }))
+    return pd.concat(result_frames, ignore_index=True).sort_values(
+        [
+            "parent_node_id",
+            "economy",
+            "fixed_opposite_axis_node_id",
+            "year_or_period",
+        ],
+        kind="stable",
+    ).reset_index(drop=True)
+
+
 #%%

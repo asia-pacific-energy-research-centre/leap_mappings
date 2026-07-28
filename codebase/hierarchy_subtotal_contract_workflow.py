@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.mapping_tools.hierarchy_subtotal_adapters import (  # noqa: E402
+    build_esto_family_conformance,
     build_ninth_family_conformance,
     current_adapter_registry,
 )
@@ -39,6 +40,7 @@ def build_hierarchy_subtotal_contract(
     exception_workbook_path: str | Path,
     output_dir: str | Path,
     review_csv_dir: str | Path,
+    include_esto_value_diagnostics: bool = True,
     include_ninth_value_diagnostics: bool = True,
 ) -> tuple[dict[str, object], dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
     """Build, strictly reload, and prepare a non-writing workbook review."""
@@ -48,7 +50,16 @@ def build_hierarchy_subtotal_contract(
     review_csv_dir = _resolve(review_csv_dir)
     adapters = current_adapter_registry(REPO_ROOT, workbook_path)
     frames, registry = build_contract_frames(adapters)
+    esto_path = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
     ninth_path = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+    if include_esto_value_diagnostics:
+        frames["value_conformance_diagnostics"] = pd.concat(
+            [
+                frames["value_conformance_diagnostics"],
+                build_esto_family_conformance(esto_path),
+            ],
+            ignore_index=True,
+        )
     if include_ninth_value_diagnostics:
         frames["value_conformance_diagnostics"] = pd.concat(
             [
@@ -60,7 +71,7 @@ def build_hierarchy_subtotal_contract(
     input_paths = [
         workbook_path,
         exception_workbook_path,
-        REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv",
+        esto_path,
         ninth_path,
         REPO_ROOT / "data" / "temp" / "new leap rows.xlsx",
         REPO_ROOT / "results" / "tree_structure" / "esto_extended_tree.csv",
@@ -99,6 +110,7 @@ MAPPING_WORKBOOK_PATH = "config/outlook_mappings_master todo.xlsx"
 EXCEPTION_WORKBOOK_PATH = "config/mapping_issue_exception_sets.xlsx"
 CONTRACT_OUTPUT_DIR = "results/hierarchy_subtotal_contract/current"
 REVIEW_CSV_DIR = "results/hierarchy_subtotal_contract/review_csv"
+INCLUDE_ESTO_VALUE_DIAGNOSTICS = True
 INCLUDE_NINTH_VALUE_DIAGNOSTICS = True
 
 if BUILD_CONTRACT:
@@ -107,6 +119,7 @@ if BUILD_CONTRACT:
         exception_workbook_path=EXCEPTION_WORKBOOK_PATH,
         output_dir=CONTRACT_OUTPUT_DIR,
         review_csv_dir=REVIEW_CSV_DIR,
+        include_esto_value_diagnostics=INCLUDE_ESTO_VALUE_DIAGNOSTICS,
         include_ninth_value_diagnostics=INCLUDE_NINTH_VALUE_DIAGNOSTICS,
     )
     print(f"Built hierarchy contract: {MANIFEST['build_id']}")

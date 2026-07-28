@@ -130,9 +130,24 @@ adapter entry, not another conditional inside the structural classifier.
 | Initialisation source subtotal filters | Period-specific value preparation | Source flags | Valid contextual filters, not structural authority | Remain local value filters; contract status is attached separately |
 | Dashboard Mapping diagnostics | Mapping-owned trees, rollup catalogue, validations | Read-only checking surface | Lacked strict structural-build identity | Loader fails closed and exposes structure and additivity separately |
 
-## Worked non-additivity example
+## Value-conformance evidence
 
-For a fixed economy, scenario, year, and fuel:
+The maintained ESTO-with-subtotals table is the primary numerical
+quality check. For a fixed economy, year, and product, each named flow parent
+is compared with the signed sum of its dot-code immediate children. The
+full 1990–2023 real-data check found:
+
+| ESTO parent | Passed contexts | Failed contexts | Largest absolute difference |
+|---|---:|---:|---:|
+| `09.06 Gas processing plants` | 55,692 | 0 | 0.000001 |
+| `09.08 Coal transformation` | 55,692 | 0 | 0.000008 |
+
+All ESTO contexts therefore pass the 0.01 tolerance. This is the primary
+evidence that the declared parent/child boundary implements the intended
+additive subtotal structure.
+
+The 9th Outlook check has a different role. For a fixed economy, scenario,
+year, and fuel:
 
 ```text
 Structural subtotal: YES
@@ -155,16 +170,17 @@ from the signed sum of its immediate children, the diagnostic records
 positive and negative child sums, and child counts. It does not choose whether
 the parent or child values are more accurate.
 
-The bounded real-data diagnostic covered 2022, 2023, 2050, and 2070 across all
-available economy/scenario/fuel contexts:
+The bounded 9th real-data diagnostic covered 2022, 2023, 2050, and 2070 across
+all available economy/scenario/fuel contexts:
 
-| Parent | Passed contexts | Failed contexts |
+| 9th parent | Passed contexts | Failed contexts |
 |---|---:|---:|
 | `09_06_gas_processing_plants` | 10,644 | 236 |
 | `09_08_coal_transformation` | 10,680 | 200 |
 
-The pass/fail mixture is expected: structure is stable while numerical
-conformance varies by context.
+This pass/fail mixture is expected source-data behaviour. It is retained as
+secondary evidence of inherited 9th inconsistencies and must not override
+structural status or fail the hierarchy contract.
 
 ## Consumer contract
 
@@ -239,8 +255,9 @@ modified.
    remains unresolved. Current LEAP nodes are marked `partial_inventory`.
 2. There is no authoritative LEAP fuel hierarchy. Contract review rows use
    `unresolved_fuel_taxonomy` rather than guessing aggregate-fuel parenthood.
-3. The published 9th conformance evidence is bounded to 2022, 2023, 2050, and
-   2070. The function accepts `years=None` for a full-year run.
+3. ESTO conformance covers every published year from 1990 through 2023. The
+   published 9th source-quality evidence remains bounded to 2022, 2023, 2050,
+   and 2070; its function accepts `years=None` for a full-year run.
 4. Human review is required before proposed canonical-workbook or exception
    dispositions are applied.
 5. Dashboard Mapping diagnostics integration must be reconciled with its

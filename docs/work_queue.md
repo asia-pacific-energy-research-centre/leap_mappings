@@ -422,6 +422,11 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   review workbook. The review currently contains 9,121 canonical pairs, 3,410
   proposed cell changes, 520 current cross-sheet conflicts, and 1,055
   unresolved pairs. No maintained workbook cells were written.
+- **2026-07-28 conformance refinement:** ESTO is now the primary numerical
+  conformance source. Across every 1990–2023 economy/product context, both
+  `09.06 Gas processing plants` and `09.08 Coal transformation` passed all
+  55,692 immediate-child comparisons. The bounded 9th check remains secondary
+  inherited-source evidence and does not determine structural status.
 - **Next decision:** Review the bounded unresolved queue, beginning with the
   missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
   sibling groups before any workbook application. See
