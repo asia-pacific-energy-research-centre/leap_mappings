@@ -71,8 +71,8 @@ The manifest records:
 | `datasets.csv` | dataset | Source version, adapter version, raw/derived kind, and provenance |
 | `axis_nodes.csv` | dataset + axis + node | Declared parent, depth, child count, leaf/parent status, hierarchy completeness, and source flags retained as evidence |
 | `declared_relationship_edges.csv` | dataset + axis + parent + child + relationship type | Ordinary hierarchy separated from additive rollups, aliases, replacements, detached boundaries, and graph categories |
-| `canonical_source_pairs.csv` | dataset + two normalized mapping-axis nodes | Per-axis structural booleans and canonical pair subtotal boolean |
-| `value_conformance_diagnostics.csv` | dataset + context + validation axis + parent + fixed opposite-axis node | Parent value versus immediate-child sum without changing structural status |
+| `canonical_source_pairs.csv` | dataset + two normalized mapping-axis nodes | Per-axis structural booleans, canonical pair subtotal boolean, synthetic relationship status, and separate declared output-subtotal treatment |
+| `value_conformance_diagnostics.csv` | dataset + run/scope/source context + validation axis + parent + fixed opposite-axis node | Parent value versus immediate-child sum without changing structural status |
 
 ## Invariants
 
@@ -81,12 +81,35 @@ The manifest records:
   endpoints, contradictory ordinary parents, and cycles are rejected.
 - `pair_is_subtotal` is exactly
   `any(axis_node_is_structural_parent)`.
+- `declared_output_subtotal` keeps output filtering explicit. It is true for a
+  structural subtotal or a declared additive, expanding, non-expanding, or
+  detached rollup target. It never turns that target into an ordinary parent.
 - Complete active mapping pairs contain a boolean only when both nodes resolve.
   Unresolved evidence remains in the review queue.
 - `MIXED` is never a canonical boolean.
 - An additivity failure remains a failure even when it is attributable to
   source non-additivity.
 - `passed` is not used for missing or untested contexts.
+
+## Structure-first output lifecycle
+
+Common ESTO now uses one ordered lifecycle without a circular dependency:
+
+1. `build_common_esto_tree` and `build_common_esto_hierarchy_edges` derive
+   nodes and typed edges from `common_esto_rows.csv` plus the mapping workbook.
+2. The Common ESTO adapter classifies only the 2,835 flow/product pairs that
+   actually occur in `common_esto_rows.csv`; it does not invent a Cartesian
+   product.
+3. The wide Common ESTO output uses the adapter's
+   `declared_output_subtotal`, while `pair_is_subtotal` remains the narrower
+   structural truth.
+4. Stage 3 validates the produced long comparison output with its
+   source-specific frontiers and rollup exclusions.
+5. The completed Stage 3 checks are normalized into
+   `value_conformance_diagnostics.csv`, preserving `run_id`,
+   `comparison_scope`, and `source_system`.
+6. Dashboard and initialisation consumers strictly load the selected contract;
+   they do not recompute parenthood.
 
 ## Relationship types stay separate
 
@@ -192,6 +215,10 @@ Initialisation may keep named, period-specific source flags in value filters,
 but must keep them separate from structural status. Dashboard diagnostics must
 present structural and numerical conformance as distinct fields.
 
+The selected 2026-07-28 Common ESTO run contributes 168,509 exact-context
+diagnostics: 157,540 passed and 10,969 failed. These checks retain source-system
+attribution and are not reinterpreted by the contract producer.
+
 ## Verification record: 2026-07-28
 
 ### Inputs
@@ -233,17 +260,22 @@ was
 reported `leaf_only_unambiguous` where the test expected `full_path`. It
 pre-dated MAPQ-030 and was not changed.
 
-The real contract build strictly reloaded its manifest and all member hashes.
-The review summary was:
+The current canonical-workbook contract build is
+`9c566a5474aa409f5fd2564778f5981c427ce91fe6362c40776d0eecbca29b5f`.
+It strictly reloaded its manifest and all member hashes. Its review summary is:
 
 | Metric | Count |
 |---|---:|
-| Canonical pairs | 9,121 |
-| Workbook cells inspected | 17,668 |
-| Proposed cell changes | 3,410 |
-| Pairs with conflicting current cross-sheet flags | 520 |
-| Unresolved canonical pairs | 1,055 |
+| Canonical pairs | 11,359 |
+| Workbook cells inspected | 16,094 |
+| Proposed cell changes | 3,186 |
+| Pairs with conflicting current cross-sheet flags | 444 |
+| Unresolved canonical pairs | 896 |
 | Enabled subtotal exception rows audited | 2,960 |
+
+The 2,835 Common ESTO output pairs comprise 218 ordinary structural subtotal
+pairs and 394 additional declared synthetic output-subtotal pairs. The latter
+remain typed as 104 expanding, 276 non-expanding, and 14 detached targets.
 
 The review workbook was formula-error scanned and visually rendered sheet by
 sheet. It remained a proposal artifact; no mapping or exception workbook was
@@ -260,9 +292,7 @@ modified.
    and 2070; its function accepts `years=None` for a full-year run.
 4. Human review is required before proposed canonical-workbook or exception
    dispositions are applied.
-5. Dashboard Mapping diagnostics integration must be reconciled with its
-   owning implementation before wiring the strict loader into the surface.
-6. Stages 1–3 and exact-cell workbook verification become meaningful only
+5. Stages 1–3 and exact-cell workbook verification become meaningful only
    after reviewed changes are approved and applied.
 
 ## Provenance

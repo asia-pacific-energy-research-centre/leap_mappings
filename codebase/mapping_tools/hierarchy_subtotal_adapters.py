@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.build_dataset_tree_structure import (
+    build_common_esto_hierarchy_edges,
     build_common_esto_tree,
     build_esto_tree,
     build_ninth_tree,
@@ -17,7 +18,9 @@ from codebase.mapping_tools.build_dataset_tree_structure import (
 from codebase.mapping_tools.hierarchy_subtotal_contract import (
     AdapterTables,
     CallableDatasetAdapter,
+    classify_pairs,
     empty_observations,
+    normalize_adapter_tables,
 )
 
 
@@ -73,6 +76,7 @@ def _node_rows_from_tree(
             "node_id": node_id,
             "node_label": _text(row.get("label")) or node_id,
             "depth": int(pd.to_numeric(row.get("level"), errors="coerce") or 0),
+            "display_parent_node_id": _text(row.get("parent_code")),
             "hierarchy_status": hierarchy_status,
             "source_subtotal_layout": signals.get("layout", pd.NA),
             "source_subtotal_results": signals.get("results", pd.NA),
@@ -505,6 +509,105 @@ def build_tree_artifact_adapter(
     )
 
 
+def build_common_esto_adapter(
+    common_rows_path: Path,
+    workbook_path: Path,
+) -> AdapterTables:
+    """Build Common ESTO structure and actual output pairs from source inputs.
+
+    Typed hierarchy edges keep ordinary parenthood separate from expanding,
+    non-expanding, and detached comparison relationships. Pair classification
+    is limited to flow/product combinations that occur in common_esto_rows.csv.
+    """
+    common_rows_path = Path(common_rows_path)
+    workbook_path = Path(workbook_path)
+    tree = build_common_esto_tree(common_rows_path, workbook_path)
+    typed_edges = build_common_esto_hierarchy_edges(tree, workbook_path)
+    provenance = (
+        f"{common_rows_path.resolve()} plus {workbook_path.resolve()}"
+    )
+    axis_map = {"flow": ("axis_1", "flow"), "product": ("axis_2", "product")}
+    nodes = _node_rows_from_tree(
+        tree,
+        "common_esto",
+        axis_map,
+        "derived_declared_structure",
+        provenance,
+    )
+    edge_records: list[dict[str, object]] = []
+    relationship_lookup = {
+        ("tree_edge", ""): "ordinary_hierarchy",
+        ("expanding_rollup", "EXPANDING"): "expanding_rollup",
+        ("comparison_boundary", "NON_EXPANDING"): "non_expanding_replacement",
+        ("comparison_boundary", "DETACHED"): "detached_diagnostic_boundary",
+    }
+    for row_number, row in typed_edges.iterrows():
+        edge_type = _text(row.get("edge_type"))
+        rollup_mode = _text(row.get("rollup_mode")).upper()
+        relationship_type = relationship_lookup.get(
+            (edge_type, rollup_mode),
+            "ordinary_hierarchy" if edge_type == "tree_edge" else "unresolved",
+        )
+        edge_records.append({
+            "dataset_id": "common_esto",
+            "axis_id": axis_map[_text(row.get("axis"))][0],
+            "parent_node_id": _text(row.get("parent_code")),
+            "child_node_id": _text(row.get("child_code")),
+            "relationship_type": relationship_type,
+            "direction": (
+                "parent_to_child"
+                if relationship_type == "ordinary_hierarchy"
+                else "component_to_declared_target"
+            ),
+            "is_additive": relationship_type in {
+                "ordinary_hierarchy",
+                "expanding_rollup",
+            },
+            "source_rule_id": f"common_esto_hierarchy_edges:{row_number + 2}",
+            "review_status": "derived_from_typed_edge",
+            "provenance": provenance,
+        })
+    common_rows = pd.read_csv(
+        common_rows_path,
+        usecols=["common_flow_label", "common_product_label"],
+        dtype=object,
+    )
+    pair_values = {
+        (_text(row["common_flow_label"]), _text(row["common_product_label"]))
+        for _, row in common_rows.drop_duplicates().iterrows()
+    }
+    source_version = (
+        f"{_source_version(common_rows_path)};"
+        f"{_source_version(workbook_path)}"
+    )
+    return AdapterTables(
+        dataset_id="common_esto",
+        source_version=source_version,
+        adapter_version=ADAPTER_VERSION,
+        dataset_kind="derived_comparison_structure",
+        nodes=nodes,
+        edges=pd.DataFrame(edge_records),
+        pairs=_pair_frame("common_esto", pair_values, provenance),
+        observations=empty_observations(),
+        provenance={
+            "hierarchy": provenance,
+            "pair_frontier": str(common_rows_path.resolve()),
+            "relationship_boundary": "typed Common ESTO hierarchy edges",
+        },
+    )
+
+
+def build_common_esto_pair_classification(
+    common_rows_path: Path,
+    workbook_path: Path,
+) -> pd.DataFrame:
+    """Return canonical subtotal flags for actual Common ESTO output pairs."""
+    tables = normalize_adapter_tables(
+        build_common_esto_adapter(common_rows_path, workbook_path)
+    )
+    return classify_pairs(tables.nodes, tables.pairs, tables.edges)
+
+
 def current_adapter_registry(
     repo_root: Path,
     workbook_path: Path,
@@ -516,7 +619,7 @@ def current_adapter_registry(
     esto_path = repo_root / "data" / "00APEC_2025_low_with_subtotals.csv"
     leap_inventory = repo_root / "data" / "temp" / "new leap rows.xlsx"
     extended_tree = repo_root / "results" / "tree_structure" / "esto_extended_tree.csv"
-    common_tree = repo_root / "results" / "tree_structure" / "common_esto_tree.csv"
+    common_rows = repo_root / "results" / "common_esto" / "common_esto_rows.csv"
     return [
         CallableDatasetAdapter(
             "esto",
@@ -546,12 +649,7 @@ def current_adapter_registry(
         CallableDatasetAdapter(
             "common_esto",
             ADAPTER_VERSION,
-            lambda: build_tree_artifact_adapter(
-                "common_esto",
-                common_tree,
-                workbook_path,
-                "derived_comparison_structure",
-            ),
+            lambda: build_common_esto_adapter(common_rows, workbook_path),
         ),
     ]
 
@@ -826,6 +924,128 @@ def build_esto_family_conformance(
         [
             "parent_node_id",
             "economy",
+            "fixed_opposite_axis_node_id",
+            "year_or_period",
+        ],
+        kind="stable",
+    ).reset_index(drop=True)
+
+
+def normalize_common_esto_value_conformance(
+    validation_path: Path,
+    expected_run_id: str | None = None,
+    tolerance: float = 0.01,
+) -> pd.DataFrame:
+    """Normalize current-run Common ESTO checks into the contract schema.
+
+    The Stage 3 validator remains responsible for resolving source-specific
+    frontiers and rollup semantics. This adapter preserves its full comparison
+    context instead of recomputing those rules inside the contract producer.
+    """
+    validation_path = Path(validation_path)
+    validation = pd.read_csv(validation_path, dtype=object)
+    required = {
+        "run_id",
+        "validation_axis",
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "other_axis_value",
+        "parent_code",
+        "child_count",
+        "frontier_row_count",
+        "year",
+        "parent_value",
+        "children_sum",
+        "difference",
+        "abs_error",
+        "status",
+        "reason",
+        "inherited_source_inconsistency",
+    }
+    missing = required.difference(validation.columns)
+    if missing:
+        raise ValueError(
+            "Common ESTO validation is missing required columns: "
+            + ", ".join(sorted(missing))
+        )
+    run_ids = set(validation["run_id"].dropna().astype(str)) - {"", "nan"}
+    if expected_run_id and run_ids != {expected_run_id}:
+        raise ValueError(
+            "Common ESTO validation run_id does not match the selected Stage 3 run"
+        )
+    axis_lookup = {"flow": "axis_1", "product": "axis_2"}
+    validation_axis = validation["validation_axis"].astype(str).map(axis_lookup)
+    if validation_axis.isna().any():
+        unexpected = sorted(
+            set(validation.loc[validation_axis.isna(), "validation_axis"].astype(str))
+        )
+        raise ValueError(
+            f"Common ESTO validation has unsupported axes: {unexpected}"
+        )
+    missing_children = (
+        validation.get("missing_expected_children", pd.Series("", index=validation.index))
+        .fillna("")
+        .astype(str)
+        .map(lambda value: len([item for item in value.split(";") if item.strip()]))
+    )
+    numeric = {}
+    for column in [
+        "parent_value",
+        "children_sum",
+        "difference",
+        "abs_error",
+        "child_count",
+        "frontier_row_count",
+    ]:
+        numeric[column] = pd.to_numeric(validation[column], errors="coerce")
+    return pd.DataFrame({
+        "dataset_id": "common_esto",
+        "source_version": _source_version(validation_path),
+        "run_id": validation["run_id"],
+        "comparison_scope": validation["comparison_scope"],
+        "source_system": validation["source_system"],
+        "economy": validation["economy"],
+        "scenario": validation["scenario"],
+        "year_or_period": validation["year"],
+        "validation_axis": validation_axis,
+        "parent_node_id": validation["parent_code"],
+        "fixed_opposite_axis_node_id": validation["other_axis_value"],
+        "parent_value": numeric["parent_value"],
+        "child_sum": numeric["children_sum"],
+        "signed_difference": numeric["difference"],
+        "absolute_difference": numeric["abs_error"],
+        "positive_child_sum": pd.NA,
+        "negative_child_sum": pd.NA,
+        "expected_child_count": numeric["child_count"],
+        "observed_child_count": numeric["frontier_row_count"],
+        "missing_child_count": missing_children,
+        "mapped_child_count": numeric["frontier_row_count"],
+        "tolerance": tolerance,
+        "tolerance_mode": "relative_with_absolute_floor",
+        "status": validation["status"],
+        "reason": validation["reason"],
+        "inherited_source_inconsistency": validation[
+            "inherited_source_inconsistency"
+        ].map(_truthy),
+        "source_inconsistency_status": validation.get(
+            "source_inconsistency_status", ""
+        ),
+        "sector_hierarchy_status": validation.get("sector_hierarchy_status", ""),
+        "fuel_hierarchy_status": validation.get("fuel_hierarchy_status", ""),
+        "source_issue_ids": validation.get("source_issue_ids", ""),
+        "exception_status": "",
+        "exception_reason": "",
+        "provenance": str(validation_path.resolve()),
+    }).sort_values(
+        [
+            "comparison_scope",
+            "source_system",
+            "validation_axis",
+            "parent_node_id",
+            "economy",
+            "scenario",
             "fixed_opposite_axis_node_id",
             "year_or_period",
         ],

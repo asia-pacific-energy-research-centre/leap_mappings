@@ -8,6 +8,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     build_component_relevance,
     build_source_coverage_check,
     build_unmapped_leap_branch_evidence,
+    build_wide_year_output,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     normalise_source_columns,
@@ -15,6 +16,54 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     tagged_output_path,
 )
 from codebase.mapping_issue_exceptions import filter_unmodelled_source_rows
+
+
+def test_wide_output_uses_canonical_common_pair_subtotal_classification(
+    tmp_path: Path,
+) -> None:
+    common_rows_path = tmp_path / "common_esto_rows.csv"
+    pd.DataFrame([
+        {
+            "common_flow_label": "14 Industry sector",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "14.03 Manufacturing",
+            "common_product_label": "01 Coal",
+        },
+    ]).to_csv(common_rows_path, index=False)
+    workbook_path = tmp_path / "mapping.xlsx"
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        pd.DataFrame(columns=[
+            "include",
+            "rolled_esto_flow",
+            "child_flow_labels",
+        ]).to_excel(writer, sheet_name="esto_rollup_rules", index=False)
+    comparison = pd.DataFrame([
+        {
+            "comparison_scope": "esto_leap",
+            "source_system": "ESTO",
+            "economy": "20_USA",
+            "scenario": "historical",
+            "year": 2023,
+            "common_flow_label": flow,
+            "common_product_label": "01 Coal",
+            "value": value,
+        }
+        for flow, value in [
+            ("14 Industry sector", 10),
+            ("14.03 Manufacturing", 10),
+        ]
+    ])
+
+    wide = build_wide_year_output(
+        comparison,
+        common_rows_path,
+        outlook_mappings_path=workbook_path,
+    ).set_index("flow")
+
+    assert bool(wide.loc["14 Industry sector", "is_subtotal"])
+    assert not bool(wide.loc["14.03 Manufacturing", "is_subtotal"])
 
 
 def test_tagged_output_path_preserves_plain_and_compressed_csv_suffixes() -> None:

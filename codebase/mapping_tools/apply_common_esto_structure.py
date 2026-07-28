@@ -24,7 +24,10 @@ from codebase.mapping_issue_exceptions import (
     filter_unmodelled_source_rows,
     row_is_allowed,
 )
-from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
+from codebase.mapping_tools.build_dataset_tree_structure import OUTLOOK_MAPPINGS_PATH
+from codebase.mapping_tools.hierarchy_subtotal_adapters import (
+    build_common_esto_pair_classification,
+)
 from codebase.mapping_tools.common_esto_output_contract import (
     LEGACY_COMPARISON_COLUMNS,
     MANIFEST_FILENAME,
@@ -1192,7 +1195,11 @@ def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataF
     return check_df.sort_values(SOURCE_COVERAGE_GROUP_COLUMNS).reset_index(drop=True)
 
 
-def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) -> pd.DataFrame:
+def build_wide_year_output(
+    comparison_df: pd.DataFrame,
+    common_rows_path: Path,
+    outlook_mappings_path: Path = OUTLOOK_MAPPINGS_PATH,
+) -> pd.DataFrame:
     """Create scope/economy/scenario/product/flow rows with year columns.
 
     The wide file intentionally has no source_system column, so source_system is
@@ -1201,8 +1208,8 @@ def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) 
     appear in several scopes at different product granularity (e.g. exact ESTO
     detail in esto_leap vs NINTH-lumped unions in esto_leap_ninth); flattening
     scopes together would double count those rows.
-    An is_subtotal flag marks rows whose flow or product has children in the
-    common ESTO tree hierarchy (from build_common_esto_tree, not label text).
+    ``is_subtotal`` comes from the same canonical Common ESTO adapter and
+    any-axis-parent rule published by the hierarchy/subtotal contract.
     """
     if comparison_df.empty:
         return pd.DataFrame(columns=WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"])
@@ -1231,21 +1238,23 @@ def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) 
         [column for column in wide_df.columns if column not in WIDE_OUTPUT_ID_COLUMNS],
         key=lambda value: int(value) if value.isdigit() else value,
     )
-    tree_df = build_common_esto_tree(common_rows_path)
-    common_tree_df = tree_df[tree_df["dataset"] == "common_esto"]
-    flow_lookup = (
-        common_tree_df[common_tree_df["axis"] == "flow"]
-        .drop_duplicates(subset="code")
-        .set_index("code")["is_subtotal"]
+    classification = build_common_esto_pair_classification(
+        common_rows_path=common_rows_path,
+        workbook_path=outlook_mappings_path,
+    )[["axis_1_node_id", "axis_2_node_id", "declared_output_subtotal"]].rename(
+        columns={
+            "axis_1_node_id": "flow",
+            "axis_2_node_id": "product",
+        }
     )
-    product_lookup = (
-        common_tree_df[common_tree_df["axis"] == "product"]
-        .drop_duplicates(subset="code")
-        .set_index("code")["is_subtotal"]
+    wide_df = wide_df.merge(
+        classification,
+        on=["flow", "product"],
+        how="left",
+        validate="many_to_one",
     )
     wide_df["is_subtotal"] = (
-        wide_df["flow"].map(flow_lookup).fillna(False).astype(bool)
-        | wide_df["product"].map(product_lookup).fillna(False).astype(bool)
+        wide_df.pop("declared_output_subtotal").fillna(False).astype(bool)
     )
     return wide_df[WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"] + year_columns]
 
@@ -1739,7 +1748,15 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {broad_warning_message}")
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
-    wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
+    wide_year_df = build_wide_year_output(
+        comparison_df,
+        common_rows_path,
+        outlook_mappings_path=(
+            outlook_mappings_path
+            if outlook_mappings_path is not None
+            else OUTLOOK_MAPPINGS_PATH
+        ),
+    )
     total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
     source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
     save_outputs(

@@ -4,6 +4,7 @@
 #%%
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from codebase.mapping_tools.hierarchy_subtotal_adapters import (  # noqa: E402
     build_esto_family_conformance,
     build_ninth_family_conformance,
     current_adapter_registry,
+    normalize_common_esto_value_conformance,
 )
 from codebase.mapping_tools.hierarchy_subtotal_contract import (  # noqa: E402
     build_contract_frames,
@@ -42,6 +44,7 @@ def build_hierarchy_subtotal_contract(
     review_csv_dir: str | Path,
     include_esto_value_diagnostics: bool = True,
     include_ninth_value_diagnostics: bool = True,
+    include_common_esto_value_diagnostics: bool = True,
 ) -> tuple[dict[str, object], dict[str, pd.DataFrame], dict[str, pd.DataFrame]]:
     """Build, strictly reload, and prepare a non-writing workbook review."""
     workbook_path = _resolve(workbook_path)
@@ -52,6 +55,15 @@ def build_hierarchy_subtotal_contract(
     frames, registry = build_contract_frames(adapters)
     esto_path = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
     ninth_path = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+    common_rows_path = (
+        REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
+    )
+    common_validation_path = (
+        REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
+    )
+    stage3_manifest_path = (
+        REPO_ROOT / "results" / "common_esto" / "stage3_run_manifest.json"
+    )
     if include_esto_value_diagnostics:
         frames["value_conformance_diagnostics"] = pd.concat(
             [
@@ -68,14 +80,42 @@ def build_hierarchy_subtotal_contract(
             ],
             ignore_index=True,
         )
+    common_value_inputs: list[Path] = []
+    if include_common_esto_value_diagnostics:
+        if not common_validation_path.exists() or not stage3_manifest_path.exists():
+            raise FileNotFoundError(
+                "Common ESTO value diagnostics require the current validation "
+                "and Stage 3 run manifest"
+            )
+        stage3_manifest = json.loads(
+            stage3_manifest_path.read_text(encoding="utf-8")
+        )
+        stage3_status = str(stage3_manifest.get("status", ""))
+        if not stage3_status.startswith("completed"):
+            raise ValueError(
+                f"Selected Stage 3 run is not complete: {stage3_status or 'missing'}"
+            )
+        common_diagnostics = normalize_common_esto_value_conformance(
+            common_validation_path,
+            expected_run_id=str(stage3_manifest.get("run_id", "")),
+        )
+        frames["value_conformance_diagnostics"] = pd.concat(
+            [
+                frames["value_conformance_diagnostics"],
+                common_diagnostics,
+            ],
+            ignore_index=True,
+        )
+        common_value_inputs = [common_validation_path, stage3_manifest_path]
     input_paths = [
         workbook_path,
         exception_workbook_path,
         esto_path,
         ninth_path,
+        common_rows_path,
         REPO_ROOT / "data" / "temp" / "new leap rows.xlsx",
         REPO_ROOT / "results" / "tree_structure" / "esto_extended_tree.csv",
-        REPO_ROOT / "results" / "tree_structure" / "common_esto_tree.csv",
+        *common_value_inputs,
     ]
     manifest = write_contract(
         output_dir=output_dir,
@@ -112,6 +152,7 @@ CONTRACT_OUTPUT_DIR = "results/hierarchy_subtotal_contract/current"
 REVIEW_CSV_DIR = "results/hierarchy_subtotal_contract/review_csv"
 INCLUDE_ESTO_VALUE_DIAGNOSTICS = True
 INCLUDE_NINTH_VALUE_DIAGNOSTICS = True
+INCLUDE_COMMON_ESTO_VALUE_DIAGNOSTICS = True
 
 if BUILD_CONTRACT:
     MANIFEST, CONTRACT_FRAMES, REVIEW_FRAMES = build_hierarchy_subtotal_contract(
@@ -121,6 +162,7 @@ if BUILD_CONTRACT:
         review_csv_dir=REVIEW_CSV_DIR,
         include_esto_value_diagnostics=INCLUDE_ESTO_VALUE_DIAGNOSTICS,
         include_ninth_value_diagnostics=INCLUDE_NINTH_VALUE_DIAGNOSTICS,
+        include_common_esto_value_diagnostics=INCLUDE_COMMON_ESTO_VALUE_DIAGNOSTICS,
     )
     print(f"Built hierarchy contract: {MANIFEST['build_id']}")
     print(REVIEW_FRAMES["summary"].to_string(index=False))

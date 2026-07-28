@@ -427,6 +427,12 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   `09.06 Gas processing plants` and `09.08 Coal transformation` passed all
   55,692 immediate-child comparisons. The bounded 9th check remains secondary
   inherited-source evidence and does not determine structural status.
+- **2026-07-28 Common ESTO integration:** The contract now builds Common ESTO
+  directly from `common_esto_rows.csv` and typed hierarchy edges, classifies
+  the 2,835 actual output pairs, keeps 218 structural pairs separate from 394
+  synthetic output-subtotal treatments, and carries 168,509 current-run Common
+  ESTO checks in `value_conformance_diagnostics.csv`. The wide output and
+  dashboard consume the same classification/contract path.
 - **Next decision:** Review the bounded unresolved queue, beginning with the
   missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
   sibling groups before any workbook application. See
