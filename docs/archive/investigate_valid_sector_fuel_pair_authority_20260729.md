@@ -1,11 +1,15 @@
 # Investigate and design a reusable valid sector/fuel pair authority
 
+> **Archived 2026-07-29:** This proposed investigation was judged too
+> unrelated to the active separate-axis mapping work. It is retained only as a
+> possible future reference and is not an active prompt or work-queue item.
+
 ## Task type
 
 Investigation and contract-design task, with an optional shadow implementation
 only after the evidence and semantics are clear.
 
-Work queue item: `MAPQ-034`.
+Former work queue item: `MAPQ-034` (withdrawn as out of scope).
 
 The purpose is to determine, carefully and reproducibly, which source
 sector/fuel combinations should be considered possible, relevant, or valid
