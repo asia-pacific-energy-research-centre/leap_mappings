@@ -10,6 +10,9 @@ exception rows as authority.
 This is the detailed plan for MAPQ-030. It is a review plan only; no subtotal
 cells have been changed.
 
+The reusable end-to-end implementation prompt is
+[`prompts/complete_hierarchy_subtotal_contract_prompt.md`](prompts/complete_hierarchy_subtotal_contract_prompt.md).
+
 ## What the current investigation found
 
 The current todo workbook contains conflicting subtotal values for identical
