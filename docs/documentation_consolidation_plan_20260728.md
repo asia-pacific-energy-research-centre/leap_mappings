@@ -1,6 +1,6 @@
 # Preservation-first Markdown consolidation plan
 
-**Status:** reviewed proposal; no source document has been moved or deleted
+**Status:** partially executed; merge families 1 and 2 completed on 2026-07-28
 
 **Scope:** active Markdown in `leap_mappings`, `leap_initialisation`, and
 `leap_dashboard`
@@ -74,8 +74,7 @@ together to `docs/archive/hierarchy_subtotal_contract_20260728/`.
 
 ### 2. Initialisation All-demand-aggregated guides
 
-Create one live
-`leap_initialisation/docs/all_demand_aggregated_branch_guide.md`.
+Create one live placeholder guide in `leap_initialisation`.
 
 | Source | Unique role to preserve |
 |---|---|
@@ -91,9 +90,12 @@ Recommended combined order:
 5. fuel-count and completion checks;
 6. source-provenance appendix.
 
-Use audience callouts inside the combined guide instead of retaining two nearly
-parallel entry points. Preserve both originals in
-`docs/archive/all_demand_aggregated_guides_20260728/`.
+The approved implementation broadened the destination to
+`docs/placeholder_branches_and_interim_models.md`. It combines the two source
+guides with the electricity, CHP, and heat-plant interim information, explains
+why placeholders are useful, and adds placeholder-specific mapping and
+replacement rules. The originals are preserved in
+`docs/archive/placeholder_guides_20260728/`.
 
 Expected result: two live documents become one.
 
@@ -206,6 +208,21 @@ surface while retaining every original under archive. The later partition and
 snapshot work can reduce the live surface further, but should be gated by the
 current pipeline and dashboard baselines rather than performed from stale
 counts.
+
+## Execution record
+
+Completed on 2026-07-28:
+
+- merge family 1: created `leap_mappings/docs/hierarchy_subtotal_contract.md`
+  and archived the three source documents together with all substantive
+  content;
+- merge family 2: created
+  `leap_initialisation/docs/placeholder_branches_and_interim_models.md` and
+  archived the two exact All-demand sources together.
+
+The dashboard merge and later snapshot/archive candidates remain gated as
+described above. This plan stays live until those remaining decisions are
+completed or explicitly declined.
 
 ## Completion gate for each merge
 

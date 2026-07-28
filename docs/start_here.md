@@ -50,6 +50,7 @@ LEAP import IDs in the mapping workbook.
 | understand the whole system | `leap_mappings` | [End-to-end system guide](handover/end_to_end_system_guide.md) |
 | edit or review a mapping relationship or rollup | `leap_mappings` | [Mapping pipeline guide](handover/mapping_pipeline_guide.md) |
 | understand exact mapping semantics | `leap_mappings` | [Mappings system reference](mappings_system.md) |
+| distinguish structural subtotals from numerical additivity | `leap_mappings` | [Hierarchy/subtotal contract](hierarchy_subtotal_contract.md) |
 | check a producer/consumer boundary | `leap_mappings` | [Cross-repository data contracts](handover/cross_repository_data_contracts.md) |
 | create or update LEAP baseline seeds | `leap_initialisation` | [Supply reconciliation guide](../../leap_initialisation/docs/handover/supply_reconciliation_guide.md) |
 | diagnose LEAP paths, duplicate logical keys, or IDs | `leap_initialisation` | [Check registry](../../leap_initialisation/docs/check_registry.md) |

@@ -425,9 +425,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Next decision:** Review the bounded unresolved queue, beginning with the
   missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
   sibling groups before any workbook application. See
-  `hierarchy_subtotal_contract_diagnosis.md`,
-  `hierarchy_subtotal_contract_reference.md`, and
-  `hierarchy_subtotal_contract_verification_20260728.md`.
+  [`hierarchy_subtotal_contract.md`](hierarchy_subtotal_contract.md).
 
 ### MAPQ-031 — Build complete ESTO Extended mappings from the new LEAP rows
 

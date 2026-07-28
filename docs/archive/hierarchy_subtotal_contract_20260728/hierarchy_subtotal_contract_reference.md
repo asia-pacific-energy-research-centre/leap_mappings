@@ -65,4 +65,3 @@ parenthood. Period-specific source flags may remain in initialisation value
 filters, but their output must be named and kept separate from structural
 status. The dashboard checking surface must present structural and numerical
 status as two distinct fields.
-

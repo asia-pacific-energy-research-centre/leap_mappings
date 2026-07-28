@@ -1365,8 +1365,9 @@ rollups, aliases, expanding rollups, non-expanding replacements, detached
 diagnostic boundaries, and graph-generated comparison categories. The Common
 ESTO output manifest references the selected structural build rather than
 placing component-grain hierarchy data in its observed-row metadata member.
-See `hierarchy_subtotal_contract_reference.md` for the schema and
-`hierarchy_subtotal_contract_diagnosis.md` for the migration inventory.
+See [`hierarchy_subtotal_contract.md`](hierarchy_subtotal_contract.md) for the
+schema, invariants, migration inventory, consumer contract, and dated
+verification evidence.
 
 ### Anchor reconciliation against converted outputs (`reconcile_anchor_validation.py`)
 

@@ -88,4 +88,3 @@ workbook and `data/temp/new leap rows.xlsx` do not constitute a full
 cross-economy model tree, and the LEAP fuel taxonomy is not available. The
 contract therefore marks those nodes `partial_inventory` or
 `unresolved_fuel_taxonomy`; it does not invent parenthood.
-

@@ -8,6 +8,12 @@ design task — see that file's note).
 
 Format: date, original path, new path, one-line reason.
 
+## 2026-07-28 — preservation-first consolidation
+
+| Original path(s) | New path | Reason |
+|---|---|---|
+| `docs/hierarchy_subtotal_contract_diagnosis.md`, `docs/hierarchy_subtotal_contract_reference.md`, and `docs/hierarchy_subtotal_contract_verification_20260728.md` | `docs/archive/hierarchy_subtotal_contract_20260728/` | Combined into the maintained `docs/hierarchy_subtotal_contract.md`; the archived sources retain the diagnosis, schema reference, commands, hashes, results, and limitations. |
+
 ## 2026-07-28 — exhaustive documentation disposition
 
 All moves below are git-tracked and fully recoverable. No useful content was

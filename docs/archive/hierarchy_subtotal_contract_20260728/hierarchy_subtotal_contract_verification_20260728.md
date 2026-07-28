@@ -61,4 +61,3 @@ modified.
    surface after its owner reconciles the active diff.
 6. Stages 1–3 and workbook exact-cell verification cannot be meaningful until
    the reviewed changes are approved and applied.
-
