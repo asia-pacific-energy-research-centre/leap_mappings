@@ -13,6 +13,32 @@ reconciles repository state, worktrees, recent commits, the older
 Cross-repository ownership, data contracts, and refresh order live in
 [`cross_repository_handover_index.md`](cross_repository_handover_index.md).
 
+## Same-day current-state addendum
+
+Verified after commit `94c8e90` and before the documentation-disposition
+commit. This addendum supersedes contradictory repository-state, prompt-state,
+and completed-documentation claims later in this dated queue; the detailed
+task rationale remains preserved below.
+
+| Area | Current evidence and status |
+|---|---|
+| Local/remote | Local `master` is 24 commits ahead of `origin/master`, not four. It is not behind. MAPQ-002 remains an unpushed-history risk. |
+| Dirty checkout | The user-owned modified mapping helper, canonical workbook, cleanup-candidate document, review workbook, Office recovery files, `.codex*`, and `node_modules/` remain outside this documentation pass. Do not infer a clean baseline from this checkout. |
+| MAPQ-003 | **Complete on local master:** output-contract implementation/certification landed in `1f48790` and `4f41ecc`. A fresh post-change end-to-end baseline is still required by MAPQ-005. |
+| MAPQ-004 | **Still not integrated:** `git cherry` reports `+` for `add312d` and `8b169de`. The later `eb3a293` ESTO Extended rollup identity fix is related but does not make those two branch commits patch-equivalent. |
+| MAPQ-006 | The layered handover set and exhaustive disposition register now exist. Remaining work is maintenance and the clean-checkout rehearsal, not creation of the original five-document set. |
+| MAPQ-007 | Core ESTO Extended mapping/delta work advanced through `947742d`, `afec8f6`, `db67012`, `1a85c2b`, `a16ac13`, `8adfaa5`, `af067c9`, and `c578829`. Uncommitted delta-integration code exists in a separate worktree, so this item is not complete. |
+| MAPQ-013 | Compression and verified quarantine work landed (`34858fe`, `a16ac13`), but the user-owned `results_folder_cleanup_candidates.md` edit and the blocked missing-row comparison remain open. |
+| MAPQ-014/015 | The maintained handover guides and data-contract reference landed in `861dba5`; the older `cross_repository_handover_index.md` is now a dated evidence snapshot. MAPQ-022 is still needed to prove the guides from a clean checkout. |
+| Prompt inventory | Completed and superseded prompt packs were preservation-archived in the exhaustive documentation pass. `docs/prompts/AGENTS.md` is the current active inventory. |
+| MAPQ-026 | `codebase/run_mapping_pipeline_delayed.ps1` was removed by `ac33daa`. The remaining variant-workbook decision concerns review evidence/column recovery and the active MAPQ-010 prompt, not a live delayed runner. |
+
+See
+[`documentation_disposition_20260728.md`](documentation_disposition_20260728.md)
+for the file-by-file documentation evidence. When updating an individual MAPQ
+item, fold this addendum into that item's body rather than adding another
+parallel status layer.
+
 Do not mark an item complete only because a prompt or findings file says it is
 complete. Completion requires the change to be committed on the intended
 branch, verified, and either present on `master` or explicitly recorded as a
@@ -336,10 +362,16 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Priority / status / week:** P2 · `human_decision` · W2
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-010
 - **Evidence (2026-07-28):** This workbook was part of the unit D deletion set but was **restored rather than deleted**, because it has two live dependencies that the other four variants do not:
-  - `codebase/run_mapping_pipeline_delayed.ps1:23` passes it as `--mapping-workbook-path`. Deleting it breaks that script silently.
+  - Historical note: `codebase/run_mapping_pipeline_delayed.ps1` used to pass
+    this workbook, but the obsolete runner was removed by `ac33daa`; it is no
+    longer a live dependency.
   - `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md:52` names it as evidence to inspect (sheets `esto_rollup_rules`, `leap_combined_esto`) — that prompt is queued and unstarted as MAPQ-010.
   - Content equivalence has now been **measured** — see [`workbook_variant_row_comparison_20260728.md`](workbook_variant_row_comparison_20260728.md). The canonical workbook is a strict superset on every mapping sheet except `leap_combined_ninth`; the variant's `esto_rollup_rules` sheet is a *subset* of canonical, so it is not needed as MAPQ-010 evidence. Of 231 rows the variant holds and canonical lacks, 228 are inactive (`duplicate_to_remove = True`), 1 is rejected (parent/child CHP double-count), and 2 are blank-fuel fills recommended for adoption.
-- **Next action:** (a) decide the two `Gas works plants` blank-fuel fills — see MAPQ-027; (b) recover the `IS_LEAP_ROLLUP_NAME` column, blank in all 605 canonical rows but populated in the variant; then (c) repoint `run_mapping_pipeline_delayed.ps1:23` and the MAPQ-010 prompt at the canonical workbook and delete the variant.
+- **Next action:** (a) decide the two `Gas works plants` blank-fuel fills — see
+  MAPQ-027; (b) decide whether the `IS_LEAP_ROLLUP_NAME` values are still
+  required and, if so, recover them deliberately; then (c) repoint the
+  MAPQ-010 prompt at the canonical workbook and delete or explicitly retain
+  the variant. No runner update is required after `ac33daa`.
 - **Completion criteria:** No script or active prompt references a non-canonical workbook, and either the variant is deleted or its continued existence has a written justification in `docs/special_rules_and_design_decisions.md`.
 
 ### MAPQ-027 — Fill two blank `ninth_fuel` values on `leap_combined_ninth`

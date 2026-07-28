@@ -8,6 +8,21 @@ design task — see that file's note).
 
 Format: date, original path, new path, one-line reason.
 
+## 2026-07-28 — exhaustive documentation disposition
+
+All moves below are git-tracked and fully recoverable. No useful content was
+deleted.
+
+| Original path(s) | New path | Reason |
+|---|---|---|
+| `docs/REPO_CLEANUP_AND_NAVIGATION_NOTES.md` | `docs/archive/2026-07-23_repo_cleanup/REPO_CLEANUP_AND_NAVIGATION_NOTES.md` | Self-contained 2026-07-22 transfer snapshot whose actions are now represented in maintained docs/queue; its “only deliverable” instruction is historical. |
+| `archive/2026-07-23_repo_cleanup/mapping_code/README_dashboard_mapping_starter.md` | `docs/archive/2026-07-23_repo_cleanup/mapping_code/README_dashboard_mapping_starter.md` | Consolidates the lone Markdown file in the nonstandard top-level archive into the tracked documentation archive without changing the prototype evidence. |
+| `docs/prompts/common_esto_lineage_validation/README.md` | `docs/archive/common_esto_lineage_validation/README.md` | The prompt pack was already archived; its index was the only orphan left in the active prompt tree. |
+| Anchor methodology origin prompt and the 2026-07-22/23 findings | `docs/archive/anchor_validation_methodology/` | Completed historical chain; unresolved reliability/exception work is preserved in active MAPQ-011/MAPQ-012 prompts. |
+| Configurable-scope, standalone-rollup, anchor-memory, demand-mismatch, NINTH-transformation, fast-path, holistic-stocktake, and whole-queue prompts/findings | `docs/archive/` under the same filenames | Implemented, verified, or superseded according to their own resolution notes and current commits; current operations/follow-ups live in handover docs and the queue. |
+| `docs/prompts/esto_extended_dataset_prompt.md` and `esto_extended_dataset_design.md` | `docs/archive/esto_extended_dataset/` | Original design gate is complete and implementation has advanced; current design/implementation status is maintained in focused ESTO Extended docs and MAPQ-007/029/031. |
+| Interactive anchor-tree prompt and `docs/interactive_anchor_tree_explorer_findings.md` | `docs/archive/` under the same filenames | Completed exploration retained for possible future visualization work; it is not an active mappings implementation prompt. |
+
 ## 2026-07-27
 
 Gitignored and recoverable from a verified ZIP:

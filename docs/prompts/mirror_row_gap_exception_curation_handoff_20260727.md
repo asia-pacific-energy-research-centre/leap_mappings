@@ -17,7 +17,8 @@ the data alone which of the two conflicting numbers is "right."
 
 **Four separate sessions tried to teach the validator to tell these two cases apart
 automatically, and every attempt failed** — see
-`docs/prompts/anchor_validator_fixes_findings_20260723.md`'s "mirror-row gap" section for the full
+`docs/archive/anchor_validation_methodology/anchor_validator_fixes_findings_20260723.md`'s
+"mirror-row gap" section for the full
 trace. Automatic detection either missed the real target cases or produced false positives on
 already-correct rows. The conclusion, reached the hard way across those four sessions: there may be
 no safe *automatic* signal for this at all.
@@ -85,7 +86,7 @@ same author (Finn Maunsell), not a third party. Between 2026-07-24 and 2026-07-2
 landed dozens of commits touching exactly the files this work depends on (`build_dataset_tree_
 structure.py`, `source_parent_anchor_validation.py`, Common ESTO structure-building) — memory
 optimization for the anchor validator (see its own scope doc,
-`docs/prompts/investigate_anchor_validator_memory_prompt.md`) plus what look like in-progress
+`docs/archive/investigate_anchor_validator_memory_prompt.md`) plus what look like in-progress
 "ESTO Extended" mapping-scope changes (commit messages: "align mapped component diagnostics with
 resolver," "combine ESTO and Extended mapping scopes," "make Extended hierarchy rollup-driven").
 

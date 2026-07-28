@@ -21,7 +21,7 @@ the sum of their children. Check here when a subtotal in the comparison data doe
 | `common_esto_validation_child_detail.csv`, `common_esto_validation_issue_patterns.csv`, `common_esto_validation_rollup_diagnosis.csv` | Deeper detail behind the validation mismatches — per-child breakdown, recurring issue-pattern grouping, and rollup-cause diagnosis, all from `common_esto_validation_orchestration.py`. |
 | `common_esto_source_frontier.csv` | The non-overlapping comparison frontier used as the basis for validation (which rows may be summed together without double-counting). |
 | `common_esto_rollup_validation.csv` / `common_esto_rollup_validation_summary.csv` | Validates the rollup rules themselves (not just the resulting totals) against their contributor rows. |
-| `source_parent_anchor_validation.csv` / `_summary.csv` | Checks converted (mapped) totals against the original raw source parent totals — the main defense against a mapping silently changing a total. This system has been under active development — see `docs/prompts/anchor_validator_fixes_findings_20260722.md` (and its `_20260723.md` follow-up if present) for the latest detail rather than treating this README as the full picture. |
+| `source_parent_anchor_validation.csv` / `_summary.csv` | Checks converted (mapped) totals against the original raw source parent totals — the main defense against a mapping silently changing a total. Use `docs/handover/mapping_pipeline_agent_guide.md` for current interpretation; the completed 2026-07-22/23 investigation chain is preserved under `docs/archive/anchor_validation_methodology/`. |
 
 ## Also present but not from the current pipeline run
 

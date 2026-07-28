@@ -1,5 +1,14 @@
 # Documentation audit — 2026-07-28
 
+> **Historical first-pass audit.** This file records the initial 74-file
+> classification and its same-day addendum. The repository subsequently grew
+> to 90 tracked Markdown files and several findings below were resolved. The
+> exhaustive current disposition, including every original path and every
+> archival destination, is
+> [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md).
+> Use that matrix for current document status; retain this file as evidence of
+> how the cleanup decisions were reached.
+
 ## Scope and method
 
 This audit covers all 74 tracked Markdown files found by

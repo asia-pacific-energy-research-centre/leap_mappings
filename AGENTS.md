@@ -12,7 +12,7 @@ These are project-level instructions for Codex (and similar agents).
 ## Repository routing
 
 - This repo is the active home for LEAP mapping maintenance.
-- Use this repo for `config/outlook_mappings_master.xlsx`, canonical mapping helpers, mapping checks, mapping conversion tools, and `codebase/outlook_mapping_maintenance_workflow.py`.
+- Use this repo for `config/outlook_mappings_master.xlsx`, canonical mapping helpers, mapping checks, mapping conversion tools, and `codebase/archive/outlook_mapping_maintenance_workflow.py`.
 - `config/leap_mappings.xlsx`, `config/master_config.xlsx`, and `codebase/leap_mapping_refresh_workflow.py` are legacy references unless a task explicitly asks for old-workbook maintenance.
 - `C:\Users\Work\github\leap_utilities` is the old workspace where this mapping code was built. Do not use `leap_utilities` for active mapping work anymore unless the user explicitly asks for legacy cleanup or comparison.
 - For LEAP area initialisation and supply reconciliation work, use `C:\Users\Work\github\leap_initialisation` instead.
@@ -61,8 +61,11 @@ Active documentation being developed:
 - In workflow scripts, always define `REPO_ROOT = Path(__file__).resolve().parents[1]` (or correct repo level), add it to `sys.path` only if missing, and resolve all relative paths via a `_resolve()` helper against `REPO_ROOT`.
 - Why: notebooks run with arbitrary CWD, so this prevents `FileNotFoundError` and import failures.
 - Normalize user-provided path strings by replacing `\\` with `/` before `Path(...)` when needed.
-- When updating transfer category mappings, re-run `codebase/scrapbook/transfers_mapping_exploration.py`
-  and paste the printed `TRANSFER_PROCESS_CONFIG` into `codebase/transfers_workflow.py`.
+- The former transfer-maintenance pair
+  `codebase/scrapbook/transfers_mapping_exploration.py` /
+  `codebase/transfers_workflow.py` is not present in this repository. Treat
+  references to it as legacy history; do not recreate or run it without a
+  separately reviewed task and an identified current owner.
 - When referring to files in replies, prefer paths relative to the active repo root
   (for example, `outputs/example.csv`) instead of absolute `/mnt/c/...` or
   `C:\...` paths. Use absolute paths only for files outside the repo or when needed
@@ -170,8 +173,11 @@ structure in mind when adding new transformations or debugging data issues.
 - Negative values represent inputs to a transformation flow (feedstock or auxiliary fuels).
 - Loss/own-use flows are treated as auxiliary fuel use (absolute values are used in ratios).
 
-## Baseline Seed Validation (`patch_baseline_seeds.py`)
+## Baseline Seed Validation (`leap_initialisation`)
 
+This section describes sibling-repository behaviour in
+`C:\Users\Work\github\leap_initialisation\codebase\functions\patch_baseline_seeds.py`;
+there is no local `patch_baseline_seeds.py` in `leap_mappings`.
 `validate_seed_files()` checks all `leap_import_baseline_seed_*.xlsx` files against the full
 model export template.  Two ignore sets control which rows are silently skipped:
 

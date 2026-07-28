@@ -308,20 +308,20 @@ backlog, not required reading up front.
 
 | File | What it covers |
 |---|---|
-| [`mappings_system.md`](mappings_system.md) | **Start here.** How the whole mappings system works — why it's structured the way it is, pipeline stages, code entry points, output files. |
-| [`guide_outlook_mappings_master.md`](guide_outlook_mappings_master.md) | Practical editor's guide to `config/outlook_mappings_master.xlsx` — what to put in the cells, with a rollup deep-dive. |
-| [`rollup_rules_system.md`](rollup_rules_system.md) | How the workbook's rollup-rule sheets get consumed by Stage 1/2 — for debugging relationship outputs. |
-| [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md) | The decision log — rules whose correct behaviour can't be derived from source data alone. Check here before assuming odd-looking behaviour is a bug. |
-| [`workflow_inventory.md`](workflow_inventory.md) | Navigation guide for `codebase/` — which scripts are live pipeline vs. standalone tools vs. legacy vs. dashboard-prototype (out of scope per `AGENTS.md`) vs. broken/orphaned. |
-| [`QA plan.md`](QA%20plan.md) | The smoke-test / regression-verification plan for the pipeline. |
+| [`mappings_system.md`](../../mappings_system.md) | **Start here.** How the whole mappings system works — why it's structured the way it is, pipeline stages, code entry points, output files. |
+| [`guide_outlook_mappings_master.md`](../../guide_outlook_mappings_master.md) | Practical editor's guide to `config/outlook_mappings_master.xlsx` — what to put in the cells, with a rollup deep-dive. |
+| [`rollup_rules_system.md`](../../rollup_rules_system.md) | How the workbook's rollup-rule sheets get consumed by Stage 1/2 — for debugging relationship outputs. |
+| [`special_rules_and_design_decisions.md`](../../special_rules_and_design_decisions.md) | The decision log — rules whose correct behaviour can't be derived from source data alone. Check here before assuming odd-looking behaviour is a bug. |
+| [`workflow_inventory.md`](../../workflow_inventory.md) | Navigation guide for `codebase/` — which scripts are live pipeline vs. standalone tools vs. legacy vs. dashboard-prototype (out of scope per `AGENTS.md`) vs. broken/orphaned. |
+| [`QA plan.md`](../../QA%20plan.md) | The smoke-test / regression-verification plan for the pipeline. |
 
 ## Repo hygiene (this pass)
 
 | File | What it covers |
 |---|---|
-| [`repo_data_slimdown_plan.md`](repo_data_slimdown_plan.md) | Exactly which `config/`/`data/`/`results/` files are required to run the pipeline (vs. safe to leave out), derived from tracing every input path in the code. |
-| [`results_folder_cleanup_candidates.md`](results_folder_cleanup_candidates.md) | Files/folders that look stale, orphaned, or duplicated across `results/`, `config/`, and `codebase/` — flagged for future cleanup, nothing acted on yet. |
-| [`diagnostic_file_review_signals.md`](diagnostic_file_review_signals.md) | Which `results/common_esto/` and `results/maintenance/` diagnostic files are named in project docs / read by other scripts / substantial in size vs. which are produced every run but referenced nowhere — decision support, not a verdict. |
+| [`repo_data_slimdown_plan.md`](../../repo_data_slimdown_plan.md) | Exactly which `config/`/`data/`/`results/` files are required to run the pipeline (vs. safe to leave out), derived from tracing every input path in the code. |
+| [`results_folder_cleanup_candidates.md`](../../results_folder_cleanup_candidates.md) | Files/folders that look stale, orphaned, or duplicated across `results/`, `config/`, and `codebase/` — flagged for future cleanup, nothing acted on yet. |
+| [`diagnostic_file_review_signals.md`](../../diagnostic_file_review_signals.md) | Which `results/common_esto/` and `results/maintenance/` diagnostic files are named in project docs / read by other scripts / substantial in size vs. which are produced every run but referenced nowhere — decision support, not a verdict. |
 
 See also `results/README.md` (and the `README.md` in each `results/` subfolder), `config/README.md`,
 and `data/README.md` — placed directly in those folders so the guide is right there when you
@@ -331,7 +331,7 @@ open them, rather than only discoverable from here.
 
 | File | What it covers |
 |---|---|
-| [`improvement_todo.md`](improvement_todo.md) | The active backlog — semantic mapping issues to resolve, the canonical-workbook migration, hierarchy validation, documentation gaps, and (as of this pass) the `results/` cleanup candidates. |
+| [`improvement_todo.md`](../../improvement_todo.md) | The active backlog — semantic mapping issues to resolve, the canonical-workbook migration, hierarchy validation, documentation gaps, and (as of this pass) the `results/` cleanup candidates. |
 
 ## `prompts/` and `archive/`
 

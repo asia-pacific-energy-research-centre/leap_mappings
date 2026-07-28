@@ -1,6 +1,6 @@
 # Workflow Inventory — `codebase/` navigation guide
 
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-28
 
 `codebase/` mixes several things that look similar at a glance but aren't: the live mapping
 pipeline, standalone maintenance/QA tools a researcher runs by hand, an explicitly-legacy
@@ -29,6 +29,8 @@ is reached from it.
 | `codebase/mapping_tools/source_branch_preflight.py` | invoked from the `data_convert` LEAP conversion step |
 | `codebase/mapping_tools/build_missing_mapped_esto_rows.py` | invoked from Stage 0 |
 | `codebase/mapping_tools/non_expanding_rollups.py` | invoked directly from `run_mapping_pipeline.py`'s ESTO-exact-rows step |
+| `codebase/mapping_tools/result_storage.py` | resolves compressed `.csv.gz` inputs/outputs for the live pipeline |
+| `codebase/mapping_tools/common_esto_output_contract.py` | publishes and certifies the versioned Common ESTO contract used by Stage 3/dashboard consumers |
 | `codebase/mapping_tools/mapping_issue_exceptions.py`, `codebase/mapping_issue_exceptions.py` | shared library, read by Stage 0 and several other tools (note: two similarly-named files — the one under `mapping_tools/` re-exports from the top-level one) |
 | `codebase/utilities/outlook_mappings_filters.py`, `codebase/utilities/leap_balance_export_resolver.py` | the only two `utilities/` modules the live pipeline actually imports |
 
@@ -65,6 +67,16 @@ imported by `run_mapping_pipeline.py`:
   which is committed to git (an exception to the "results/ is fully regenerated output" framing
   used elsewhere in this doc set — this particular file was deliberately checked in as a
   copy-ready candidate list, not left as gitignored transient output).
+- `source_coverage_audit.py` and `build_source_coverage_mapping_candidates.py`
+  — source-first coverage inventory and review-only candidate generation using
+  `config/source_coverage_scopes.json`.
+- `verify_ninth_mirror_row_candidates.py` — verifies paused NINTH
+  source-mismatch candidates against raw source rows; use with the active
+  mirror-row-gap handoff rather than as an automatic exception writer.
+- `esto_extended_delta.py` — exact ESTO Extended delta/reconstruction support.
+  The module is committed, but integration into the main orchestrator remains
+  active in a separate worktree; do not classify it as a live Stage 0–3 path
+  until that work is integrated and verified.
 
 Top-level standalone workflows: `codebase/propagate_esto_rows_workflow.py`,
 `codebase/for_colleagues_export_workflow.py` (see `results/for_colleagues/README.md`),
@@ -93,9 +105,10 @@ following modules build dashboard graph indices / comparison engines that duplic
   `energy_balance_template_extractor.py` and `ninth_to_esto_mapping_coverage.py` above.
 - `codebase/mapping_tools/build_dashboard_graph_index.py`, `build_energy_balance_graph_links.py`,
   `convert_leap_combined_esto_to_esto_first.py` — write `results/mapping_graph_index/` (see
-  that folder's README). Not currently producing output in this checkout (the folder doesn't
-  exist under `results/` right now) — last known output of this style lived in the now-archived
-  `codebase/mapping_code/` prototype bundle (see below).
+  that folder's README). No generated graph-index files are currently present
+  in this checkout; the folder contains only its tracked README. The last known
+  output of this style lived in the now-archived `codebase/mapping_code/`
+  prototype bundle (see below).
 - `codebase/mappings/canonical_mapping.py` — reads `config/ninth_pairs_to_esto_pairs.xlsx` /
   `config/leap_results_sheet_map.csv`, neither of which are among the files required to run the
   live pipeline (see `docs/repo_data_slimdown_plan.md`). Also imported by
@@ -107,7 +120,10 @@ As of 2026-07-23 this folder (a self-described "starter prototype" bundle diverg
 `codebase/mapping_tools/build_dashboard_graph_index.py` / `convert_leap_combined_esto_to_esto_first.py`,
 confirmed via `diff` to not be identical to those live versions, and hardcoding a different
 machine's Python path and the legacy `config/leap_mappings.xlsx`) was moved to
-`archive/2026-07-23_repo_cleanup/mapping_code/` — see `docs/archive_log.md`. It was never
+`archive/2026-07-23_repo_cleanup/mapping_code/` — see `docs/archive_log.md`.
+The prototype's Markdown starter note was consolidated under
+`docs/archive/2026-07-23_repo_cleanup/mapping_code/` on 2026-07-28; the
+non-Markdown prototype files remain in the top-level archive. It was never
 referenced from anywhere else in `codebase/`, so nothing else needed updating.
 
 ## Legacy (superseded, kept for reference only)

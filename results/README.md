@@ -1,10 +1,13 @@
 # `results/` — navigation guide
 
-Everything in this folder is **generated output**. Nothing here should be hand-edited — if a
-file looks wrong, fix the input (`config/outlook_mappings_master.xlsx`, `data/*.csv`) or the
-producing script, then re-run the pipeline. The whole folder is gitignored and safe to delete;
-`python codebase/run_mapping_pipeline.py` rebuilds it from scratch (see the "How this gets
-built" section below).
+Most data files in this folder are **generated output**. Do not hand-edit those
+outputs; fix the input or producer and rerun the appropriate stage. However,
+the folder is **not safe to delete wholesale**: its README files and
+`mapping_relationships/proposed_ninth_pairs_to_esto_pairs_coal_products.csv`
+are tracked, some large outputs are expensive to reproduce, and some
+diagnostics are point-in-time evidence. Use
+`docs/results_folder_cleanup_candidates.md`, `docs/results_output_storage.md`,
+and `docs/archive_log.md` for reviewed cleanup and recovery decisions.
 
 This README and the one in each subfolder exist because the pipeline currently produces far
 more files than a first-time reader needs to see at once. See

@@ -1,5 +1,13 @@
 # LEAP mappings improvement todo
 
+> **Historical backlog input — not the controlling queue.** The item bodies
+> and 2026-07-23 status lines below are preserved because they contain useful
+> rationale and because `build_no_data_mapping_rows.py` still cites item 8.
+> They are not current instructions. Use [`work_queue.md`](work_queue.md) for
+> current status and the
+> [`handover documentation`](handover/README.md) for the diagrams, glossary,
+> examples, and run guidance that later completed several documentation items.
+
 This backlog covers improvements outside the deferred regression and verification work in `docs/QA plan.md`. Complete items only after reviewing current generated outputs; existing result files may be stale when mapping workbooks have uncommitted changes.
 
 **Triaged 2026-07-23** (previously last touched 2026-07-05, 18 days stale): checked each item against current repo state rather than trusting the descriptions below at face value. Summary: items 1 and 4 are unchanged (re-verified, not stale); item 2 is partially done; item 3 is substantially implemented by work since this was written; items 5-7 remain fully open; item 8's blocking condition has partially lifted. See each item's own status line for specifics.
@@ -56,7 +64,7 @@ Do not prioritize the raw counts in `unmapped_nonzero_esto_pairs.csv`, `unmapped
 
 ## 3. Complete hierarchy value validation
 
-**Status:** Substantially implemented (re-verified 2026-07-23) — `codebase/mapping_tools/build_dataset_tree_structure.py` now has `validate_ninth_recursive_sums`, `validate_ninth_sector_recursive_sums`, `validate_ninth_fuel_recursive_sums`, `validate_leap_recursive_sums`, and `validate_common_esto_recursive_sums`; the anchor-validator system (`codebase/mapping_tools/source_parent_anchor_validation.py`, extensively worked on 2026-07-22/23, see `docs/prompts/anchor_validator_fixes_findings_20260722.md`/`_20260723.md`) implements exactly the "mapped-ESTO-subtotal coverage check" bullet below (parent-subtotal vs. mapped-leaf-descendant comparison, per raw ESTO/NINTH/LEAP parent). Not independently re-verified against every remaining sub-bullet below (frontier metadata format, the single-vs-several-frontiers decision) — treat those specific sub-items as still open pending a closer check, not the whole item as done.
+**Status:** Substantially implemented (re-verified 2026-07-23) — `codebase/mapping_tools/build_dataset_tree_structure.py` now has `validate_ninth_recursive_sums`, `validate_ninth_sector_recursive_sums`, `validate_ninth_fuel_recursive_sums`, `validate_leap_recursive_sums`, and `validate_common_esto_recursive_sums`; the anchor-validator system (`codebase/mapping_tools/source_parent_anchor_validation.py`, extensively worked on 2026-07-22/23, see `docs/archive/anchor_validation_methodology/anchor_validator_fixes_findings_20260722.md` and its 2026-07-23 follow-up) implements exactly the "mapped-ESTO-subtotal coverage check" bullet below (parent-subtotal vs. mapped-leaf-descendant comparison, per raw ESTO/NINTH/LEAP parent). Not independently re-verified against every remaining sub-bullet below (frontier metadata format, the single-vs-several-frontiers decision) — treat those specific sub-items as still open pending a closer check, not the whole item as done.
 
 - Add recursive 9th Outlook sector and fuel value validation. **Done.**
 - Add recursive LEAP branch value validation where result data are available. **Done** (LEAP result data now also available for 3 economies as of item 8 below, not just the single economy this was likely written against).
@@ -157,4 +165,3 @@ location over hard-deleting, since `results/` has no git history to fall back on
 **Status:** Done (commit `18b1989`, same day this was flagged) — `AGENTS.md` no longer references
 `codebase/transformation_analysis_workflow.py`; it now points at the actual current scripts. This
 entry was just never updated to reflect that fix until now.
-

@@ -12,6 +12,6 @@ on dashboard graph-ID wiring, not for the core LEAP/ESTO/9th mapping workflow.
 | `energy_balance_graph_links.csv` | `build_energy_balance_graph_links.py` | Product-aware dashboard graph links, built from `energy_balance_relationships.csv`. |
 | `dashboard_chart_relationships.csv`, `dashboard_relationships_not_used_by_template.csv`, `dashboard_template_flows_without_mapping.csv`, `dashboard_duplicate_source_relationships.csv`, `dashboard_duplicate_target_relationships.csv`, `dashboard_parent_child_risks.csv` | `build_energy_balance_graph_links.py` / `convert_leap_combined_esto_to_esto_first.py` | QA for the dashboard mapping conversion (same filenames get overwritten by whichever script last ran). |
 
-See `archive/2026-07-23_repo_cleanup/mapping_code/README_dashboard_mapping_starter.md` for the
+See `docs/archive/2026-07-23_repo_cleanup/mapping_code/README_dashboard_mapping_starter.md` for the
 fuller design notes on this dashboard-graph-index prototype (archived 2026-07-23 as a diverged,
 unreferenced duplicate of the live `codebase/mapping_tools/` scripts — see `docs/archive_log.md`).

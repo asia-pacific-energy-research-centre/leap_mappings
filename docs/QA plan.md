@@ -1,5 +1,10 @@
 ## Mapping pipeline smoke test
 
+This is the focused automated smoke-test reference, not the complete release
+or handover QA plan. For full-run order, status-manifest interpretation,
+contract checks, and human stop conditions, use
+[`handover/mapping_pipeline_agent_guide.md`](handover/mapping_pipeline_agent_guide.md).
+
 The repository now includes an opt-in real-data smoke test that runs the
 notebook-style mapping pipeline sequence against the checked-in inputs:
 
@@ -20,4 +25,3 @@ What it exercises:
 The test is skipped by default so the regular unit suite stays fast. It writes
 to `results/` and reads the real tracked inputs, so it is best treated as an
 integration smoke test rather than a pure unit test.
-

@@ -19,7 +19,8 @@ organized, stored, and surfaced across this pipeline:
   — a parent sector/fuel total doesn't match the sum of its own more granular children. Multiple
   sessions tried direct fixes (extending the existing narrow check to a row's own pair; a
   "deep-descendant-evidence" signal); both were real-data-verified to fail — see
-  `docs/prompts/anchor_validator_fixes_findings_20260723.md`, items 1/3/4. The user explicitly
+  `docs/archive/anchor_validation_methodology/anchor_validator_fixes_findings_20260723.md`,
+  items 1/3/4. The user explicitly
   rejected "trust the more granular data and substitute it as the corrected value" — sometimes
   the parent/aggregate is the accurate value and the breakdown is wrong, and there's no reliable
   way to tell which from the data alone. Reframed: **flag the inconsistency, don't guess a fix,

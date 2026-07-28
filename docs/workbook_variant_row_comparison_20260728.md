@@ -135,13 +135,16 @@ canonical workbook, unrelated to the variant. Fold into MAPQ-009.
 The variant holds no ESTO-axis content worth preserving and no genuinely
 missing active mappings beyond the two blank fuels. Once those two fills are
 decided, the remaining reasons to keep
-`config/outlook_mappings_master_combined_esto.xlsx` are the two live references
-that blocked its deletion:
+`config/outlook_mappings_master_combined_esto.xlsx` were originally two
+references that blocked its deletion:
 
-- `codebase/run_mapping_pipeline_delayed.ps1:23` (`--mapping-workbook-path`)
+- `codebase/run_mapping_pipeline_delayed.ps1:23` (`--mapping-workbook-path`);
+  this obsolete runner was later removed by `ac33daa`, so this is historical
+  evidence rather than a current dependency.
 - `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md:52` (MAPQ-010
   evidence — note its `esto_rollup_rules` sheet is a **subset** of canonical, so
   canonical serves that prompt at least as well)
 
-Both are repointable at the canonical workbook. After MAPQ-010 runs and the
-`IS_LEAP_ROLLUP_NAME` column is recovered, the variant can be deleted.
+The remaining active prompt is repointable at the canonical workbook. After
+MAPQ-010 runs and the `IS_LEAP_ROLLUP_NAME` question is resolved, the variant
+can be deleted. There is no longer a runner to update.

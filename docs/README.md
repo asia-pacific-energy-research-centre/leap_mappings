@@ -19,6 +19,7 @@ or a working backlog.
 | [`handover/mapping_pipeline_agent_guide.md`](handover/mapping_pipeline_agent_guide.md) | Exact mapping run, rerun, validation, and human-stop guidance. |
 | [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Dated evidence snapshot retained for audit history; the maintained contract is now under `handover/`. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions, plus a dated verification addendum. |
+| [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | **Current exhaustive document register.** One row for every Markdown file reviewed, with evidence, unique information, and keep/update/archive decision. |
 
 ## System design and reference
 
@@ -66,3 +67,9 @@ queue.
   their own findings/status/TODO notes (see `archive/common_esto_lineage_validation/` for the
   pattern, and `archive/2026-07-23_repo_cleanup/` for this pass's archived root-level files).
   Historical record, not something to read routinely.
+
+The self-contained 2026-07-22 cleanup handoff is preserved at
+[`archive/2026-07-23_repo_cleanup/REPO_CLEANUP_AND_NAVIGATION_NOTES.md`](archive/2026-07-23_repo_cleanup/REPO_CLEANUP_AND_NAVIGATION_NOTES.md).
+Its old claim that it is the only transferable deliverable is historical; its
+implemented navigation and remaining work now live in the maintained docs and
+queue above.

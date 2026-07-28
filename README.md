@@ -130,10 +130,11 @@ pipeline just because it's under `codebase/`.
 right there in each folder. `docs/README.md` indexes every file under `docs/` so you don't have
 to open all of them to find the one you need.
 
-## Suggested Improvements To The Guide
+## Detailed documentation
 
-- Add a small diagram of the pipeline: editable sheets -> relationships -> common ESTO rows -> comparison data -> dashboard.
-- Define `comparison_scope` explicitly in the implementation plan, including which systems each scope includes.
-- Separate hard QA failures from warning diagnostics, for example: missing components and split source aggregates should fail; label overrides and broad-but-unused aggregates can warn.
-- Add one concrete worked example, such as 9th `01_x_thermal_coal` forcing `01.02-01.04,01.99 Coal` as the product partition.
-- Add a short glossary for `relationship`, `component`, `common row`, `source aggregate`, and `axis partition`.
+The earlier improvement list for this README has been completed in the
+layered handover set: pipeline diagrams, comparison-scope definitions,
+validation severity, a worked USA natural-gas example, and a glossary are in
+[`docs/handover/README.md`](docs/handover/README.md) and
+[`docs/handover/end_to_end_system_guide.md`](docs/handover/end_to_end_system_guide.md).
+Keep this root page concise and maintain the detail there.

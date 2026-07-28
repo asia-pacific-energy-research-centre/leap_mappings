@@ -175,7 +175,7 @@ The parent's own use is not lost by pointing it at the plain flow: it is fully c
 the leaf `(including own use)` rows, and summing those leaf rows reproduces
 "09.08 including own use" exactly. The remaining asymmetry — the parent *row* compares
 LEAP-parent vs plain-09.08 — is a known validator gap tracked in
-`docs/prompts/explore_parent_level_own_use_comparison_rows.md`.
+`docs/archive/explore_parent_level_own_use_comparison_rows.md`.
 
 Contrast with groups that ARE safe at parent level: `16.01-16.02 Buildings`,
 `09.01-09.02 Power sector`, `16.03-16.04 Agriculture and fishing`. Their components merge into
@@ -255,7 +255,7 @@ Restrictions:
 
 - **NINTH rolled source rows** (`09_08_coal_transformation_incl_own_use` etc.) can reproduce
   the parent-leak pattern on the NINTH side; NINTH-target expansion and rule unification are
-  parked in `docs/prompts/unify_rollup_rules_prompt.md`. Until then, check the coke-ovens
+  parked in `docs/archive/unify_rollup_rules_prompt.md`. Until then, check the coke-ovens
   NINTH value (raw `09_08_01` + `10_01_05`, exactly 1×) after each rerun.
 - **Registered parent/child rollup nodes** are now understood by Stage 3 validation, but the
   deeper own-use transformation chains still contain workbook-level overlap questions. Do not

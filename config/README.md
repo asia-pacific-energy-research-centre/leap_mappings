@@ -22,21 +22,21 @@ previous version here first (`ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)` th
 `shutil.copy2(...)`). Not read by anything, not required to pre-exist, accumulates indefinitely
 with no automatic pruning (see `docs/results_folder_cleanup_candidates.md`).
 
-## Files present but not required by the pipeline (as of 2026-07-23)
+## Files present but not required by the pipeline (verified 2026-07-28)
 
-Confirmed via grep across `codebase/`: none of these appear as a load target from any current
-script.
-
-- `config/176BC200`, `config/6AC9DA10`, `config/E0E85740`, `config/E2F1A260`, `config/FDC59700` —
-  Excel lock/crash-recovery artifacts (hex filenames, `.xlsx`-signature binary content).
-  `docs/guide_outlook_mappings_master.md` already documents these as safe to ignore.
-- `outlook_mappings_master new.xlsx`, `outlook_mappings_master new_with_other_branches_review.xlsx`,
-  `outlook_mappings_master new_with_other_branches_review v2.xlsx` — look like manual scratch
-  variants of the main workbook, not a script input. Not archived without confirming they aren't
-  an in-progress review copy someone is using — see the repo-cleanup report for this pass.
-- `leap_results_expected_sheets.json`, `mapping_coverage_gaps.csv`,
-  `missing_zero_branch_mapping_candidates.xlsx`, `subtotal_labels/subtotal_labels.csv` — present
-  but unreferenced anywhere in current `codebase/`.
+- Extensionless eight-character hexadecimal files such as `config/176BC200`,
+  `config/7EB36010`, `config/9098DA00`, and `config/FDC59700` are Excel
+  lock/crash-recovery artifacts with workbook-like binary content. The exact
+  filenames change as Excel creates new recovery files.
+  `docs/guide_outlook_mappings_master.md` documents these as safe to ignore.
+- `outlook_mappings_master todo.xlsx` is an untracked review workbook, not an
+  active pipeline input. Preserve it until its owner decides how to integrate
+  or retire it.
+- `leap_results_expected_sheets.json` is a review/configuration inventory used
+  by current mapping planning and documentation, but not loaded by the main
+  Stage 0–3 orchestrator. `mapping_coverage_gaps.csv` and
+  `missing_zero_branch_mapping_candidates.xlsx` are review artifacts, not
+  required main-pipeline inputs.
 - `inverted_conservation_target_aliases.json`, `inverted_conservation_target_variants.json` —
   used only by `inverted_conservation_validation.py`, a standalone QA script not imported by
   `run_mapping_pipeline.py`. Needed only if you run that check specifically.
