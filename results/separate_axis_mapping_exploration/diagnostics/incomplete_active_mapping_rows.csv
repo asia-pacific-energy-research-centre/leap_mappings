@@ -1,0 +1,131 @@
+mapping_name,source_sheet,workbook_row_number,source_system,source_flow,source_product,target_system,target_flow,target_product,target_pair_is_subtotal,comparison_scope,notes,diagnostic_reason
+leap_to_ninth,leap_combined_ninth,1338,LEAP,Heat plant interim/Heat plant interim,Bitumen,NINTH,09_x_heat_plants,,False,NINTH,,active_pair_row_has_blank_key
+leap_to_ninth,leap_combined_ninth,2255,LEAP,Gas works plants/Gas works plants,Blast furnace gas,NINTH,09_06_01_gas_works_plants_incl_own_use,,False,NINTH,,active_pair_row_has_blank_key
+leap_to_ninth,leap_combined_ninth,2256,LEAP,Gas works plants/Gas works plants,Other recovered gases,NINTH,09_06_01_gas_works_plants_incl_own_use,,False,NINTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2341,NINTH,,,ESTO,06 Stock changes,01.01 Coking coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2342,NINTH,,,ESTO,06 Stock changes,01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2343,NINTH,,,ESTO,06 Stock changes,01.03 Sub-bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2344,NINTH,,,ESTO,06 Stock changes,01.04 Anthracite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2345,NINTH,,,ESTO,06 Stock changes,01.05 Lignite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2346,NINTH,,,ESTO,06 Stock changes,02.01 Coke oven coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2347,NINTH,,,ESTO,06 Stock changes,02.08 BKB/PB,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2348,NINTH,,,ESTO,06 Stock changes,06.01 Crude oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2349,NINTH,,,ESTO,06 Stock changes,06.02 Natural gas liquids,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2350,NINTH,,,ESTO,06 Stock changes,06.03 Refinery feedstocks,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2351,NINTH,,,ESTO,06 Stock changes,06.05 Other hydrocarbons,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2352,NINTH,,,ESTO,06 Stock changes,07.01 Motor gasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2353,NINTH,,,ESTO,06 Stock changes,07.02 Aviation gasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2354,NINTH,,,ESTO,06 Stock changes,07.15 Paraffin waxes,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2355,NINTH,,,ESTO,06 Stock changes,07.03 Naphtha,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2356,NINTH,,,ESTO,06 Stock changes,07.05 Kerosene type jet fuel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2357,NINTH,,,ESTO,06 Stock changes,07.06 Kerosene,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2358,NINTH,,,ESTO,06 Stock changes,07.07 Gas/diesel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2359,NINTH,,,ESTO,06 Stock changes,07.08 Fuel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2360,NINTH,,,ESTO,06 Stock changes,07.09 LPG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2361,NINTH,,,ESTO,06 Stock changes,07.11 Ethane,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2362,NINTH,,,ESTO,06 Stock changes,07.12 White spirit SBP,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2363,NINTH,,,ESTO,06 Stock changes,07.13 Lubricants,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2364,NINTH,,,ESTO,06 Stock changes,07.14 Bitumen,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2365,NINTH,,,ESTO,06 Stock changes,07.16 Petroleum coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2366,NINTH,,,ESTO,06 Stock changes,07.17 Other products,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2367,NINTH,,,ESTO,06 Stock changes,08.01 Natural gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2368,NINTH,,,ESTO,06 Stock changes,08.02 LNG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2369,NINTH,,,ESTO,06 Stock changes,15.04 Black liquor,True,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2370,NINTH,,,ESTO,06 Stock changes,15.05 Other biomass,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2371,NINTH,,,ESTO,06 Stock changes,16.01 Biogas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2372,NINTH,,,ESTO,06 Stock changes,16.05 Biogasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2373,NINTH,,,ESTO,06 Stock changes,16.06 Biodiesel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2374,NINTH,,,ESTO,06 Stock changes,16.07 Bio jet kerosene,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2377,NINTH,,,ESTO,09.06.03 Natural gas blending plants,07.03 Naphtha,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2378,NINTH,,,ESTO,09.06.03 Natural gas blending plants,07.08 Fuel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2379,NINTH,,,ESTO,09.06.03 Natural gas blending plants,07.09 LPG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2380,NINTH,,,ESTO,09.06.03 Natural gas blending plants,07.10 Refinery gas (not liquefied),False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2381,NINTH,,,ESTO,09.06.03 Natural gas blending plants,08.01 Natural gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2382,NINTH,,,ESTO,09.06.03 Natural gas blending plants,08.03 Gas works gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2383,NINTH,,,ESTO,09.06.03 Natural gas blending plants,16.01 Biogas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2384,NINTH,,,ESTO,09.06.04 Gas-to-liquids plants,07.06 Kerosene,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2385,NINTH,,,ESTO,09.06.04 Gas-to-liquids plants,07.07 Gas/diesel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2386,NINTH,,,ESTO,09.06.04 Gas-to-liquids plants,07.09 LPG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2387,NINTH,,,ESTO,09.06.04 Gas-to-liquids plants,07.17 Other products,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2388,NINTH,,,ESTO,09.06.04 Gas-to-liquids plants,08.01 Natural gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2389,NINTH,,,ESTO,09.08.01 Coke ovens,01.01 Coking coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2390,NINTH,,,ESTO,09.08.01 Coke ovens,01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2391,NINTH,,,ESTO,09.08.01 Coke ovens,01.03 Sub-bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2392,NINTH,,,ESTO,09.08.01 Coke ovens,01.04 Anthracite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2393,NINTH,,,ESTO,09.08.01 Coke ovens,02.01 Coke oven coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2394,NINTH,,,ESTO,09.08.01 Coke ovens,02.03 Coke oven gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2395,NINTH,,,ESTO,09.08.01 Coke ovens,02.07 Coal tar,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2396,NINTH,,,ESTO,09.08.01 Coke ovens,07.16 Petroleum coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2397,NINTH,,,ESTO,09.08.01 Coke ovens,07.17 Other products,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2398,NINTH,,,ESTO,09.08.01 Coke ovens,08.01 Natural gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2399,NINTH,,,ESTO,09.08.01 Coke ovens,16.02 Industrial waste,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2400,NINTH,,,ESTO,09.08.02 Blast furnaces,01.01 Coking coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2401,NINTH,,,ESTO,09.08.02 Blast furnaces,01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2402,NINTH,,,ESTO,09.08.02 Blast furnaces,02.01 Coke oven coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2403,NINTH,,,ESTO,09.08.02 Blast furnaces,02.03 Coke oven gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2404,NINTH,,,ESTO,09.08.02 Blast furnaces,02.04 Blast furnace gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2405,NINTH,,,ESTO,09.08.02 Blast furnaces,02.05 Other recovered gases,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2406,NINTH,,,ESTO,09.08.02 Blast furnaces,02.07 Coal tar,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2407,NINTH,,,ESTO,09.08.03 Patent fuel plants,01.04 Anthracite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2408,NINTH,,,ESTO,09.08.03 Patent fuel plants,02.06 Patent fuel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2409,NINTH,,,ESTO,09.08.04 BKB/PB plants,01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2410,NINTH,,,ESTO,09.08.04 BKB/PB plants,02.08 BKB/PB,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2411,NINTH,,,ESTO,09.08.05 Liquefaction (coal to oil),01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2412,NINTH,,,ESTO,09.08.05 Liquefaction (coal to oil),02.07 Coal tar,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2413,NINTH,,,ESTO,11 Statistical discrepancy,01.01 Coking coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2414,NINTH,,,ESTO,11 Statistical discrepancy,01.02 Other bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2415,NINTH,,,ESTO,11 Statistical discrepancy,01.03 Sub-bituminous coal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2416,NINTH,,,ESTO,11 Statistical discrepancy,01.04 Anthracite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2417,NINTH,,,ESTO,11 Statistical discrepancy,01.05 Lignite,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2418,NINTH,,,ESTO,11 Statistical discrepancy,02.01 Coke oven coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2419,NINTH,,,ESTO,11 Statistical discrepancy,02.03 Coke oven gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2420,NINTH,,,ESTO,11 Statistical discrepancy,02.04 Blast furnace gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2421,NINTH,,,ESTO,11 Statistical discrepancy,02.05 Other recovered gases,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2422,NINTH,,,ESTO,11 Statistical discrepancy,02.06 Patent fuel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2423,NINTH,,,ESTO,11 Statistical discrepancy,02.07 Coal tar,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2424,NINTH,,,ESTO,11 Statistical discrepancy,02.08 BKB/PB,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2425,NINTH,,,ESTO,11 Statistical discrepancy,06.01 Crude oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2426,NINTH,,,ESTO,11 Statistical discrepancy,06.02 Natural gas liquids,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2427,NINTH,,,ESTO,11 Statistical discrepancy,06.03 Refinery feedstocks,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2428,NINTH,,,ESTO,11 Statistical discrepancy,06.05 Other hydrocarbons,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2429,NINTH,,,ESTO,11 Statistical discrepancy,07.01 Motor gasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2430,NINTH,,,ESTO,11 Statistical discrepancy,07.02 Aviation gasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2431,NINTH,,,ESTO,11 Statistical discrepancy,07.03 Naphtha,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2432,NINTH,,,ESTO,11 Statistical discrepancy,07.05 Kerosene type jet fuel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2433,NINTH,,,ESTO,11 Statistical discrepancy,07.06 Kerosene,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2434,NINTH,,,ESTO,11 Statistical discrepancy,07.07 Gas/diesel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2435,NINTH,,,ESTO,11 Statistical discrepancy,07.08 Fuel oil,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2436,NINTH,,,ESTO,11 Statistical discrepancy,07.09 LPG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2437,NINTH,,,ESTO,11 Statistical discrepancy,07.10 Refinery gas (not liquefied),False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2438,NINTH,,,ESTO,11 Statistical discrepancy,07.11 Ethane,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2439,NINTH,,,ESTO,11 Statistical discrepancy,07.12 White spirit SBP,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2440,NINTH,,,ESTO,11 Statistical discrepancy,07.13 Lubricants,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2441,NINTH,,,ESTO,11 Statistical discrepancy,07.14 Bitumen,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2442,NINTH,,,ESTO,11 Statistical discrepancy,07.15 Paraffin waxes,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2443,NINTH,,,ESTO,11 Statistical discrepancy,07.16 Petroleum coke,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2444,NINTH,,,ESTO,11 Statistical discrepancy,07.17 Other products,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2445,NINTH,,,ESTO,11 Statistical discrepancy,07.99 PetProd nonspecified,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2446,NINTH,,,ESTO,11 Statistical discrepancy,08.01 Natural gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2447,NINTH,,,ESTO,11 Statistical discrepancy,08.02 LNG,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2448,NINTH,,,ESTO,11 Statistical discrepancy,08.03 Gas works gas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2449,NINTH,,,ESTO,11 Statistical discrepancy,09 Nuclear,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2450,NINTH,,,ESTO,11 Statistical discrepancy,10 Hydro,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2451,NINTH,,,ESTO,11 Statistical discrepancy,11 Geothermal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2452,NINTH,,,ESTO,11 Statistical discrepancy,12.01 of which: Photovoltaics,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2453,NINTH,,,ESTO,11 Statistical discrepancy,12.99 Solar nonspecified,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2454,NINTH,,,ESTO,11 Statistical discrepancy,14 Wind,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2455,NINTH,,,ESTO,11 Statistical discrepancy,15.01 Fuelwood & woodwaste,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2456,NINTH,,,ESTO,11 Statistical discrepancy,15.02 Bagasse,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2457,NINTH,,,ESTO,11 Statistical discrepancy,15.03 Charcoal,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2458,NINTH,,,ESTO,11 Statistical discrepancy,15.04 Black liquor,True,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2459,NINTH,,,ESTO,11 Statistical discrepancy,15.05 Other biomass,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2460,NINTH,,,ESTO,11 Statistical discrepancy,16.01 Biogas,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2461,NINTH,,,ESTO,11 Statistical discrepancy,16.02 Industrial waste,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2462,NINTH,,,ESTO,11 Statistical discrepancy,16.03 Municipal solid waste (renewable),False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2463,NINTH,,,ESTO,11 Statistical discrepancy,16.04 Municipal solid waste (non-renewable),False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2464,NINTH,,,ESTO,11 Statistical discrepancy,16.05 Biogasoline,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2465,NINTH,,,ESTO,11 Statistical discrepancy,16.06 Biodiesel,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2466,NINTH,,,ESTO,11 Statistical discrepancy,17 Electricity,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2467,NINTH,,,ESTO,11 Statistical discrepancy,18 Heat,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2474,NINTH,,,ESTO,06 Stock changes,06.04 Additives/ oxygenates,False,BOTH,,active_pair_row_has_blank_key
+ninth_to_esto,ninth_pairs_to_esto_pairs,2475,NINTH,,,ESTO,11 Statistical discrepancy,06.04 Additives/ oxygenates,False,BOTH,,active_pair_row_has_blank_key

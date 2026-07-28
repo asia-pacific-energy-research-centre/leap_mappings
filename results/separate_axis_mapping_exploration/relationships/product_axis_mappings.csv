@@ -1,0 +1,259 @@
+mapping_name,comparison_scope,source_system,source_product,target_system,target_product,relationship_semantics,notes
+leap_to_esto,BOTH,LEAP,Anthracite,ESTO,01.04 Anthracite,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Aviation gasoline,ESTO,07.02 Aviation gasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,BKB and PB,ESTO,02.08 BKB/PB,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biodiesel,ESTO,16.06 Biodiesel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biogas,ESTO,16.01 Biogas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biogasoline,ESTO,16.05 Biogasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Blast furnace gas,ESTO,02.04 Blast furnace gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Charcoal,ESTO,15.03 Charcoal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coal tar,ESTO,02.07 Coal tar,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coke oven coke,ESTO,02.01 Coke oven coke,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coke oven gas,ESTO,02.03 Coke oven gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Electricity,ESTO,17 Electricity,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Fuel oil,ESTO,07.08 Fuel oil,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Fuelwood and woodwaste,ESTO,15.01 Fuelwood & woodwaste,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas and diesel oil,ESTO,07.07 Gas/diesel oil,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas works gas,ESTO,08.03 Gas works gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Geothermal,ESTO,11 Geothermal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Heat,ESTO,18 Heat,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydrogen,ESTO,16.12 Hydrogen,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industrial waste,ESTO,16.02 Industrial waste,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Kerosene,ESTO,07.06 Kerosene,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Kerosene type jet fuel,ESTO,07.05 Kerosene type jet fuel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,LPG,ESTO,07.09 LPG,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Lignite,ESTO,01.05 Lignite,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Motor gasoline,ESTO,07.01 Motor gasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Municipal solid waste non renewable,ESTO,16.04 Municipal solid waste (non-renewable),many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Municipal solid waste renewable,ESTO,16.03 Municipal solid waste (renewable),many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Natural gas,ESTO,08.01 Natural gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other biomass,ESTO,15.05 Other biomass,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other bituminous coal,ESTO,01.02 Other bituminous coal,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other recovered gases,ESTO,02.05 Other recovered gases,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Patent fuel,ESTO,02.06 Patent fuel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Solar nonspecified,ESTO,12.99 Solar nonspecified,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Sub bituminous coal,ESTO,01.03 Sub-bituminous coal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coking coal,ESTO,01.01 Coking coal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other products,ESTO,07.17 Other products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Peat,ESTO,03 Peat,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Peat products,ESTO,04 Peat products,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Petroleum coke,ESTO,07.16 Petroleum coke,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Anthracite,ESTO,01.03 Sub-bituminous coal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Aviation gasoline,ESTO,07.01 Motor gasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,BKB and PB,ESTO,02.07 Coal tar,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Bagasse,ESTO,04 Peat products,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Bagasse,ESTO,15.02 Bagasse,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biodiesel,ESTO,16.05 Biogasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biogas,ESTO,15.05 Other biomass,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Biogasoline,ESTO,16.04 Municipal solid waste (non-renewable),many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Blast furnace gas,ESTO,02.03 Coke oven gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Charcoal,ESTO,15.01 Fuelwood & woodwaste,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coal tar,ESTO,02.06 Patent fuel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coke oven coke,ESTO,01.05 Lignite,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coke oven gas,ESTO,02.01 Coke oven coke,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Electricity,ESTO,16.12 Hydrogen,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Fuel oil,ESTO,07.07 Gas/diesel oil,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Fuelwood and woodwaste,ESTO,12.99 Solar nonspecified,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas and diesel oil,ESTO,07.06 Kerosene,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas works gas,ESTO,08.01 Natural gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Geothermal,ESTO,08.03 Gas works gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Heat,ESTO,17 Electricity,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydrogen,ESTO,16.06 Biodiesel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industrial waste,ESTO,16.01 Biogas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Kerosene,ESTO,07.05 Kerosene type jet fuel,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Kerosene type jet fuel,ESTO,07.02 Aviation gasoline,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,LPG,ESTO,07.08 Fuel oil,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Lignite,ESTO,01.04 Anthracite,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Motor gasoline,ESTO,02.08 BKB/PB,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Municipal solid waste non renewable,ESTO,16.03 Municipal solid waste (renewable),many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Municipal solid waste renewable,ESTO,16.02 Industrial waste,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Natural gas,ESTO,07.09 LPG,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other biomass,ESTO,15.03 Charcoal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other recovered gases,ESTO,02.04 Blast furnace gas,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Patent fuel,ESTO,02.05 Other recovered gases,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Peat,ESTO,18 Heat,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Peat products,ESTO,03 Peat,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Solar nonspecified,ESTO,11 Geothermal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Sub bituminous coal,ESTO,01.02 Other bituminous coal,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Ammonia,ESTO,16.10 Ammonia,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Bitumen,ESTO,07.14 Bitumen,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Black liquor,ESTO,15.04 Black liquor,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Crude oil,ESTO,06.01 Crude oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Naphtha,ESTO,07.03 Naphtha,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Nuclear,ESTO,09 Nuclear,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other liquid biofuels,ESTO,16.08 Other liquid biofuels,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other sources,ESTO,16.09 Other sources,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Refinery feedstocks,ESTO,06.03 Refinery feedstocks,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Refinery gas not liquefied,ESTO,07.10 Refinery gas (not liquefied),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gasoline type jet fuel,ESTO,07.04 Gasoline type jet fuel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other hydrocarbons,ESTO,06.05 Other hydrocarbons,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas coke,ESTO,02.02 Gas coke,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Natural gas liquids,ESTO,06.02 Natural gas liquids,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,LNG,ESTO,08.02 LNG,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Lubricants,ESTO,07.13 Lubricants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Bio jet kerosene,ESTO,16.07 Bio jet kerosene,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydro,ESTO,10 Hydro,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Solar photovoltaics,ESTO,12.01 of which: Photovoltaics,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Tide wave ocean,ESTO,"13 Tide, wave, ocean",one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Wind,ESTO,14 Wind,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Additives and oxygenates,ESTO,06.04 Additives/ oxygenates,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coal nonspecified,ESTO,01.99 Coal nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Efuel,ESTO,16.11 E-fuel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Ethane,ESTO,07.11 Ethane,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas nonspecified,ESTO,08.99 Gas nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Oil shale and oil sands,ESTO,05 Oil shale and oil sands,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Paraffin waxes,ESTO,07.15 Paraffin waxes,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,PetProd nonspecified,ESTO,07.99 PetProd nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,White spirit SBP,ESTO,07.12 White spirit SBP,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,ESTO_EXTENDED,LEAP,Electricity,ESTO,17 Electricity,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Aviation gasoline,NINTH,07_02_aviation_gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Bagasse,NINTH,15_02_bagasse,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Biodiesel,NINTH,16_06_biodiesel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Biogas,NINTH,16_01_biogas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Biogasoline,NINTH,16_05_biogasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Charcoal,NINTH,15_03_charcoal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coke oven coke,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coking coal,NINTH,01_01_coking_coal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Crude oil,NINTH,06_01_crude_oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electricity,NINTH,17_electricity,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Fuel oil,NINTH,07_08_fuel_oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Fuelwood and woodwaste,NINTH,15_01_fuelwood_and_woodwaste,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas and diesel oil,NINTH,07_07_gas_diesel_oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Geothermal,NINTH,11_geothermal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Heat,NINTH,18_heat,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Hydrogen,NINTH,16_x_hydrogen,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industrial waste,NINTH,16_02_industrial_waste,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Kerosene,NINTH,07_06_kerosene,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Kerosene type jet fuel,NINTH,07_x_jet_fuel,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,LPG,NINTH,07_09_lpg,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Lignite,NINTH,01_05_lignite,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Lubricants,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Motor gasoline,NINTH,07_01_motor_gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Municipal solid waste non renewable,NINTH,16_04_municipal_solid_waste_nonrenewable,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Municipal solid waste renewable,NINTH,16_03_municipal_solid_waste_renewable,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Natural gas,NINTH,08_01_natural_gas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Natural gas liquids,NINTH,06_02_natural_gas_liquids,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other biomass,NINTH,15_05_other_biomass,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other bituminous coal,NINTH,01_x_thermal_coal,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other liquid biofuels,NINTH,16_08_other_liquid_biofuels,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other sources,NINTH,16_09_other_sources,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Patent fuel,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Peat,NINTH,03_peat,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Peat products,NINTH,04_peat_products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Sub bituminous coal,NINTH,01_x_thermal_coal,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Anthracite,NINTH,01_x_thermal_coal,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,BKB and PB,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Blast furnace gas,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coal tar,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coke oven gas,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas works gas,NINTH,08_03_gas_works_gas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other recovered gases,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Solar nonspecified,NINTH,12_solar_unallocated,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Solar nonspecified,NINTH,12_x_other_solar,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Ammonia,NINTH,16_x_ammonia,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Bitumen,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Black liquor,NINTH,15_04_black_liquor,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gasoline type jet fuel,NINTH,07_x_jet_fuel,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Naphtha,NINTH,07_03_naphtha,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Nuclear,NINTH,09_nuclear,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other products,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Petroleum coke,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Refinery feedstocks,NINTH,06_x_other_hydrocarbons,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Refinery gas not liquefied,NINTH,07_10_refinery_gas_not_liquefied,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Ethane,NINTH,07_11_ethane,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Bio jet kerosene,NINTH,16_07_bio_jet_kerosene,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,LNG,NINTH,08_02_lng,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Efuel,NINTH,16_x_efuel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Hydro,NINTH,10_hydro,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Solar photovoltaics,NINTH,12_01_of_which_photovoltaics,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Tide wave ocean,NINTH,13_tide_wave_ocean,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Wind,NINTH,14_wind,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other hydrocarbons,NINTH,06_x_other_hydrocarbons,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Additives and oxygenates,NINTH,06_x_other_hydrocarbons,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coal nonspecified,NINTH,01_coal_unallocated,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electricity,NINTH,17_x_green_electricity,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas coke,NINTH,02_coal_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas nonspecified,NINTH,08_gas_unallocated,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Oil shale and oil sands,NINTH,05_oil_shale_and_oil_sands,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Paraffin waxes,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,PetProd nonspecified,NINTH,07_petroleum_products_unallocated,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,White spirit SBP,NINTH,07_x_other_petroleum_products,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other hydrocarbons,NINTH,06_crude_oil_and_ngl_unallocated,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other biomass,NINTH,15_solid_biomass_unallocated,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other sources,NINTH,16_others_unallocated,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_01_coking_coal,ESTO,01.01 Coking coal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_05_lignite,ESTO,01.05 Lignite,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_coal_unallocated,ESTO,01.99 Coal nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_x_thermal_coal,ESTO,01.02 Other bituminous coal,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_x_thermal_coal,ESTO,01.03 Sub-bituminous coal,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_x_thermal_coal,ESTO,01.04 Anthracite,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.01 Coke oven coke,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.02 Gas coke,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.03 Coke oven gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.04 Blast furnace gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.05 Other recovered gases,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.06 Patent fuel,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.07 Coal tar,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_coal_products,ESTO,02.08 BKB/PB,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,05_oil_shale_and_oil_sands,ESTO,05 Oil shale and oil sands,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_01_crude_oil,ESTO,06.01 Crude oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_02_natural_gas_liquids,ESTO,06.02 Natural gas liquids,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_x_other_hydrocarbons,ESTO,06.03 Refinery feedstocks,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_x_other_hydrocarbons,ESTO,06.04 Additives/ oxygenates,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_x_other_hydrocarbons,ESTO,06.05 Other hydrocarbons,many_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_01_motor_gasoline,ESTO,07.01 Motor gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_02_aviation_gasoline,ESTO,07.02 Aviation gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_03_naphtha,ESTO,07.03 Naphtha,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_06_kerosene,ESTO,07.06 Kerosene,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_07_gas_diesel_oil,ESTO,07.07 Gas/diesel oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_08_fuel_oil,ESTO,07.08 Fuel oil,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_09_lpg,ESTO,07.09 LPG,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_10_refinery_gas_not_liquefied,ESTO,07.10 Refinery gas (not liquefied),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_11_ethane,ESTO,07.11 Ethane,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_petroleum_products_unallocated,ESTO,07.99 PetProd nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_jet_fuel,ESTO,07.04 Gasoline type jet fuel,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_jet_fuel,ESTO,07.05 Kerosene type jet fuel,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.12 White spirit SBP,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.13 Lubricants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.14 Bitumen,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.15 Paraffin waxes,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.16 Petroleum coke,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_x_other_petroleum_products,ESTO,07.17 Other products,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,08_01_natural_gas,ESTO,08.01 Natural gas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,08_02_lng,ESTO,08.02 LNG,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,08_03_gas_works_gas,ESTO,08.03 Gas works gas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,08_gas_unallocated,ESTO,08.99 Gas nonspecified,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_nuclear,ESTO,09 Nuclear,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_hydro,ESTO,10 Hydro,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,11_geothermal,ESTO,11 Geothermal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,12_01_of_which_photovoltaics,ESTO,12.01 of which: Photovoltaics,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,12_solar_unallocated,ESTO,12.99 Solar nonspecified,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,12_x_other_solar,ESTO,12.99 Solar nonspecified,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,13_tide_wave_ocean,ESTO,"13 Tide, wave, ocean",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_wind,ESTO,14 Wind,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_01_fuelwood_and_woodwaste,ESTO,15.01 Fuelwood & woodwaste,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_02_bagasse,ESTO,15.02 Bagasse,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_03_charcoal,ESTO,15.03 Charcoal,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_04_black_liquor,ESTO,15.04 Black liquor,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_05_other_biomass,ESTO,15.05 Other biomass,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_solid_biomass_unallocated,ESTO,15.05 Other biomass,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_biogas,ESTO,16.01 Biogas,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_02_industrial_waste,ESTO,16.02 Industrial waste,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_03_municipal_solid_waste_renewable,ESTO,16.03 Municipal solid waste (renewable),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_04_municipal_solid_waste_nonrenewable,ESTO,16.04 Municipal solid waste (non-renewable),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_05_biogasoline,ESTO,16.05 Biogasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_06_biodiesel,ESTO,16.06 Biodiesel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_07_bio_jet_kerosene,ESTO,16.07 Bio jet kerosene,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_08_other_liquid_biofuels,ESTO,16.08 Other liquid biofuels,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_09_other_sources,ESTO,16.09 Other sources,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_others_unallocated,ESTO,16.09 Other sources,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_x_ammonia,ESTO,16.10 Ammonia,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_x_efuel,ESTO,16.11 E-fuel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_x_hydrogen,ESTO,16.12 Hydrogen,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,17_electricity,ESTO,17 Electricity,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,17_x_green_electricity,ESTO,17 Electricity,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_heat,ESTO,18 Heat,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,03_peat,ESTO,03 Peat,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,04_peat_products,ESTO,04 Peat products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,06_crude_oil_and_ngl_unallocated,ESTO,06.05 Other hydrocarbons,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,ESTO_EXTENDED,NINTH,17_electricity,ESTO,17 Electricity,one_to_one,Derived from active reviewed pair mappings; prototype only.

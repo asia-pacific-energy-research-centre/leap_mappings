@@ -150,6 +150,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
+| MAPQ-033 | P1 | `blocked_on_human_contract_decisions` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | before migration | 2026-07-29 |
 
 ---
 
@@ -461,6 +462,17 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   conflicting economy structures are explicit diagnostics; no live code or
   canonical guide treats either retired workbook filename as current; and
   subtotal/path QA passes on the reviewed template census.
+
+### MAPQ-033 — Decide and shadow-test the separate-axis mapping contract
+
+- **Priority / status / timing:** P1 · `blocked_on_human_contract_decisions` · before pair-sheet or sibling-consumer migration
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-029, MAPQ-031
+- **Evidence:** [`separate_axis_mapping_exploration_findings.md`](separate_axis_mapping_exploration_findings.md) and the review-only evidence under `results/separate_axis_mapping_exploration/`.
+- **Measured result (2026-07-29):** Independent axes plus strict non-zero pair registries reproduce 5,008 of 7,649 accepted relationships directly. A generated 3,773-row compatibility override layer restores the exact relationship set and all 9,826 Common ESTO component memberships, but 46 flow-qualified product groups remain unresolved. The 2024/2025 ESTO comparison contains 123 data-valid/zero-only status changes and does not establish an evidence-based dormancy duration. Only 5 of the 27 proposed detailed power-process groups have every direct mapping supported by two non-zero-valid component pairs.
+- **Decisions required:** Choose narrow reviewed pair overrides versus an optional explicit flow-context key for product mappings; approve or replace the proposed two-consecutive-vintage dormancy threshold; and decide whether structural/reserved validity is separate from observed non-zero validity.
+- **Safety:** Keep all generated axes, registries, candidates, and overrides review-only. Do not edit the canonical workbook or migrate `leap_initialisation` / `leap_dashboard` consumers until the decisions are recorded and a shadow compiler passes exact-set, hierarchy, graph-membership, and source-once gates.
+- **Next action:** Review the 46 product-context groups and the zero-only/absent include overrides by semantic family, decide the two contract policies, then reduce the override set before beginning a two-refresh shadow period.
+- **Completion criteria:** Human-approved context and dormancy policies exist; structural/reserved validity is explicit; the accepted compiler reproduces the pair contract and Common ESTO membership without unexplained overrides; Stage 3 proves source-once delivery and lineage; refresh performance is acceptable; and compatibility views have a tested rollback path.
 
 ---
 
