@@ -391,7 +391,9 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   - Rewrite `Guide` as a concise workbook entry point and add a separate `Column reference` sheet.
   - Rename `leap_combined_esto` → `leap_to_esto`, `ninth_pairs_to_esto_pairs` → `ninth_to_esto`, and `leap_combined_ninth` → `leap_to_ninth`.
   - Delete the unused legacy sheets `other branches` and `deleted rows - might regret`.
-  - Describe `rollup_label_overrides` as **reserved—not currently applied**.
+  - Historical decision superseded: `rollup_label_overrides` was activated as
+    a display-only Stage 1/2 contract in July 2026. It does not rename
+    structural mapping keys.
 - **Evidence:** The existing Guide contains stale/nonexistent names (`leap_dusplay_names`, `display_name_overrides`), omits five live/reference sheets, predates `ROLLUP_MODE` (`EXPANDING` / `NON_EXPANDING` / `DETACHED`), and describes rollup-context and cardinality behaviour that no longer matches the workbook. Cross-repo search found the three current core sheet names hard-coded throughout active `leap_mappings` and `leap_initialisation` readers; `leap_dashboard` mainly receives them as QA/display labels rather than reading the workbook directly.
 - **Why deferred:** All three repositories currently have running work. Do not rename sheets, delete sheets, or change cross-repo loader contracts until those processes have finished and each checkout has a safe implementation window.
 - **Next action:** First introduce central sheet-name constants plus temporary old-name aliases in the active loaders, then update direct readers and tests. Rename/delete workbook sheets only after both producer and consumer code accepts the new contract; update QA `source_sheet` / `mapping_sheet_to_review` labels and maintained documentation in the same coordinated change.

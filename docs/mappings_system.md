@@ -104,7 +104,7 @@ It contains:
 | `leap_rollup_rules` | LEAP rows rolled to known comparison categories |
 | `esto_rollup_rules` | ESTO rows rolled to known comparison categories |
 | `ninth_rollup_rules` | 9th Outlook rows rolled to known comparison categories |
-| `rollup_label_overrides` | Reserved for display-name overrides for generated or rolled categories |
+| `rollup_label_overrides` | Display-only code/name/label overrides for explicit rollup groups |
 
 ### `config/mapping_issue_exception_sets.xlsx`
 
@@ -435,7 +435,7 @@ The rollup rules live in `config/outlook_mappings_master.xlsx`:
 | `leap_rollup_rules` | LEAP sector+fuel to a rolled LEAP sector+fuel |
 | `esto_rollup_rules` | ESTO flow+product to a rolled ESTO flow+product |
 | `ninth_rollup_rules` | 9th Outlook sector+fuel to a rolled 9th sector+fuel |
-| `rollup_label_overrides` | Reserved for human-readable label overrides for rolled or generated categories |
+| `rollup_label_overrides` | Human-readable display overrides keyed by `rollup_group_id` |
 
 Each rule should be explainable from its columns:
 
@@ -455,24 +455,42 @@ Each rule should be explainable from its columns:
 
 ### Common comparison display-label overrides
 
-`config/common_esto_label_overrides.csv` is the human-maintained source for
-display-only replacements of generated Common ESTO flow or product labels. It
-is applied only after Stage 2 has formed the final, global axis partitions.
-Consequently, it changes neither source mappings, component membership,
+There are two display-only mechanisms with different ownership:
+
+- workbook `rollup_label_overrides` labels an explicit rollup group by its
+  stable `rollup_group_id`;
+- `config/common_esto_label_overrides.csv` labels a final graph-generated
+  Common ESTO axis partition that does not correspond to one explicit rollup.
+
+Both mechanisms change neither source mappings, component membership,
 `common_row_id`, nor values.
 
-Each enabled row supplies the generated `auto_common_*_label` and its
-`preferred_common_*_label`. `comparison_scope` is optional. The optional
-pipe-separated `component_esto_flows` or `component_esto_products` fields make
-the override apply only to the expected final partition. An enabled row that
-does not match fails the Stage 2 build rather than silently applying to a new
-structure.
+Stage 1 validates workbook rollup overrides against enabled rules. Nonblank
+`auto_rollup_code`, `auto_rollup_name`, and `auto_rollup_label` values are
+staleness guards and must still match the structural rolled label. The
+preferred fields control presentation only. An override group ID must identify
+exactly one rolled category; broad IDs reused for several rolled categories
+must first be replaced with category-specific IDs.
+
+For expanding ESTO rollups, Stage 1 also writes the preferred label into
+generated `common_esto_overrides.csv`. Stage 2 applies the workbook override
+after the final axis partitions have been formed, but only when a partition's
+component set is exactly the structural rolled label. This covers expanding
+power mappings that already target the combined structural label as well as
+registered, non-expanding, and detached rollups. It cannot rename a larger
+partition containing an unrelated component. The structural component label
+remains unchanged.
+
+Rows in `config/common_esto_label_overrides.csv` instead supply the generated
+`auto_common_*_label` and its `preferred_common_*_label`.
+`comparison_scope` is optional. The optional pipe-separated
+`component_esto_flows` or `component_esto_products` fields make the override
+apply only to the expected final partition. An enabled row that does not match
+fails the Stage 2 build rather than silently applying to a new structure.
 
 Use `esto_to_common_esto_map.csv` and
 `esto_component_to_common_row_lineage.csv.gz` to inspect or reverse the real
-component mapping. Labels are presentation fields, not mapping keys. The
-workbook `rollup_label_overrides` sheet remains reserved; it is not an input to
-this display-label mechanism.
+component mapping. Labels are presentation fields, not mapping keys.
 
 ### Rollup reason/type
 

@@ -16,6 +16,7 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.rollup_label_overrides import load_rollup_label_overrides
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -840,6 +841,79 @@ def apply_non_expanding_flags(
     return adjusted_df
 
 
+def apply_rollup_label_overrides_to_common_rows(
+    common_rows_df: pd.DataFrame,
+    rollup_label_overrides_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Apply explicit-rollup display labels without changing row identity.
+
+    Ordinary expanding ESTO rollups receive their preferred label through the
+    generated ``common_esto_overrides.csv``. This helper covers registered,
+    non-expanding and detached rollups whose structural rolled label remains an
+    exact Common ESTO component.
+    """
+    if (
+        common_rows_df.empty
+        or rollup_label_overrides_df is None
+        or rollup_label_overrides_df.empty
+    ):
+        return common_rows_df
+    overrides = rollup_label_overrides_df[
+        rollup_label_overrides_df["rule_sheet"].eq("esto_rollup_rules")
+    ].copy()
+    if overrides.empty:
+        return common_rows_df
+
+    result = common_rows_df.copy()
+    for axis in ["flow", "product"]:
+        axis_overrides = overrides[overrides["rollup_axis"].eq(axis)]
+        if axis_overrides.empty:
+            continue
+        structural_column = f"component_esto_{axis}"
+        code_column = f"common_{axis}_code"
+        name_column = f"common_{axis}_name"
+        label_column = f"common_{axis}_label"
+        structural_to_override: dict[str, pd.Series] = {}
+        for _, override in axis_overrides.iterrows():
+            structural_label = normalise_text(
+                override.get("structural_rollup_label", "")
+            )
+            if not structural_label:
+                continue
+            previous = structural_to_override.get(structural_label)
+            if previous is not None and normalise_text(
+                previous.get("preferred_rollup_label", "")
+            ) != normalise_text(override.get("preferred_rollup_label", "")):
+                raise ValueError(
+                    f"Conflicting rollup label overrides for {structural_label!r}."
+                )
+            structural_to_override[structural_label] = override
+
+        for structural_label, override in structural_to_override.items():
+            matching_row_ids: set[str] = set()
+            for common_row_id, group_df in result.groupby("common_row_id", dropna=False):
+                structural_components = {
+                    normalise_text(value)
+                    for value in group_df[structural_column]
+                    if normalise_text(value)
+                }
+                if structural_components == {structural_label}:
+                    matching_row_ids.add(str(common_row_id))
+            if not matching_row_ids:
+                continue
+            mask = result["common_row_id"].astype(str).isin(matching_row_ids)
+            result.loc[mask, code_column] = normalise_text(
+                override.get("preferred_rollup_code", "")
+            )
+            result.loc[mask, name_column] = normalise_text(
+                override.get("preferred_rollup_name", "")
+            )
+            result.loc[mask, label_column] = normalise_text(
+                override.get("preferred_rollup_label", "")
+            )
+    return result
+
+
 NON_EXPANDING_QA_COLUMNS = [
     "comparison_scope",
     "non_expanding_rollup_id",
@@ -1591,6 +1665,7 @@ def build_common_esto_for_scope(
     non_expanding_catalogue_df: pd.DataFrame | None = None,
     non_expanding_children: dict[str, list[str]] | None = None,
     rollup_mode_labels: dict[str, str] | None = None,
+    rollup_label_overrides_df: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build common ESTO rows, map rows, and QA outputs for one comparison scope."""
     non_expanding_labels = non_expanding_labels or {}
@@ -1670,6 +1745,14 @@ def build_common_esto_for_scope(
         common_rows_df,
         product_partition_lookup_df=product_partition_lookup_df,
         flow_partition_lookup_df=flow_partition_lookup_df,
+    )
+    # Explicit rollup names are display-only and must be applied after the
+    # final axis partitions assign their mechanical labels. Matching requires
+    # the exact structural component set, so an override cannot hide a later
+    # partition that also contains unrelated flows or products.
+    common_rows_df = apply_rollup_label_overrides_to_common_rows(
+        common_rows_df,
+        rollup_label_overrides_df,
     )
     map_df = build_map_table(common_rows_df)
 
@@ -1754,6 +1837,7 @@ def run_common_esto_structure_workflow(
     exclusions_df = read_table_if_exists(coverage_exclusions_path, COVERAGE_EXCLUSION_COLUMNS)
     overrides_df = read_table_if_exists(common_esto_overrides_path, OVERRIDE_COLUMNS)
     label_overrides_df = read_table_if_exists(common_esto_label_overrides_path, LABEL_OVERRIDE_COLUMNS)
+    rollup_label_overrides_df = load_rollup_label_overrides(outlook_mappings_path)
     flow_code_to_name, product_code_to_name = load_code_name_lookups(outlook_mappings_path)
 
     from codebase.mapping_tools.non_expanding_rollups import load_non_expanding_flow_labels
@@ -1796,6 +1880,7 @@ def run_common_esto_structure_workflow(
             non_expanding_catalogue_df=non_expanding_catalogue_df,
             non_expanding_children=non_expanding_children,
             rollup_mode_labels=rollup_mode_labels,
+            rollup_label_overrides_df=rollup_label_overrides_df,
         )
         common_frames.append(scope_common_df)
         map_frames.append(scope_map_df)

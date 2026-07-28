@@ -67,6 +67,13 @@ fills, or masked values are incomplete workbook edits.
 Validation/QA exceptions do **not** live in this workbook — they live in
 `config/mapping_issue_exception_sets.xlsx` (see mappings_system.md §exception sets).
 
+`rollup_label_overrides` is display-only. Its `rollup_group_id` must identify
+one enabled rolled category. Keep the `auto_rollup_*` values populated as
+staleness guards and put the human-facing replacement in the corresponding
+`preferred_rollup_*` fields. The pipeline fails on unknown, inactive,
+ambiguous, duplicate, or stale override rows. Structural rolled labels,
+component membership, IDs and values do not change.
+
 ## 2. Mapping sheets: the basics
 
 Each row of a mapping sheet says "this source pair's value belongs to this target pair".
