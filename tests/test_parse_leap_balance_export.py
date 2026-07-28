@@ -39,5 +39,38 @@ def test_parse_leap_balance_dir_ignores_excel_lock_files(tmp_path: Path) -> None
     output_path = tmp_path / "raw_leap_results.csv"
     parsed = parse_leap_balance_dir(tmp_path, output_path, economy_code="20_USA")
 
-    assert len(parsed) == 4
+    # Two source rows × one retained fuel; the "Total" fuel column is dropped.
+    assert len(parsed) == 2
     assert output_path.exists()
+
+
+def test_parse_leap_balance_xlsx_uses_mapping_workbook_fuel_spellings(
+    tmp_path: Path,
+) -> None:
+    workbook_path = tmp_path / "fuel_spellings.xlsx"
+    raw = pd.DataFrame(
+        [
+            ['Energy Balance for Area "Test Area"', None, None, None, None],
+            ["Scenario: Reference, Year: 2060, Units: Petajoule", None, None, None, None],
+            [
+                None,
+                "Fuelwood and woodwaste",
+                "Black liqour",
+                "of which Photovoltaics",
+                "Solar",
+            ],
+            ["Production", 1.0, 2.0, 3.0, 4.0],
+            ["Total Transformation", 1.0, 2.0, 3.0, 4.0],
+        ]
+    )
+    with pd.ExcelWriter(workbook_path) as writer:
+        raw.to_excel(writer, sheet_name="2060", header=False, index=False)
+
+    parsed = parse_leap_balance_xlsx(workbook_path, economy_override="20_USA")
+
+    assert set(parsed["leap_product"]) == {
+        "Fuelwood & woodwaste",
+        "Black liquor",
+        "Solar photovoltaics",
+        "Solar",
+    }

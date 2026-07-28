@@ -45,22 +45,24 @@ Ninth-to-ESTO counts is an existing exact key, not a dropped candidate.
 
 ## Newly observed fuel labels
 
-The proposed exact mappings for the newly observed literal labels `Solar` and
-`Black liqour` were rejected. A spelling or short label in the supplied
-structure is not enough evidence that the branch is semantically equivalent to
-the established ESTO or Ninth product.
+The mapping workbook now uses the spellings emitted by the LEAP balance parser:
 
-The 14 proposed demand source pairs were therefore removed from both
-`leap_combined_esto` and `leap_combined_ninth`. Existing reviewed power-process
-relationships that happen to contain either literal label were not changed by
-this removal; their source inventory rows are nevertheless flagged for
-targeted modeller follow-up.
+- `Fuelwood and woodwaste` becomes `Fuelwood & woodwaste`;
+- `Black liqour` becomes `Black liquor`;
+- `of which Photovoltaics` becomes `Solar photovoltaics`;
+- the literal label `Solar` remains `Solar`.
 
-`data/temp/new leap rows.xlsx` now has a `FOLLOW-UP` column on the `demand` and
-`power` sheets. It flags every supplied occurrence of `Black liqour` or
-`Solar`, so the power modellers can confirm or correct the model branch rather
-than having the mapping layer silently normalize it. There are 252 flagged
-demand rows and four fuel-label follow-ups among the power rows.
+The literal `Solar` source pairs are deliberately mapped to ESTO
+`12.99 Solar nonspecified`. On the Ninth axis they map to the appropriate
+nonspecified-solar code for the sector: `12_solar_unallocated` in demand and
+the existing `12_x_other_solar` category for the reviewed power technologies.
+This is a semantic allocation decision, not a spelling normalization.
+
+`data/temp/new leap rows.xlsx` retains the supplied source labels and has a
+`FOLLOW-UP` column on the `demand` and `power` sheets. It asks modellers to
+correct `Black liqour` at source and, when practical, rename the generic
+`Solar` branch to `Solar nonspecified`. The mapping layer is nevertheless
+ready to handle the current export on the next run.
 
 ## Municipal-waste source decision
 
@@ -93,17 +95,26 @@ must not be reintroduced.
 - Every applied batch was re-read by exact four-column mapping identity.
 - No exact duplicate mapping keys were introduced.
 - Every new rolled ESTO Extended mapping target has a declared rollup rule.
-- The rejected 14 demand source pairs are absent from both LEAP mapping
+- All 956 supplied source pairs were checked against both LEAP mapping
   directions.
-- The inventory has 258 populated `FOLLOW-UP` cells: 252 demand fuel-label
-  warnings, four power fuel-label warnings, and two split municipal-waste
-  warnings.
+- LEAP-to-ESTO covers 947 pairs. The remaining nine are the agreed legacy
+  `_do not use` power branches.
+- LEAP-to-Ninth covers 855 pairs. The remaining 101 are exactly the 63
+  detailed iron-route pairs, 29 raw power children handled by explicit
+  rollups, and nine `_do not use` branches.
+- The inventory has 257 populated `FOLLOW-UP` cells: 252 demand warnings and
+  five power warnings, including the two split municipal-waste reminders.
+- No mapping row retains `Fuelwood and woodwaste`,
+  `of which Photovoltaics`, or `Black liqour`.
+- The five changed or added source pairs have one target in each direction and
+  a matching Ninth-to-ESTO triangle.
 - Column widths, freeze panes, filters, data validations, conditional-format
   semantics, and unchanged-row styles match the pre-edit backup.
-- Focused tests:
-  `29 passed` in `tests/test_esto_extended_test.py` and
-  `tests/test_non_expanding_rollups.py`.
+- Focused parser, mapping-conversion, maintenance, ESTO Extended, and
+  non-expanding-rollup tests: `45 passed`.
 
-The full mapping pipeline has not been run. Synthetic ESTO Extended historical
-values remain a separate decision and must not be treated as validated by this
-mapping pass.
+The full mapping pipeline has not been run against this todo workbook because
+the hierarchy/subtotal contract is being changed concurrently. The canonical
+`config/outlook_mappings_master.xlsx` has not been replaced. Synthetic ESTO
+Extended historical values remain a separate decision and must not be treated
+as validated by this mapping pass.

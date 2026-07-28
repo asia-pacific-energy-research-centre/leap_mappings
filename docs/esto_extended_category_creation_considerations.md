@@ -201,14 +201,19 @@ differences. Normalize or review differences such as:
 - `Petroleum Coke` versus `Petroleum coke`;
 - `Natural Gas` versus `Natural gas`.
 
-The source-side label must still match LEAP exactly, but similarity of spelling
-is not mapping evidence. The newly observed literal labels `Black liqour` and
-`Solar` must not be normalized into established products until the power
-modellers confirm what those model branches mean or correct them at source.
-Their occurrences are marked in the `FOLLOW-UP` column of
-`data/temp/new leap rows.xlsx`. This warning applies even where an older,
-separately reviewed power-process relationship already contains the same
-literal source label.
+The source-side mapping label must match the normalized output of the LEAP
+balance parser. The parser currently converts `Black liqour` to `Black liquor`,
+`Fuelwood and woodwaste` to `Fuelwood & woodwaste`, and
+`of which Photovoltaics` to `Solar photovoltaics`. It leaves the literal
+`Solar` label unchanged.
+
+Literal `Solar` is a reviewed exception: map it to ESTO
+`12.99 Solar nonspecified` and to the sector-appropriate Ninth
+nonspecified-solar category. This allocation is intentionally different from
+assuming photovoltaics. The source inventory retains a `FOLLOW-UP` note asking
+modellers to rename the branch to `Solar nonspecified` when practical.
+`Black liqour` also retains a source follow-up even though the parser and
+mapping workbook already use the corrected `Black liquor` spelling.
 
 If a fuel has no reviewed ESTO product, leave that source pair unresolved for
 human review rather than inventing a product.
@@ -323,9 +328,9 @@ Completed treatments:
 - left the three detailed iron-and-steel routes absent from the Ninth axes, as
   decided;
 - treated `_do not use` power branches as legacy and left them unmapped.
-- removed the rejected exact demand mappings for the newly observed literal
-  fuel labels `Black liqour` and `Solar`, and added source-inventory follow-up
-  warnings for the modellers;
+- aligned mapping keys with the parser's normalized fuel spellings, mapped the
+  literal `Solar` label to Solar nonspecified, and retained source-inventory
+  follow-up warnings for modeller cleanup;
 
 The power-process identifier registry is currently explicit in
 `codebase/mapping_tools/build_esto_extended_test.py`. This prevents
