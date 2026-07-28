@@ -40,6 +40,7 @@ Active documentation being developed:
 
 - `docs/mappings_system.md` — the canonical reference for the mappings system design, pipeline stages, rollup rules, graph partitioning, and naming conventions.
 - `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
+- `docs/esto_extended_category_creation_considerations.md` — working rules for creating stable ESTO Extended categories from new LEAP branches, completing sibling mappings, and separating category creation from value allocation.
 
 ## Prompt docs workflow
 
@@ -101,10 +102,10 @@ Requirements (one-time install):
 
 ## LEAP mapping maintenance
 
-- Removed rows in `leap_combined_esto` and `leap_combined_ninth` are often deliberate guardrails, not obsolete data.
-- Many removed rows are rows that would create many-to-many mappings if active, usually because LEAP, ESTO, and 9th Outlook have different levels of detail.
-- When checking mapping gaps, treat `counterpart_presence_state == removed_only` as unavailable rather than as a missing row to restore.
-- Before reactivating or adding rows, check whether the change would create a many-to-many relationship and prefer the narrowest mapping needed for the workflow.
+- The maintained mapping sheets should contain only relationships believed to be correct.
+- Do not retain rejected relationships as `duplicate_to_remove = True` guardrails. Remove them from the maintained mapping sheets and preserve the review history in planning notes, QA evidence, or Git history.
+- Absence of a formerly rejected row is not evidence that it should be restored.
+- Before adding or replacing rows, review complete parent/child sibling coverage, check whether the change creates unintended many-to-many relationships, and use the agreed coarse mapping where dataset hierarchies differ.
 
 ## Computer-generated mapping candidates
 

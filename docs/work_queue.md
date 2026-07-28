@@ -121,7 +121,9 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010, MAPQ-027 | W2 | 2026-07-28 |
 | MAPQ-027 | P2 | `human_decision` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
 | MAPQ-028 | P2 | `deferred_active_processes` | `leap_mappings` + `leap_initialisation` + `leap_dashboard` | MAPQ-015, MAPQ-016, MAPQ-027 | W3 | 2026-07-28 |
-| MAPQ-029 | P2 | `decisions_recorded_not_started` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
+| MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
+| MAPQ-030 | P1 | `deferred_human_review` | `leap_mappings` | MAPQ-029, MAPQ-031 | later | 2026-07-28 |
+| MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
 
 ---
 
@@ -365,14 +367,37 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-029 — Implement detailed power-process remapping and retire aliases
 
-- **Priority / status / week:** P2 · `decisions_recorded_not_started` · W3
+- **Priority / status / week:** P2 · `review_in_progress` · W3
 - **Owner repos:** `leap_mappings` and `leap_initialisation` · **Depends on:** MAPQ-005, MAPQ-007
-- **Decision authority:** [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md#map-012-detailed-power-processes-use-semantic-targets-and-explicit-alias-boundaries), MAP-012.
-- **Scope:** Implement the reviewed Electricity Generation, CHP, and Heat plant process mappings from `data/temp/new leap rows.xlsx`; route imported electricity to Ninth/ESTO imports; combine ESTO main-activity/autoproducer detail through rollups; add the agreed Other + solid biomass comparison boundaries; and introduce stable ESTO Extended power-category identifiers.
+- **Working notes:** [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md#map-012-provisional-working-directions-for-detailed-power-processes), MAP-012. These are provisional review directions, not authority that the proposed mappings or current subtotal flags are correct.
+- **Scope:** Build the reviewed Electricity Generation, CHP, and Heat plant process mappings from `data/temp/new leap rows.xlsx` on top of `config/outlook_mappings_master todo.xlsx`; route imported electricity to Ninth/ESTO imports; review main-activity/autoproducer coverage, Other + solid biomass boundaries, and stable ESTO Extended power-category identifiers without assuming the current rollups are correct.
 - **Alias cleanup:** Treat `Battery` / `Batteries` / `Distributed storage` and `Solar_rooftop` / `Solar rooftop` as non-additive alternatives. Keep safe fallback/alias handling until `leap_initialisation` can migrate models to one canonical branch name, then remove the retired alternatives explicitly.
 - **Do not enact during current review:** The canonical mapping workbook and LEAP model structures remain unchanged until the active processes finish and a clean baseline is available.
 - **Next action:** On a dedicated branch/worktree, inventory alias co-occurrence by economy, propose the exact rollup rows and mapping-row replacements, and review the plan before editing `config/outlook_mappings_master.xlsx`.
 - **Completion criteria:** Imported electricity maps only to `02_imports` / `02 Imports`; aliases cannot double count; Coal-H2 maps within coal power; power-detail mappings have no unresolved post-rollup many-to-many relationships; existing ESTO Extended identifiers remain stable; and maintenance plus Stages 1–3 pass without source-total or parent/child regressions.
+
+### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets
+
+- **Priority / status / timing:** P1 · `deferred_human_review` · after the current ESTO Extended mapping work has a stable workbook base
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-029, MAPQ-031
+- **Problem:** Current `leap_is_subtotal`, `ninth_pair_is_subtotal`, and `esto_pair_is_subtotal` values contain historical assumptions and mistakes. Existing QA behaviour and decision-log descriptions must not be read as approval of those classifications.
+- **Scope:** Re-derive subtotal status for every row in `leap_combined_esto`, `ninth_pairs_to_esto_pairs`, and `leap_combined_ninth`, including parent/child and rollup-generated targets. Review coherent sibling groups together rather than applying bulk inference one cell at a time.
+- **Safety:** Start from a frozen, backed-up workbook; prove formatting-preserving round-trip behaviour first; produce a review table of proposed changes; apply only reviewed classifications; and compare mapping cardinality and additive frontiers before and after.
+- **Completion criteria:** Every subtotal flag has an auditable hierarchy basis; no partial sibling group is classified inconsistently; Stage 0 subtotal QA is reviewed rather than merely empty; and Stages 1–3 pass source-total, hierarchy, and frontier checks.
+
+### MAPQ-031 — Build complete ESTO Extended mappings from the new LEAP rows
+
+- **Priority / status / week:** P1 · `review_in_progress` · W1-W3
+- **Owner repos:** `leap_mappings` and `leap_initialisation` · **Depends on:** MAPQ-007
+- **Workbook base:** `config/outlook_mappings_master todo.xlsx`. Treat it as the best current starting point, not as proven correct.
+- **Source inventories:** `data/temp/new leap rows.xlsx` and `data/temp/new demand branches remapping plan.xlsx`.
+- **Rule:** The maintained mapping sheets contain only mappings believed to be correct. Rejected rows are removed, not retained with `duplicate_to_remove = True`.
+- **Scope:** Add the missing LEAP-to-ESTO Extended rows first, using the planning sheets as the starting classification. Then complete the corresponding LEAP-to-Ninth and Ninth-to-ESTO relationships so mapped parent/child groups do not contain arbitrary uncovered siblings. Use explicit human-directed coarse mappings where the hierarchies differ.
+- **Detailed considerations:** [`esto_extended_category_creation_considerations.md`](esto_extended_category_creation_considerations.md).
+- **Confirmed transport directions:** car → LPV small; sports utility vehicle → LPV medium; light truck → LPV large; HEV → ICE; EREV → PHEV; freight two-wheelers → LCVs; FCEV → BEV where the target vehicle has no FCEV child; PHEV → BEV for buses, motorcycles, and medium/heavy trucks where no PHEV child exists; LNG → ICE. Ninth gasoline and diesel PHEV map to the same size-specific PHEV category where it exists, with the fuel/product axis preserved.
+- **Open decisions:** review parent output rows versus detailed process children in power/CHP/heat, the Electricity Generation Other plus solid-biomass boundary, the stable registry location, and which categories can receive defensible ESTO Extended historical values.
+- **Next action:** Finish the short list of blunt hierarchy decisions with the user, generate an exact row-level proposed change set against the todo workbook, and review it before any workbook write.
+- **Completion criteria:** Every new LEAP leaf pair has a reviewed ESTO Extended target or an explicit reason it is outside scope; all mapped sibling groups are complete under the agreed coarse crosswalk; rejected rows are absent; and structural/value validation passes after the workbook is enacted.
 
 ---
 

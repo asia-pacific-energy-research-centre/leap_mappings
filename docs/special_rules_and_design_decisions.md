@@ -4,6 +4,12 @@ This is the decision log for `leap_mappings`. Record rules whose correct behavio
 
 Cross-repository decisions use a `CROSS-###` ID and have one authoritative entry in the repository that owns the implementation. Other affected repositories should link to that entry instead of copying it.
 
+Only settled semantic rules belong here as decisions. Current workbook behaviour,
+computer-generated suggestions, temporary workarounds, and mapping plans that still
+need row-by-row review must be labelled **provisional** and tracked in
+`docs/work_queue.md`. A statement that describes the present workbook is not evidence
+that the workbook is correct.
+
 ## MAP-007: Empty validation detail is not pass evidence
 
 **Status:** Decided
@@ -38,7 +44,7 @@ run identifiers.
 
 ## MAP-001: Subtotal-to-non-subtotal mappings need a narrower-target test
 
-**Status:** Confirmed
+**Status:** Existing QA mechanism; subtotal classifications pending full review (MAPQ-030)
 **Owner:** leap_mappings
 **Type:** Mapping
 **Affected areas:** `config/outlook_mappings_master.xlsx`; `config/mapping_issue_exception_sets.xlsx` sheet `subtotal_mismatch_allowed`; `codebase/archive/outlook_mapping_maintenance_workflow.py`; `results/maintenance/subtotal_mismatches.csv`
@@ -57,6 +63,11 @@ ESTO, the 9th Outlook, and LEAP expose different hierarchy depths. A subtotal on
 
 Use the third option. Reviewed acceptable cases must be listed in `subtotal_mismatch_allowed`; unlisted cases remain review items and are not silently accepted.
 
+This describes how the current QA mechanism separates findings. It does **not**
+approve the present `*_is_subtotal` values in the mapping sheets. Those values
+need a careful, workbook-wide semantic review before they can be treated as
+correct; that work is queued as MAPQ-030.
+
 ### Validation
 
 Run the mapping maintenance workflow. Confirm that `subtotal_mismatches.csv` contains only unapproved cases, allowlisted rows are separated as allowed, and parent/child totals remain consistent after any mapping change. Unit coverage for allowlist splitting is in `tests/test_outlook_mapping_maintenance_workflow.py`.
@@ -65,34 +76,48 @@ Run the mapping maintenance workflow. Confirm that `subtotal_mismatches.csv` con
 
 - 2026-06-27: Recorded the rule already implemented and described in `docs/mappings_system.md`.
 
-## MAP-002: Removed-only counterparts are unavailable guardrails
+## MAP-002: Rejected mappings do not remain in the maintained mapping sheets
 
 **Status:** Confirmed
 **Owner:** leap_mappings
-**Type:** Exception
+**Type:** Workbook content
 **Affected areas:** `config/outlook_mappings_master.xlsx` sheets `leap_combined_esto` and `leap_combined_ninth`; mapping coverage outputs containing `counterpart_presence_state`; mapping maintenance and refresh checks
 
 ### Situation
 
-Some removed rows are retained to document mappings that would create many-to-many relationships. Their presence in the workbook can look like a missing active counterpart even though reactivation would change mapping cardinality and totals.
+Earlier workbook versions retained rejected mappings with
+`duplicate_to_remove = True` as historical guardrails. This mixes known-wrong
+relationships with the maintained mapping source and makes it harder to tell
+whether every row is intended to be correct.
 
 ### Options
 
-- Treat `removed_only` as a mapping gap and restore a row, risking many-to-many aggregation.
-- Treat it as unavailable, preserving the guardrail while leaving the source without that counterpart.
-- Add a narrower active mapping after an explicit cardinality review.
+- Retain rejected rows in the mapping sheets as inactive guardrails.
+- Remove rejected rows from the maintained mapping sheets and preserve review
+  history in planning notes, Git history, or QA evidence.
+- Replace a rejected relationship with a reviewed correct mapping.
 
 ### Current rule
 
-Treat `counterpart_presence_state == removed_only` as unavailable, not as an instruction to restore the row. Add or reactivate a mapping only after showing that the narrowest proposed relationship does not introduce unintended many-to-many coverage.
+Use the second or third option. The maintained mapping sheets should contain only
+relationships believed to be correct. A rejected relationship is removed rather
+than retained behind `duplicate_to_remove = True`. Its absence is not evidence
+that it should be regenerated; any replacement still requires semantic and
+cardinality review.
 
 ### Validation
 
-Compare raw and rollup-aware cardinality before and after a proposed change. Check duplicate/conflict outputs and source-versus-mapped totals; a coverage increase is not sufficient evidence by itself.
+Confirm rejected rows are absent from the maintained mapping sheets. Compare raw
+and rollup-aware cardinality before and after each replacement, and check
+source-versus-mapped totals; a coverage increase is not sufficient evidence by
+itself.
 
 ### History
 
-- 2026-06-27: Recorded the existing guardrail from repository guidance.
+- 2026-06-27: Recorded the earlier retained-guardrail practice.
+- 2026-07-28: Superseded that practice. Human direction is that the maintained
+  workbook contains only mappings believed to be correct; rejected rows are
+  removed rather than kept inactive.
 
 ## MAP-003: Partial coverage is actionable only for data-relevant components
 
@@ -190,7 +215,7 @@ Confirm that generated rollups with `Total` in their labels appear in `common_es
 
 ## MAP-006: Aggregate ESTO flows are excluded from structural edge creation
 
-**Status:** Confirmed
+**Status:** Existing implementation; subtotal inputs pending full review (MAPQ-030)
 **Owner:** leap_mappings
 **Type:** Comparison
 **Affected areas:** `codebase/mapping_tools/build_common_esto_structure.py` (`build_source_aggregate_edges`); `codebase/mapping_tools/build_energy_balance_relationships.py` (`RELATIONSHIP_COLUMNS`, `build_relationship_rows`); `config/outlook_mappings_master.xlsx` sheet `leap_combined_esto` column `esto_pair_is_subtotal`
@@ -210,6 +235,10 @@ However, some LEAP sectors are mapped simultaneously to their specific ESTO dema
 ### Current rule
 
 Use the third option.  The `esto_pair_is_subtotal` column in the relationships pipeline carries a `True` flag for any ESTO target that is a known top-level aggregate.  `build_source_aggregate_edges` excludes rows where `esto_pair_is_subtotal = True` when collecting the pairs used to draw structural edges; those targets still appear as their own common rows.
+
+This is the current graph-building behaviour, not approval of every workbook
+subtotal flag feeding it. The complete subtotal classification across all three
+mapping sheets must be re-derived carefully in MAPQ-030.
 
 The following ESTO flows are marked `esto_pair_is_subtotal = True` in `leap_combined_esto`:
 
@@ -404,9 +433,9 @@ Record these sectors/fuels in `config/mapping_issue_exception_sets.xlsx` so QA a
 
 - 2026-07-22 (approx.): Rule captured in a standalone working note (`prompts 5-7.md`, since archived to `docs/archive/`) during the same session that reviewed the mapping-issue exception workflow; folded into this decision log on 2026-07-23 so it doesn't rely on a loose root-level file for discoverability.
 
-## MAP-012: Detailed power processes use semantic targets and explicit alias boundaries
+## MAP-012: Provisional working directions for detailed power processes
 
-**Status:** Decided; implementation deferred
+**Status:** Provisional; row-by-row review in progress
 **Owner:** `leap_mappings`
 **Type:** Mapping / comparison boundary
 **Affected areas:** `config/outlook_mappings_master.xlsx`; ESTO Extended power
@@ -422,7 +451,15 @@ processes still contain biomass, biogas, and waste fuels despite the presence
 of dedicated solid-biomass processes, so those branches cannot always be
 separated cleanly at the Ninth Outlook's biomass/other boundary.
 
-### Current rule
+### Working directions from the current review
+
+The points below are starting directions for building ESTO Extended mappings,
+not proof that the current workbook, subtotal flags, rollups, or proposed rows
+are correct. They must be tested against complete sibling coverage and reviewed
+again while MAPQ-029/MAPQ-031 are enacted.
+
+The detailed category-creation and coarse-crosswalk rules are maintained in
+[`esto_extended_category_creation_considerations.md`](esto_extended_category_creation_considerations.md).
 
 - `Electricity Generation/Processes/Imported electricity` is an electricity
   import, not a generation technology. Map it to Ninth `02_imports` and ESTO
