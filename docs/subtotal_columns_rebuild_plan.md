@@ -156,7 +156,49 @@ Create a narrow review workbook containing:
 
 No mapping workbook writes occur at this stage.
 
-### 6. Review by coherent hierarchy groups
+### 6. Publish one cross-repository structural contract
+
+`leap_mappings` should own the canonical hierarchy and pair-subtotal
+classification. Do not copy the inference functions into `leap_dashboard` or
+`leap_initialisation`. Publish a versioned, machine-readable structural
+contract containing:
+
+- the axis tables and canonical pair classifications from steps 2 and 3;
+- rollup mode, boundary membership, and synthetic-row provenance;
+- the reviewed exception status and reason;
+- input hashes, build identifier, schema version, and generation timestamp;
+- validation results needed by downstream consumers.
+
+Reuse existing mapping outputs such as `all_dataset_trees.csv` and the rollup
+catalogue where their grain and schema are suitable. Add a narrow canonical
+pair-classification member rather than making each repository reconstruct the
+answer from the workbook.
+
+`leap_initialisation` currently has multiple local subtotal-inference paths,
+including reference-vintage lookup, product-prefix fallback, active LEAP-path
+parent inference, and several direct filters on `subtotal_layout` or
+`subtotal_results`. Inventory these consumers and migrate them deliberately:
+domain-specific value preparation may remain local, but structural truth
+should be loaded from the mapping-owned contract. Keep temporary compatibility
+adapters explicit and test their results against the canonical fixture.
+
+The dashboard must remain an independent checking surface, not become the
+authority. Its Mapping diagnostics page already consumes mapping-owned tree,
+rollup, and validation data. Reconcile that loader and graph builder against
+the new contract before trusting the display, and make the page show the
+contract build identifier plus a prominent stale, missing, or mismatched-input
+warning.
+
+Add cross-repository contract tests:
+
+- producer schema, uniqueness, provenance, and deterministic-output tests in
+  `leap_mappings`;
+- loader and representative graph-fixture tests in `leap_dashboard`;
+- loader and subtotal-filter behaviour tests in `leap_initialisation`;
+- one shared fixture proving that all three repositories resolve the same
+  codes, parents, rollup modes, and pair flags.
+
+### 7. Review by coherent hierarchy groups
 
 Review parents with all immediate children together. Prioritize:
 
@@ -171,7 +213,24 @@ Review parents with all immediate children together. Prioritize:
 This prevents the partial-child problem where only some children of a mapped
 parent are treated consistently.
 
-### 7. Apply only approved changes
+For each proposed group, use the dashboard's **All sector rollup structure**
+element as the individual visual checking item. Focus the affected parent and
+confirm:
+
+- all immediate children and siblings are present;
+- ordinary hierarchy edges are distinct from rollup-composition edges;
+- `EXPANDING`, `NON_EXPANDING`, and `DETACHED` boundaries are represented as
+  declared;
+- current and proposed subtotal classifications, evidence, and exception
+  reasons are visible;
+- validation failures, duplicate codes, orphan parents, and Extended-only
+  nodes are not hidden.
+
+A visually plausible graph is necessary but not sufficient. Approve the group
+only when the graph is based on the same contract build as the review workbook
+and the tabular/additive checks also pass.
+
+### 8. Apply only approved changes
 
 After review:
 
@@ -181,7 +240,7 @@ After review:
 - preserve workbook layout, formulas, validations, filters, and formatting;
 - re-read every changed cell by exact mapping identity.
 
-### 8. Validate the result
+### 9. Validate the result
 
 The acceptance checks are:
 
@@ -201,7 +260,10 @@ The acceptance checks are:
 ## Recommended implementation order
 
 First correct and test the common classification engine and review output.
-Then audit the exception workbook. Only after both are stable should the
-approved flags be written into the mapping workbook. The current Stage 0
-preview is useful evidence, but it should not become an automatic bulk writer
-until these definitions and exception rules are reconciled.
+Then publish and reconcile the shared contract with the dashboard and
+initialisation consumers. Audit the exception workbook and review each
+coherent group through the dashboard graph backed by the same contract build.
+Only after those pieces are stable should the approved flags be written into
+the mapping workbook. The current Stage 0 preview is useful evidence, but it
+should not become an automatic bulk writer until these definitions, consumers,
+and exception rules are reconciled.

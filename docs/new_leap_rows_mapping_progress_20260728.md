@@ -30,7 +30,7 @@ The backup SHA-256 is
 | Power ESTO rollup-rule additions | 60 |
 | Power LEAP rollup-rule additions | 6 |
 | Power Ninth rollup-rule additions | 7 |
-| Exact mappings for newly observed source fuel labels (`Solar`, `Black liqour`) per direction | 14 |
+| Rejected demand mappings for newly observed source fuel labels removed from each direction | 14 |
 
 The one-row difference between the planned and inserted power
 Ninth-to-ESTO counts is an existing exact key, not a dropped candidate.
@@ -45,20 +45,22 @@ Ninth-to-ESTO counts is an existing exact key, not a dropped candidate.
 
 ## Newly observed fuel labels
 
-These rows do not introduce new ESTO or Ninth fuel categories. They make exact
-source-label mappings for labels that the initial inventory parser did not
-recognize because they were not already present in the mapping workbook.
+The proposed exact mappings for the newly observed literal labels `Solar` and
+`Black liqour` were rejected. A spelling or short label in the supplied
+structure is not enough evidence that the branch is semantically equivalent to
+the established ESTO or Ninth product.
 
-- `Black liqour` is the misspelled literal label in the supplied LEAP
-  structure. It must remain exact on the LEAP side so exported data matches,
-  while mapping to the established `15.04 Black liquor` ESTO product and
-  `15_04_black_liquor` Ninth fuel. It occurs in 12 reviewed demand sectors.
-- `Solar` is distinct from the existing LEAP label `Solar nonspecified`. Its
-  two reviewed demand occurrences map to the established ESTO product
-  `12 Solar` and Ninth fuel `12_solar`.
+The 14 proposed demand source pairs were therefore removed from both
+`leap_combined_esto` and `leap_combined_ninth`. Existing reviewed power-process
+relationships that happen to contain either literal label were not changed by
+this removal; their source inventory rows are nevertheless flagged for
+targeted modeller follow-up.
 
-This is 14 source sector/fuel pairs in each mapping direction, but only two
-newly observed source labels.
+`data/temp/new leap rows.xlsx` now has a `FOLLOW-UP` column on the `demand` and
+`power` sheets. It flags every supplied occurrence of `Black liqour` or
+`Solar`, so the power modellers can confirm or correct the model branch rather
+than having the mapping layer silently normalize it. There are 252 flagged
+demand rows and four fuel-label follow-ups among the power rows.
 
 ## Municipal-waste source decision
 
@@ -80,6 +82,10 @@ The Ninth-inclusive comparison uses the reviewed
 `Other and solid biomass` power rollup rather than a partial direct mapping of
 the raw `Others` process.
 
+Both retained split municipal-waste rows are also marked in the `FOLLOW-UP`
+column so the power modellers know that the combined branch was retired and
+must not be reintroduced.
+
 ## Verification completed
 
 - The no-edit `openpyxl` round trip preserved workbook behaviour and formatting;
@@ -87,6 +93,11 @@ the raw `Others` process.
 - Every applied batch was re-read by exact four-column mapping identity.
 - No exact duplicate mapping keys were introduced.
 - Every new rolled ESTO Extended mapping target has a declared rollup rule.
+- The rejected 14 demand source pairs are absent from both LEAP mapping
+  directions.
+- The inventory has 258 populated `FOLLOW-UP` cells: 252 demand fuel-label
+  warnings, four power fuel-label warnings, and two split municipal-waste
+  warnings.
 - Column widths, freeze panes, filters, data validations, conditional-format
   semantics, and unchanged-row styles match the pre-edit backup.
 - Focused tests:

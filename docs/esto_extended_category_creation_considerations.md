@@ -201,12 +201,14 @@ differences. Normalize or review differences such as:
 - `Petroleum Coke` versus `Petroleum coke`;
 - `Natural Gas` versus `Natural gas`.
 
-The source-side label must still match LEAP exactly. For example,
-`Black liqour` remains misspelled in `raw_leap_fuel_name` because that is the
-literal supplied branch label, while its targets use the established,
-correctly spelled ESTO and Ninth codes. Likewise, the newly observed exact
-label `Solar` maps to the established solar products; it does not create a
-second solar product.
+The source-side label must still match LEAP exactly, but similarity of spelling
+is not mapping evidence. The newly observed literal labels `Black liqour` and
+`Solar` must not be normalized into established products until the power
+modellers confirm what those model branches mean or correct them at source.
+Their occurrences are marked in the `FOLLOW-UP` column of
+`data/temp/new leap rows.xlsx`. This warning applies even where an older,
+separately reviewed power-process relationship already contains the same
+literal source label.
 
 If a fuel has no reviewed ESTO product, leave that source pair unresolved for
 human review rather than inventing a product.
@@ -321,6 +323,9 @@ Completed treatments:
 - left the three detailed iron-and-steel routes absent from the Ninth axes, as
   decided;
 - treated `_do not use` power branches as legacy and left them unmapped.
+- removed the rejected exact demand mappings for the newly observed literal
+  fuel labels `Black liqour` and `Solar`, and added source-inventory follow-up
+  warnings for the modellers;
 
 The power-process identifier registry is currently explicit in
 `codebase/mapping_tools/build_esto_extended_test.py`. This prevents
