@@ -1,17 +1,17 @@
 # LEAP mappings work queue and handover plan
 
 **Snapshot date:** 2026-07-28
-
+**Last full verification:** 2026-07-28 (git state, worktrees, workbooks, code, and links re-checked directly)
 **Planning horizon:** four weeks, through 2026-08-24
-
 **Owner repository:** `leap_mappings`
-
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
 This is the controlling queue for current work and handover preparation. It
 reconciles repository state, worktrees, recent commits, the older
 `improvement_todo.md`, active prompt files, and the documentation audit in
-`documentation_audit_20260728.md`.
+[`documentation_audit_20260728.md`](documentation_audit_20260728.md).
+Cross-repository ownership, data contracts, and refresh order live in
+[`cross_repository_handover_index.md`](cross_repository_handover_index.md).
 
 Do not mark an item complete only because a prompt or findings file says it is
 complete. Completion requires the change to be committed on the intended
@@ -33,109 +33,358 @@ clean, ready-to-integrate worktree.
 | `human_decision` | Progress depends on a semantic or policy choice that should not be guessed. |
 | `superseded_cleanup` | The work is complete or superseded; only archival or branch/worktree cleanup remains. |
 
-## Repository state at the snapshot
+## Verified repository state — 2026-07-28
 
-- Local `master` is four commits ahead of `origin/master`:
-  `947742d`, `2e39cca`, `34858fe`, and the handover queue commit at `HEAD`.
-- The main checkout is dirty. It contains a draft qualitative LNG fallback,
-  demand-scope configuration changes, documentation edits, five deleted
-  non-canonical workbook variants, Office/temp files, and untracked local tool
-  directories. These changes are not one coherent completed unit and must not
-  be staged together.
-- No Python process was running when this snapshot was taken.
-- Five non-master worktrees are clean. Four contain commits that Git still
-  considers unmerged; one contains a patch-equivalent change already present
-  on `master`.
-- `leap_dashboard` local `master` is 55 commits ahead of its remote.
-- `leap_initialisation` local `master` is 142 commits ahead of its remote.
-  Those large remote gaps are cross-repository handover risks even though this
-  queue does not authorize pushing either repository.
+All statements below were re-derived from git and the working tree on
+2026-07-28; none are carried forward from older notes.
 
-## Worktree and branch reconciliation
+- Local `master` is at `76e280f`, **four commits ahead of `origin/master`**
+  (`947742d`, `2e39cca`, `34858fe`, `76e280f`). `origin/master` is at `5c960c9`.
+- The main checkout is dirty: 6 modified tracked files, 5 deleted tracked
+  workbook variants, 6 untracked paths. These form **four independent units**
+  plus environment noise — see MAPQ-001.
+- **No Python process was running** at snapshot time. No pipeline run is in
+  flight, so git and results state can be treated as static.
+- `config/~$outlook_mappings_master.xlsx` exists (165 bytes, 2026-07-28 10:21).
+  This is an Excel owner-lock file: **the canonical mapping workbook is open in
+  Excel.** This is the mechanism behind the `_rebuilt` fallback CSVs — current
+  code writes a `_rebuilt` variant when the canonical output is locked. Close
+  the workbook before any run intended as a baseline.
+- **Five non-master worktrees exist and all five are clean** (`git status
+  --porcelain` empty in each). A sixth branch has no worktree.
+- `leap_dashboard` local `master` is **55 commits ahead** of its remote, with one
+  modified file. `leap_initialisation` local `master` is **142 commits ahead** of
+  its remote, clean, with **nine worktrees** (three of which sit at the initial
+  commit). Those remote gaps and stray worktrees are cross-repository handover
+  risks; this queue does not authorize pushing or pruning either repository.
 
-| Branch/worktree | Evidence on 2026-07-28 | Classification | Required action |
+### Worktree and branch reconciliation
+
+| Branch / worktree | Verified evidence 2026-07-28 | Classification | Required action |
 |---|---|---|---|
-| `master` | Four local commits ahead of `origin/master`; dirty checkout | `complete_unpushed` plus `partial_uncommitted` | Separate the completed local commits from the dirty draft work. Review and push only through the user's normal repository process. |
-| `codex/output-contract-phase-2` | Clean; three commits; 320 broader tests passed with documented unrelated/environment failures | `complete_in_worktree` | Review and integrate the output-contract commits before changing the normal output publication path. Preserve the exact ESTO Extended delta as non-default until its quiet-window measurements are complete. |
-| `claude/zen-pike-39adbf` | Clean; one commit; candidate-focused tests passed | `complete_in_worktree` | Integrate the empty-partial-coverage guard or document why it is no longer needed. It prevents a legitimate no-candidate state from crashing Stage 3. |
-| `codex/esto-rollup-source-identity-guard` | Clean; one commit with tests and inspectable QA output | `complete_in_worktree` | Integrate the regression guard after checking overlap with later output-contract validation. The underlying doubling defect is fixed on `master`, but this guard is not. |
-| `claude/mapping-diagnostics-dashboard-a55009` | Clean; six commits; four commits behind current `master` | `partial_reconciliation` | Do not merge wholesale. It repeats workbook/config changes already landed differently, contains the source-identity guard, and adds useful deferred-work docs. Reconcile commit by commit. Its claim that the guard was merged to `master` is currently inaccurate. |
-| `codex/investigate-anchor-validator-memory` | Clean; one commit; `git cherry` reports a patch-equivalent change already on `master` | `superseded_cleanup` | Confirm `03c9405` is the intended integrated equivalent, then remove the stale worktree/branch through the normal safe cleanup process. |
-| `worktree-agent-abcb30bdd765f323c` | Unmerged local branch at the repository's initial commit; no active worktree | `superseded_cleanup` | Confirm it carries no work, then delete the stale branch. |
+| `master` (main checkout) | 4 commits ahead of `origin/master`; dirty checkout; workbook lock file present | `complete_unpushed` + `partial_uncommitted` | Separate completed commits from draft work (MAPQ-001, MAPQ-002). |
+| `codex/output-contract-phase-2` (`4f53662`) | Clean; 3 commits ahead, 1 behind; adds `codebase/mapping_tools/common_esto_output_contract.py` (285 lines) and `tests/test_common_esto_output_contract.py` (190 lines) | `complete_in_worktree` | Integrate the contract before changing output publication (MAPQ-003). Keep the exact ESTO Extended row delta non-default. |
+| `claude/zen-pike-39adbf` (`add312d`) | Clean; 1 commit ahead, 3 behind | `complete_in_worktree` | Integrate the empty-partial-coverage guard (MAPQ-004). |
+| `codex/esto-rollup-source-identity-guard` (`8b169de`) | Clean; 1 commit ahead, 5 behind; `git cherry master` reports **`+`** (not on master); touches `non_expanding_rollups.py` (+161), `run_mapping_pipeline.py` (+20), `tests/test_non_expanding_rollups.py` (+151) | `complete_in_worktree` | Integrate the regression guard (MAPQ-004). The `_source_identity` symbols on `master` are in `apply_partitioned_common_esto.py` and are a **different** cache-identity concept — they do not supersede this guard. |
+| `claude/mapping-diagnostics-dashboard-a55009` (`7de6cd1`) | Clean; 6 commits ahead, 5 behind; contains its own copy of the guard (`23cd8b0`) and a workbook merge already landed differently as `947742d` | `partial_reconciliation` | Do not merge wholesale (MAPQ-008). **Its commit message "record the source-identity guard as merged to master" is factually wrong** — verified above. Salvage only the deferred-work docs. |
+| `codex/investigate-anchor-validator-memory` (`65df95e`) | Clean; 1 commit ahead, 18 behind; `git cherry master` reports **`-`** (patch-equivalent already on master as `03c9405`) | `superseded_cleanup` | Confirm and remove the stale worktree/branch through the normal safe cleanup process (MAPQ-023). |
+| `worktree-agent-abcb30bdd765f323c` (`09ed7fe`) | Local branch at the repository's initial commit; 234 behind; no active worktree | `superseded_cleanup` | Confirm it carries no work, then delete the stale branch (MAPQ-023). |
+
+### Uncommitted work classification (MAPQ-001 detail)
+
+Verified by reading each diff. These must not be committed as one change.
+
+| Unit | Paths | Assessment |
+|---|---|---|
+| **A — demand-scope restructure** | `config/source_coverage_scopes.json`, `config/all_demand_aggregated_components.json`, `docs/rollup_rules_system.md`, `docs/source_coverage_audit.md` | Coherent and self-consistent: `Freight road` + `Passenger road` collapse into `Road`; `International transport` is added as a separate component. Both docs were updated to match. **This is a semantic mapping decision and needs human sign-off before commit.** |
+| **B — draft qualitative LNG fallback** | `codebase/mapping_tools/build_missing_mapped_esto_rows.py` | Adds `LNG_TRADE_DIRECTION` (21 economies) and `_qualitative_lng_shares()`. Its own comment says "Needs a human pass to confirm/correct before relying on it for a real run." **Draft; do not commit as production behaviour.** |
+| **C — results cleanup verification pass** | `docs/results_folder_cleanup_candidates.md` | Documentation-only. Records the 2026-07-27 verification, corrects the `_rebuilt` classification (it is an automatic lock fallback, not a manual copy), and removes `missing_mapped_esto_rows/` from the quarantine batch. Committable on its own once reviewed. |
+| **D — non-canonical workbook deletions** | 5 deleted `config/outlook_mappings_master*.xlsx` variants | Deletions of superseded workbook variants. **Verify each is genuinely superseded by `config/outlook_mappings_master.xlsx` before committing**; these are tracked binary files and the deletion is the only remaining copy in the working tree. |
+| **E — environment noise** | `config/9098DA00`, `config/FDC59700`, `config/~$outlook_mappings_master.xlsx`, `.codex/`, `.codex-remote-attachments/`, `node_modules/` | Not project content. The two hex files are Office crash-recovery blobs; `~$...` is the live Excel lock. They appear as untracked because `.gitignore:205` `!config/*` un-ignores everything directly under `config/`. Fix with a narrow re-ignore (MAPQ-024). |
 
 ## Prioritized queue
 
-Dates below are target windows for handover planning, not promises that semantic
-decisions can be made without review.
+Index. Full detail for each ID follows. `Wk` is the target handover week
+(W1 = 2026-07-28→08-03, W2 = 08-04→08-10, W3 = 08-11→08-17, W4 = 08-18→08-24).
 
-| ID | Priority | Target | Status | Work item | Evidence and completion test |
-|---|---|---|---|---|---|
-| MAPQ-001 | P0 | 2026-07-28 to 2026-07-30 | `partial_uncommitted` | Stabilize the main checkout | Classify every current modified, deleted, and untracked path as keep/commit, move to a dedicated worktree, restore, quarantine, or ignore. Do not combine the draft LNG table, demand-scope edits, workbook cleanup, and documentation edits in one commit. Complete when `git status --short` is either clean or every remaining path has a named owner and queue ID. |
-| MAPQ-002 | P0 | 2026-07-28 to 2026-07-31 | `complete_unpushed` | Reconcile local `master` with `origin/master` | The four local commits contain the canonical workbook merge, demand/power branch-tab reading, compressed recurring outputs, and this handover queue/audit. Complete when the intended remote contains them or the handover explicitly records why it does not. |
-| MAPQ-003 | P0 | 2026-07-29 to 2026-08-01 | `complete_in_worktree` | Integrate the Common ESTO output contract | Review `codex/output-contract-phase-2`, run its focused tests after integration, and confirm dashboard-required identities, keys, years, values, booleans, manifest hashes, and rollback behavior. The exact ESTO Extended delta remains experimental unless separately approved. |
-| MAPQ-004 | P0 | 2026-07-29 to 2026-08-01 | `complete_in_worktree` | Integrate two small Stage 3 safety fixes | Reconcile the empty-candidate guard from `claude/zen-pike-39adbf` and the exact-row source-identity guard from `codex/esto-rollup-source-identity-guard`. Complete when both are on `master` with focused tests, or when a written comparison proves a later guard supersedes one of them. |
-| MAPQ-005 | P0 | 2026-07-30 to 2026-08-03 | `partial` | Produce one clean current pipeline baseline | Run the intended mapping maintenance and Stages 1-3 only after MAPQ-001 through MAPQ-004 settle code and workbook state. Record run ID, inputs, commit, workbook hash/state, durations, validation counts, and blocking versus review-only findings. A successful exit code alone is not completion. |
-| MAPQ-006 | P0 | Start 2026-07-28; weekly | `partial` | Establish documentation control | Use this queue as the controlling backlog; complete the actions in `documentation_audit_20260728.md`; date every status review; and archive completed prompts in the same commit that updates the prompt inventory. Complete when active docs contain only current instructions or clearly dated historical context. |
-| MAPQ-007 | P1 | 2026-07-31 to 2026-08-05 | `partial` | Reconcile ESTO Extended work | The design and much of the implementation are on `master`; output-contract and delta work are in a clean worktree; deferred structure/recheck docs are on another worktree. Produce one current status note separating production behavior, experimental behavior, missing Common ESTO structure coverage, and dashboard consumption. |
-| MAPQ-008 | P1 | Re-measure 2026-08-17 | `paused` | Recheck deferred ESTO Extended coverage findings | Recover the measurements/docs from `claude/mapping-diagnostics-dashboard-a55009`, but re-measure on the then-current pipeline before implementing its proposed structure changes. If the premise has changed, close or rewrite the task rather than implementing stale counts. |
-| MAPQ-009 | P1 | 2026-08-03 to 2026-08-09 | `partial` | Re-triage semantic mapping findings | Use the clean MAPQ-005 baseline. Group actionable partial coverage, non-zero unmapped LEAP branches, presence conflicts, and non-ESTO hierarchy edges by semantic cause. Record human rules before workbook edits. Completion is a reviewed, bounded decision list, not zero raw diagnostic rows. |
-| MAPQ-010 | P1 | 2026-08-03 to 2026-08-10 | `not_started` | Review `NON_EXPANDING` versus `DETACHED` rollups | Execute `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md`. Classify each affected rollup, document human decisions, update only the narrowest configuration required, and rerun affected validation. |
-| MAPQ-011 | P1 | After MAPQ-005 | `paused` | Resume mirror-row-gap exception curation | The exception mechanism and 455 curated NINTH inconsistencies are on `master`. Resume from `mirror_row_gap_exception_curation_handoff_20260727.md` only in a clean window with current outputs and no concurrent pipeline mutation. |
-| MAPQ-012 | P1 | 2026-08-05 to 2026-08-12 | `partial` | Finish reliability attribution and diagnostic consolidation design | Reconcile the 2026-07-23 design with the later curated-exception implementation, grouped validation outputs, compressed artifacts, output contracts, and dashboard health report. Decide which remaining flags belong in mapping outputs and which belong in dashboard presentation before writing more code. |
-| MAPQ-013 | P1 | 2026-08-01 to 2026-08-12 | `partial` | Complete reversible results cleanup and storage policy | The output compression work is on local `master`; exact contract work is in a clean worktree; several old artifacts are verified quarantine candidates. Resolve the blocked `results/missing_mapped_esto_rows/` comparison before moving it. Keep an archive log and never hard-delete a broad results path. |
-| MAPQ-014 | P1 | 2026-08-05 to 2026-08-14 | `partial` | Write the technical handover set | Create a short start-here guide, pipeline runbook, mapping-workbook editing guide, validation/diagnostic interpretation guide, cross-repository data contract, and known-risks/decisions list. Prefer links to canonical detail rather than copying the 1,000+ line system document into several places. |
-| MAPQ-015 | P1 | 2026-08-10 to 2026-08-17 | `partial` | Define the cross-repository ownership boundary | `leap_mappings` owns mapping semantics and Common ESTO contracts; `leap_initialisation` owns LEAP area initialization/import-ID integrity; `leap_dashboard` owns presentation. Record exact produced/consumed files, schemas, refresh order, and failure ownership. Reconcile the large local-vs-remote commit gaps in the two sibling repos as a separate authorized action. |
-| MAPQ-016 | P2 | 2026-08-06 to 2026-08-14 | `partial` | Finish canonical-workbook migration | Re-audit the remaining `master_config.xlsx` and legacy fallback call sites against current code, migrate production paths to `config/outlook_mappings_master.xlsx`, and isolate deliberate compatibility behavior. |
-| MAPQ-017 | P2 | 2026-08-08 to 2026-08-16 | `not_started` | Build a compact researcher review workbook | Produce a review-only workbook with source/target definitions, cardinality, non-zero examples, exception context, suggested action, owning sheet/row, and decision-log link. It must not write approvals into the canonical workbook. |
-| MAPQ-018 | P2 | 2026-08-08 to 2026-08-16 | `not_started` | Make orchestration notebook-safe | Refactor the existing stage orchestration into Jupyter-friendly toggles and functions without duplicating processing logic. Preserve a simple runnable bottom block and explicit repository-root path resolution. |
-| MAPQ-019 | P2 | 2026-08-10 to 2026-08-18 | `partial` | Finish LEAP-side no-data checks as coverage permits | Real LEAP result data exist for `20_USA`, `12_NZ`, and `02_BD`. Implement and verify real `leap_side_has_data` behavior for available economies, while clearly reporting that 21-economy completion remains blocked on full output coverage. |
-| MAPQ-020 | P2 | Human review by 2026-08-18 | `human_decision` | Resolve ESTO definition-authority review items | Review the four `review_queue` rows, 109 `product_leaks`, unknown/unclassified definitions, and low-confidence `Others` categories. Preserve citations and rejected interpretations. |
-| MAPQ-021 | P2 | 2026-08-12 to 2026-08-19 | `human_decision` | Decide additive frontier ownership | Resolve `CROSS-002`: one additive frontier versus several named frontiers, and which dashboard views require each. Mapping outputs should publish validated metadata; dashboards should not infer hierarchy from display labels. |
-| MAPQ-022 | P0 | 2026-08-18 to 2026-08-24 | `not_started` | Run a handover dry run and freeze the queue | Have a colleague or clean agent session follow the runbook from a fresh checkout, record every missing assumption, fix the documentation, produce a final clean baseline, and label every remaining item with owner, risk, next action, and last verified date. |
+| ID | Pri | Status | Owner repo | Depends on | Wk | Last verified |
+|---|---|---|---|---|---|---|
+| MAPQ-001 | P0 | `partial_uncommitted` | `leap_mappings` | — | W1 | 2026-07-28 |
+| MAPQ-002 | P0 | `complete_unpushed` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
+| MAPQ-003 | P0 | `complete_in_worktree` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
+| MAPQ-004 | P0 | `complete_in_worktree` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
+| MAPQ-005 | P0 | `partial` | `leap_mappings` | MAPQ-001…004, MAPQ-024 | W1–W2 | 2026-07-28 |
+| MAPQ-006 | P0 | `partial` | `leap_mappings` | — | W1–W4 | 2026-07-28 |
+| MAPQ-007 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-008 | P1 | `partial_reconciliation` | `leap_mappings` | MAPQ-004 | W3 | 2026-07-28 |
+| MAPQ-009 | P1 | `partial` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-010 | P1 | `not_started` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-011 | P1 | `paused` | `leap_mappings` | MAPQ-005 | W2–W3 | 2026-07-28 |
+| MAPQ-012 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-009 | W2–W3 | 2026-07-28 |
+| MAPQ-013 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-005 | W2–W3 | 2026-07-28 |
+| MAPQ-014 | P1 | `partial` | `leap_mappings` | MAPQ-005, MAPQ-015 | W3 | 2026-07-28 |
+| MAPQ-015 | P1 | `partial` | `leap_mappings` | MAPQ-003 | W3 | 2026-07-28 |
+| MAPQ-016 | P2 | `partial` | `leap_mappings` | MAPQ-001 | W3 | 2026-07-28 |
+| MAPQ-017 | P2 | `not_started` | `leap_mappings` | MAPQ-009 | W3 | 2026-07-28 |
+| MAPQ-018 | P2 | `not_started` | `leap_mappings` | MAPQ-005 | W3 | 2026-07-28 |
+| MAPQ-019 | P2 | `not_started` | `leap_mappings` + `leap_initialisation` | MAPQ-015 | W3 | 2026-07-28 |
+| MAPQ-020 | P2 | `human_decision` | `leap_mappings` | MAPQ-009 | W3 | 2026-07-28 |
+| MAPQ-021 | P2 | `human_decision` | `leap_mappings` + `leap_dashboard` | MAPQ-015 | W3 | 2026-07-28 |
+| MAPQ-022 | P0 | `not_started` | `leap_mappings` | all above | W4 | 2026-07-28 |
+| MAPQ-023 | P1 | `superseded_cleanup` | `leap_mappings` | MAPQ-004, MAPQ-008 | W1–W2 | 2026-07-28 |
+| MAPQ-024 | P2 | `not_started` | `leap_mappings` | — | W1 | 2026-07-28 |
+| MAPQ-025 | P1 | `human_decision` | `leap_dashboard` + `leap_initialisation` | MAPQ-015 | W3 | 2026-07-28 |
+
+---
+
+### MAPQ-001 — Stabilize the main checkout
+
+- **Priority / status / week:** P0 · `partial_uncommitted` · W1
+- **Owner repo:** `leap_mappings` · **Depends on:** —
+- **Evidence (2026-07-28):** `git status --porcelain` shows 6 modified, 5 deleted, 6 untracked paths, classified into units A–E in the table above. Diffs read individually.
+- **Next action:** Get human sign-off on unit A (demand-scope restructure) and unit D (workbook deletions); commit unit C on its own; move unit B (draft LNG table) to a dedicated branch or leave it explicitly parked with a note; apply MAPQ-024 for unit E.
+- **Completion criteria:** `git status --short` is either clean or every remaining path has a named owner and a queue ID recorded here.
+
+### MAPQ-002 — Reconcile local `master` with `origin/master`
+
+- **Priority / status / week:** P0 · `complete_unpushed` · W1
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
+- **Evidence (2026-07-28):** Four commits ahead — `947742d` (canonical workbook merge of ESTO Extended rows), `2e39cca` (demand/power branch-tab reading), `34858fe` (compressed recurring outputs; 14 files incl. `result_storage.py` and tests), `76e280f` (handover queue). `origin/master` at `5c960c9`.
+- **Next action:** Review the four commits, then push through the user's normal repository process. Pushing is **not** authorized by this audit.
+- **Completion criteria:** The intended remote contains the four commits, or the handover explicitly records why it does not and where the only copy lives.
+
+### MAPQ-003 — Integrate the Common ESTO output contract
+
+- **Priority / status / week:** P0 · `complete_in_worktree` · W1
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
+- **Evidence (2026-07-28):** `codex/output-contract-phase-2` is clean at `4f53662`, 3 ahead / 1 behind. `68e770a` adds `common_esto_output_contract.py` (285 lines) plus 190 lines of tests; `98b5638` certifies publication; `4f53662` prototypes the exact ESTO Extended row delta.
+- **Next action:** Rebase or reconcile onto current `master`, run `tests/test_common_esto_output_contract.py` and the fast-path/orchestration tests, then integrate.
+- **Completion criteria:** Contract code and tests on `master`; dashboard-required identities, keys, years, values, booleans, manifest hashes, and rollback behaviour confirmed against the consumers listed in the cross-repository index. The exact ESTO Extended delta stays non-default unless separately approved.
+
+### MAPQ-004 — Integrate two small Stage 3 safety fixes
+
+- **Priority / status / week:** P0 · `complete_in_worktree` · W1
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
+- **Evidence (2026-07-28):** `claude/zen-pike-39adbf` (`add312d`, empty partial-coverage candidate guard) and `codex/esto-rollup-source-identity-guard` (`8b169de`) are both clean and both report `+` under `git cherry master` — neither is on `master`. The guard adds 334 lines across `non_expanding_rollups.py`, `run_mapping_pipeline.py`, a README line, and a 151-line test module.
+- **Next action:** Integrate both, then delete the two source branches once merged.
+- **Completion criteria:** Both fixes on `master` with their focused tests passing, or a written comparison proving a later guard supersedes one of them. Do not accept the `master` `_source_identity` helpers in `apply_partitioned_common_esto.py` as that proof — verified to be a different concept.
+
+### MAPQ-005 — Produce one clean current pipeline baseline
+
+- **Priority / status / week:** P0 · `partial` · W1–W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001, MAPQ-002, MAPQ-003, MAPQ-004, MAPQ-024
+- **Evidence (2026-07-28):** `codebase/run_mapping_pipeline.py` exposes `run_stage_0/1/2`, `run_leap_parse`, `run_leap_to_esto`, `run_ninth_to_esto`, `run_esto_exact_rows`, `run_esto_extended_exact_rows`, `run_data_convert`, `run_stage_3`. Current `results/common_esto/` mixes 2026-07-27 and 2026-07-28 artifacts with a 2026-07-13 `_rebuilt` file — it is not a single coherent run. An Excel lock on the master workbook is currently present.
+- **Next action:** Close the workbook in Excel, settle MAPQ-001…004, then run maintenance plus Stages 1–3 in one pass.
+- **Completion criteria:** A recorded run ID with inputs, commit SHA, workbook hash/state, per-stage durations, validation counts, and a split between blocking and review-only findings. A zero exit code alone is not completion.
+
+### MAPQ-006 — Establish documentation control
+
+- **Priority / status / week:** P0 · `partial` · W1–W4 (weekly)
+- **Owner repo:** `leap_mappings` · **Depends on:** —
+- **Evidence (2026-07-28):** 76 tracked Markdown files. `docs/README.md` already links this queue and the audit (that audit action is done). One genuine broken relative link remains, confirmed by a full scan of all tracked Markdown: `docs/REPO_CLEANUP_AND_NAVIGATION_NOTES.md` → `diagnostic_file_review_signals.md`. `docs/README.md` still describes `improvement_todo.md` as "The active backlog", contradicting the audit.
+- **Next action:** Work the sequence in `documentation_audit_20260728.md` §"Documentation cleanup sequence"; re-date this queue at each weekly review.
+- **Completion criteria:** Active docs contain only current instructions or clearly dated historical context; `docs/prompts/` holds only active prompts; zero broken relative links.
+
+### MAPQ-007 — Reconcile ESTO Extended work
+
+- **Priority / status / week:** P1 · `partial` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-003, MAPQ-005
+- **Evidence (2026-07-28):** Design and much of the implementation are on `master` (`947742d`, `8750f9f`, `c810cfa`, `79b79c7`). `results/mapping_relationships/esto_extended_results_exact_rows.csv.gz` exists (23 MB, 2026-07-27). Output-contract/delta work is in `codex/output-contract-phase-2`; deferred structure docs are on `claude/mapping-diagnostics-dashboard-a55009`.
+- **Next action:** Write one current status note.
+- **Completion criteria:** A single document separating production behaviour, experimental behaviour, missing Common ESTO structure coverage, and dashboard consumption — replacing `esto_extended_dataset_design.md` as the current reference.
+
+### MAPQ-008 — Salvage and retire the diagnostics-dashboard branch
+
+- **Priority / status / week:** P1 · `partial_reconciliation` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-004
+- **Evidence (2026-07-28):** `claude/mapping-diagnostics-dashboard-a55009` at `7de6cd1`, 6 ahead / 5 behind, clean. `cf97f88` duplicates the workbook merge landed as `947742d`; `23cd8b0` duplicates the guard in MAPQ-004; `7de6cd1`'s claim that the guard is merged to master is **verified false**. Unique value: `2095365` and `a5c9ea0` (deferred Extended coverage docs, flagged for a 2026-08-17 recheck).
+- **Next action:** Cherry-pick only the two docs commits; do not merge the branch.
+- **Completion criteria:** The deferred-work docs exist on `master` with corrected status text, and the branch is deleted or explicitly retained with a written reason.
+
+### MAPQ-009 — Re-triage semantic mapping findings
+
+- **Priority / status / week:** P1 · `partial` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
+- **Evidence (2026-07-28):** Diagnostic outputs exist but predate a coherent run (see MAPQ-005). `config/mapping_issue_exception_sets.xlsx` holds the curated allowlists that scope this work.
+- **Next action:** From the MAPQ-005 baseline only, group actionable partial coverage, non-zero unmapped LEAP branches, presence conflicts, and non-ESTO hierarchy edges by semantic cause.
+- **Completion criteria:** A reviewed, bounded decision list with human rules recorded **before** any workbook edit. Zero raw diagnostic rows is not the target.
+
+### MAPQ-010 — Review `NON_EXPANDING` versus `DETACHED` rollups
+
+- **Priority / status / week:** P1 · `not_started` · W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
+- **Evidence (2026-07-28):** `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md` is present and active; no implementation commits reference it.
+- **Next action:** Execute that prompt against the MAPQ-005 baseline.
+- **Completion criteria:** Each affected rollup classified, human decisions documented in `special_rules_and_design_decisions.md`, only the narrowest configuration changed, and affected validation rerun.
+
+### MAPQ-011 — Resume mirror-row-gap exception curation
+
+- **Priority / status / week:** P1 · `paused` · W2–W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
+- **Evidence (2026-07-28, verified numerically):** The exception mechanism is on `master` (`cf740de`), and `config/mapping_issue_exception_sets.xlsx` sheet `source_mismatch_allowed` holds **456 rows = 455 curated NINTH self-inconsistencies + header**, matching commit `6bf8f69`. Consumers: `source_parent_anchor_validation.py` (`DATA_QUALITY_EXCEPTION_SHEET`) and `verify_ninth_mirror_row_candidates.py`. Note the sheet lives in `mapping_issue_exception_sets.xlsx`, **not** in `outlook_mappings_master.xlsx` (which has 14 sheets, none of them exception sheets).
+- **Next action:** Resume from `docs/prompts/mirror_row_gap_exception_curation_handoff_20260727.md` only in a clean window with current outputs and no concurrent pipeline mutation.
+- **Completion criteria:** As defined in that handoff document, against MAPQ-005 outputs.
+
+### MAPQ-012 — Finish reliability attribution and diagnostic consolidation design
+
+- **Priority / status / week:** P1 · `partial` · W2–W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-003, MAPQ-009
+- **Evidence (2026-07-28):** `docs/prompts/data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` predates curated exceptions, grouped validation, compressed artifacts (`34858fe`), output contracts, and the dashboard health report.
+- **Next action:** Reconcile the 2026-07-23 design against what has actually landed before writing more code.
+- **Completion criteria:** A written decision on which flags belong in mapping outputs versus dashboard presentation, and the superseded design archived.
+
+### MAPQ-013 — Complete reversible results cleanup and storage policy
+
+- **Priority / status / week:** P1 · `partial` · W2–W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-003, MAPQ-005
+- **Evidence (2026-07-28):** Compression work is on local `master` (`34858fe`, adds `result_storage.py` and `docs/results_output_storage.md`). The uncommitted unit C verification pass confirms three tree-artifact groups are safe to quarantine and removes `missing_mapped_esto_rows/` from that batch. `results/common_esto/` still holds a 952 MB `common_esto_comparison_data.csv` and stale 2026-07-13 artifacts.
+- **Next action:** Commit unit C, then execute only the confirmed quarantine batch.
+- **Completion criteria:** Quarantine moves recorded in `docs/archive_log.md` in the same commit; no hard deletion of any broad `results/` path; the `_rebuilt` fallback documented as lock-driven rather than stale.
+
+### MAPQ-014 — Write the technical handover set
+
+- **Priority / status / week:** P1 · `partial` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-015
+- **Evidence (2026-07-28):** `docs/mappings_system.md` is the canonical reference; `docs/QA plan.md` is too thin to serve as a QA gate; no start-here or runbook document exists.
+- **Next action:** Create a short start-here guide, a pipeline runbook, a workbook editing guide (link the existing `guide_outlook_mappings_master.md`), a validation-interpretation guide, and a known-risks list.
+- **Completion criteria:** All five exist, link to canonical detail rather than copying it, and survive the MAPQ-022 rehearsal without the rehearser needing to ask a question that the set should have answered.
+
+### MAPQ-015 — Define the cross-repository ownership boundary
+
+- **Priority / status / week:** P1 · `partial` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-003
+- **Evidence (2026-07-28):** [`cross_repository_handover_index.md`](cross_repository_handover_index.md) now records ownership, produced/consumed files, schemas, refresh order, and failure ownership, verified against `leap_dashboard/codebase/common_esto_dashboard_workflow.py` path constants.
+- **Next action:** Have the dashboard and initialisation owners confirm the consumed-file list, then freeze the schemas alongside MAPQ-003.
+- **Completion criteria:** The index is confirmed by all three repositories and referenced from each repository's `AGENTS.md`.
+
+### MAPQ-016 — Finish canonical-workbook migration
+
+- **Priority / status / week:** P2 · `partial` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
+- **Evidence (2026-07-28):** `AGENTS.md` designates `config/outlook_mappings_master.xlsx` canonical and `config/leap_mappings.xlsx` / `config/master_config.xlsx` legacy. Five non-canonical `outlook_mappings_master*` variants are currently deleted-but-uncommitted (unit D).
+- **Next action:** Re-audit remaining legacy call sites against current code before committing unit D.
+- **Completion criteria:** Production paths read only the canonical workbook; deliberate compatibility fallbacks isolated and commented.
+
+### MAPQ-017 — Build a compact researcher review workbook
+
+- **Priority / status / week:** P2 · `not_started` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-009
+- **Evidence (2026-07-28):** No such workbook exists in `config/` or `results/`.
+- **Next action:** Specify columns before building.
+- **Completion criteria:** A review-only workbook with source/target definitions, cardinality, non-zero examples, exception context, suggested action, owning sheet/row, and decision-log link. It must not write approvals into the canonical workbook.
+
+### MAPQ-018 — Make orchestration notebook-safe
+
+- **Priority / status / week:** P2 · `not_started` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
+- **Evidence (2026-07-28):** `run_mapping_pipeline.py` already exposes per-stage functions and resolves `REPO_ROOT`, but has no `#%%` cell structure, unlike the pattern `AGENTS.md` prescribes.
+- **Next action:** Refactor into notebook cells and toggles without duplicating processing logic.
+- **Completion criteria:** Runs unchanged as a script and cell-by-cell in a notebook from an arbitrary CWD.
+
+### MAPQ-019 — Finish LEAP-side no-data checks as coverage permits
+
+- **Priority / status / week:** P2 · `not_started` (corrected from `partial`) · W3
+- **Owner repo:** `leap_mappings`, data owned by `leap_initialisation` · **Depends on:** MAPQ-015
+- **Evidence (2026-07-28, corrected):** `codebase/mapping_tools/build_no_data_mapping_rows.py:75,89` sets `df["leap_side_has_data"] = pd.NA` with the comment "not yet checkable" — **there is no implementation to be partial about**. LEAP balance exports actually available: `leap_initialisation/data/leap balances exports/` holds `00_APEC`, `01_AUS`, `02_BD`, `12_NZ`, `20_USA`; `leap_mappings/data/archive/leap balances exports/` holds only `02_BD` and `20_USA` plus `data/usa_leap_balance_long.csv`. The earlier "20_USA, 12_NZ, 02_BD" claim was both incomplete and repo-ambiguous.
+- **Next action:** Decide whether `leap_mappings` reads the sibling export tree directly (a new cross-repo input contract — see MAPQ-015) or receives a published extract.
+- **Completion criteria:** Real `leap_side_has_data` values for the available economies, with 21-economy completion explicitly reported as blocked on export coverage.
+
+### MAPQ-020 — Resolve ESTO definition-authority review items
+
+- **Priority / status / week:** P2 · `human_decision` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-009
+- **Evidence (2026-07-28):** `config/esto_external_definition_authority_working_set.xlsx` present (52 KB, last written 2026-06-24). Row counts quoted in older notes (4 `review_queue` rows, 109 `product_leaks`) predate the current baseline and must be re-derived, not carried forward.
+- **Next action:** Re-count against the MAPQ-005 baseline first, then review.
+- **Completion criteria:** Each review row resolved or explicitly deferred, with citations and rejected interpretations preserved.
+
+### MAPQ-021 — Decide additive frontier ownership
+
+- **Priority / status / week:** P2 · `human_decision` · W3
+- **Owner repo:** `leap_mappings` + `leap_dashboard` · **Depends on:** MAPQ-015
+- **Evidence (2026-07-28):** Open as `CROSS-002` in `docs/special_rules_and_design_decisions.md`. `leap_dashboard/AGENTS.md` already forbids inferring hierarchy from display labels.
+- **Next action:** Choose one additive frontier versus several named frontiers, and record which dashboard views require each.
+- **Completion criteria:** Decision recorded in the decision log and reflected in published mapping metadata.
+
+### MAPQ-022 — Run a handover dry run and freeze the queue
+
+- **Priority / status / week:** P0 · `not_started` · W4
+- **Owner repo:** `leap_mappings` · **Depends on:** all of the above
+- **Evidence (2026-07-28):** No rehearsal has been performed.
+- **Next action:** See the Week 4 rehearsal definition below.
+- **Completion criteria:** A colleague or clean agent session reproduces a baseline from a fresh clone using only the MAPQ-014 documents; every missing assumption is recorded and fixed; the final queue labels every remaining item with owner, risk, next action, and last-verified date.
+
+### MAPQ-023 — Retire superseded branches and stale worktrees
+
+- **Priority / status / week:** P1 · `superseded_cleanup` · W1–W2
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-004, MAPQ-008
+- **Evidence (2026-07-28):** `codex/investigate-anchor-validator-memory` is patch-equivalent to `03c9405` on `master` (`git cherry` reports `-`). `worktree-agent-abcb30bdd765f323c` is a branch at the initial commit, 234 behind, with no worktree. Both worktrees are clean.
+- **Next action:** Confirm with the user, then remove — this audit does not delete worktrees or branches.
+- **Completion criteria:** Only `master` plus worktrees for genuinely active work remain, matching the established worktree-hygiene policy.
+
+### MAPQ-024 — Close the `config/` gitignore gap
+
+- **Priority / status / week:** P2 · `not_started` · W1
+- **Owner repo:** `leap_mappings` · **Depends on:** —
+- **Evidence (2026-07-28):** `.gitignore:205` `!config/*` un-ignores every file directly under `config/`, so Office crash-recovery blobs (`config/9098DA00`, `config/FDC59700`) and the Excel owner-lock file (`config/~$outlook_mappings_master.xlsx`) permanently pollute `git status`. `docs/guide_outlook_mappings_master.md` already documents them as safe to ignore.
+- **Next action:** Add narrow re-ignore rules after the negation (`config/~$*`, plus a rule for 8-hex-character extensionless blobs), and gitignore `.codex/`, `.codex-remote-attachments/`, and `node_modules/`.
+- **Completion criteria:** A clean `git status` in an otherwise-clean checkout with the workbook open in Excel.
+
+### MAPQ-025 — Resolve sibling-repository remote and worktree divergence
+
+- **Priority / status / week:** P1 · `human_decision` · W3
+- **Owner repo:** `leap_dashboard` + `leap_initialisation` · **Depends on:** MAPQ-015
+- **Evidence (2026-07-28):** `leap_dashboard` `master` is 55 commits ahead of `origin/master` with `codebase/common_esto_dashboard_mapping_diagnostics.py` modified, plus worktrees `claude/nz-leap-9th-discrepancies-b9c5b1` and `codex/output-contract-phase-2`. `leap_initialisation` `master` is 142 commits ahead, clean, with **nine** worktrees including three branches at the initial commit (`claude/electricity-interim-use-values-0979e2`, `claude/esto-2026-nz-rows-63f3de`, `claude/feedstock-fuel-share-normalize-0641c7`, all at `04b6ec2`) and two detached `.codex` worktrees.
+- **Next action:** Confirm whether those 197 combined local-only commits exist anywhere else. Until then, **both sibling repositories are single-point-of-failure local checkouts.**
+- **Completion criteria:** Every sibling repo commit is either on its remote or explicitly recorded as intentionally local, and stray worktrees are pruned with confirmation. Implementation work inside those repositories stays in their own queues.
+
+---
 
 ## Four-week handover sequence
 
-### Week 1: 2026-07-28 to 2026-08-03
+### Week 1: 2026-07-28 → 2026-08-03
 
-- Stabilize git state and reconcile the five worktrees.
-- Integrate the completed output/safety work.
-- Establish a clean, reproducible pipeline baseline.
-- Start prompt archival and correct the documentation index.
+- MAPQ-001 stabilize the checkout; MAPQ-024 close the gitignore gap.
+- MAPQ-002 reconcile local `master` with the remote.
+- MAPQ-003 and MAPQ-004 integrate the output contract and the two safety guards.
+- MAPQ-023 begin retiring superseded branches.
+- Start MAPQ-005 once code and workbook state are settled; start MAPQ-006.
+- **Week 1 gate:** no unclassified dirty path, and no completed work reachable only from a worktree.
 
-### Week 2: 2026-08-04 to 2026-08-10
+### Week 2: 2026-08-04 → 2026-08-10
 
-- Triage semantic mapping issues from the new baseline.
-- Reconcile reliability/diagnostic design with what has already landed.
-- Draft the runbook, workbook guide, and cross-repository contract.
-- Make explicit human decisions on rollup modes where evidence is ready.
+- Finish MAPQ-005 and publish the baseline run record.
+- MAPQ-009 triage semantic findings from that baseline; MAPQ-010 decide rollup modes.
+- MAPQ-007 write the current ESTO Extended status note; MAPQ-011 resume curation in a clean window.
+- Begin MAPQ-012 and MAPQ-013.
+- **Week 2 gate:** one reproducible baseline exists, and semantic findings are a bounded decision list rather than raw diagnostic rows.
 
-### Week 3: 2026-08-11 to 2026-08-17
+### Week 3: 2026-08-11 → 2026-08-17
 
-- Complete the main handover documents.
-- Recheck the deferred ESTO Extended findings on 2026-08-17.
-- Resolve or explicitly defer canonical migration, review-workbook, and
-  notebook workflow work.
-- Confirm which work in the sibling repositories is local-only versus remotely
-  recoverable.
+- MAPQ-014 complete the handover document set; MAPQ-015 confirm the cross-repository index.
+- MAPQ-008 salvage the diagnostics branch; **recheck the deferred ESTO Extended findings on 2026-08-17 by re-measuring, not by reusing parked counts.**
+- Resolve or explicitly defer MAPQ-016 through MAPQ-021.
+- MAPQ-025 confirm what sibling-repository work is local-only.
+- **Week 3 gate:** every open item has an owner, a next action, and a last-verified date.
 
-### Week 4: 2026-08-18 to 2026-08-24
+### Week 4: 2026-08-18 → 2026-08-24 — clean-checkout handover rehearsal
 
-- Perform a clean-checkout handover rehearsal.
-- Fix documentation gaps found by the rehearsal.
-- Freeze a final dated queue and known-risks list.
-- Ensure every unmerged branch/worktree and unpushed commit has an explicit
-  disposition and named owner.
+MAPQ-022 is the closing exercise and defines "done" for this programme.
+
+1. Clone the repository fresh into a new directory from the intended remote —
+   not a copy of this working tree.
+2. Restore inputs strictly by following `docs/repo_data_slimdown_plan.md` and
+   `data/README.md`. Every file the rehearser must fetch by hand is a
+   documentation defect; record it.
+3. Set up the environment using only the documented interpreter
+   (`C:\Users\Work\miniconda3\python.exe`) and `environment.yml`.
+4. Run maintenance plus Stages 1–3 from the MAPQ-014 runbook alone, with the
+   mapping workbook closed in Excel.
+5. Verify the published outputs against the contract in
+   [`cross_repository_handover_index.md`](cross_repository_handover_index.md),
+   then point `leap_dashboard` at the fresh checkout via `LEAP_MAPPINGS_ROOT`
+   and confirm it renders the `20_USA` fixture.
+6. Fix every documentation gap the rehearsal exposes, then repeat the failing
+   step only.
+7. Freeze the final dated queue and the known-risks list. Every unmerged
+   branch, worktree, and unpushed commit across all three repositories must
+   have an explicit disposition and a named owner.
+
+**Programme is complete when** a person who has not worked on this repository
+can produce a valid baseline from a clean checkout using only the documented
+set, and every item in this queue is either `complete_on_master`, explicitly
+descoped, or assigned to a named owner with a recorded risk.
 
 ## Queue maintenance rules
 
-1. Update `Last verified` evidence whenever a status changes.
-2. Include the commit, worktree, run ID, or human decision that supports the
-   status.
-3. Never silently roll an old prompt's row counts forward to a new baseline.
+1. Update the `Last verified` date whenever a status changes, and re-derive the
+   evidence rather than copying it forward.
+2. Cite the commit, worktree, run ID, workbook sheet, or human decision that
+   supports each status.
+3. Never roll an old prompt's row counts forward to a new baseline. Re-measure.
 4. Move completed prompts to `docs/archive/`; keep active prompts narrow and
    independently runnable.
-5. Keep cross-repository tasks in this queue only when the dependency affects
-   mapping ownership or handover. Implementation-specific dashboard and
-   initialization work belongs in those repositories' own queues.
+5. Keep cross-repository tasks here only when the dependency affects mapping
+   ownership or handover. Implementation-specific dashboard and initialisation
+   work belongs in those repositories' own queues.
 6. At the end of each week, record what moved to `complete_on_master`, what is
    blocked, and what must be descoped before handover.

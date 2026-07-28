@@ -148,3 +148,78 @@ active work:
 8. Perform a separate encoding-normalization pass for mojibake; do not mix that
    mechanical diff with substantive documentation changes.
 9. Build the concise handover set in MAPQ-014 and test it from a clean checkout.
+
+## Verification addendum — 2026-07-28 (second pass)
+
+The classifications above were re-checked against git, the working tree, and
+current code. Corrections and additions follow. Where this section and the
+tables above disagree, this section is current.
+
+### Confirmed by direct check
+
+- **The broken-link finding is exactly right.** A full relative-link scan of all
+  tracked Markdown found exactly one broken target:
+  `docs/REPO_CLEANUP_AND_NAVIGATION_NOTES.md` → `diagnostic_file_review_signals.md`.
+  The `QA%20plan.md` cases are URL-decoding false positives, as stated.
+- **All five non-master worktrees are clean**, confirmed by `git status
+  --porcelain` in each.
+- **The claim in `claude/mapping-diagnostics-dashboard-a55009` that the
+  source-identity guard was merged to `master` is false.** `git cherry master
+  codex/esto-rollup-source-identity-guard` reports `+`. The `_source_identity`
+  symbols present on `master` are in `apply_partitioned_common_esto.py` and
+  implement a different cache-identity concept.
+- **`codex/investigate-anchor-validator-memory` is genuinely superseded.**
+  `git cherry` reports `-`; `03c9405` on `master` is the patch-equivalent.
+- **File count reconciles:** 74 tracked Markdown files at audit time, 76 now —
+  the two additions are `work_queue.md` and this audit. A third,
+  `cross_repository_handover_index.md`, was added by this second pass.
+
+### Corrections to the tables above
+
+| Item | Correction |
+|---|---|
+| `docs/README.md` — "update now to link the queue and audit" | **Already done.** `docs/README.md` has a "Work queue and handover" section linking both files. The remaining defect is different: it still describes `improvement_todo.md` as "The active backlog", contradicting this audit's own classification of that file as a stale parallel backlog. Fixed in this pass. |
+| `docs/improvement_todo.md` — "stale parallel backlog" | Correct, but the pointer had not been added anywhere a reader would see it. `docs/README.md` now routes readers to `work_queue.md`. |
+| `docs/results_folder_cleanup_candidates.md` — "locally modified, do not overwrite" | Correct and now specified: the uncommitted edit is documentation-only and is committable on its own. Its substantive content is that `_rebuilt` files are an **automatic lock fallback**, not manual copies, and that `missing_mapped_esto_rows/` is removed from the quarantine batch. Recorded as unit C in `work_queue.md`. |
+| `docs/rollup_rules_system.md`, `docs/source_coverage_audit.md` — "preserve the current uncommitted demand-scope edit" | Correct, and the two edits are **semantically coupled** to `config/source_coverage_scopes.json` and `config/all_demand_aggregated_components.json`: `Freight road` + `Passenger road` collapse into `Road`, and `International transport` is added. All four files must be committed together, and only after human sign-off. Recorded as unit A. |
+
+### Findings the first pass did not record
+
+1. **`config/~$outlook_mappings_master.xlsx` exists** — an Excel owner-lock
+   file, meaning the canonical workbook is currently open. This is the
+   mechanism that produces the `_rebuilt` fallback outputs, which connects two
+   items the audit treated separately.
+2. **`.gitignore:205` `!config/*` un-ignores everything directly under
+   `config/`**, which is why Office crash-recovery blobs and the lock file
+   appear as untracked noise in every `git status`. Queued as MAPQ-024.
+3. **The curated exception sheet is in a different workbook than some notes
+   imply.** `source_mismatch_allowed` lives in
+   `config/mapping_issue_exception_sets.xlsx` (456 rows = 455 curated NINTH
+   inconsistencies + header, matching commit `6bf8f69`), **not** in
+   `config/outlook_mappings_master.xlsx`, whose 14 sheets contain no exception
+   sheet. Any handover document describing exception curation must name the
+   right workbook.
+4. **`docs/improvement_todo.md` item 8 is cited from live code.**
+   `codebase/mapping_tools/build_no_data_mapping_rows.py:75,89` sets
+   `leap_side_has_data = pd.NA` with a comment pointing at that document. The
+   stale-backlog file therefore cannot simply be archived — the code reference
+   must be repointed to a queue ID first (MAPQ-019).
+5. **Two structural reference documents cited by `AGENTS.md` live outside any
+   repository** (`C:\Users\Work\.codex\AGENTS_LEAP_EXPORT.md` and
+   `AGENTS_BALANCE_TABLES.md`). They would not survive a clean-checkout
+   handover. Recorded as a risk in `cross_repository_handover_index.md` §6.
+
+### Sibling-repository documentation
+
+Both siblings have their own `AGENTS.md` and their own backlogs; neither is
+audited file-by-file here, because this audit's scope is `leap_mappings`.
+
+- `leap_dashboard`: 14 tracked Markdown files, including
+  `docs/handover_mapping_diagnostics.md`, `docs/future_dashboard_backlog.md`,
+  and `docs/common_esto_dashboard_page_status.md`.
+- `leap_initialisation`: 93 tracked Markdown files, including its own
+  `docs/work_queue.md`, which is actively maintained (its top item is dated
+  2026-07-27).
+
+Neither sibling queue should be merged into this one. The boundary between them
+is defined in [`cross_repository_handover_index.md`](cross_repository_handover_index.md).

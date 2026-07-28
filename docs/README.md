@@ -8,8 +8,9 @@ backlog, not required reading up front.
 
 | File | What it covers |
 |---|---|
-| [`work_queue.md`](work_queue.md) | **Current work starts here.** Dated repository/worktree status, prioritized queue, and four-week handover plan. |
-| [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions. |
+| [`work_queue.md`](work_queue.md) | **Current work starts here.** Dated repository/worktree status, prioritized queue, and four-week handover plan. This is the controlling backlog — nothing else is. |
+| [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Ownership boundary with `leap_dashboard` and `leap_initialisation`: produced/consumed files, schemas, refresh order, and failure ownership. |
+| [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions, plus a dated verification addendum. |
 
 ## System design and reference
 
@@ -44,7 +45,7 @@ done in isolation here.
 
 | File | What it covers |
 |---|---|
-| [`improvement_todo.md`](improvement_todo.md) | The active backlog — semantic mapping issues to resolve, the canonical-workbook migration, hierarchy validation, documentation gaps, and `results/` cleanup candidates. |
+| [`improvement_todo.md`](improvement_todo.md) | **Historical backlog — not the controlling queue.** Source material for semantic mapping issues, the canonical-workbook migration, hierarchy validation, documentation gaps, and `results/` cleanup candidates. Its live items are represented in [`work_queue.md`](work_queue.md); go there for current status. Note that `codebase/mapping_tools/build_no_data_mapping_rows.py` still cites this file's item 8 — see MAPQ-019 before archiving it. |
 
 ## `prompts/` and `archive/`
 
