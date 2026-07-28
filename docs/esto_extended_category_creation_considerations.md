@@ -201,6 +201,13 @@ differences. Normalize or review differences such as:
 - `Petroleum Coke` versus `Petroleum coke`;
 - `Natural Gas` versus `Natural gas`.
 
+The source-side label must still match LEAP exactly. For example,
+`Black liqour` remains misspelled in `raw_leap_fuel_name` because that is the
+literal supplied branch label, while its targets use the established,
+correctly spelled ESTO and Ninth codes. Likewise, the newly observed exact
+label `Solar` maps to the established solar products; it does not create a
+second solar product.
+
 If a fuel has no reviewed ESTO product, leave that source pair unresolved for
 human review rather than inventing a product.
 
@@ -286,9 +293,6 @@ The following still need explicit review:
 - which new categories can receive defensible ESTO historical values and which
   should remain structural or LEAP/Ninth-only;
 - all proposed subtotal flags, pending the separate workbook-wide review.
-- how `Municipal solid waste non and renewable` under
-  `Electricity Generation/Processes/Others` should coexist with its renewable
-  and non-renewable sibling fuels. Do not force it to one product.
 
 ## 15. Mapping implementation checkpoint: 2026-07-28
 
@@ -324,14 +328,10 @@ alphabetical renumbering and makes aliases share one identifier, but a later
 cleanup may move the registry to maintained configuration without changing any
 assigned identifiers.
 
-The only unresolved source pair from the supplied inventory is:
-
-```text
-Electricity Generation/Processes/Others
-  + Municipal solid waste non and renewable
-```
-
-It overlaps the separately supplied renewable and non-renewable municipal
-waste fuels. The current rollup engine has no reviewed product-only fallback
-for choosing between an aggregate fuel and its split siblings. This row stays
-unmapped until that source-boundary decision is explicit.
+The municipal-waste source-boundary decision is now explicit. The combined
+`Municipal solid waste non and renewable` branch under
+`Electricity Generation/Processes/Others` has been removed from
+`data/temp/new leap rows.xlsx` and remains unmapped. The separately supplied
+renewable and non-renewable branches remain and map to their corresponding
+ESTO and Ninth products. This avoids both an arbitrary product choice and
+double counting.

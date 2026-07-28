@@ -30,7 +30,7 @@ The backup SHA-256 is
 | Power ESTO rollup-rule additions | 60 |
 | Power LEAP rollup-rule additions | 6 |
 | Power Ninth rollup-rule additions | 7 |
-| Exact new fuel-spelling mappings (`Solar`, `Black liqour`) per direction | 14 |
+| Exact mappings for newly observed source fuel labels (`Solar`, `Black liqour`) per direction | 14 |
 
 The one-row difference between the planned and inserted power
 Ninth-to-ESTO counts is an existing exact key, not a dropped candidate.
@@ -43,17 +43,42 @@ Ninth-to-ESTO counts is an existing exact key, not a dropped candidate.
 - Raw Other and solid-biomass power children use explicit comparison rollups
   on the Ninth-inclusive axis rather than partial direct sibling mappings.
 
-## Remaining decision
+## Newly observed fuel labels
 
-`Electricity Generation/Processes/Others` contains all three of:
+These rows do not introduce new ESTO or Ninth fuel categories. They make exact
+source-label mappings for labels that the initial inventory parser did not
+recognize because they were not already present in the mapping workbook.
 
-- `Municipal solid waste non and renewable`;
-- `Municipal solid waste renewable`;
-- `Municipal solid waste non renewable`.
+- `Black liqour` is the misspelled literal label in the supplied LEAP
+  structure. It must remain exact on the LEAP side so exported data matches,
+  while mapping to the established `15.04 Black liquor` ESTO product and
+  `15_04_black_liquor` Ninth fuel. It occurs in 12 reviewed demand sectors.
+- `Solar` is distinct from the existing LEAP label `Solar nonspecified`. Its
+  two reviewed demand occurrences map to the established ESTO product
+  `12 Solar` and Ninth fuel `12_solar`.
 
-The first item cannot be assigned to only one ESTO product. Mapping it to both
-split products may double count when the split siblings are also populated.
-It remains unresolved pending an explicit aggregate-versus-split source rule.
+This is 14 source sector/fuel pairs in each mapping direction, but only two
+newly observed source labels.
+
+## Municipal-waste source decision
+
+The combined source branch
+`Electricity Generation/Processes/Others + Municipal solid waste non and renewable`
+has been retired from `data/temp/new leap rows.xlsx`. It is intentionally not
+mapped.
+
+The two split branches remain and are mapped:
+
+- `Municipal solid waste non renewable` to ESTO
+  `16.04 Municipal solid waste (non-renewable)` and Ninth
+  `16_04_municipal_solid_waste_nonrenewable`;
+- `Municipal solid waste renewable` to ESTO
+  `16.03 Municipal solid waste (renewable)` and Ninth
+  `16_03_municipal_solid_waste_renewable`.
+
+The Ninth-inclusive comparison uses the reviewed
+`Other and solid biomass` power rollup rather than a partial direct mapping of
+the raw `Others` process.
 
 ## Verification completed
 
