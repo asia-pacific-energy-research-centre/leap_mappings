@@ -1,6 +1,7 @@
 # `docs/` index
 
 If you're new to the three-repository system, start with
+[`start_here.md`](start_here.md), then continue to
 [`handover/README.md`](handover/README.md). If you are working only on mappings,
 continue with root `README.md` → `mappings_system.md` →
 `guide_outlook_mappings_master.md`. Everything else here is reference material
@@ -10,8 +11,9 @@ or a working backlog.
 
 | File | What it covers |
 |---|---|
+| [`start_here.md`](start_here.md) | **Level 0 entry point.** Repository ownership, task routing, documentation authority, normal execution order, change-impact checklist, and reading paths. |
 | [`work_queue.md`](work_queue.md) | **Current work starts here.** Dated repository/worktree status, prioritized queue, and four-week handover plan. This is the controlling backlog — nothing else is. |
-| [`handover/README.md`](handover/README.md) | Level 1 start-here overview, repository chooser, glossary, worked example, and first-day reading order. |
+| [`handover/README.md`](handover/README.md) | Level 1 connected-system overview, repository chooser, glossary, worked example, and first-day reading order. |
 | [`handover/end_to_end_system_guide.md`](handover/end_to_end_system_guide.md) | Level 2 connected-system guide for mappings, reconciliation, dashboard, ownership, and diagnostics. |
 | [`handover/cross_repository_data_contracts.md`](handover/cross_repository_data_contracts.md) | Producer/consumer schemas, keys, staleness, provenance, and coordinated change protocol. |
 | [`handover/agent_operations_guide.md`](handover/agent_operations_guide.md) | Level 3 operational and safety guide across all three repositories. |
@@ -19,7 +21,7 @@ or a working backlog.
 | [`handover/mapping_pipeline_agent_guide.md`](handover/mapping_pipeline_agent_guide.md) | Exact mapping run, rerun, validation, and human-stop guidance. |
 | [`cross_repository_handover_index.md`](cross_repository_handover_index.md) | Dated evidence snapshot retained for audit history; the maintained contract is now under `handover/`. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit with keep/update/archive actions, plus a dated verification addendum. |
-| [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | **Current exhaustive document register.** One row for every Markdown file reviewed, with evidence, unique information, and keep/update/archive decision. |
+| [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | Dated exhaustive register for the Markdown files present in the 2026-07-28 audit, with evidence, unique information, and keep/update/archive decisions. Documents added later are governed by the maintained index and queue. |
 
 ## System design and reference
 

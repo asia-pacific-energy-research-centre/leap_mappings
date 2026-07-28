@@ -3,8 +3,8 @@
 This repo is the active home for LEAP / ESTO / 9th Outlook mapping maintenance. It keeps the human mapping task simple while letting scripts generate the more complex relationship tables, common-denominator ESTO structures, and QA outputs needed for fair comparisons.
 
 New to the connected mappings, LEAP-initialisation, and dashboard system? Start
-with [`docs/handover/README.md`](docs/handover/README.md). Analysts can continue
-to the
+with the compact [`docs/start_here.md`](docs/start_here.md). Continue to the
+connected-system [`handover overview`](docs/handover/README.md), then the
 [`end-to-end system guide`](docs/handover/end_to_end_system_guide.md); agents
 should use the
 [`operations guide`](docs/handover/agent_operations_guide.md).

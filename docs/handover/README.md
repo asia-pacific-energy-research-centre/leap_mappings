@@ -1,9 +1,16 @@
-# LEAP mappings, initialisation, and dashboard: start here
+# LEAP mappings, initialisation, and dashboard: connected-system overview
 
 **Evidence snapshot:** 2026-07-28
 
 **Audience:** new staff, reviewers, and project managers
 **System owner for this index:** `leap_mappings`
+
+**Documentation level:** Level 1 connected-system overview
+
+For the two-minute ownership and navigation route, begin with
+[`../start_here.md`](../start_here.md). This page is the deeper system
+orientation; it does not replace the canonical technical references linked
+below.
 
 This three-repository system turns ESTO historical balances, 9th Outlook
 projections, and LEAP model results into:
