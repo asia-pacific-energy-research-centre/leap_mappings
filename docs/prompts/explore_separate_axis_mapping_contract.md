@@ -1,9 +1,9 @@
 # Explore a separate-axis mapping contract across the three LEAP repositories
 
-> **Status 2026-07-29:** Exploration complete and parked as a suggestion for
-> future development. Do not begin shadow implementation unless a future
-> maintainer deliberately resumes MAPQ-033 after reviewing the findings and
-> the recorded user direction.
+> **Status 2026-07-29:** Resumed as an isolated prototype after further user
+> direction. The prototype may generate review workbooks and compatibility
+> views, but it must not edit the canonical workbook or change production
+> consumers.
 
 ## Objective
 

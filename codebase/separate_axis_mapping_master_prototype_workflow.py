@@ -1,0 +1,719 @@
+#%%
+"""Build the review-only single-axis master-mapping workbook data pack.
+
+The prototype bootstraps sector/flow and fuel/product axes from the maintained
+pair sheets, validates the no-within-axis-many-to-many rule, combines the axes
+only across exact source and target pair universes, and emits compatibility
+views shaped like the three maintained pair sheets.
+
+It never edits ``config/outlook_mappings_master.xlsx``. LEAP exact-pair
+authority is deliberately isolated behind ``build_bootstrap_leap_pair_universe``
+until the model-branch parser is supplied.
+"""
+
+#%%
+from __future__ import annotations
+
+import json
+import sys
+import traceback
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+
+# --- Stable paths -----------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
+    RELATIONSHIP_KEY_COLUMNS,
+    analyse_axis_components,
+    annotate_pair_universe_temporal_evidence,
+    build_bootstrap_leap_pair_universe,
+    build_compiled_mapping_sheet_frames,
+    build_registry_scope_lookups,
+    compare_compiled_relationships,
+    compile_axis_relationships,
+    derive_axis_mappings,
+    load_active_mapping_contract,
+)
+
+WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+EXPLORATION_RESULTS_ROOT = (
+    REPO_ROOT / "results" / "separate_axis_mapping_exploration"
+)
+OUTPUT_ROOT = (
+    REPO_ROOT / "outputs" / "separate_axis_mapping_prototype_20260729"
+)
+OUTPUT_DATA_ROOT = OUTPUT_ROOT / "data"
+
+REGISTRY_PATHS = {
+    "ESTO": EXPLORATION_RESULTS_ROOT / "valid_pairs" / "esto_2025.csv",
+    "ESTO_EXTENDED": (
+        EXPLORATION_RESULTS_ROOT / "valid_pairs" / "esto_extended.csv"
+    ),
+    "NINTH": (
+        EXPLORATION_RESULTS_ROOT
+        / "valid_pairs"
+        / "ninth_all_scenarios.csv"
+    ),
+}
+
+
+# --- Helpers ----------------------------------------------------------------
+
+def _write_csv(frame: pd.DataFrame, filename: str) -> Path:
+    """Write one workbook-source table and return its path."""
+    path = OUTPUT_DATA_ROOT / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
+    return path
+
+
+def _relative_output_path(path: Path) -> str:
+    """Return a stable path relative to the workbook output root."""
+    return Path(path).resolve().relative_to(OUTPUT_ROOT.resolve()).as_posix()
+
+
+def _assert_inputs() -> None:
+    """Fail with every missing prerequisite rather than one at a time."""
+    required = [WORKBOOK_PATH, *REGISTRY_PATHS.values()]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Run the completed separate-axis registry exploration first. "
+            "Missing prototype inputs:\n- "
+            + "\n- ".join(missing)
+        )
+
+
+def _load_pair_universes(
+    historical_boundary_year: int,
+) -> dict[str, pd.DataFrame]:
+    """Load and annotate exact generated pair universes."""
+    universes: dict[str, pd.DataFrame] = {}
+    for dataset, path in REGISTRY_PATHS.items():
+        registry = pd.read_csv(path, low_memory=False)
+        universes[dataset] = annotate_pair_universe_temporal_evidence(
+            registry,
+            historical_boundary_year,
+        )
+    return universes
+
+
+def _build_both_esto_registry(
+    esto_registry: pd.DataFrame,
+    extended_registry: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return exact ESTO pairs present in both base and extended registries."""
+    keys = ["flow", "product"]
+    base = esto_registry.drop_duplicates(keys).copy()
+    extended = extended_registry.drop_duplicates(keys).copy()
+    both = base.merge(
+        extended[keys + ["pair_status", "pair_is_subtotal"]],
+        on=keys,
+        how="inner",
+        suffixes=("_esto", "_extended"),
+    )
+    both["pair_status"] = "zero_only"
+    both.loc[
+        both["pair_status_esto"].eq("data_valid")
+        & both["pair_status_extended"].eq("data_valid"),
+        "pair_status",
+    ] = "data_valid"
+    both["pair_is_subtotal"] = (
+        both["pair_is_subtotal_esto"].fillna(False).astype(bool)
+        | both["pair_is_subtotal_extended"].fillna(False).astype(bool)
+    )
+    both["dataset"] = "ESTO_BOTH"
+    return both
+
+
+def _pair_universe_workbook_view(registry: pd.DataFrame) -> pd.DataFrame:
+    """Keep the workbook pair-universe sheets narrow and human-readable."""
+    preferred_columns = [
+        "dataset",
+        "flow",
+        "product",
+        "flow_is_parent",
+        "product_is_parent",
+        "pair_is_subtotal",
+        "pair_exists_in_dataset",
+        "pair_universe_member",
+        "historical_boundary_year",
+        "historical_boundary_active",
+        "projection_future_active",
+        "temporal_evidence_status",
+        "first_observed_year",
+        "last_observed_year",
+        "economy_support_count",
+        "year_support_count",
+        "nonzero_observation_count",
+        "source_vintage",
+        "scenario_scope",
+        "scenarios_observed",
+        "pair_universe_authority",
+    ]
+    return registry[
+        [column for column in preferred_columns if column in registry.columns]
+    ].copy()
+
+
+def _attach_axis_contract_status(
+    compiled: pd.DataFrame,
+    flow_axis: pd.DataFrame,
+    product_axis: pd.DataFrame,
+) -> pd.DataFrame:
+    """Attach flow and product component gates to compiled candidate pairs."""
+    context = [
+        "mapping_name",
+        "comparison_scope",
+        "source_system",
+        "target_system",
+    ]
+    flow_status = (
+        flow_axis[
+            context
+            + [
+                "source_flow",
+                "target_flow",
+                "axis_component_id",
+                "axis_component_cardinality",
+                "axis_contract_status",
+            ]
+        ]
+        .drop_duplicates()
+        .rename(
+            columns={
+                "axis_component_id": "flow_axis_component_id",
+                "axis_component_cardinality": (
+                    "flow_axis_component_cardinality"
+                ),
+                "axis_contract_status": "flow_axis_contract_status",
+            }
+        )
+    )
+    product_status = (
+        product_axis[
+            context
+            + [
+                "source_product",
+                "target_product",
+                "axis_component_id",
+                "axis_component_cardinality",
+                "axis_contract_status",
+            ]
+        ]
+        .drop_duplicates()
+        .rename(
+            columns={
+                "axis_component_id": "product_axis_component_id",
+                "axis_component_cardinality": (
+                    "product_axis_component_cardinality"
+                ),
+                "axis_contract_status": "product_axis_contract_status",
+            }
+        )
+    )
+    result = compiled.merge(
+        flow_status,
+        on=context + ["source_flow", "target_flow"],
+        how="left",
+        validate="many_to_one",
+    )
+    result = result.merge(
+        product_status,
+        on=context + ["source_product", "target_product"],
+        how="left",
+        validate="many_to_one",
+    )
+    blocking = (
+        result["flow_axis_contract_status"].eq(
+            "blocking_many_to_many_axis_component"
+        )
+        | result["product_axis_contract_status"].eq(
+            "blocking_many_to_many_axis_component"
+        )
+    )
+    result["axis_contract_allowed"] = ~blocking
+    result["prototype_review_status"] = "compiled_pair_universe_member"
+    result.loc[
+        result["registry_allowed"] & blocking,
+        "prototype_review_status",
+    ] = "blocked_by_within_axis_many_to_many"
+    result.loc[
+        ~result["registry_allowed"],
+        "prototype_review_status",
+    ] = "rejected_by_target_pair_universe"
+    return result
+
+
+def _temporal_compiler_registry(
+    registry: pd.DataFrame,
+    active_column: str,
+) -> pd.DataFrame:
+    """Convert one pair universe into a named temporal compiler view."""
+    result = registry.copy()
+    active = result.get(
+        active_column,
+        pd.Series(False, index=result.index),
+    ).fillna(False).astype(bool)
+    result["pair_status"] = "zero_only"
+    result.loc[active, "pair_status"] = "data_valid"
+    result["compiler_pair_policy"] = active_column
+    return result
+
+
+def _mark_comparison_source_status(
+    comparison: pd.DataFrame,
+    current: pd.DataFrame,
+) -> pd.DataFrame:
+    """Distinguish new source-pair candidates from extras on current sources."""
+    source_keys = [
+        "mapping_name",
+        "comparison_scope",
+        "source_system",
+        "source_flow",
+        "source_product",
+        "target_system",
+    ]
+    current_sources = current[source_keys].drop_duplicates().assign(
+        source_pair_in_current_contract=True
+    )
+    result = comparison.merge(
+        current_sources,
+        on=source_keys,
+        how="left",
+        validate="many_to_one",
+    )
+    result["source_pair_in_current_contract"] = (
+        result["source_pair_in_current_contract"].fillna(False).astype(bool)
+    )
+    result["comparison_interpretation"] = (
+        result["relationship_status"].astype(str)
+    )
+    new_extra = (
+        result["relationship_status"].eq("extra_factorised_relationship")
+        & ~result["source_pair_in_current_contract"]
+    )
+    existing_extra = (
+        result["relationship_status"].eq("extra_factorised_relationship")
+        & result["source_pair_in_current_contract"]
+    )
+    result.loc[
+        new_extra,
+        "comparison_interpretation",
+    ] = "new_source_pair_mapping_candidate"
+    result.loc[
+        existing_extra,
+        "comparison_interpretation",
+    ] = "extra_target_for_current_source_pair"
+    return result
+
+
+def _summary_rows(
+    current: pd.DataFrame,
+    flow_axis: pd.DataFrame,
+    product_axis: pd.DataFrame,
+    axis_components: pd.DataFrame,
+    universe_compiled: pd.DataFrame,
+    universe_comparison: pd.DataFrame,
+    temporal_compiled: pd.DataFrame,
+    temporal_comparison: pd.DataFrame,
+    generated_overrides: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build compact headline metrics for the workbook README and summary."""
+    universe_allowed = universe_compiled["registry_allowed"]
+    temporal_allowed = temporal_compiled["registry_allowed"]
+    temporal_axis_allowed = (
+        temporal_allowed & temporal_compiled["axis_contract_allowed"]
+    )
+    universe_counts = (
+        universe_comparison["comparison_interpretation"]
+        .value_counts()
+        .to_dict()
+    )
+    temporal_counts = (
+        temporal_comparison["comparison_interpretation"]
+        .value_counts()
+        .to_dict()
+    )
+    rows = [
+        ("current_pair_relationship_rows", len(current)),
+        ("sector_flow_axis_rows", len(flow_axis)),
+        ("fuel_product_axis_rows", len(product_axis)),
+        (
+            "axis_rows_total",
+            len(flow_axis) + len(product_axis),
+        ),
+        (
+            "blocking_within_axis_many_to_many_components",
+            int(
+                axis_components["axis_contract_status"]
+                .eq("blocking_many_to_many_axis_component")
+                .sum()
+            ),
+        ),
+        (
+            "universe_compiled_relationship_rows",
+            int(universe_allowed.sum()),
+        ),
+        (
+            "universe_exact_current_relationship_matches",
+            int(universe_counts.get("exact_relationship_match", 0)),
+        ),
+        (
+            "universe_current_relationships_not_compiled",
+            int(
+                universe_counts.get(
+                    "current_relationship_not_compiled",
+                    0,
+                )
+            ),
+        ),
+        (
+            "universe_extra_targets_for_current_sources",
+            int(
+                universe_counts.get(
+                    "extra_target_for_current_source_pair",
+                    0,
+                )
+            ),
+        ),
+        (
+            "universe_new_source_pair_candidates",
+            int(
+                universe_counts.get(
+                    "new_source_pair_mapping_candidate",
+                    0,
+                )
+            ),
+        ),
+        (
+            "temporal_compiled_relationship_rows",
+            int(temporal_allowed.sum()),
+        ),
+        (
+            "temporal_rows_after_axis_contract_gate",
+            int(temporal_axis_allowed.sum()),
+        ),
+        (
+            "temporal_exact_current_relationship_matches",
+            int(temporal_counts.get("exact_relationship_match", 0)),
+        ),
+        (
+            "temporal_current_relationships_not_compiled",
+            int(
+                temporal_counts.get(
+                    "current_relationship_not_compiled",
+                    0,
+                )
+            ),
+        ),
+        (
+            "temporal_extra_targets_for_current_sources",
+            int(
+                temporal_counts.get(
+                    "extra_target_for_current_source_pair",
+                    0,
+                )
+            ),
+        ),
+        (
+            "temporal_new_source_pair_candidates",
+            int(
+                temporal_counts.get(
+                    "new_source_pair_mapping_candidate",
+                    0,
+                )
+            ),
+        ),
+        ("generated_review_override_rows", len(generated_overrides)),
+    ]
+    return pd.DataFrame(rows, columns=["metric", "value"])
+
+
+# --- Prototype workflow -----------------------------------------------------
+
+def run_single_axis_master_prototype(
+    *,
+    historical_boundary_year: int = 2023,
+) -> dict[str, Any]:
+    """Generate workbook-source tables for the single-axis master prototype."""
+    _assert_inputs()
+    OUTPUT_DATA_ROOT.mkdir(parents=True, exist_ok=True)
+
+    current, incomplete = load_active_mapping_contract(WORKBOOK_PATH)
+    flow_axis_raw, product_axis_raw = derive_axis_mappings(current)
+    flow_axis, flow_components = analyse_axis_components(
+        flow_axis_raw,
+        "flow",
+    )
+    product_axis, product_components = analyse_axis_components(
+        product_axis_raw,
+        "product",
+    )
+    axis_components = pd.concat(
+        [flow_components, product_components],
+        ignore_index=True,
+    )
+
+    pair_universes = _load_pair_universes(historical_boundary_year)
+    leap_universe = build_bootstrap_leap_pair_universe(current)
+    pair_universes["LEAP"] = leap_universe
+    both_esto = _build_both_esto_registry(
+        pair_universes["ESTO"],
+        pair_universes["ESTO_EXTENDED"],
+    )
+
+    universe_target_lookups = build_registry_scope_lookups(
+        pair_universes["ESTO"],
+        pair_universes["NINTH"],
+        pair_universes["ESTO_EXTENDED"],
+    )
+    universe_compiled = compile_axis_relationships(
+        current,
+        flow_axis_raw,
+        product_axis_raw,
+        universe_target_lookups,
+        source_pair_universes={
+            "LEAP": pair_universes["LEAP"],
+            "NINTH": pair_universes["NINTH"],
+        },
+        allowed_target_pair_statuses=("data_valid", "zero_only"),
+    )
+    universe_compiled = _attach_axis_contract_status(
+        universe_compiled,
+        flow_axis,
+        product_axis,
+    )
+
+    temporal_esto = _temporal_compiler_registry(
+        pair_universes["ESTO"],
+        "historical_boundary_active",
+    )
+    temporal_extended = _temporal_compiler_registry(
+        pair_universes["ESTO_EXTENDED"],
+        "historical_boundary_active",
+    )
+    temporal_ninth = _temporal_compiler_registry(
+        pair_universes["NINTH"],
+        "projection_future_active",
+    )
+    temporal_target_lookups = build_registry_scope_lookups(
+        temporal_esto,
+        temporal_ninth,
+        temporal_extended,
+    )
+    temporal_source_universes = {
+        "LEAP": pair_universes["LEAP"],
+        "NINTH": pair_universes["NINTH"].loc[
+            pair_universes["NINTH"]["projection_future_active"]
+            .fillna(False)
+            .astype(bool)
+        ].copy(),
+    }
+    temporal_compiled = compile_axis_relationships(
+        current,
+        flow_axis_raw,
+        product_axis_raw,
+        temporal_target_lookups,
+        source_pair_universes=temporal_source_universes,
+        allowed_target_pair_statuses=("data_valid",),
+    )
+    temporal_compiled = _attach_axis_contract_status(
+        temporal_compiled,
+        flow_axis,
+        product_axis,
+    )
+
+    temporal_pair_compiled = temporal_compiled.loc[
+        temporal_compiled["registry_allowed"],
+        RELATIONSHIP_KEY_COLUMNS,
+    ].drop_duplicates()
+    (
+        universe_relationship_comparison,
+        universe_source_reproduction,
+        _universe_generated_overrides,
+    ) = compare_compiled_relationships(current, universe_compiled)
+    universe_relationship_comparison = _mark_comparison_source_status(
+        universe_relationship_comparison,
+        current,
+    )
+    (
+        temporal_relationship_comparison,
+        source_reproduction,
+        generated_overrides,
+    ) = compare_compiled_relationships(current, temporal_compiled)
+    temporal_relationship_comparison = _mark_comparison_source_status(
+        temporal_relationship_comparison,
+        current,
+    )
+
+    registries_by_scope = {
+        ("ESTO", "ESTO"): pair_universes["ESTO"],
+        ("ESTO", "ESTO_EXTENDED"): pair_universes["ESTO_EXTENDED"],
+        ("ESTO", "BOTH"): both_esto,
+        ("NINTH", "NINTH"): pair_universes["NINTH"],
+        ("LEAP", "NINTH"): pair_universes["LEAP"],
+    }
+    compiled_sheets = build_compiled_mapping_sheet_frames(
+        temporal_pair_compiled,
+        current,
+        registries_by_scope,
+    )
+
+    summary = _summary_rows(
+        current,
+        flow_axis,
+        product_axis,
+        axis_components,
+        universe_compiled,
+        universe_relationship_comparison,
+        temporal_compiled,
+        temporal_relationship_comparison,
+        generated_overrides,
+    )
+
+    sheet_sources: dict[str, Path] = {}
+    detail_sources: dict[str, Path] = {}
+    sheet_sources["Summary"] = _write_csv(summary, "summary.csv")
+    sheet_sources["Sector axis"] = _write_csv(
+        flow_axis,
+        "sector_flow_axis_mappings.csv",
+    )
+    sheet_sources["Fuel axis"] = _write_csv(
+        product_axis,
+        "fuel_product_axis_mappings.csv",
+    )
+    sheet_sources["Pairs LEAP bootstrap"] = _write_csv(
+        _pair_universe_workbook_view(pair_universes["LEAP"]),
+        "pair_universe_leap_bootstrap.csv",
+    )
+    sheet_sources["Pairs ESTO"] = _write_csv(
+        _pair_universe_workbook_view(pair_universes["ESTO"]),
+        "pair_universe_esto.csv",
+    )
+    sheet_sources["Pairs ESTO Extended"] = _write_csv(
+        _pair_universe_workbook_view(pair_universes["ESTO_EXTENDED"]),
+        "pair_universe_esto_extended.csv",
+    )
+    sheet_sources["Pairs Ninth"] = _write_csv(
+        _pair_universe_workbook_view(pair_universes["NINTH"]),
+        "pair_universe_ninth.csv",
+    )
+    sheet_sources["Compiled LEAP ESTO"] = _write_csv(
+        compiled_sheets["leap_combined_esto"],
+        "compiled_leap_combined_esto.csv",
+    )
+    sheet_sources["Compiled LEAP Ninth"] = _write_csv(
+        compiled_sheets["leap_combined_ninth"],
+        "compiled_leap_combined_ninth.csv",
+    )
+    sheet_sources["Compiled Ninth ESTO"] = _write_csv(
+        compiled_sheets["ninth_pairs_to_esto_pairs"],
+        "compiled_ninth_pairs_to_esto_pairs.csv",
+    )
+    sheet_sources["QA axis components"] = _write_csv(
+        axis_components,
+        "qa_axis_components.csv",
+    )
+    detail_sources["QA candidates universe"] = _write_csv(
+        universe_compiled,
+        "qa_compiled_candidates_pair_universe.csv",
+    )
+    detail_sources["QA candidates temporal"] = _write_csv(
+        temporal_compiled,
+        "qa_compiled_candidates_temporal.csv",
+    )
+    detail_sources["QA compare universe"] = _write_csv(
+        universe_relationship_comparison,
+        "qa_relationship_comparison_pair_universe.csv",
+    )
+    sheet_sources["QA compare temporal"] = _write_csv(
+        temporal_relationship_comparison,
+        "qa_relationship_comparison_temporal.csv",
+    )
+    detail_sources["QA source reproduction"] = _write_csv(
+        source_reproduction,
+        "qa_source_pair_reproduction.csv",
+    )
+    detail_sources["QA source universe"] = _write_csv(
+        universe_source_reproduction,
+        "qa_source_pair_reproduction_pair_universe.csv",
+    )
+    detail_sources["QA generated overrides"] = _write_csv(
+        generated_overrides,
+        "qa_generated_overrides_review_only.csv",
+    )
+    sheet_sources["QA incomplete current"] = _write_csv(
+        incomplete,
+        "qa_incomplete_current_rows.csv",
+    )
+
+    manifest = {
+        "prototype_status": (
+            "not_ready_blocking_axis_components"
+            if summary.loc[
+                summary["metric"].eq(
+                    "blocking_within_axis_many_to_many_components"
+                ),
+                "value",
+            ].iloc[0]
+            > 0
+            else "axis_contract_ready_for_semantic_review"
+        ),
+        "historical_boundary_year": int(historical_boundary_year),
+        "canonical_workbook_was_modified": False,
+        "canonical_workbook_path": str(WORKBOOK_PATH),
+        "leap_pair_authority": (
+            "bootstrap_from_current_reviewed_pair_contract_pending_branch_parser"
+        ),
+        "rollup_sheets_included": False,
+        "compiled_compatibility_policy": (
+            "ESTO final-year nonzero; Ninth any post-ESTO-year nonzero"
+        ),
+        "sheet_sources": {
+            sheet: _relative_output_path(path)
+            for sheet, path in sheet_sources.items()
+        },
+        "detail_sources": {
+            name: _relative_output_path(path)
+            for name, path in detail_sources.items()
+        },
+        "summary": {
+            row.metric: int(row.value)
+            for row in summary.itertuples(index=False)
+        },
+    }
+    manifest_path = OUTPUT_ROOT / "workbook_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps(manifest, indent=2))
+    return manifest
+
+
+# --- Frequently changed run flags ------------------------------------------
+
+RUN_SINGLE_AXIS_MASTER_PROTOTYPE = True
+HISTORICAL_BOUNDARY_YEAR = 2023
+
+
+#%%
+if RUN_SINGLE_AXIS_MASTER_PROTOTYPE:
+    try:
+        PROTOTYPE_MANIFEST = run_single_axis_master_prototype(
+            historical_boundary_year=HISTORICAL_BOUNDARY_YEAR,
+        )
+    except Exception:
+        print("Single-axis master prototype failed.")
+        traceback.print_exc()
+        raise
+
+#%%

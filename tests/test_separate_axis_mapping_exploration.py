@@ -8,8 +8,11 @@ import pytest
 from codebase.separate_axis_mapping_exploration_functions import (
     RELATIONSHIP_KEY_COLUMNS,
     add_ninth_pair_columns,
+    analyse_axis_components,
+    annotate_pair_universe_temporal_evidence,
     apply_generated_overrides,
     apply_source_once_fixture,
+    build_compiled_mapping_sheet_frames,
     build_ninth_valid_pair_registry_bundle,
     build_common_graph_membership_in_memory,
     build_registry_scope_lookups,
@@ -37,6 +40,7 @@ def _relationship(
         "target_system": "ESTO",
         "target_flow": target_flow,
         "target_product": target_product,
+        "source_pair_is_subtotal": False,
         "target_pair_is_subtotal": False,
         "notes": "",
     }
@@ -262,6 +266,194 @@ def test_axis_compiler_filters_cartesian_pairs_and_overrides_restore_exact_set()
     assert comparison["relationship_status"].eq("extra_factorised_relationship").sum() == 1
     assert source_summary["extra_target_count"].sum() == 1
     assert overrides["override_action"].eq("exclude").sum() == 1
+
+
+def test_axis_component_contract_rejects_only_connected_many_to_many() -> None:
+    common = {
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "ESTO",
+        "source_system": "LEAP",
+        "target_system": "ESTO",
+        "relationship_semantics": "",
+        "notes": "",
+    }
+    flow_axis = pd.DataFrame(
+        [
+            {**common, "source_flow": "A", "target_flow": "X"},
+            {**common, "source_flow": "A", "target_flow": "Y"},
+            {**common, "source_flow": "B", "target_flow": "Z"},
+            {**common, "source_flow": "C", "target_flow": "Z"},
+            {**common, "source_flow": "D", "target_flow": "U"},
+            {**common, "source_flow": "D", "target_flow": "V"},
+            {**common, "source_flow": "E", "target_flow": "V"},
+        ]
+    )
+    annotated, inventory = analyse_axis_components(flow_axis, "flow")
+
+    counts = inventory["axis_component_cardinality"].value_counts().to_dict()
+    assert counts == {
+        "one_to_many": 1,
+        "many_to_one": 1,
+        "many_to_many": 1,
+    }
+    blocking = inventory[
+        inventory["axis_contract_status"].eq(
+            "blocking_many_to_many_axis_component"
+        )
+    ]
+    assert len(blocking) == 1
+    assert blocking.iloc[0]["source_keys"] == "D|E"
+    assert blocking.iloc[0]["target_keys"] == "U|V"
+    assert annotated["axis_component_id"].nunique() == 3
+
+
+def test_pair_universe_retains_structure_and_labels_temporal_evidence() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "dataset": "ESTO",
+                "flow": "F1",
+                "product": "P1",
+                "first_observed_year": 2020,
+                "last_observed_year": 2023,
+                "pair_status": "data_valid",
+            },
+            {
+                "dataset": "NINTH",
+                "flow": "S1",
+                "product": "Q1",
+                "first_observed_year": 2024,
+                "last_observed_year": 2050,
+                "pair_status": "data_valid",
+            },
+            {
+                "dataset": "NINTH",
+                "flow": "S2",
+                "product": "Q2",
+                "first_observed_year": pd.NA,
+                "last_observed_year": pd.NA,
+                "pair_status": "zero_only",
+            },
+        ]
+    )
+    result = annotate_pair_universe_temporal_evidence(registry, 2023)
+
+    by_pair = result.set_index(["flow", "product"])
+    assert bool(by_pair.loc[("F1", "P1"), "historical_boundary_active"])
+    assert bool(by_pair.loc[("S1", "Q1"), "projection_future_active"])
+    assert (
+        by_pair.loc[("S2", "Q2"), "temporal_evidence_status"]
+        == "structural_zero_only"
+    )
+    assert result["pair_universe_member"].all()
+
+
+def test_compiler_can_use_exact_source_universe_and_zero_only_target_pairs() -> None:
+    current = pd.DataFrame([_relationship("S1", "P1", "T1", "Q1")])
+    flow = pd.DataFrame(
+        [
+            {
+                "mapping_name": "leap_to_esto",
+                "comparison_scope": "ESTO",
+                "source_system": "LEAP",
+                "source_flow": "S1",
+                "target_system": "ESTO",
+                "target_flow": "T1",
+            },
+            {
+                "mapping_name": "leap_to_esto",
+                "comparison_scope": "ESTO",
+                "source_system": "LEAP",
+                "source_flow": "S2",
+                "target_system": "ESTO",
+                "target_flow": "T2",
+            },
+        ]
+    )
+    product = pd.DataFrame(
+        [
+            {
+                "mapping_name": "leap_to_esto",
+                "comparison_scope": "ESTO",
+                "source_system": "LEAP",
+                "source_product": "P1",
+                "target_system": "ESTO",
+                "target_product": "Q1",
+            }
+        ]
+    )
+    source_universe = pd.DataFrame(
+        [
+            {
+                "dataset": "LEAP",
+                "flow": "S1",
+                "product": "P1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_authority": "fixture",
+            },
+            {
+                "dataset": "LEAP",
+                "flow": "S2",
+                "product": "P1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_authority": "fixture",
+            },
+        ]
+    )
+    target_registry = pd.DataFrame(
+        [
+            {"flow": "T1", "product": "Q1", "pair_status": "data_valid"},
+            {"flow": "T2", "product": "Q1", "pair_status": "zero_only"},
+        ]
+    )
+    compiled = compile_axis_relationships(
+        current,
+        flow,
+        product,
+        build_registry_scope_lookups(target_registry, pd.DataFrame()),
+        source_pair_universes={"LEAP": source_universe},
+        allowed_target_pair_statuses=("data_valid", "zero_only"),
+    )
+
+    assert set(
+        compiled.loc[
+            compiled["registry_allowed"],
+            ["source_flow", "target_flow"],
+        ].itertuples(index=False, name=None)
+    ) == {("S1", "T1"), ("S2", "T2")}
+    assert compiled["target_pair_exists_in_dataset"].all()
+
+
+def test_compiled_sheet_frames_match_maintained_pair_sheet_columns() -> None:
+    current = pd.DataFrame([_relationship("S1", "P1", "T1", "Q1")])
+    registry = pd.DataFrame(
+        [
+            {
+                "flow": "T1",
+                "product": "Q1",
+                "pair_is_subtotal": True,
+            }
+        ]
+    )
+    outputs = build_compiled_mapping_sheet_frames(
+        current,
+        current,
+        {("ESTO", "ESTO"): registry},
+    )
+    leap_esto = outputs["leap_combined_esto"]
+
+    assert list(leap_esto.columns) == [
+        "leap_sector_name_full_path",
+        "raw_leap_fuel_name",
+        "esto_flow",
+        "esto_product",
+        "leap_is_subtotal",
+        "esto_pair_is_subtotal",
+        "duplicate_to_remove",
+        "esto_dataset_scope",
+    ]
+    assert not bool(leap_esto.iloc[0]["leap_is_subtotal"])
+    assert not bool(leap_esto.iloc[0]["duplicate_to_remove"])
 
 
 def test_source_once_delivery_handles_many_to_one_recombine_and_allocation() -> None:

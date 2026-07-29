@@ -35,6 +35,7 @@ MAPPING_SPECS: dict[str, dict[str, str]] = {
         "source_product_column": "raw_leap_fuel_name",
         "target_flow_column": "esto_flow",
         "target_product_column": "esto_product",
+        "source_subtotal_column": "leap_is_subtotal",
         "target_subtotal_column": "esto_pair_is_subtotal",
     },
     "leap_to_ninth": {
@@ -45,6 +46,7 @@ MAPPING_SPECS: dict[str, dict[str, str]] = {
         "source_product_column": "raw_leap_fuel_name",
         "target_flow_column": "ninth_sector",
         "target_product_column": "ninth_fuel",
+        "source_subtotal_column": "leap_is_subtotal",
         "target_subtotal_column": "ninth_pair_is_subtotal",
     },
     "ninth_to_esto": {
@@ -55,6 +57,7 @@ MAPPING_SPECS: dict[str, dict[str, str]] = {
         "source_product_column": "ninth_fuel",
         "target_flow_column": "esto_flow",
         "target_product_column": "esto_product",
+        "source_subtotal_column": "ninth_pair_is_subtotal",
         "target_subtotal_column": "esto_pair_is_subtotal",
     },
 }
@@ -682,6 +685,13 @@ def load_active_mapping_contract(
                 "target_system": spec["target_system"],
                 "target_flow": frame[spec["target_flow_column"]].map(_clean),
                 "target_product": frame[spec["target_product_column"]].map(_clean),
+                "source_pair_is_subtotal": (
+                    frame.get(
+                        spec["source_subtotal_column"],
+                        pd.Series(False, index=frame.index),
+                    )
+                    .map(_truthy)
+                ),
                 "target_pair_is_subtotal": (
                     frame.get(spec["target_subtotal_column"], pd.Series(False, index=frame.index))
                     .map(_truthy)
@@ -766,6 +776,236 @@ def derive_axis_mappings(
     return flow, product
 
 
+def analyse_axis_components(
+    axis_mappings: pd.DataFrame,
+    axis_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Attach deterministic graph-component cardinality to one axis relation.
+
+    The proposed axis contract allows one-to-one, one-to-many, and many-to-one
+    connected components. A component containing multiple source keys and
+    multiple target keys is a genuine within-axis many-to-many relationship and
+    remains a blocking review item.
+    """
+    axis_name = _clean(axis_name).casefold()
+    if axis_name not in {"flow", "product"}:
+        raise ValueError("axis_name must be 'flow' or 'product'.")
+    source_column = f"source_{axis_name}"
+    target_column = f"target_{axis_name}"
+    required = {
+        "mapping_name",
+        "comparison_scope",
+        "source_system",
+        "target_system",
+        source_column,
+        target_column,
+    }
+    missing = sorted(required - set(axis_mappings.columns))
+    if missing:
+        raise ValueError(
+            f"{axis_name} axis mappings are missing required columns: {missing}"
+        )
+
+    group_columns = [
+        "mapping_name",
+        "comparison_scope",
+        "source_system",
+        "target_system",
+    ]
+    annotated_frames: list[pd.DataFrame] = []
+    component_records: list[dict[str, Any]] = []
+
+    grouped = axis_mappings.groupby(group_columns, dropna=False, sort=True)
+    for group_key, group in grouped:
+        adjacency: dict[tuple[str, str], set[tuple[str, str]]] = defaultdict(set)
+        for source_key, target_key in group[
+            [source_column, target_column]
+        ].itertuples(index=False, name=None):
+            source_node = ("source", _clean(source_key))
+            target_node = ("target", _clean(target_key))
+            adjacency[source_node].add(target_node)
+            adjacency[target_node].add(source_node)
+
+        component_number = 0
+        visited: set[tuple[str, str]] = set()
+        for start_node in sorted(adjacency):
+            if start_node in visited:
+                continue
+            component_number += 1
+            frontier = [start_node]
+            visited.add(start_node)
+            source_keys: set[str] = set()
+            target_keys: set[str] = set()
+            while frontier:
+                node = frontier.pop()
+                if node[0] == "source":
+                    source_keys.add(node[1])
+                else:
+                    target_keys.add(node[1])
+                for neighbour in adjacency[node]:
+                    if neighbour not in visited:
+                        visited.add(neighbour)
+                        frontier.append(neighbour)
+
+            if len(source_keys) > 1 and len(target_keys) > 1:
+                component_cardinality = "many_to_many"
+                contract_status = "blocking_many_to_many_axis_component"
+            elif len(source_keys) == 1 and len(target_keys) > 1:
+                component_cardinality = "one_to_many"
+                contract_status = "axis_component_allowed"
+            elif len(source_keys) > 1 and len(target_keys) == 1:
+                component_cardinality = "many_to_one"
+                contract_status = "axis_component_allowed"
+            else:
+                component_cardinality = "one_to_one"
+                contract_status = "axis_component_allowed"
+
+            group_values = dict(zip(group_columns, group_key))
+            component_id = (
+                f"{axis_name}_{group_values['mapping_name']}_"
+                f"{group_values['comparison_scope']}_{component_number:04d}"
+            )
+            edge_mask = (
+                group[source_column].map(_clean).isin(source_keys)
+                & group[target_column].map(_clean).isin(target_keys)
+            )
+            component_edges = group.loc[edge_mask].copy()
+            component_edges["axis_name"] = axis_name
+            component_edges["axis_component_id"] = component_id
+            component_edges["axis_component_cardinality"] = component_cardinality
+            component_edges["axis_contract_status"] = contract_status
+            annotated_frames.append(component_edges)
+            component_records.append(
+                {
+                    **group_values,
+                    "axis_name": axis_name,
+                    "axis_component_id": component_id,
+                    "source_key_count": len(source_keys),
+                    "target_key_count": len(target_keys),
+                    "edge_count": len(component_edges),
+                    "axis_component_cardinality": component_cardinality,
+                    "axis_contract_status": contract_status,
+                    "source_keys": "|".join(sorted(source_keys)),
+                    "target_keys": "|".join(sorted(target_keys)),
+                }
+            )
+
+    annotated = (
+        pd.concat(annotated_frames, ignore_index=True)
+        if annotated_frames
+        else axis_mappings.assign(
+            axis_name=axis_name,
+            axis_component_id="",
+            axis_component_cardinality="",
+            axis_contract_status="",
+        )
+    )
+    inventory = pd.DataFrame(component_records)
+    return annotated, inventory
+
+
+def annotate_pair_universe_temporal_evidence(
+    registry: pd.DataFrame,
+    historical_boundary_year: int,
+) -> pd.DataFrame:
+    """Mark exact registry members and their boundary/projection evidence.
+
+    This deliberately retains structurally present zero-only pairs. Temporal
+    evidence is descriptive and can be filtered into named consumer views
+    without changing membership of the accepted exact-pair universe.
+    """
+    result = registry.copy()
+    if result.empty:
+        return result
+    dataset = result["dataset"].fillna("").astype(str).str.strip().str.upper()
+    first_year = pd.to_numeric(
+        result.get("first_observed_year", pd.Series(pd.NA, index=result.index)),
+        errors="coerce",
+    )
+    last_year = pd.to_numeric(
+        result.get("last_observed_year", pd.Series(pd.NA, index=result.index)),
+        errors="coerce",
+    )
+    result["pair_exists_in_dataset"] = True
+    result["pair_universe_member"] = True
+    result["historical_boundary_year"] = int(historical_boundary_year)
+    result["historical_boundary_active"] = (
+        dataset.isin({"ESTO", "ESTO_EXTENDED"})
+        & last_year.eq(int(historical_boundary_year))
+    )
+    result["projection_future_active"] = (
+        dataset.eq("NINTH")
+        & last_year.gt(int(historical_boundary_year))
+    )
+    result["active_before_or_at_boundary"] = (
+        first_year.le(int(historical_boundary_year))
+        & last_year.notna()
+    )
+    result["temporal_evidence_status"] = np.select(
+        [
+            result["historical_boundary_active"],
+            result["projection_future_active"],
+            result["pair_status"].eq("zero_only"),
+        ],
+        [
+            "historical_boundary_active",
+            "projection_future_active",
+            "structural_zero_only",
+        ],
+        default="nonzero_outside_selected_boundary_window",
+    )
+    result["pair_universe_authority"] = "generated_exact_source_pair"
+    return result
+
+
+def build_bootstrap_leap_pair_universe(
+    current_relationships: pd.DataFrame,
+) -> pd.DataFrame:
+    """Bootstrap exact LEAP pairs until model-branch parsing is supplied.
+
+    This is intentionally labelled as circular review evidence. It enables the
+    compiler prototype without claiming that current pair sheets are the future
+    LEAP structural authority.
+    """
+    leap = current_relationships[
+        current_relationships["source_system"].eq("LEAP")
+    ].copy()
+    if leap.empty:
+        return pd.DataFrame(
+            columns=[
+                "dataset",
+                "flow",
+                "product",
+                "pair_is_subtotal",
+                "pair_exists_in_dataset",
+                "pair_universe_member",
+                "pair_status",
+                "pair_universe_authority",
+            ]
+        )
+    universe = (
+        leap.groupby(["source_flow", "source_product"], as_index=False)
+        .agg(pair_is_subtotal=("source_pair_is_subtotal", "max"))
+        .rename(
+            columns={
+                "source_flow": "flow",
+                "source_product": "product",
+            }
+        )
+    )
+    universe.insert(0, "dataset", "LEAP")
+    universe["pair_exists_in_dataset"] = True
+    universe["pair_universe_member"] = True
+    universe["pair_status"] = "bootstrap_reviewed_pair"
+    universe["historical_boundary_active"] = pd.NA
+    universe["projection_future_active"] = pd.NA
+    universe["temporal_evidence_status"] = "not_yet_parsed_from_leap_branches"
+    universe["pair_universe_authority"] = (
+        "bootstrap_from_current_reviewed_pair_contract"
+    )
+    return universe
+
+
 def _registry_pair_status_lookup(registry: pd.DataFrame) -> dict[tuple[str, str], str]:
     """Return pair status keyed by exact flow/product labels."""
     if registry.empty:
@@ -791,12 +1031,12 @@ def build_registry_scope_lookups(
     for pair in set(esto_lookup) | set(extended_lookup):
         base_status = esto_lookup.get(pair, "absent")
         extended_status = extended_lookup.get(pair, "absent")
-        if base_status == "data_valid" and extended_status == "data_valid":
-            both_lookup[pair] = "data_valid"
-        elif base_status == "zero_only" or extended_status == "zero_only":
-            both_lookup[pair] = "zero_only"
-        else:
+        if base_status == "absent" or extended_status == "absent":
             both_lookup[pair] = "absent"
+        elif base_status == "data_valid" and extended_status == "data_valid":
+            both_lookup[pair] = "data_valid"
+        else:
+            both_lookup[pair] = "zero_only"
     return {
         ("ESTO", "ESTO"): esto_lookup,
         ("ESTO", "ESTO_EXTENDED"): extended_lookup,
@@ -810,9 +1050,72 @@ def compile_axis_relationships(
     flow_mappings: pd.DataFrame,
     product_mappings: pd.DataFrame,
     registry_lookups: dict[tuple[str, str], dict[tuple[str, str], str]],
+    *,
+    source_pair_universes: dict[str, pd.DataFrame] | None = None,
+    allowed_target_pair_statuses: tuple[str, ...] = ("data_valid",),
 ) -> pd.DataFrame:
-    """Compile candidate target pairs and apply strict target-pair filtering."""
-    source_pairs = current_relationships[SOURCE_PAIR_COLUMNS].drop_duplicates()
+    """Compile target pairs from axes and exact source/target pair universes."""
+    if source_pair_universes is None:
+        source_pairs = current_relationships[SOURCE_PAIR_COLUMNS].drop_duplicates()
+        source_pairs["source_pair_exists_in_dataset"] = True
+        source_pairs["source_pair_universe_authority"] = (
+            "current_reviewed_pair_contract"
+        )
+    else:
+        source_frames: list[pd.DataFrame] = []
+        context_columns = [
+            "mapping_name",
+            "comparison_scope",
+            "source_system",
+            "target_system",
+        ]
+        contexts = flow_mappings[context_columns].drop_duplicates()
+        for context in contexts.itertuples(index=False):
+            universe = source_pair_universes.get(
+                _clean(context.source_system),
+                pd.DataFrame(),
+            )
+            if universe.empty:
+                continue
+            source_frame = universe.rename(
+                columns={
+                    "flow": "source_flow",
+                    "product": "source_product",
+                    "pair_exists_in_dataset": "source_pair_exists_in_dataset",
+                    "pair_universe_authority": "source_pair_universe_authority",
+                }
+            ).copy()
+            source_frame["mapping_name"] = context.mapping_name
+            source_frame["comparison_scope"] = context.comparison_scope
+            source_frame["source_system"] = context.source_system
+            source_frame["target_system"] = context.target_system
+            for column, default in [
+                ("source_pair_exists_in_dataset", True),
+                ("source_pair_universe_authority", "generated_pair_universe"),
+            ]:
+                if column not in source_frame:
+                    source_frame[column] = default
+            source_frames.append(
+                source_frame[
+                    SOURCE_PAIR_COLUMNS
+                    + [
+                        "source_pair_exists_in_dataset",
+                        "source_pair_universe_authority",
+                    ]
+                ]
+            )
+        source_pairs = (
+            pd.concat(source_frames, ignore_index=True).drop_duplicates()
+            if source_frames
+            else pd.DataFrame(
+                columns=SOURCE_PAIR_COLUMNS
+                + [
+                    "source_pair_exists_in_dataset",
+                    "source_pair_universe_authority",
+                ]
+            )
+        )
+
     compiled = source_pairs.merge(
         flow_mappings.drop(columns=["relationship_semantics", "notes"], errors="ignore"),
         on=["mapping_name", "comparison_scope", "source_system", "source_flow", "target_system"],
@@ -832,7 +1135,12 @@ def compile_axis_relationships(
         lookup = registry_lookups.get((row.target_system, row.comparison_scope), {})
         statuses.append(lookup.get((_clean(row.target_flow), _clean(row.target_product)), "absent"))
     compiled["target_pair_registry_status"] = statuses
-    compiled["registry_allowed"] = compiled["target_pair_registry_status"].eq("data_valid")
+    compiled["target_pair_exists_in_dataset"] = compiled[
+        "target_pair_registry_status"
+    ].ne("absent")
+    compiled["registry_allowed"] = compiled[
+        "target_pair_registry_status"
+    ].isin(set(allowed_target_pair_statuses))
     compiled["compiler_status"] = np.where(
         compiled["registry_allowed"],
         "compiled_from_independent_axes",
@@ -843,6 +1151,92 @@ def compile_axis_relationships(
         .sort_values(RELATIONSHIP_KEY_COLUMNS, kind="stable")
         .reset_index(drop=True)
     )
+
+
+def build_compiled_mapping_sheet_frames(
+    relationships: pd.DataFrame,
+    current_relationships: pd.DataFrame,
+    registries_by_scope: dict[tuple[str, str], pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """Return generated pair sheets with the canonical maintained columns.
+
+    Current reviewed subtotal flags take precedence. Newly compiled pairs use
+    exact source/target registry metadata when available.
+    """
+    working = add_target_pair_metadata(
+        relationships,
+        current_relationships,
+        registries_by_scope,
+    )
+
+    current_source_subtotals = (
+        current_relationships.groupby(SOURCE_PAIR_COLUMNS, as_index=False)
+        .agg(source_pair_is_subtotal=("source_pair_is_subtotal", "max"))
+    )
+    working = working.merge(
+        current_source_subtotals,
+        on=SOURCE_PAIR_COLUMNS,
+        how="left",
+    )
+
+    registry_subtotals: dict[
+        tuple[str, str, str],
+        bool,
+    ] = {}
+    for (system, scope), registry in registries_by_scope.items():
+        if registry.empty:
+            continue
+        for row in registry[
+            ["flow", "product", "pair_is_subtotal"]
+        ].itertuples(index=False):
+            registry_subtotals[
+                (_clean(system), _clean(row.flow), _clean(row.product))
+            ] = bool(_truthy(row.pair_is_subtotal))
+
+    source_flags: list[bool] = []
+    for row in working.itertuples(index=False):
+        reviewed = getattr(row, "source_pair_is_subtotal", pd.NA)
+        if not pd.isna(reviewed):
+            source_flags.append(_truthy(reviewed))
+            continue
+        source_flags.append(
+            registry_subtotals.get(
+                (
+                    _clean(row.source_system),
+                    _clean(row.source_flow),
+                    _clean(row.source_product),
+                ),
+                False,
+            )
+        )
+    working["source_pair_is_subtotal"] = source_flags
+
+    outputs: dict[str, pd.DataFrame] = {}
+    for mapping_name, spec in MAPPING_SPECS.items():
+        subset = working[working["mapping_name"].eq(mapping_name)].copy()
+        output = pd.DataFrame(
+            {
+                spec["source_flow_column"]: subset["source_flow"],
+                spec["source_product_column"]: subset["source_product"],
+                spec["target_flow_column"]: subset["target_flow"],
+                spec["target_product_column"]: subset["target_product"],
+                spec["source_subtotal_column"]: subset[
+                    "source_pair_is_subtotal"
+                ].map(_truthy),
+                spec["target_subtotal_column"]: subset[
+                    "target_pair_is_subtotal"
+                ].map(_truthy),
+                "duplicate_to_remove": False,
+            }
+        )
+        if spec["target_system"] == "ESTO":
+            output["esto_dataset_scope"] = subset["comparison_scope"].map(_clean)
+        outputs[spec["sheet_name"]] = (
+            output.drop_duplicates()
+            .sort_values(list(output.columns[:4]), kind="stable")
+            .reset_index(drop=True)
+        )
+    return outputs
 
 
 def compare_compiled_relationships(
@@ -1138,23 +1532,34 @@ def add_target_pair_metadata(
         validate="one_to_one",
     )
 
+    registry_subtotal_lookups: dict[
+        tuple[str, str],
+        dict[tuple[str, str], bool],
+    ] = {}
+    for scope_key, registry in registries_by_scope.items():
+        if registry.empty:
+            registry_subtotal_lookups[scope_key] = {}
+            continue
+        registry_subtotal_lookups[scope_key] = {
+            (_clean(row.flow), _clean(row.product)): _truthy(
+                row.pair_is_subtotal
+            )
+            for row in registry[
+                ["flow", "product", "pair_is_subtotal"]
+            ].drop_duplicates(["flow", "product"]).itertuples(index=False)
+        }
+
     registry_subtotal: list[bool] = []
     for row in result.itertuples(index=False):
-        registry = registries_by_scope.get(
+        registry_lookup = registry_subtotal_lookups.get(
             (_clean(row.target_system), _clean(row.comparison_scope)),
-            pd.DataFrame(),
+            {},
         )
-        if registry.empty:
-            registry_subtotal.append(False)
-            continue
-        match = registry[
-            registry["flow"].map(_clean).eq(_clean(row.target_flow))
-            & registry["product"].map(_clean).eq(_clean(row.target_product))
-        ]
         registry_subtotal.append(
-            bool(match["pair_is_subtotal"].map(_truthy).any())
-            if not match.empty and "pair_is_subtotal" in match
-            else False
+            registry_lookup.get(
+                (_clean(row.target_flow), _clean(row.target_product)),
+                False,
+            )
         )
     result["target_pair_is_subtotal"] = (
         result["_current_subtotal"]

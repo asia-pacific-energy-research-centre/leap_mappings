@@ -519,7 +519,144 @@ Proceeding beyond an audit/suggestion role would only be justified if this
 experiment produces a substantially smaller, semantically classified exception
 set while preserving exact current relationships and source-once delivery.
 
-## Possible staged implementation plan if resumed
+## Single-axis master workbook prototype
+
+The proposal was resumed as an isolated prototype on 2026-07-29. The prototype
+implements the intended compatibility boundary without modifying
+`config/outlook_mappings_master.xlsx`:
+
+1. derive separate sector/flow and fuel/product relations from the current
+   reviewed pair sheets;
+2. require every connected axis component to be one-to-one, one-to-many, or
+   many-to-one;
+3. retain generated exact-pair universes for LEAP, ESTO, ESTO Extended, and
+   Ninth;
+4. label ESTO final-year activity and Ninth post-ESTO-year activity;
+5. compile axes through exact target-pair membership;
+6. emit generated sheets with the same columns as `leap_combined_esto`,
+   `leap_combined_ninth`, and `ninth_pairs_to_esto_pairs`; and
+7. keep detailed disagreement and override traces outside the primary
+   workbook.
+
+The workbook is generated at:
+
+`outputs/separate_axis_mapping_prototype_20260729/outlook_mappings_single_axis_prototype.xlsx`
+
+Rollup sheets are deliberately deferred. The prototype compatibility sheets
+are at the same pre-rollup boundary as the three maintained pair sheets.
+
+### Axis size and cardinality
+
+The 7,649 unique current pair relationships factorise to:
+
+- 327 sector/flow axis rows;
+- 258 fuel/product axis rows; and
+- 585 total axis rows before contextual corrections.
+
+This is a large potential reduction in manually repeated rows, but the current
+pair sheets do not factorise into the proposed axis contract without review.
+The graph-component validator finds eight blocking within-axis many-to-many
+components:
+
+- five sector/flow components; and
+- three fuel/product components.
+
+The largest is the LEAP-to-ESTO product component: 37 source fuels, 37 target
+products, and 73 edges. It reflects conditional fuel meanings embedded in the
+current pair rows. Other blocking components cover transport detail,
+liquefaction/regasification, power/electricity-interim labels, pump storage
+versus non-specified own use, and crude/NGL unallocated categories.
+
+The invariant is therefore useful, but it cannot simply be asserted over axes
+bootstrapped from the current pair sheets. Each blocking component must be
+classified as:
+
+- a current mapping problem;
+- an alias or hierarchy issue;
+- a relationship that becomes unambiguous after exact-pair filtering; or
+- a genuinely context-qualified axis relationship.
+
+### Exact-pair universe compiler
+
+Allowing every exact structurally present target pair produces:
+
+| Metric | Count |
+|---|---:|
+| compiled relationships | 10,336 |
+| exact current relationships reproduced | 6,239 |
+| current relationships not compiled | 1,410 |
+| extra targets on a current source pair | 1,923 |
+| candidates for source pairs absent from the current contract | 2,174 |
+
+This solves many zero-only false negatives, but it is too permissive to be the
+final compiler policy. Exact pair membership alone does not remove conditional
+meaning when several target products are all valid under the same target flow.
+
+### Temporal compiler
+
+The current temporal view uses:
+
+- non-zero ESTO evidence in 2023, the final configured ESTO year; and
+- non-zero Ninth evidence in any year after 2023.
+
+It produces:
+
+| Metric | Count |
+|---|---:|
+| compiled relationships | 5,141 |
+| rows remaining after the within-axis cardinality gate | 2,995 |
+| exact current relationships reproduced | 4,071 |
+| current relationships not compiled | 3,578 |
+| extra targets on a current source pair | 963 |
+| candidates for source pairs absent from the current contract | 107 |
+
+The temporal rule materially reduces ambiguous extras, but excludes many
+currently accepted mappings. Those missing rows are not automatically errors:
+they can represent reserved/future mappings, current mappings unsupported at
+the selected boundary, subtotal/hierarchy relationships, or relationships that
+need a different temporal rule.
+
+Generated compatibility-sheet row counts are:
+
+- `leap_combined_esto`: 2,228;
+- `leap_combined_ninth`: 1,718; and
+- `ninth_pairs_to_esto_pairs`: 1,195.
+
+They preserve the maintained sheet column names and generated subtotal flags,
+so downstream consumers can technically use the same interface. They are not
+production-ready while the axis and disagreement gates fail.
+
+A read-only Stage 1 compatibility run accepted all 5,141 temporal compiled
+relationships through the current structural boundary and produced 10,282
+Stage 1 rows, eight ESTO override rows, and 122 non-expanding catalogue rows
+without an interface error. This proves schema compatibility, not semantic
+correctness.
+
+### LEAP adapter boundary
+
+The LEAP pair universe is currently bootstrapped from exact source pairs in the
+reviewed pair sheets and is labelled
+`bootstrap_from_current_reviewed_pair_contract`. This is intentionally
+circular and is not claimed as future authority. The workflow isolates this in
+`build_bootstrap_leap_pair_universe()` so it can be replaced by the instructed
+parser over the full set of LEAP branches without changing the compiler.
+
+### Prototype conclusion
+
+The architecture is technically realistic:
+
+- generated axes can be stored in a new master workbook;
+- exact pair universes and temporal evidence can be regenerated;
+- the three compatibility mapping sheets can be compiled with their current
+  schemas and subtotal columns; and
+- existing consumers can remain behind the same pair-sheet interface.
+
+The remaining question is semantic, not technical. A final design needs to
+reduce or explain the eight within-axis many-to-many components and determine
+why the temporal compiler misses 3,578 accepted relationships. Until then, the
+workbook is an effective audit prototype but not a replacement mapping source.
+
+## Possible staged implementation plan beyond the prototype
 
 ### Stage A — decide the two blocked policies
 
@@ -588,7 +725,7 @@ Command:
 C:\Users\Work\miniconda3\python.exe -m pytest tests\test_separate_axis_mapping_exploration.py -q
 ```
 
-Result: `10 passed`.
+Result after the workbook-prototype additions: `14 passed`.
 
 An additional relevant run of the existing Common ESTO and Stage 1 tests
 reported 53 passes and one pre-existing failure:
@@ -601,9 +738,9 @@ rewrite the stale assertion.
 The canonical workbook hash was unchanged, and no sibling production files
 were edited.
 
-## Questions to resolve if resumed
+## Questions to resolve before advancing
 
-Before any future shadow implementation, a reviewer must decide:
+Before any shadow or production implementation, a reviewer must decide:
 
 1. Should flow-qualified product meaning be represented by narrow reviewed
    pair overrides, or by an explicit optional flow-context key on product
@@ -615,6 +752,6 @@ Before any future shadow implementation, a reviewer must decide:
 4. What exact hierarchy-frontier rule rejects a conflicting parent-to-child
    mapping without rejecting legitimate coarse mappings between datasets?
 
-MAPQ-033 is parked as a future-development suggestion. Until it is deliberately
-resumed, treat every generated axis, registry, candidate, and override as
-review-only evidence.
+MAPQ-033 remains an isolated exploration. Treat every generated axis, registry,
+candidate, compatibility sheet, and override as review-only evidence until the
+questions above and the prototype QA gates are resolved.

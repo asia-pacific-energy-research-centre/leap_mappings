@@ -50,7 +50,7 @@ disposition audit.
 |---|---|---|
 | `data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` | Active design input | Reconcile reliability attribution, exception curation, output-contract evidence, and diagnostic retention under MAPQ-012. It is explicitly a proposal, not implemented authority. |
 | `complete_hierarchy_subtotal_contract_prompt.md` | Active implementation prompt | Complete MAPQ-030 with an adapter-based, mappings-owned structural contract; keep structural subtotal classification separate from numerical additivity, then integrate the dashboard and initialisation consumers. |
-| `explore_separate_axis_mapping_contract.md` | Parked future-development suggestion | MAPQ-033 is measured and documented. The desired benefits are easier auditing, fewer maintained rows, and clearer semantics; no shadow implementation is currently planned. |
+| `explore_separate_axis_mapping_contract.md` | Active isolated prototype | MAPQ-033 now includes a generated single-axis workbook, exact pair-universe views, temporal compilation, no-within-axis-many-to-many QA, and compatibility-shaped pair outputs. Production migration remains prohibited. |
 | `mirror_row_gap_exception_curation_handoff_20260727.md` | Paused | Resume the reviewed NINTH source-mismatch curation only after a clean baseline and the handoff's safety gate. |
 | `review_non_expanding_vs_detached_rollups_prompt.md` | Active review | Review every live manual rollup mode under MAPQ-010. Repoint any absent optional evidence to the canonical workbook before use. |
 | `run_mapping_pipeline_future_prompt.md` | Reusable run procedure | Use for a requested current run. First reconcile it with the maintained agent runbook and verify workbook/process state. |

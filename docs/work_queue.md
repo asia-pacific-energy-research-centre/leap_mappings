@@ -150,7 +150,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
-| MAPQ-033 | P3 | `parked_future_development_suggestion` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | no active implementation | 2026-07-29 |
+| MAPQ-033 | P2 | `isolated_prototype_under_review` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | exploration only | 2026-07-29 |
 
 ---
 
@@ -465,13 +465,14 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-033 — Decide and shadow-test the separate-axis mapping contract
 
-- **Priority / status / timing:** P3 · `parked_future_development_suggestion` · no active implementation
+- **Priority / status / timing:** P2 · `isolated_prototype_under_review` · exploration only
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-029, MAPQ-031
 - **Evidence:** [`separate_axis_mapping_exploration_findings.md`](separate_axis_mapping_exploration_findings.md) and the review-only evidence under `results/separate_axis_mapping_exploration/`.
 - **Measured result (2026-07-29):** Independent axes plus strict non-zero pair registries reproduce 5,008 of 7,649 accepted relationships directly. A generated 3,773-row compatibility override layer restores the exact relationship set and all 9,826 Common ESTO component memberships, but 46 flow-qualified product groups remain unresolved. The 2024/2025 ESTO comparison contains 123 data-valid/zero-only status changes and does not establish an evidence-based dormancy duration. Only 5 of the 27 proposed detailed power-process groups have every direct mapping supported by two non-zero-valid component pairs.
 - **Recorded direction:** Treat sector and fuel axes as relations that may both be one-to-many or many-to-one. Historical possibility should be anchored to non-zero ESTO evidence in its final year, while future possibility should use non-zero Ninth evidence after that year. Avoid hierarchy-crossing mappings that conflict with mappings of siblings to target children. The intended benefits are easier auditing, fewer maintained rows, and clearer semantics.
 - **Safety:** Keep all generated axes, registries, candidates, and overrides review-only. Do not edit the canonical workbook or migrate `leap_initialisation` / `leap_dashboard` consumers until the decisions are recorded and a shadow compiler passes exact-set, hierarchy, graph-membership, and source-once gates.
-- **Next action:** None while parked. If deliberately resumed, first formalize whether post-ESTO validity means any later Ninth year or every later year, formalize the non-conflicting hierarchy-frontier rule, and classify the 46 product-context groups before changing the prototype.
+- **Prototype checkpoint:** A generated workbook now contains 327 sector/flow rows, 258 fuel/product rows, exact pair-universe sheets, temporal compatibility views shaped like the maintained pair sheets, and QA. The current bootstrap contains eight blocking within-axis many-to-many components. The all-exact-pair compiler matches 6,239 current relationships but adds 1,923 extra targets on current source pairs; the boundary/future compiler matches 4,071 and adds 963. LEAP pair authority remains a labelled bootstrap until the model-branch parser is supplied.
+- **Next action:** Review the eight blocking axis components and the temporal disagreement families. Decide whether conditional fuel meanings can be resolved entirely by accepted exact-pair membership or require a small context-qualified axis relation. Replace the LEAP bootstrap with the instructed branch parser when its contract is provided.
 - **Completion criteria:** Human-approved context and dormancy policies exist; structural/reserved validity is explicit; the accepted compiler reproduces the pair contract and Common ESTO membership without unexplained overrides; Stage 3 proves source-once delivery and lineage; refresh performance is acceptable; and compatibility views have a tested rollback path.
 
 ---
