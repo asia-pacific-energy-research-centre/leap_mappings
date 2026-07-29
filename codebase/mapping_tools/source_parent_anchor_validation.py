@@ -21,7 +21,6 @@ from codebase.mapping_tools.mapping_issue_exceptions import unmodelled_source_pa
 from codebase.mapping_issue_exceptions import (
     EXCEPTION_WORKBOOK_PATH,
     load_exception_sheet,
-    matching_exception_row,
 )
 
 
@@ -44,7 +43,8 @@ ANCHOR_COLUMNS = [
     "missing_expected_child_count", "missing_nonzero_child_count",
     "missing_nonzero_child_abs", "missing_zero_or_absent_child_count",
     "parent_positive_value", "parent_negative_value", "frontier_positive_sum",
-    "frontier_negative_sum",
+    "frontier_negative_sum", "source_non_additivity_observed",
+    "source_non_additivity_observation_reason",
 ]
 
 ANCHOR_CHILD_VALUE_COLUMNS = [
@@ -66,15 +66,18 @@ ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS = [
     "mapped_value", "mapping_status",
 ]
 
-# A reviewed, manually-curated exception for a raw-source self-inconsistency
-# NINTH/LEAP/ESTO's own data cannot resolve automatically (see
-# _augment_with_data_quality_exceptions). Reuses the same
-# config/mapping_issue_exception_sets.xlsx workbook and enabled/notes
-# convention as every other exception family in this repo.
+# A reviewed, manually-curated confirmation of a raw-source issue. Detection
+# code may propose candidates, but only an enabled row with
+# review_status=confirmed may annotate a validation failure. The annotation
+# never changes the numerical status or reason.
 DATA_QUALITY_EXCEPTION_SHEET = "source_mismatch_allowed"
 ANCHOR_EXCEPTION_COLUMNS = [
-    "known_data_quality_exception", "data_quality_exception_notes", "exception_resolution",
+    "known_data_quality_exception", "data_quality_exception_notes",
+    "exception_resolution", "exception_id", "exception_review_status",
+    "exception_issue_class",
 ]
+CONFIRMED_EXCEPTION_REVIEW_STATUS = "confirmed"
+CONFIRMED_EXCEPTION_NUMERIC_TOLERANCE = 1e-9
 
 LEAF_RECONCILIATION_CANDIDATE_COLUMNS = [
     "enabled", "source_system", "validation_axis", "parent_code", "other_axis_value",
@@ -228,10 +231,9 @@ def _build_source_internal_bad_pairs(
     ``09_06_02_liquefaction_regasification_plants`` sub-sector child reports
     the real ``08_02_lng = +4218.81`` -- an internal rollup defect in the raw
     file itself: the same physical quantity, reported two different ways at
-    two depths of the SAME source's own tree, that no mapping or tree fix in
-    this repo can reconcile. Rows whose frontier draws on such a pair are
-    not evidence of a genuine mapping problem; see the caller for how this
-    reclassifies their status.
+    two depths of the SAME source's own tree. The caller retains this as
+    independent source evidence. It does not use the evidence to confirm an
+    exception, prove the mapping correct, or reclassify the numerical result.
     """
     if not other_children:
         return pd.DataFrame(columns=[axis_col, other_col, "economy", "scenario", "year"])
@@ -651,11 +653,9 @@ def validate_source_parent_anchors(
             # component being silently dropped.
             raw_fallback_rows: list[tuple[str, str, str, str, str]] = []
             # Every resolved frontier leaf, regardless of how its value gets
-            # fetched, checked below against source_internal_bad_pairs -- a
-            # row whose frontier touches a pair where this source's OWN
-            # other-axis rollup contradicts its own raw children (see
-            # _build_source_internal_bad_pairs) is not evidence of a mapping
-            # problem; it inherits that status instead of "failed".
+            # fetched, is checked below against source_internal_bad_pairs.
+            # A raw other-axis contradiction is retained as a separate
+            # observation; it never replaces the mapped anchor result.
             frontier_leaf_rows: list[tuple[str, str, str, str]] = []
             for pcode, oav in agg[["parent_code", "other_axis_value"]].drop_duplicates().itertuples(index=False):
                 oas = str(oav)
@@ -1159,14 +1159,18 @@ def validate_source_parent_anchors(
             incomplete_gap = nonzero_missing & tol_exceeded
             parent_child_inconsistency = zero_only_missing & tol_exceeded
             zero_parent_without_rows = rows_empty & ~tol_exceeded
-            # A source-internal rollup contradiction takes priority over
-            # every other outcome: if this same source's own data disagrees
-            # with itself at a pair the frontier depends on, no comparison
-            # this validator computes from it can be trusted either way,
-            # pass or fail -- see _build_source_internal_bad_pairs.
+            # Raw-source non-additivity is independent evidence, but it cannot
+            # prove that a mapped frontier is correct. Keep it as a review
+            # candidate beside the ordinary numerical outcome rather than
+            # allowing it to skip or excuse that outcome.
             source_internal_inconsistent = base["_source_internal_inconsistent"].to_numpy()
-            conditions = [
+            base["source_non_additivity_observed"] = source_internal_inconsistent
+            base["source_non_additivity_observation_reason"] = np.where(
                 source_internal_inconsistent,
+                "raw_other_axis_non_additivity_observed",
+                "",
+            )
+            conditions = [
                 fids_empty,
                 zero_parent_without_rows,
                 incomplete_reconciles & nonzero_missing,
@@ -1178,13 +1182,12 @@ def validate_source_parent_anchors(
             ]
             base["status"] = np.select(
                 conditions,
-                ["skipped", "skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
+                ["skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
                 default="passed",
             )
             base["reason"] = np.select(
                 conditions,
-                ["source_internal_recursive_sum_inconsistency",
-                 "no_anchorable_common_esto_boundary", "no_observed_source_frontier",
+                ["no_anchorable_common_esto_boundary", "no_observed_source_frontier",
                  "within_tolerance_incomplete_frontier", "within_tolerance_zero_only_missing_children",
                  "parent_child_source_inconsistency", "incomplete_frontier",
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
@@ -1231,105 +1234,206 @@ def _augment_with_data_quality_exceptions(
     workbook_path: Path = EXCEPTION_WORKBOOK_PATH,
     sheet_name: str = DATA_QUALITY_EXCEPTION_SHEET,
 ) -> pd.DataFrame:
-    """Mark reviewed source-data exceptions as skipped, while retaining evidence.
+    """Annotate exact, user-confirmed source issues without hiding failures.
 
-    A reviewed exception is not a mapping defect, so it must not inflate the
-    actionable anchor-failure count.  Keep it visible as ``skipped`` with a
-    dedicated reason and its reviewer notes; this is the "skipped but flagged"
-    outcome rather than silently dropping the raw evidence.
+    Source non-additivity can be detected independently from raw source data,
+    but that observation does not prove that a mapped anchor failure is caused
+    by the source issue. Only a reviewer-confirmed exception row may attach
+    that interpretation to an anchor result.
 
-    Matching requires the row's own ``parent_value`` to be numerically within
-    tolerance of the value recorded when the exception was reviewed, on top
-    of the usual code/label match -- so if the underlying data later changes
-    (a source correction, or a different bug landing on the same key), the
-    exception stops applying instead of silently continuing to hide it. See
-    ``codebase.mapping_issue_exceptions.matching_exception_row``'s
-    ``numeric_tolerance_columns``.
+    Matching is deliberately fail-closed:
+
+    - the exception must be enabled and have ``review_status=confirmed``;
+    - categorical context fields match exactly after whitespace/economy-code
+      normalization;
+    - ``parent_value`` must be equal apart from negligible float
+      serialization noise;
+    - wildcard rows are not accepted for this exception family.
+
+    The original numerical ``status`` and ``reason`` are never changed. A
+    confirmed issue remains a visible validation failure with review metadata
+    attached alongside it.
     """
     result = result.copy()
     result["known_data_quality_exception"] = False
     result["data_quality_exception_notes"] = ""
     result["exception_resolution"] = ""
+    result["exception_id"] = ""
+    result["exception_review_status"] = ""
+    result["exception_issue_class"] = ""
     exception_df = load_exception_sheet(sheet_name, workbook_path=workbook_path)
     if exception_df.empty or result.empty:
+        return result
+
+    required_exception_columns = {
+        "review_status", "exception_id", "issue_class", "source_system",
+        "validation_axis", "parent_code", "other_axis_value", "economy",
+        "scenario", "year", "parent_value", "notes",
+    }
+    if not required_exception_columns.issubset(exception_df.columns):
+        return result
+
+    confirmed_mask = (
+        exception_df["review_status"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .eq(CONFIRMED_EXCEPTION_REVIEW_STATUS)
+    )
+    exception_df = exception_df.loc[confirmed_mask].copy()
+    if exception_df.empty:
+        return result
+
+    required_populated_columns = [
+        "exception_id", "issue_class", "source_system", "validation_axis",
+        "parent_code", "other_axis_value", "economy", "scenario", "year",
+        "parent_value",
+    ]
+    populated_mask = pd.Series(True, index=exception_df.index)
+    for column in required_populated_columns:
+        populated_mask &= (
+            exception_df[column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .ne("")
+        )
+    populated_mask &= pd.to_numeric(
+        exception_df["year"],
+        errors="coerce",
+    ).notna()
+    populated_mask &= pd.to_numeric(
+        exception_df["parent_value"],
+        errors="coerce",
+    ).notna()
+    exception_ids = (
+        exception_df["exception_id"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+    populated_mask &= ~exception_ids.duplicated(keep=False)
+    exception_df = exception_df.loc[populated_mask].copy()
+    if exception_df.empty:
         return result
 
     failed = result[result["status"] == "failed"].copy()
     if failed.empty:
         return result
 
-    # The exception sheet is keyed by the five categorical anchor fields and
-    # additionally records the reviewed parent value.  The previous generic
-    # matcher scanned every enabled exception row for every failed anchor
-    # record, which became the dominant cost of all-economy validation.  Use a
-    # vectorized keyed merge for the ordinary exact-key case, retaining the
-    # generic matcher only for the uncommon prefix-wildcard case.
     key_columns = [
-        column
-        for column in [
-            "source_system", "validation_axis", "parent_code",
-            "other_axis_value", "economy",
-        ]
-        if column in failed.columns and column in exception_df.columns
+        "source_system", "validation_axis", "parent_code",
+        "other_axis_value", "economy", "scenario", "year",
     ]
-    numeric_column = "parent_value"
+    if not set(key_columns + ["parent_value"]).issubset(failed.columns):
+        return result
+
+    # Broad exception rows would reintroduce the same circularity and
+    # overmatching risk that this review mechanism is meant to prevent.
     wildcard_mask = pd.Series(False, index=exception_df.index)
     for column in key_columns:
-        wildcard_mask |= exception_df[column].astype(str).str.strip().str.endswith("*")
+        wildcard_mask |= (
+            exception_df[column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.endswith("*")
+        )
+    exception_df = exception_df.loc[~wildcard_mask].copy()
+    if exception_df.empty:
+        return result
+
+    numeric_column = "parent_value"
 
     def _normalised(series: pd.Series) -> pd.Series:
         return series.fillna("").astype(str).str.strip()
 
-    exact_exceptions = exception_df.loc[~wildcard_mask].copy()
-    matched = pd.DataFrame()
-    if key_columns and not exact_exceptions.empty:
-        left = failed[key_columns + [numeric_column]].copy()
-        left["_result_index"] = left.index
-        right_columns = key_columns + [numeric_column, "notes"]
-        right = exact_exceptions[[column for column in right_columns if column in exact_exceptions.columns]].copy()
-        for column in key_columns:
-            left[column] = _normalised(left[column])
-            right[column] = _normalised(right[column])
-        left[numeric_column] = pd.to_numeric(left[numeric_column], errors="coerce")
-        right[numeric_column] = pd.to_numeric(right[numeric_column], errors="coerce")
-        matched = left.merge(right, on=key_columns, how="inner", suffixes=("_candidate", "_exception"))
-        if not matched.empty:
-            candidate_values = matched[f"{numeric_column}_candidate"]
-            exception_values = matched[f"{numeric_column}_exception"]
-            numeric_match = (
-                candidate_values.notna()
-                & exception_values.notna()
-                & ((candidate_values - exception_values).abs()
-                   <= 0.01 * exception_values.abs().clip(lower=1.0))
-            )
-            matched = matched.loc[numeric_match].drop_duplicates("_result_index", keep="first")
+    left = failed[key_columns + [numeric_column]].copy()
+    left["_result_index"] = left.index
+    right_columns = [
+        *key_columns, numeric_column, "notes", "exception_id",
+        "review_status", "issue_class",
+    ]
+    right = exception_df[right_columns].copy()
+    for column in key_columns:
+        left[column] = _normalised(left[column])
+        right[column] = _normalised(right[column])
+    left["economy"] = _normalize_economy(left["economy"])
+    right["economy"] = _normalize_economy(right["economy"])
+    left["source_system"] = left["source_system"].str.upper()
+    right["source_system"] = right["source_system"].str.upper()
+    left["validation_axis"] = left["validation_axis"].str.lower()
+    right["validation_axis"] = right["validation_axis"].str.lower()
+    left["scenario"] = left["scenario"].str.lower()
+    right["scenario"] = right["scenario"].str.lower()
+    left["year"] = pd.to_numeric(left["year"], errors="coerce").map(
+        lambda value: "" if pd.isna(value) else str(int(value))
+    )
+    right["year"] = pd.to_numeric(right["year"], errors="coerce").map(
+        lambda value: "" if pd.isna(value) else str(int(value))
+    )
+    left[numeric_column] = pd.to_numeric(left[numeric_column], errors="coerce")
+    right[numeric_column] = pd.to_numeric(right[numeric_column], errors="coerce")
 
-    # Preserve the generic behaviour for wildcard exception keys and for any
-    # future sheet whose shape cannot use the keyed fast path.
-    wildcard_exceptions = exception_df.loc[wildcard_mask]
-    matched_indices = set(matched["_result_index"].tolist()) if not matched.empty else set()
-    if not wildcard_exceptions.empty:
-        for idx, row in failed.loc[~failed.index.isin(matched_indices)].iterrows():
-            match = matching_exception_row(
-                row, wildcard_exceptions,
-                numeric_tolerance_columns=frozenset({numeric_column}),
+    matched = left.merge(
+        right,
+        on=key_columns,
+        how="inner",
+        suffixes=("_candidate", "_exception"),
+    )
+    if not matched.empty:
+        candidate_values = matched[f"{numeric_column}_candidate"]
+        exception_values = matched[f"{numeric_column}_exception"]
+        numeric_match = (
+            candidate_values.notna()
+            & exception_values.notna()
+            & (
+                (candidate_values - exception_values).abs()
+                <= (
+                    CONFIRMED_EXCEPTION_NUMERIC_TOLERANCE
+                    * exception_values.abs().clip(lower=1.0)
+                )
             )
-            if match is not None:
-                matched = pd.concat([
-                    matched,
-                    pd.DataFrame([{
-                        "_result_index": idx,
-                        "notes": str(match.get("notes", "") or "").strip(),
-                    }]),
-                ], ignore_index=True)
+        )
+        matched = matched.loc[numeric_match]
+        match_counts = matched["_result_index"].value_counts()
+        unique_match_indices = match_counts[match_counts.eq(1)].index
+        matched = matched[
+            matched["_result_index"].isin(unique_match_indices)
+        ].copy()
 
     if not matched.empty:
-        notes_by_index = matched.set_index("_result_index")["notes"].fillna("").astype(str).str.strip()
-        result.loc[result.index.intersection(notes_by_index.index), "known_data_quality_exception"] = True
-        result.loc[result.index.intersection(notes_by_index.index), "data_quality_exception_notes"] = notes_by_index
-        result.loc[result.index.intersection(notes_by_index.index), "exception_resolution"] = "skipped_but_flagged"
-        result.loc[result.index.intersection(notes_by_index.index), "status"] = "skipped"
-        result.loc[result.index.intersection(notes_by_index.index), "reason"] = "reviewed_source_data_exception"
+        matched_metadata = matched.set_index("_result_index")
+        matched_indices = result.index.intersection(matched_metadata.index)
+        result.loc[matched_indices, "known_data_quality_exception"] = True
+        result.loc[matched_indices, "data_quality_exception_notes"] = (
+            matched_metadata.loc[matched_indices, "notes"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        result.loc[matched_indices, "exception_resolution"] = (
+            "confirmed_issue_annotated"
+        )
+        result.loc[matched_indices, "exception_id"] = (
+            matched_metadata.loc[matched_indices, "exception_id"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        result.loc[matched_indices, "exception_review_status"] = (
+            matched_metadata.loc[matched_indices, "review_status"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        result.loc[matched_indices, "exception_issue_class"] = (
+            matched_metadata.loc[matched_indices, "issue_class"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
     return result
 
 
@@ -1983,27 +2087,71 @@ def summarise_failed_anchor_raw_child_context_values(context_values: pd.DataFram
 
 
 def summarise_source_parent_anchors(detail_df: pd.DataFrame) -> pd.DataFrame:
-    """Summarise explicit anchor statuses without treating zero checks as a pass."""
+    """Summarise numerical results and review annotations separately."""
     columns = ["validation_axis", "comparison_scope", "source_system"]
+    output_columns = columns + [
+        "eligible", "passed", "failed", "skipped",
+        "confirmed_issue_failed", "unconfirmed_failed",
+        "source_non_additivity_observed", "status",
+    ]
     if detail_df.empty:
-        return pd.DataFrame(columns=columns + ["eligible", "passed", "failed", "skipped", "status"])
-    summary = detail_df.groupby(columns + ["status"], dropna=False).size().unstack(fill_value=0)
+        return pd.DataFrame(columns=output_columns)
+
+    working = detail_df.copy()
+    status_values = working["status"].fillna("").astype(str)
+
+    def _truthy_column(column: str) -> pd.Series:
+        if column not in working.columns:
+            return pd.Series(False, index=working.index)
+        return (
+            working[column]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+
+    confirmed_issue = _truthy_column("known_data_quality_exception")
+    source_observation = _truthy_column("source_non_additivity_observed")
+    working["_confirmed_issue_failed"] = status_values.eq("failed") & confirmed_issue
+    working["_unconfirmed_failed"] = status_values.eq("failed") & ~confirmed_issue
+    working["_source_non_additivity_observed"] = source_observation
+
+    summary = (
+        working.groupby(columns + ["status"], dropna=False)
+        .size()
+        .unstack(fill_value=0)
+    )
     for status in ["passed", "failed", "skipped"]:
         if status not in summary.columns:
             summary[status] = 0
     summary = summary.reset_index()
+    review_counts = (
+        working.groupby(columns, dropna=False)
+        .agg(
+            confirmed_issue_failed=("_confirmed_issue_failed", "sum"),
+            unconfirmed_failed=("_unconfirmed_failed", "sum"),
+            source_non_additivity_observed=(
+                "_source_non_additivity_observed",
+                "sum",
+            ),
+        )
+        .reset_index()
+    )
+    summary = summary.merge(review_counts, on=columns, how="left")
     summary["eligible"] = summary["passed"] + summary["failed"]
     summary["status"] = summary.apply(
         lambda row: "failed" if row["failed"] else "passed" if row["eligible"] else "skipped",
         axis=1,
     )
-    return summary[columns + ["eligible", "passed", "failed", "skipped", "status"]]
+    return summary[output_columns]
 
 
 def select_source_parent_anchor_findings(detail_df: pd.DataFrame) -> pd.DataFrame:
     """Return the compact reviewer-facing subset of the full anchor audit.
 
-    Keep actionable failures, source-inconsistency flags, and reviewed
+    Keep actionable failures, source-issue candidates, and reviewed
     data-quality exceptions. The pipeline stores the complete frame separately
     as a compressed audit artifact.
     """
@@ -2024,9 +2172,21 @@ def select_source_parent_anchor_findings(detail_df: pd.DataFrame) -> pd.DataFram
     else:
         reviewed_exception = pd.Series(False, index=detail_df.index)
 
+    if "source_non_additivity_observed" in detail_df.columns:
+        source_issue_candidate = (
+            detail_df["source_non_additivity_observed"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+    else:
+        source_issue_candidate = pd.Series(False, index=detail_df.index)
+
     keep = (
         status.eq("failed")
-        | reason.eq("source_internal_recursive_sum_inconsistency")
+        | source_issue_candidate
         | reviewed_exception
     )
     return detail_df.loc[keep].copy()

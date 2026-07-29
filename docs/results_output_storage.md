@@ -18,13 +18,17 @@ are unchanged, and `pandas.read_csv()` reads them directly:
 The anchor validator has two detail outputs:
 
 - `results/tree_structure/source_parent_anchor_validation.csv` is the primary reviewer and
-  dashboard view. It contains failures, `source_internal_recursive_sum_inconsistency` rows, and
-  reviewed data-quality exceptions.
+  dashboard view. It contains numerical failures, rows with
+  `source_non_additivity_observed = true`, and exact user-confirmed source
+  issues. Automatic source observations and confirmed issues annotate the
+  original numerical result; neither changes `status` or `reason`.
 - `results/tree_structure/source_parent_anchor_validation_full.csv.gz` retains the complete audit,
   including routine passes and structural skips.
 
 `source_parent_anchor_validation_summary.csv` is always calculated from the complete audit before
-the compact findings view is selected.
+the compact findings view is selected. It reports total numerical failures,
+confirmed-issue failures, unconfirmed failures, and source-non-additivity
+observations separately.
 
 ## Compatibility boundary
 

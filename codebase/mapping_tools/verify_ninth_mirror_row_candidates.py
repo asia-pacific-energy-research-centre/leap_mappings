@@ -1,6 +1,6 @@
 #%%
 """
-Offline verification for curating source_mismatch_allowed exception rows.
+Offline verification for proposing exact source-issue review candidates.
 
 Background: the anchor validator (source_parent_anchor_validation.py) flags
 rows where NINTH's own reported total for a (sector, fuel) combination
@@ -16,7 +16,9 @@ mirror-row-gap memory). This script is deliberately NOT automatic detection
 embedded in the validator -- it is an offline, human-reviewed check: a human
 reads its confirmed/not-confirmed split before anything is written to the
 exception workbook, so its false positives get caught before they reach a
-shared file.
+shared file. A raw-source confirmation produced here is still evidence for a
+user to review; it does not prove that the mapping is correct or automatically
+confirm an anchor exception.
 
 Two independent single-axis checks, run against raw NINTH data only
 (data/merged_file_energy_ALL_20251106.csv -- never the mapped/converted
@@ -61,9 +63,11 @@ Writes verify_product_confirmed.csv / verify_product_not_confirmed.csv /
 verify_product_sanity_mismatches.csv and verify_flow_confirmed.csv /
 verify_flow_not_confirmed.csv to --out-dir. Review the confirmed CSVs before
 writing them into config/mapping_issue_exception_sets.xlsx's
-source_mismatch_allowed sheet (schema: enabled, source_system,
-validation_axis, parent_code, other_axis_value, economy, parent_value,
-notes) -- see the handoff doc for the exact write-up procedure.
+source_mismatch_allowed sheet. Operational rows require:
+enabled, review_status, exception_id, issue_class, source_system,
+validation_axis, parent_code, other_axis_value, economy, scenario, year,
+parent_value, and notes. The validator matches that exact source context and
+annotates the failure without changing its status or reason.
 """
 
 #%%

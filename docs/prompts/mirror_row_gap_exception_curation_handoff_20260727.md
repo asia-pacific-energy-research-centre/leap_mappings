@@ -1,7 +1,16 @@
-# Handoff: curating source_mismatch_allowed exceptions — paused 2026-07-27
+# Handoff: exact source-issue curation — updated 2026-07-29
 
-**Status: paused, not abandoned.** The mechanism this work depends on is done, tested, and safely
-committed to master. What's paused is populating it with fresh, currently-valid exception rows —
+> The investigation history below explains why automatic confirmation was
+> rejected. The maintained workflow now uses exact scenario/year contexts,
+> explicit user confirmation, and annotation without changing numerical
+> status or reason. Use the updated operational steps near the end together
+> with `docs/hierarchy_subtotal_contract.md`, “Reviewing and recording an
+> issue.”
+
+**Status: partial.** Exact non-PRC confirmations are migrated and PRC review is
+pending. The dashboard compatibility change and a stable full anchor rerun
+remain outstanding. The original 2026-07-27 status was “paused, not
+abandoned”; what was paused was populating it with fresh, currently-valid exception rows —
 blocked by unrelated, in-progress concurrent work on this same repo (see "Why this is paused"
 below). Read this in full before resuming; skipping to the "how to resume" steps risks re-deriving
 context that's already here, or resuming before the actual blocker has cleared.
@@ -37,7 +46,13 @@ silently embedded in validator logic with no one checking its output.
    falling back to a flat equal-share split because its basis lookup excluded ESTO's `is_subtotal`
    rows — recovered the real basis from the raw ESTO source, scoped narrowly. Resolved the original
    6-row `14.03 Manufacturing` coal-products residual that kicked off this whole investigation.
-2. **The exception mechanism** (`cf740de`):
+2. **The historical exception mechanism** (`cf740de`; superseded operationally):
+   - The broad-key schema and one-percent `parent_value` matching described
+     immediately below are historical. Current operational rows require
+     `enabled, review_status, exception_id, issue_class, source_system,
+     validation_axis, parent_code, other_axis_value, economy, scenario, year,
+     parent_value, notes`. Matching is exact apart from float-serialization
+     noise; blanks, wildcards, and duplicates fail closed.
    - `config/mapping_issue_exception_sets.xlsx` gained a `source_mismatch_allowed` sheet:
      `enabled | source_system | validation_axis | parent_code | other_axis_value | economy |
      parent_value | notes`, same `*`-prefix-matching convention as this repo's 13 other exception
@@ -119,11 +134,15 @@ The right move is to wait.
    routine `0.0` placeholder rows as contradicting evidence, and "confirmed" all 956 candidates
    instead of the real ~455). Don't skip this step because the script has been used before; rerun
    it against fresh data and re-verify.
-5. **Write the confirmed rows into `config/mapping_issue_exception_sets.xlsx`'s
+5. **Historical instruction — do not use this broad schema:** write the confirmed rows into `config/mapping_issue_exception_sets.xlsx`'s
    `source_mismatch_allowed` sheet.** Schema: `enabled, source_system, validation_axis, parent_code,
    other_axis_value, economy, parent_value, notes`. The stale 2026-07-24 rows (455, already in
    master) can be left in place (harmless — they just won't match) or replaced; either is fine,
    note whichever choice is made in the commit message.
+
+   **Current instruction:** after user review, write only exact contexts using
+   the schema listed in item 2. Preserve older or insufficiently scoped
+   evidence in `source_mismatch_history`; do not leave broad rows operational.
 6. **Verify end-to-end** before committing:
    ```python
    from codebase.mapping_tools.source_parent_anchor_validation import _augment_with_data_quality_exceptions

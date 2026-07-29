@@ -1,5 +1,15 @@
 # Design: propagating a data-reliability flag through diagnostics, and consolidating the diagnostic-file sprawl
 
+> **Implementation update, 2026-07-29:** The anchor-validator part of this
+> design now follows augment-don't-hide semantics. Automatic raw-source
+> evidence is exposed as `source_non_additivity_observed`; exact
+> user-confirmed issues carry exception metadata; neither changes the
+> numerical `status` or `reason`. The source issue register now requires exact
+> economy/scenario/year context and no longer uses one-percent value matching.
+> Dashboard migration and broader diagnostic-file consolidation remain
+> pending. References below to what the anchor validator does “today” describe
+> the 2026-07-23 baseline, not current behavior.
+
 **Status: design only. No code changed as part of this document.** Written 2026-07-23, in
 `leap_mappings/.claude/worktrees/anchor-validator-fixes-ee04bc`. Read this in full before
 implementing anything it recommends — several of its conclusions only make sense in light of a

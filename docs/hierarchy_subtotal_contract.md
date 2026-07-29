@@ -8,7 +8,74 @@
 
 **Owner:** `leap_mappings`
 
-## Decision
+## In plain language
+
+The system answers three separate questions:
+
+1. **Is this node structurally a parent?** The declared hierarchy answers this.
+2. **Do its values add up in this particular context?** The numerical
+   validator answers this for one economy, scenario, year, and opposite-axis
+   node.
+3. **Has a person reviewed and confirmed the issue?** The exception register
+   records this decision.
+
+These answers must not be substituted for one another. In particular, seeing
+raw-source non-additivity does not prove that a mapping is correct or that the
+source issue caused a mapped-anchor failure.
+
+```mermaid
+flowchart LR
+    CHECK["Identify a numerical issue"]
+    EVIDENCE["Inspect raw-source and mapping evidence"]
+    REVIEW["User reviews the exact context"]
+    DECISION{"Confirmed source issue?"}
+    CONFIRMED["Record exact confirmed exception"]
+    OPEN["Keep as mapping or unresolved issue"]
+    ANNOTATE["Annotate future failures"]
+
+    CHECK --> EVIDENCE --> REVIEW --> DECISION
+    DECISION -->|"Yes"| CONFIRMED --> ANNOTATE
+    DECISION -->|"No or not yet"| OPEN
+```
+
+Detection code may propose an issue, but it never confirms one automatically.
+The anchor output uses `source_non_additivity_observed` for independent
+raw-source evidence. Only an enabled exception with
+`review_status = confirmed` adds confirmation metadata.
+
+Confirmation does not change the original numerical `status` or `reason`. A
+confirmed failure therefore remains visible as `failed`, with its
+`exception_id`, `exception_review_status`, `exception_issue_class`, and review
+notes beside it.
+
+## Reviewing and recording an issue
+
+The active register is
+`config/mapping_issue_exception_sets.xlsx`, sheet
+`source_mismatch_allowed`. Despite the legacy sheet name, it is a confirmation
+register, not permission to ignore a failed calculation.
+
+An operational row must identify one exact raw-source context:
+
+```text
+source_system + economy + scenario + year + validation_axis
++ parent_code + other_axis_value + parent_value
+```
+
+It must also have a unique `exception_id`, a nonblank `issue_class`,
+`enabled = true`, and `review_status = confirmed`. Wildcards and approximate
+one-percent value matching are not accepted. The small numerical tolerance is
+only for float serialization noise.
+
+`comparison_scope` is intentionally absent from that key because the confirmed
+fact belongs to the raw source and can appear in more than one comparison
+scope. Duplicate operational matches fail closed rather than selecting an
+arbitrary exception.
+
+The adjacent `source_mismatch_history` sheet preserves superseded or
+insufficiently scoped review evidence. It is not read by the validator.
+
+## Structural decision
 
 A node is a structural parent when the authoritative hierarchy declares at
 least one ordinary child. A mapping-side pair is a subtotal when either mapping
@@ -87,8 +154,8 @@ The manifest records:
 - Complete active mapping pairs contain a boolean only when both nodes resolve.
   Unresolved evidence remains in the review queue.
 - `MIXED` is never a canonical boolean.
-- An additivity failure remains a failure even when it is attributable to
-  source non-additivity.
+- An additivity failure remains a failure when a source issue is confirmed in
+  the same context; confirmation does not establish causation.
 - `passed` is not used for missing or untested contexts.
 
 ## Structure-first output lifecycle
@@ -148,7 +215,7 @@ adapter entry, not another conditional inside the structural classifier.
 | `infer_subtotal_labels` | Generated trees, rollup-sheet `Subtotal`, workbook rows | Mixed tree and reviewed/current values | First-value behaviour hid cross-sheet conflicts; hierarchy and rollup semantics could mix | Legacy diagnosis only; the contract pair table is canonical |
 | Stage 0 `_compute_leap_subtotals` and subtotal previews | Non-zero source rows and workbook rows | Observed paths/flags | Observation and mapping coverage could erase declared parents | Mapping QA consumes contract pair status |
 | Recursive-sum validators | Economy/scenario/year/fixed opposite axis | Parent equals child sum | Numerically useful but not a definition of parenthood | Retained as separate value-conformance evidence |
-| `_build_source_inconsistency_lookup` and source-parent anchors | Exact source contexts and mapped coverage | Failure attribution | Some paths reclassified or skipped downstream failures | Retain failure and add attribution; never convert failure to pass |
+| `_build_source_inconsistency_lookup` and source-parent anchors | Exact source contexts and mapped coverage | Failure attribution | Earlier paths could reclassify or skip downstream failures | Automatic evidence is an observation only; retain the numerical result and add user-confirmed review metadata separately |
 | Common ESTO tree and `_rollup_graph_data` | Derived comparison rows and rollup rules | Mixed ordinary tree and declared boundaries | Comparison replacements risked appearing as raw hierarchy | Relationship types are separate; raw source trees are not rewritten |
 | Initialisation source subtotal filters | Period-specific value preparation | Source flags | Valid contextual filters, not structural authority | Remain local value filters; contract status is attached separately |
 | Dashboard Mapping diagnostics | Mapping-owned trees, rollup catalogue, validations | Read-only checking surface | Lacked strict structural-build identity | Loader fails closed and exposes structure and additivity separately |
@@ -214,6 +281,24 @@ pair parenthood.
 Initialisation may keep named, period-specific source flags in value filters,
 but must keep them separate from structural status. Dashboard diagnostics must
 present structural and numerical conformance as distinct fields.
+
+The anchor summary exposes the review split without redefining failure:
+
+- `failed` is the complete numerical failure count;
+- `confirmed_issue_failed` is the subset carrying an exact user confirmation;
+- `unconfirmed_failed` is the remainder;
+- `source_non_additivity_observed` counts automatic raw-source observations.
+
+These are review categories, not proof that the mappings are correct.
+Dashboard warning policy must not silently reinterpret a confirmed source
+issue as a passing mapping.
+
+The dashboard diagnostics implementation that predates this schema selects
+reviewed exceptions only when `status = skipped` and uses “skipped but
+flagged” wording. It must instead select the explicit confirmation fields
+independently of numerical status, keep confirmed failures in numerical
+totals, and apply economy filtering consistently to tables and summary cards.
+The full mapping-tree explorer does not consume anchor-validation artifacts.
 
 The selected 2026-07-28 Common ESTO run contributes 168,509 exact-context
 diagnostics: 157,540 passed and 10,969 failed. These checks retain source-system

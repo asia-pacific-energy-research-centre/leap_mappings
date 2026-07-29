@@ -130,14 +130,15 @@ def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_cover
     assert row["frontier_row_count"] == 2
 
 
-def test_frontier_leaf_with_broken_other_axis_rollup_is_source_internal_not_failed() -> None:
+def test_frontier_leaf_with_broken_other_axis_rollup_remains_failed_candidate() -> None:
     """A frontier leaf whose OTHER axis rollup contradicts itself is flagged
-    distinctly, not "failed" -- mirrors the real NINTH case: sector
+    beside, rather than instead of, its numerical failure. This mirrors the
+    real NINTH case: sector
     "09_06_gas_processing_plants" declares its own "08_02_lng" subfuel as 0,
     while its own more granular sub-sector "09_06_02_liquefaction" reports
-    the real +4218.81 for the same subfuel. No tree or mapping change in
-    this repo can reconcile a raw file disagreeing with itself, so the
-    "08_gas" product-axis parent must not report an ordinary "failed" here.
+    the real +4218.81 for the same subfuel. The raw-source observation does
+    not prove that the mapped frontier is correct, so the anchor result stays
+    failed until a user reviews the exact context.
     """
     tree = pd.DataFrame([
         {"dataset": "ninth", "axis": "sector", "code": "Sector", "parent_code": ""},
@@ -181,8 +182,10 @@ def test_frontier_leaf_with_broken_other_axis_rollup_is_source_internal_not_fail
         (product_rows["parent_code"] == "08_gas") & (product_rows["other_axis_value"] == "Sector")
     ].iloc[0]
 
-    assert row["status"] == "skipped"
-    assert row["reason"] == "source_internal_recursive_sum_inconsistency"
+    assert row["status"] == "failed"
+    assert row["reason"] == "difference_exceeds_tolerance"
+    assert bool(row["source_non_additivity_observed"]) is True
+    assert row["source_non_additivity_observation_reason"] == "raw_other_axis_non_additivity_observed"
 
 
 def test_source_internal_check_is_not_ninth_specific() -> None:
@@ -232,8 +235,10 @@ def test_source_internal_check_is_not_ninth_specific() -> None:
         (product_rows["parent_code"] == "08_gas") & (product_rows["other_axis_value"] == "Sector")
     ].iloc[0]
 
-    assert row["status"] == "skipped"
-    assert row["reason"] == "source_internal_recursive_sum_inconsistency"
+    assert row["status"] == "failed"
+    assert row["reason"] == "difference_exceeds_tolerance"
+    assert bool(row["source_non_additivity_observed"]) is True
+    assert row["source_non_additivity_observation_reason"] == "raw_other_axis_non_additivity_observed"
 
 
 def test_registered_but_dataless_child_falls_back_to_raw_value() -> None:
@@ -389,14 +394,46 @@ def test_zero_eligible_summary_is_not_passed() -> None:
     assert summary.empty
 
 
+def test_summary_separates_confirmed_and_unconfirmed_numerical_failures() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "validation_axis": "product",
+                "comparison_scope": "esto_leap_ninth",
+                "source_system": "NINTH",
+                "status": "failed",
+                "known_data_quality_exception": True,
+                "source_non_additivity_observed": True,
+            },
+            {
+                "validation_axis": "product",
+                "comparison_scope": "esto_leap_ninth",
+                "source_system": "NINTH",
+                "status": "failed",
+                "known_data_quality_exception": False,
+                "source_non_additivity_observed": False,
+            },
+        ]
+    )
+
+    summary = summarise_source_parent_anchors(detail)
+    row = summary.iloc[0]
+
+    assert row["failed"] == 2
+    assert row["confirmed_issue_failed"] == 1
+    assert row["unconfirmed_failed"] == 1
+    assert row["source_non_additivity_observed"] == 1
+    assert row["status"] == "failed"
+
+
 def test_select_source_parent_anchor_findings_keeps_only_review_rows() -> None:
     detail = pd.DataFrame(
         [
-            {"status": "passed", "reason": "within_tolerance", "known_data_quality_exception": False},
-            {"status": "skipped", "reason": "no_anchorable_common_esto_boundary", "known_data_quality_exception": False},
-            {"status": "failed", "reason": "difference_exceeds_tolerance", "known_data_quality_exception": False},
-            {"status": "skipped", "reason": "source_internal_recursive_sum_inconsistency", "known_data_quality_exception": False},
-            {"status": "skipped", "reason": "reviewed", "known_data_quality_exception": True},
+            {"status": "passed", "reason": "within_tolerance", "known_data_quality_exception": False, "source_non_additivity_observed": False},
+            {"status": "skipped", "reason": "no_anchorable_common_esto_boundary", "known_data_quality_exception": False, "source_non_additivity_observed": False},
+            {"status": "failed", "reason": "difference_exceeds_tolerance", "known_data_quality_exception": False, "source_non_additivity_observed": False},
+            {"status": "failed", "reason": "difference_exceeds_tolerance", "known_data_quality_exception": False, "source_non_additivity_observed": True},
+            {"status": "failed", "reason": "parent_child_source_inconsistency", "known_data_quality_exception": True, "source_non_additivity_observed": False},
         ]
     )
 
@@ -1053,11 +1090,16 @@ def _write_data_quality_exception_workbook(tmp_path, **overrides) -> "Path":
     workbook_path = Path(tmp_path) / "exceptions.xlsx"
     row = {
         "enabled": True,
+        "review_status": "confirmed",
+        "exception_id": "SRC-NINTH-PRODUCT-TEST-001",
+        "issue_class": "source_non_additivity",
         "source_system": "NINTH",
         "validation_axis": "product",
         "parent_code": "16_others",
         "other_axis_value": "09_total_transformation_sector/09_01_electricity_plants",
-        "economy": "",
+        "economy": "20USA",
+        "scenario": "reference",
+        "year": 2070,
         "parent_value": "-12.37876",
         "notes": "known NINTH self-inconsistency, reviewed 2026-07-24",
     }
@@ -1072,6 +1114,11 @@ def _data_quality_candidate_rows() -> pd.DataFrame:
         "validation_axis": "product",
         "parent_code": "16_others",
         "other_axis_value": "09_total_transformation_sector/09_01_electricity_plants",
+        "economy": "20USA",
+        "scenario": "reference",
+        "year": 2070,
+        "reason": "parent_child_source_inconsistency",
+        "pair_is_subtotal": True,
     }
     return pd.DataFrame([
         {**base, "status": "failed", "parent_value": -12.37876},
@@ -1083,17 +1130,21 @@ def _data_quality_candidate_rows() -> pd.DataFrame:
     ])
 
 
-def test_data_quality_exception_skips_matching_failed_row_but_retains_flag(tmp_path) -> None:
+def test_data_quality_exception_annotates_matching_failure_without_hiding_it(tmp_path) -> None:
     workbook_path = _write_data_quality_exception_workbook(tmp_path)
     result = _data_quality_candidate_rows()
 
     augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
 
-    assert augmented["status"].tolist() == ["skipped", "failed", "passed"]
-    assert augmented.iloc[0]["reason"] == "reviewed_source_data_exception"
-    assert augmented.iloc[0]["exception_resolution"] == "skipped_but_flagged"
+    assert augmented["status"].tolist() == ["failed", "failed", "passed"]
+    assert augmented.iloc[0]["reason"] == "parent_child_source_inconsistency"
+    assert augmented.iloc[0]["exception_resolution"] == "confirmed_issue_annotated"
+    assert augmented.iloc[0]["exception_id"] == "SRC-NINTH-PRODUCT-TEST-001"
+    assert augmented.iloc[0]["exception_review_status"] == "confirmed"
+    assert augmented.iloc[0]["exception_issue_class"] == "source_non_additivity"
     assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
     assert "known NINTH self-inconsistency" in augmented.iloc[0]["data_quality_exception_notes"]
+    assert bool(augmented.iloc[0]["pair_is_subtotal"]) is True
 
 
 def test_data_quality_exception_does_not_match_a_different_parent_value(tmp_path) -> None:
@@ -1106,6 +1157,66 @@ def test_data_quality_exception_does_not_match_a_different_parent_value(tmp_path
 
     assert bool(augmented.iloc[1]["known_data_quality_exception"]) is False
     assert augmented.iloc[1]["data_quality_exception_notes"] == ""
+
+
+def test_data_quality_exception_does_not_use_old_one_percent_value_tolerance(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        economy="05PRC",
+        parent_value="-430.867",
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+    result.loc[result.index[0], "economy"] = "05PRC"
+    result.loc[result.index[0], "parent_value"] = -428.279
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+    assert augmented.iloc[0]["status"] == "failed"
+    assert augmented.iloc[0]["reason"] == "parent_child_source_inconsistency"
+
+
+def test_data_quality_exception_requires_exact_scenario_and_year(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        scenario="reference",
+        year=2070,
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+    result.loc[result.index[0], "scenario"] = "target"
+    result.loc[result.index[0], "year"] = 2060
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+    assert augmented.iloc[0]["status"] == "failed"
+
+
+def test_duplicate_confirmations_fail_closed(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(tmp_path)
+    duplicate_rows = pd.read_excel(workbook_path)
+    duplicate_rows = pd.concat([duplicate_rows, duplicate_rows], ignore_index=True)
+    duplicate_rows.loc[1, "exception_id"] = "SRC-NINTH-PRODUCT-TEST-002"
+    duplicate_rows.to_excel(
+        workbook_path,
+        sheet_name=DATA_QUALITY_EXCEPTION_SHEET,
+        index=False,
+    )
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+    assert augmented.iloc[0]["status"] == "failed"
 
 
 def test_data_quality_exception_never_checks_already_passing_rows(tmp_path) -> None:
@@ -1122,6 +1233,53 @@ def test_data_quality_exception_disabled_row_never_matches(tmp_path) -> None:
     result = _data_quality_candidate_rows()
 
     augmented = _augment_with_data_quality_exceptions(result, workbook_path=workbook_path)
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+
+
+def test_data_quality_exception_requires_confirmed_review_status(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        review_status="pending_review",
+    )
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+    assert augmented.iloc[0]["status"] == "failed"
+
+
+def test_data_quality_exception_requires_nonblank_identity_fields(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        exception_id="",
+    )
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
+    assert augmented.iloc[0]["status"] == "failed"
+
+
+def test_data_quality_exception_rejects_wildcard_scope(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        other_axis_value="09_total_transformation_sector*",
+    )
+    result = _data_quality_candidate_rows()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
 
     assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
 

@@ -116,14 +116,25 @@ This workbook is the manual source of truth for reviewed QA exceptions. Workflow
 | `crosswalk_allowed` | Reviewed crosswalk target conflicts that are acceptable |
 | `subtotal_mismatch_allowed` | Reviewed subtotal mismatch diagnostics that are acceptable |
 | `missing_common_map_ignored` | ESTO flows intentionally excluded from missing common-map diagnostics |
+| `source_mismatch_allowed` | Exact user-confirmed raw-source issues that annotate anchor failures without changing their numerical status or reason |
+| `source_mismatch_history` | Preserved legacy source-issue review evidence; never read operationally |
 
-Each sheet uses only:
+Most exception sheets use:
 
 - `enabled`
 - the relevant QA output match columns
 - `notes`
 
 Rows with `enabled` set to true are used for matching. Blank match cells are ignored, so a row can match narrowly or broadly. In `missing_common_map_ignored`, match values ending in `*` are treated as prefixes, for example `18.*`.
+
+`source_mismatch_allowed` deliberately does **not** use that broad matching
+contract. An operational row requires `enabled = true`,
+`review_status = confirmed`, a unique `exception_id`, a nonblank
+`issue_class`, and an exact economy/scenario/year/axis/parent/opposite-axis
+context. `parent_value` matches only across negligible float-serialization
+noise. Blank context fields, duplicate matches, and wildcards fail closed.
+Code may generate candidates, but a user must confirm a row before it becomes
+operational.
 
 Each base mapping sheet records source-to-target relationships. The aim is for each row to stay simple: one source row maps to one target row where this is possible. Extra comparison logic belongs in rollup or adjustment sheets.
 
