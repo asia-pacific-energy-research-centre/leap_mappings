@@ -30,12 +30,12 @@ FUEL_ROLE_LABELS = {
     "Output Fuels",
 }
 LEGACY_BRANCH_SUFFIX = "_do not use"
-LEAP_PAIR_REGISTRY_VERSION = 3
+LEAP_PAIR_REGISTRY_VERSION = 4
 FIXED_BALANCE_FLOWS = {
     "Production",
     "Imports",
     "Exports",
-    "From Stocks",
+    "Stock Changes",
     "Total Primary Supply",
     "Total Transformation",
     "Statistical Differences",

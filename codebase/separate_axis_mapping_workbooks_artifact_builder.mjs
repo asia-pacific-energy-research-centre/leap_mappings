@@ -706,7 +706,11 @@ if (promoteMaster) {
 
   const promotionTempPath = `${canonicalMasterPath}.separate_axis_refresh.tmp`;
   await fs.copyFile(generatedMasterPath, promotionTempPath);
-  await fs.rename(promotionTempPath, canonicalMasterPath);
+  // Node's rename cannot replace an existing destination on Windows (EPERM).
+  // A verified backup already exists above, and the hash/reopen checks below
+  // protect the promoted copy, so overwrite explicitly and remove the temp.
+  await fs.copyFile(promotionTempPath, canonicalMasterPath);
+  await fs.unlink(promotionTempPath);
 
   const promotedInput = await FileBlob.load(canonicalMasterPath);
   const promotedWorkbook = await SpreadsheetFile.importXlsx(promotedInput);
