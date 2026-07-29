@@ -4,6 +4,14 @@
 > direction. The prototype may generate review workbooks and compatibility
 > views, but it must not edit the canonical workbook or change production
 > consumers.
+>
+> **Current checkpoint:** The prototype is split into an editable
+> `config/outlook_mappings_single_axis_prototype.xlsx`, a generated do-not-edit
+> `config/outlook_mappings_key_pairs_generated_prototype.xlsx`, and a generated
+> do-not-edit `config/outlook_mappings_master_generated_prototype.xlsx`. The
+> last workbook preserves the canonical sheet interface and passes the current
+> loader and Stage 1 without a consumer-code change. Semantic acceptance and
+> direct compilation from the editable workbook remain open.
 
 ## Objective
 

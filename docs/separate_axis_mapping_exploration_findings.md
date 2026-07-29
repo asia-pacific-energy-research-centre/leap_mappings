@@ -1,6 +1,6 @@
 # Separate-axis mapping contract exploration
 
-**Status:** paused at two required human decisions
+**Status:** isolated split-workbook prototype built; semantic review pending
 
 **Exploration branch:** `codex/separate-axis-mapping-exploration`
 
@@ -67,17 +67,13 @@ automatically.
 
 ### Flow mappings
 
-One reviewed row maps a source flow or branch to a target flow. Minimum fields:
+One reviewed row maps a source flow or branch to a target flow. The editable
+workbook needs only:
 
 ```text
-mapping_name
-comparison_scope
-source_system
 source_flow
-target_system
 target_flow
-relationship_semantics
-notes
+esto_dataset_scope  # only when the target is ESTO
 ```
 
 ### Product mappings
@@ -86,15 +82,14 @@ One reviewed row maps a source product or fuel to a target product. Minimum
 fields:
 
 ```text
-mapping_name
-comparison_scope
-source_system
 source_product
-target_system
 target_product
-relationship_semantics
-notes
+esto_dataset_scope  # only when the target is ESTO
 ```
+
+The source and target systems are expressed by the six sheet names rather than
+repeated on every row. Cardinality, component IDs, QA status, authority, and
+notes belong in generated diagnostics, not in the human editing surface.
 
 The unresolved evidence shows that a globally context-free product mapping is
 not sufficient for every current relationship. The decision is whether to:
@@ -417,8 +412,9 @@ rollup expansion and source-edge enumeration before enabling routine refresh.
 
 Recorded on 2026-07-29:
 
-1. **Park the proposal.** Treat separate-axis mappings as a suggestion for
-   future development, not as an active implementation task.
+1. **Future-development proposal.** The idea was initially parked for
+   handover, then resumed only as an isolated prototype. It is still not an
+   active production migration.
 2. **Axes are relations, not functions.** Sector/flow and fuel/product mappings
    may each be one-to-many or many-to-one between datasets. The design must not
    assume one global target per sector or fuel.
@@ -454,19 +450,27 @@ under another. The 46 detected product-context groups should be used to decide
 whether target-pair validity is sufficient to express that condition or
 whether explicit flow context is still needed.
 
-### Accepted pair universe clarification
+### Generated pair-registry clarification
 
-The proposed registry is not the Cartesian product of every sector with every
-fuel. It is a dataset-specific set of exact accepted key pairs:
+For ESTO, ESTO Extended, and Ninth, the generated audit workbook can
+materialise the Cartesian combination of axis keys discovered in each
+dataset. This is useful because every possible combination can then be labelled
+explicitly rather than disappearing from the audit:
 
-- exact flow/product pairs structurally present in ESTO, plus any reviewed
-  reserved ESTO pairs;
-- exact most-specific sector/fuel pairs structurally present in Ninth, plus any
-  reviewed reserved projection pairs; and
-- exact LEAP branch/fuel pairs evidenced by models/templates/exports or retained
-  as reviewed accepted pairs.
+- `exists_in_dataset`;
+- boundary or future activity;
+- `eligible_for_compilation`;
+- subtotal status; and
+- a generated registry status.
 
-Each accepted pair then carries evidence fields such as:
+The Cartesian registry is evidence, not a mapping and not an accepted set.
+Compilation still requires the relevant evidence gate or a reviewed reserved
+pair. LEAP is different: the current prototype retains exact branch/fuel pairs
+only. It deliberately does not manufacture a LEAP Cartesian product, and its
+temporary authority must be replaced with the instructed parser over the full
+LEAP branch set.
+
+Exact accepted pairs can additionally retain evidence fields such as:
 
 - `historical_boundary_active`;
 - `projection_future_active`;
@@ -474,13 +478,9 @@ Each accepted pair then carries evidence fields such as:
 - supporting scenarios and economies; and
 - generated, reviewed-reserved, or rejected authority.
 
-This keeps zero-only or future pairs available without pretending they are
-currently active. It also gives the compiler a direct membership test that can
-reject unsupported products of many-to-many axes. For ESTO and Ninth, the
-structural pair universe can largely be generated from exact source rows. LEAP
-remains harder because a template can prove branch structure without proving
-every branch/fuel combination; reviewed source pairs may be needed as bootstrap
-authority.
+This keeps zero-only, absent, or future combinations visible without
+pretending they are currently active. It also gives the compiler a direct
+membership test that can reject unsupported products of broad axes.
 
 ### Feasibility against the original problems
 
@@ -655,6 +655,97 @@ The remaining question is semantic, not technical. A final design needs to
 reduce or explain the eight within-axis many-to-many components and determine
 why the temporal compiler misses 3,578 accepted relationships. Until then, the
 workbook is an effective audit prototype but not a replacement mapping source.
+
+## Three-workbook split prototype
+
+The all-in-one workbook was split on 2026-07-29 so human-maintained input is
+not mixed with generated evidence or compatibility output.
+
+### 1. User-maintained axes
+
+`config/outlook_mappings_single_axis_prototype.xlsx`
+
+This is the only prototype workbook people are expected to edit. It contains a
+README and six mapping sheets:
+
+| Sheet | Editable columns | Rows |
+|---|---|---:|
+| `leap_sector_to_esto` | `leap_sector`, `esto_flow`, `esto_dataset_scope` | 98 |
+| `leap_fuel_to_esto` | `leap_fuel`, `esto_product`, `esto_dataset_scope` | 107 |
+| `leap_sector_to_ninth` | `leap_sector`, `ninth_sector` | 135 |
+| `leap_fuel_to_ninth` | `leap_fuel`, `ninth_fuel` | 75 |
+| `ninth_sector_to_esto` | `ninth_sector`, `esto_flow`, `esto_dataset_scope` | 94 |
+| `ninth_fuel_to_esto` | `ninth_fuel`, `esto_product`, `esto_dataset_scope` | 76 |
+
+The total maintained surface is 585 relationship rows. Generated component
+IDs, cardinality labels, evidence counts, subtotal flags, and QA statuses are
+not stored here.
+
+### 2. Generated key-pair evidence
+
+`config/outlook_mappings_key_pairs_generated_prototype.xlsx`
+
+This workbook is labelled **GENERATED — DO NOT EDIT**. It contains:
+
+| Sheet | Rows | Interpretation |
+|---|---:|---|
+| `LEAP key pairs` | 2,834 | temporary exact-pair bootstrap from current mappings |
+| `ESTO key pairs` | 9,396 | Cartesian discovered keys plus final-year evidence |
+| `ESTO Extended key pairs` | 17,901 | Cartesian discovered keys plus final-year evidence |
+| `Ninth key pairs` | 18,980 | Cartesian discovered keys plus post-boundary evidence |
+
+The ESTO and Ninth sheets deliberately retain combinations that are not
+observed. `exists_in_dataset` and the temporal columns distinguish them from
+eligible compiler pairs. LEAP remains exact-pair-only until the branch parser
+is supplied.
+
+### 3. Generated compatibility master
+
+`config/outlook_mappings_master_generated_prototype.xlsx`
+
+This workbook is the proposed no-consumer-code-change boundary:
+
+- all 14 canonical sheet names remain in the same order;
+- the 11 non-pair sheets have identical cell contents to the canonical master;
+- the three pair sheets retain their exact canonical headers;
+- only those three sheet bodies are generated;
+- all generated rows are visible and Boolean fields retain checkbox
+  presentation; and
+- the canonical `config/outlook_mappings_master.xlsx` remains untouched.
+
+The three generated pair sheets contain 5,141 rows in total. A strict
+compatibility validation read them through the current loader with zero
+incomplete rows and ran the current Stage 1 transformation without a code
+change:
+
+| Check | Result |
+|---|---:|
+| generated active relationships | 5,141 |
+| Stage 1 rows | 10,282 |
+| ESTO override rows | 8 |
+| non-expanding rollup catalogue rows | 122 |
+
+One compatibility trap was found and handled. The canonical
+`leap_combined_esto` sheet contains two out-of-contract diagnostic formulas in
+column Z. Spreadsheet recalculation exposed their cached values to pandas as
+18 additional unnamed columns. The generated sheet is recreated from only the
+eight contract columns, so current readers still see exactly the expected
+schema.
+
+The current build is a packaging and compatibility proof, not yet the final
+refresh workflow. It bootstraps its axes from the canonical pair sheets and
+uses generated intermediate tables. A production version must read the
+user-maintained axis workbook, rebuild the pair registries from authoritative
+datasets and LEAP branches, run the semantic gates, and then atomically publish
+the compatibility master at the canonical filename. That final filename swap,
+not changes in downstream readers, is the intended migration.
+
+The reproducible prototype build is split between:
+
+- `codebase/separate_axis_mapping_split_workbooks_workflow.py`, which prepares
+  the narrow source tables and manifest; and
+- `codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`, which builds,
+  styles, renders, round-trips, and exports the three workbooks.
 
 ## Possible staged implementation plan beyond the prototype
 
