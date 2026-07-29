@@ -800,8 +800,8 @@ This workbook is the proposed no-consumer-code-change boundary:
 - the 11 non-pair sheets have identical cell contents to the canonical master;
 - the three pair sheets retain their exact canonical headers;
 - only those three sheet bodies are generated;
-- all generated rows are visible and Boolean fields retain checkbox
-  presentation; and
+- all generated rows are visible and Boolean fields use literal `TRUE` /
+  `FALSE` presentation rather than in-cell checkboxes; and
 - the canonical `config/outlook_mappings_master.xlsx` remains untouched.
 
 The three generated pair sheets contain 4,480 rows in total. A strict

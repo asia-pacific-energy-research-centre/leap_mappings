@@ -39,7 +39,13 @@ async function readCsvRows(filename) {
   const csvText = await fs.readFile(path.join(dataRoot, filename), "utf8");
   const csvWorkbook = await Workbook.fromCSV(csvText, { sheetName: "Data" });
   const used = csvWorkbook.worksheets.getItem("Data").getUsedRange();
-  return used ? used.values : [];
+  if (!used) return [];
+  return used.values.map((row, rowIndex) => row.map((value) => {
+    if (rowIndex === 0 || typeof value !== "string") return value;
+    if (value.toLowerCase() === "true") return "TRUE";
+    if (value.toLowerCase() === "false") return "FALSE";
+    return value;
+  }));
 }
 
 function addTitle(sheet, title, subtitle, columnCount) {

@@ -81,10 +81,10 @@ async function loadCsvMatrix(relativePath, sheetName) {
       return value;
     }
     if (value.toLowerCase() === "true") {
-      return true;
+      return "TRUE";
     }
     if (value.toLowerCase() === "false") {
-      return false;
+      return "FALSE";
     }
     return value;
   }));
@@ -201,9 +201,6 @@ function styleDataSheet(sheet, editable) {
       width = label.includes("status") ? 42 : 23;
     }
     used.getColumn(column).format.columnWidth = width;
-    if (booleanHeaders.has(label)) {
-      used.getColumn(column).format.horizontalAlignment = "center";
-    }
     if (label === "esto_dataset_scope" && used.rowCount > 1) {
       sheet.getRangeByIndexes(
         1,
