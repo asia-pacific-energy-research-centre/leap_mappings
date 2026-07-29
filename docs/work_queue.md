@@ -483,7 +483,13 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   normalized PJ ingestion, coarse-boundary conservation, bounded unmapped-row
   review, and Stage 3-style lineage. A real four-source Stage 3 application
   smoke run also published a passed 3,952,646-row output contract after the
-  validator registry refactor.
+  validator registry refactor. The registry-enabled
+  `synthetic_multi_dataset_acceptance_v1` run subsequently passed all twelve
+  fixture criteria plus mapped-value conservation, publishing ESTO, LEAP,
+  NINTH, and `SYNTH_BALANCE` through one unsplit coarse Common row. The fresh
+  source-parent anchor rerun also completed: 217,099 eligible checks, 209,837
+  passed, and 7,262 retained semantic failures. Implementation evidence is in
+  commits `16b4c5d`, `796cfbe`, and `49eb119`.
 - **Input needed from the user:** Select the first real additional dataset,
   provide a representative extract that includes its axis columns, economy,
   scenario, period, unit, and values, and identify someone who understands its
