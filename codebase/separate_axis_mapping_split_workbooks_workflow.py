@@ -292,6 +292,8 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
                 "product",
                 "pair_exists_in_dataset",
                 "pair_is_subtotal",
+                "temporal_evidence_status",
+                "authority_layer",
                 "source_kind",
                 "template_support_count",
                 "template_files",
@@ -306,6 +308,7 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
                 "flow": "leap_sector",
                 "product": "leap_fuel",
                 "pair_exists_in_dataset": "exists_in_dataset",
+                "temporal_evidence_status": "registry_status",
             }
         )
         .sort_values(["leap_sector", "leap_fuel"], kind="stable")
@@ -313,9 +316,6 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
     )
     leap_result["eligible_for_compilation"] = (
         leap_result["exists_in_dataset"].fillna(False).astype(bool)
-    )
-    leap_result["registry_status"] = (
-        "structurally_eligible_from_current_model_rows"
     )
     leap_result = leap_result[
         [
@@ -325,6 +325,7 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
             "eligible_for_compilation",
             "pair_is_subtotal",
             "registry_status",
+            "authority_layer",
             "source_kind",
             "template_support_count",
             "template_files",
@@ -423,9 +424,11 @@ def prepare_split_workbook_sources() -> dict[str, object]:
         "compiled_counts": compiled_counts,
         "compiled_columns": compiled_columns,
         "leap_registry_authority": (
-            "Generated from the union of all current top-level economy export "
-            "templates and the demand/power detailed model row inventories. "
-            "Source workbook fingerprints control automatic refresh."
+            "Layered authority generated from direct model-branch pairs and "
+            "the deterministic LEAP balance-report grid. Report flows come "
+            "from all current economy templates plus detailed demand/power "
+            "rows; the 70 balance products come from the template fuel "
+            "catalogue. Source fingerprints control automatic refresh."
         ),
         "generated_master_contract": (
             "Copy every canonical sheet unchanged, then replace only the "

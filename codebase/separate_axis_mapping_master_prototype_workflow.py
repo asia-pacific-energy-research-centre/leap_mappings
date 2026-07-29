@@ -87,17 +87,22 @@ NEW_LEAP_ROWS_WORKBOOK_PATH = (
     LEAP_MAPPINGS_MAIN_ROOT / "data" / "temp" / "new leap rows.xlsx"
 )
 LEAP_REGISTRY_PATH = (
-    EXPLORATION_RESULTS_ROOT / "valid_pairs" / "leap_structural.csv"
+    EXPLORATION_RESULTS_ROOT / "valid_pairs" / "leap_layered.csv"
 )
 LEAP_REGISTRY_MANIFEST_PATH = (
     EXPLORATION_RESULTS_ROOT
     / "valid_pairs"
-    / "leap_structural_manifest.json"
+    / "leap_layered_manifest.json"
 )
 LEAP_REGISTRY_DIAGNOSTICS_PATH = (
     EXPLORATION_RESULTS_ROOT
     / "valid_pairs"
-    / "leap_structural_excluded_leaves.csv"
+    / "leap_layered_excluded_leaves.csv"
+)
+OBSERVED_LEAP_PAIR_EVIDENCE_PATH = (
+    EXPLORATION_RESULTS_ROOT
+    / "leap_authority"
+    / "observed_pair_evidence.csv"
 )
 
 
@@ -209,6 +214,7 @@ def _pair_universe_workbook_view(registry: pd.DataFrame) -> pd.DataFrame:
         "scenario_scope",
         "scenarios_observed",
         "pair_universe_authority",
+        "authority_layer",
         "source_kind",
         "template_support_count",
         "template_files",
@@ -261,14 +267,60 @@ def _compare_leap_registry_to_current_contract(
         comparison["in_current_mapping_contract"]
         & ~comparison["in_structural_registry"],
         "comparison_status",
-    ] = "current_balance_or_rollup_key_absent_from_branch_registry"
+    ] = "current_key_absent_from_layered_registry"
     comparison.loc[
         comparison["in_structural_registry"]
         & ~comparison["in_current_mapping_contract"],
         "comparison_status",
-    ] = "structural_pair_not_in_current_mapping_contract"
+    ] = "generated_pair_not_in_current_mapping_contract"
     return comparison.sort_values(
         ["comparison_status", "flow", "product"],
+        kind="stable",
+    ).reset_index(drop=True)
+
+
+def _compare_leap_registry_to_observed_exports(
+    registry: pd.DataFrame,
+) -> pd.DataFrame:
+    """Verify the generated registry against current partial balance evidence."""
+    if not OBSERVED_LEAP_PAIR_EVIDENCE_PATH.exists():
+        return pd.DataFrame(
+            columns=[
+                "flow",
+                "product",
+                "observed_pair_status",
+                "covered_by_generated_registry",
+                "verification_status",
+            ]
+        )
+    observed = pd.read_csv(
+        OBSERVED_LEAP_PAIR_EVIDENCE_PATH,
+        low_memory=False,
+    )
+    observed_pairs = observed[
+        ["flow", "product", "pair_status"]
+    ].drop_duplicates(["flow", "product"]).rename(
+        columns={"pair_status": "observed_pair_status"}
+    )
+    comparison = observed_pairs.merge(
+        registry[["flow", "product"]]
+        .drop_duplicates()
+        .assign(covered_by_generated_registry=True),
+        on=["flow", "product"],
+        how="left",
+    )
+    comparison["covered_by_generated_registry"] = (
+        comparison["covered_by_generated_registry"]
+        .fillna(False)
+        .astype(bool)
+    )
+    comparison["verification_status"] = "covered"
+    comparison.loc[
+        ~comparison["covered_by_generated_registry"],
+        "verification_status",
+    ] = "missing_from_generated_registry"
+    return comparison.sort_values(
+        ["verification_status", "flow", "product"],
         kind="stable",
     ).reset_index(drop=True)
 
@@ -694,6 +746,11 @@ def run_single_axis_master_prototype(
         pair_universes["LEAP"],
         current,
     )
+    leap_observed_comparison = (
+        _compare_leap_registry_to_observed_exports(
+            pair_universes["LEAP"],
+        )
+    )
     leap_comparison_counts = (
         leap_contract_comparison["comparison_status"].value_counts()
     )
@@ -703,7 +760,7 @@ def run_single_axis_master_prototype(
             pd.DataFrame(
                 [
                     (
-                        "leap_structural_registry_pair_rows",
+                        "leap_layered_registry_pair_rows",
                         len(pair_universes["LEAP"]),
                     ),
                     (
@@ -716,27 +773,38 @@ def run_single_axis_master_prototype(
                         ),
                     ),
                     (
-                        "leap_current_balance_or_rollup_keys_absent_from_registry",
+                        "leap_current_source_keys_absent_from_registry",
+                        int(
+                            leap_comparison_counts.get(
+                                "current_key_absent_from_layered_registry",
+                                0,
+                            )
+                        ),
+                    ),
+                    (
+                        "leap_generated_pairs_not_in_current_mapping_contract",
                         int(
                             leap_comparison_counts.get(
                                 (
-                                    "current_balance_or_rollup_key_absent_"
-                                    "from_branch_registry"
+                                    "generated_pair_not_in_current_"
+                                    "mapping_contract"
                                 ),
                                 0,
                             )
                         ),
                     ),
                     (
-                        "leap_structural_pairs_not_in_current_mapping_contract",
+                        "leap_observed_verification_pair_rows",
+                        len(leap_observed_comparison),
+                    ),
+                    (
+                        "leap_observed_pairs_missing_from_registry",
                         int(
-                            leap_comparison_counts.get(
-                                (
-                                    "structural_pair_not_in_current_"
-                                    "mapping_contract"
-                                ),
-                                0,
-                            )
+                            leap_observed_comparison[
+                                "verification_status"
+                            ]
+                            .eq("missing_from_generated_registry")
+                            .sum()
                         ),
                     ),
                 ],
@@ -817,9 +885,13 @@ def run_single_axis_master_prototype(
         generated_overrides,
         "qa_generated_overrides_review_only.csv",
     )
-    detail_sources["QA LEAP structural coverage"] = _write_csv(
+    detail_sources["QA LEAP layered coverage"] = _write_csv(
         leap_contract_comparison,
-        "qa_leap_structural_registry_vs_current_contract.csv",
+        "qa_leap_layered_registry_vs_current_contract.csv",
+    )
+    detail_sources["QA LEAP observed verification"] = _write_csv(
+        leap_observed_comparison,
+        "qa_leap_registry_vs_observed_exports.csv",
     )
     sheet_sources["QA incomplete current"] = _write_csv(
         incomplete,
@@ -842,7 +914,7 @@ def run_single_axis_master_prototype(
         "canonical_workbook_was_modified": False,
         "canonical_workbook_path": str(WORKBOOK_PATH),
         "leap_pair_authority": (
-            "generated_from_all_current_export_templates_and_detailed_rows"
+            "generated_from_model_branches_and_balance_report_contract"
         ),
         "leap_pair_registry_manifest": leap_registry_manifest,
         "rollup_sheets_included": False,

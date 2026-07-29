@@ -1,6 +1,6 @@
 # Separate-axis mapping contract exploration
 
-**Status:** isolated split-workbook prototype built; semantic review pending
+**Status:** isolated split-workbook prototype with layered LEAP authority built; semantic review pending
 
 **Exploration branch:** `codex/separate-axis-mapping-exploration`
 
@@ -588,11 +588,11 @@ Allowing every exact structurally present target pair produces:
 
 | Metric | Count |
 |---|---:|
-| compiled relationships | 6,144 |
-| exact current relationships reproduced | 3,206 |
-| current relationships not compiled | 4,443 |
-| extra targets on a current source pair | 910 |
-| candidates for source pairs absent from the current contract | 2,028 |
+| compiled relationships | 13,431 |
+| exact current relationships reproduced | 5,205 |
+| current relationships not compiled | 2,444 |
+| extra targets on a current source pair | 1,479 |
+| candidates for source pairs absent from the current contract | 6,747 |
 
 This solves many zero-only false negatives, but it is too permissive to be the
 final compiler policy. Exact pair membership alone does not remove conditional
@@ -609,12 +609,12 @@ It produces:
 
 | Metric | Count |
 |---|---:|
-| compiled relationships | 2,426 |
-| rows remaining after the within-axis cardinality gate | 1,726 |
-| exact current relationships reproduced | 1,995 |
-| current relationships not compiled | 5,654 |
-| extra targets on a current source pair | 325 |
-| candidates for source pairs absent from the current contract | 106 |
+| compiled relationships | 4,480 |
+| rows remaining after the within-axis cardinality gate | 2,779 |
+| exact current relationships reproduced | 3,276 |
+| current relationships not compiled | 4,373 |
+| extra targets on a current source pair | 689 |
+| candidates for source pairs absent from the current contract | 515 |
 
 The temporal rule materially reduces ambiguous extras, but excludes many
 currently accepted mappings. Those missing rows are not automatically errors:
@@ -624,56 +624,62 @@ need a different temporal rule.
 
 Generated compatibility-sheet row counts are:
 
-- `leap_combined_esto`: 729;
-- `leap_combined_ninth`: 502; and
+- `leap_combined_esto`: 1,751;
+- `leap_combined_ninth`: 1,534; and
 - `ninth_pairs_to_esto_pairs`: 1,195.
 
 They preserve the maintained sheet column names and generated subtotal flags,
 so downstream consumers can technically use the same interface. They are not
 production-ready while the axis and disagreement gates fail.
 
-A read-only Stage 1 compatibility run accepted all 2,426 temporal compiled
-relationships through the current structural boundary and produced 4,852
+A read-only Stage 1 compatibility run accepted all 4,480 temporal compiled
+relationships through the current structural boundary and produced 8,960
 Stage 1 rows, eight ESTO override rows, and 122 non-expanding catalogue rows
 without an interface error. This proves schema compatibility, not semantic
 correctness.
 
 ### LEAP adapter boundary
 
-The circular LEAP bootstrap has been removed. The generated registry now reads
-all 21 current top-level economy templates plus the `demand` and `power` sheets
-in `new leap rows.xlsx`. It contains 1,993 exact structural pairs:
+The circular LEAP bootstrap has been removed. The generated registry now has
+two explicit authority layers:
 
-- 711 supported only by export templates;
-- 1,244 supported only by the detailed-row workbook; and
-- 38 supported by both.
+1. exact model-branch pairs from all 21 current top-level economy templates
+   plus the `demand` and `power` sheets in `new leap rows.xlsx`; and
+2. a deterministic balance-report grid derived from the same branch census and
+   the existing balance-export parser contract.
 
-Thirty-four pairs occur in only one economy template, confirming that a
-single-economy structural authority would lose valid model rows. Fifteen
-detailed power fuel leaves below `*_do not use` processes are excluded and
+The combined registry contains 33,637 unique pairs:
+
+- 947 supported only as direct model branches;
+- 31,385 supported only as deterministic balance cells; and
+- 1,305 supported by both layers.
+
+The balance layer contains 467 report flows and the global 70-product balance
+catalogue. Report flows include fixed balance rows, Demand ancestors and
+aggregated-demand fuel rows, and Transformation module/process rows. The
+literal `Demand\All demand aggregated\...` branch form is retained alongside
+the slash-form report key because initialisation emits the literal model path.
+Detailed power leaves below `*_do not use` processes remain excluded and are
 reported as diagnostics.
 
 Every input workbook has its path, size, nanosecond modification time, and
 SHA-256 recorded in
-`results/separate_axis_mapping_exploration/valid_pairs/leap_structural_manifest.json`.
+`results/separate_axis_mapping_exploration/valid_pairs/leap_layered_manifest.json`.
 The key-pair workflow computes this signature on every run. The first build
-read all source workbooks; an unchanged cached rerun completed in about ten
-seconds and reported `source_workbooks_unchanged`.
+read all source workbooks; an unchanged cached rerun reports
+`source_workbooks_unchanged`, reuses the saved census, and completed in about
+13 seconds in the measured prototype run.
 
-This also exposed a necessary second LEAP source-key layer. Only 635 of the
-2,834 unique current LEAP source pairs are literal members of the structural
-branch registry. The other 2,199 are predominantly balance-interface and
-rollup keys such as `Imports`, `Production`, `Total Primary Supply`, final
-energy totals, and interim transformation rows. They cannot be treated as
-invalid merely because they are not literal export-template branches. The
-generated QA table
-`qa_leap_structural_registry_vs_current_contract.csv` separates these from the
-1,358 structural pairs not represented in the current mapping contract.
+The seven currently available observed balance exports contain 8,229 unique
+source keys. All 8,229 are present in the layered registry. Observed exports
+therefore verify the deterministic contract but do not define global
+validity. Of the 2,834 unique current mapping source pairs, 2,076 are in the
+layered registry and 758 are absent. Those remaining rows are diagnostics for
+legacy aliases, rollups, or older interface names; absence is not automatic
+evidence that a maintained mapping is invalid. The generated QA tables are:
 
-The next LEAP adapter step is therefore not a return to the mapping-sheet
-bootstrap. It is a deterministic balance-key layer derived from the existing
-LEAP balance parser and hierarchy/rollup rules, with observed balance exports
-used as verification evidence.
+- `qa_leap_layered_registry_vs_current_contract.csv`; and
+- `qa_leap_registry_vs_observed_exports.csv`.
 
 ### Prototype conclusion
 
@@ -687,7 +693,7 @@ The architecture is technically realistic:
 
 The remaining question is semantic, not technical. A final design needs to
 reduce or explain the eight within-axis many-to-many components and determine
-why the temporal compiler misses 5,654 accepted relationships. Until then, the
+why the temporal compiler misses 4,373 accepted relationships. Until then, the
 workbook is an effective audit prototype but not a replacement mapping source.
 
 ## Three-workbook split prototype
@@ -723,16 +729,17 @@ This workbook is labelled **GENERATED — DO NOT EDIT**. It contains:
 
 | Sheet | Rows | Interpretation |
 |---|---:|---|
-| `LEAP key pairs` | 1,993 | exact structural pairs from all current templates and detailed rows |
+| `LEAP key pairs` | 33,637 | layered direct-branch and deterministic balance-grid authority |
 | `ESTO key pairs` | 9,396 | Cartesian discovered keys plus final-year evidence |
 | `ESTO Extended key pairs` | 17,901 | Cartesian discovered keys plus final-year evidence |
 | `Ninth key pairs` | 18,980 | Cartesian discovered keys plus post-boundary evidence |
 
 The ESTO and Ninth sheets deliberately retain combinations that are not
 observed. `exists_in_dataset` and the temporal columns distinguish them from
-eligible compiler pairs. LEAP remains exact-pair-only and includes provenance
-columns for source kind, template files, detailed-row sheets, and support
-counts.
+eligible compiler pairs. LEAP contains only explicitly generated direct or
+balance pairs and includes authority-layer and provenance columns for source
+kind, template files, detailed-row sheets, and support counts. The workbook
+contains 79,914 rows across its four generated pair sheets.
 
 ### 3. Generated compatibility master
 
@@ -748,15 +755,15 @@ This workbook is the proposed no-consumer-code-change boundary:
   presentation; and
 - the canonical `config/outlook_mappings_master.xlsx` remains untouched.
 
-The three generated pair sheets contain 2,426 rows in total. A strict
+The three generated pair sheets contain 4,480 rows in total. A strict
 compatibility validation read them through the current loader with zero
 incomplete rows and ran the current Stage 1 transformation without a code
 change:
 
 | Check | Result |
 |---|---:|
-| generated active relationships | 2,426 |
-| Stage 1 rows | 4,852 |
+| generated active relationships | 4,480 |
+| Stage 1 rows | 8,960 |
 | ESTO override rows | 8 |
 | non-expanding rollup catalogue rows | 122 |
 
@@ -769,12 +776,11 @@ schema.
 
 The current build is a packaging and compatibility proof, not yet the final
 refresh workflow. Its axes are still bootstrapped from the canonical pair
-sheets, but its LEAP structural pair registry is no longer circular. A
-production version must read the user-maintained axis workbook, add the
-deterministic LEAP balance-key layer, rebuild all pair registries, run the
-semantic gates, and then atomically publish the compatibility master at the
-canonical filename. That final filename swap, not changes in downstream
-readers, is the intended migration.
+sheets, but its layered LEAP pair registry is no longer circular. A production
+version must read the user-maintained axis workbook directly, rebuild all pair
+registries, run the semantic gates, and then atomically publish the
+compatibility master at the canonical filename. That final filename swap, not
+changes in downstream readers, is the intended migration.
 
 The reproducible prototype build is split between:
 
@@ -852,15 +858,9 @@ Command:
 C:\Users\Work\miniconda3\python.exe -m pytest tests\test_separate_axis_mapping_exploration.py -q
 ```
 
-Result after the workbook-prototype additions: `14 passed`.
-
-An additional relevant run of the existing Common ESTO and Stage 1 tests
-reported 53 passes and one pre-existing failure:
-`test_esto_leap_scope_excludes_ninth_relationships_and_aggregate_edges`
-asserts that only `esto_leap_ninth` and `esto_leap` are enabled, while the
-committed production constant already enables four scopes, including both ESTO
-Extended scopes. This exploration did not change either file and did not
-rewrite the stale assertion.
+Result after the layered-registry and workbook additions: `40 passed` across
+the focused separate-axis, Common ESTO structure, and mapping-maintenance test
+files.
 
 The canonical workbook hash was unchanged, and no sibling production files
 were edited.

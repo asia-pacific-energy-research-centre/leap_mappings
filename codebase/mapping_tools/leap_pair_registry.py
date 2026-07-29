@@ -30,6 +30,18 @@ FUEL_ROLE_LABELS = {
     "Output Fuels",
 }
 LEGACY_BRANCH_SUFFIX = "_do not use"
+LEAP_PAIR_REGISTRY_VERSION = 3
+FIXED_BALANCE_FLOWS = {
+    "Production",
+    "Imports",
+    "Exports",
+    "From Stocks",
+    "Total Primary Supply",
+    "Total Transformation",
+    "Statistical Differences",
+    "Total Final Energy Demand",
+    "Unmet Requirements",
+}
 
 PAIR_COLUMNS = [
     "dataset",
@@ -43,6 +55,7 @@ PAIR_COLUMNS = [
     "pair_status",
     "temporal_evidence_status",
     "pair_universe_authority",
+    "authority_layer",
     "source_kind",
     "template_support_count",
     "template_files",
@@ -155,7 +168,7 @@ def build_source_manifest(
         separators=(",", ":"),
     ).encode("utf-8")
     return {
-        "manifest_version": 1,
+        "manifest_version": LEAP_PAIR_REGISTRY_VERSION,
         "source_signature": hashlib.sha256(signature_payload).hexdigest(),
         "source_count": len(records),
         "sources": records,
@@ -280,6 +293,22 @@ def parse_leap_branch_paths_to_pairs(
                 "parse_rule": parse_rule,
             }
         )
+        if (
+            parts[0] == "Demand"
+            and len(parts) >= 3
+            and parts[1] == "All demand aggregated"
+        ):
+            pair_records.append(
+                {
+                    "flow": "\\".join(parts[:-1]),
+                    "product": fuel,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                    "source_sheet": source_sheet,
+                    "branch_path": branch_path,
+                    "parse_rule": "literal_demand_branch_key",
+                }
+            )
 
     pair_frame = pd.DataFrame(
         pair_records,
@@ -306,8 +335,222 @@ def parse_leap_branch_paths_to_pairs(
     return pair_frame, diagnostic_frame
 
 
-def _read_export_template_pairs(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Read one standard LEAP export template and parse its branch inventory."""
+def derive_leap_balance_structure(
+    paths: Iterable[Any],
+    *,
+    source_kind: str,
+    source_id: str,
+    source_sheet: str,
+    include_fixed_flows: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Derive balance-report flows and the global fuel-column catalogue.
+
+    LEAP energy-balance exports are grids. The report flows are generated from
+    Demand ancestors, Transformation module/process rows, and fixed balance
+    rows. The fuel columns are the leaves below ``All demand aggregated`` in
+    the current economy templates.
+    """
+    flow_records: list[dict[str, Any]] = []
+    fuel_records: list[dict[str, Any]] = []
+
+    def add_flow(
+        flow: str,
+        branch_path: str,
+        parse_rule: str,
+    ) -> None:
+        if not flow:
+            return
+        flow_records.append(
+            {
+                "flow": flow,
+                "source_kind": source_kind,
+                "source_id": source_id,
+                "source_sheet": source_sheet,
+                "branch_path": branch_path,
+                "parse_rule": parse_rule,
+            }
+        )
+
+    if include_fixed_flows:
+        for flow in sorted(FIXED_BALANCE_FLOWS):
+            add_flow(flow, "", "fixed_balance_flow")
+
+    for branch_path in _leaf_paths(paths):
+        parts = branch_path.split("\\")
+        lower_parts = [part.casefold() for part in parts]
+        if any(part.endswith(LEGACY_BRANCH_SUFFIX) for part in lower_parts):
+            continue
+
+        if parts[0] == "Demand" and len(parts) >= 3:
+            sector_parts = parts[1:-1]
+            for depth in range(1, len(sector_parts) + 1):
+                add_flow(
+                    "/".join(sector_parts[:depth]),
+                    branch_path,
+                    "demand_balance_ancestor",
+                )
+            if parts[1] == "All demand aggregated":
+                # These Total Energy branches are visible as report rows as
+                # well as defining the global product-column catalogue.
+                add_flow(
+                    "/".join(parts[1:]),
+                    branch_path,
+                    "all_demand_aggregated_fuel_flow",
+                )
+                fuel_records.append(
+                    {
+                        "product": parts[-1],
+                        "source_kind": source_kind,
+                        "source_id": source_id,
+                        "source_sheet": source_sheet,
+                        "branch_path": branch_path,
+                    }
+                )
+            continue
+
+        if parts[0] != "Transformation":
+            continue
+        role_indexes = [
+            index
+            for index, part in enumerate(parts)
+            if part in FUEL_ROLE_LABELS
+        ]
+        if not role_indexes or role_indexes[-1] + 1 != len(parts) - 1:
+            continue
+        role_index = role_indexes[-1]
+        sector_parts = parts[1:role_index]
+        if not sector_parts:
+            continue
+        if "Processes" in sector_parts:
+            process_index = sector_parts.index("Processes")
+            module_parts = sector_parts[:process_index]
+            process_parts = sector_parts[process_index + 1 :]
+            add_flow(
+                "/".join(module_parts),
+                branch_path,
+                "transformation_balance_module",
+            )
+            add_flow(
+                "/".join(module_parts + process_parts),
+                branch_path,
+                "transformation_balance_process",
+            )
+        else:
+            add_flow(
+                "/".join(sector_parts),
+                branch_path,
+                "transformation_balance_module",
+            )
+
+    flow_frame = pd.DataFrame(
+        flow_records,
+        columns=[
+            "flow",
+            "source_kind",
+            "source_id",
+            "source_sheet",
+            "branch_path",
+            "parse_rule",
+        ],
+    ).drop_duplicates()
+    fuel_frame = pd.DataFrame(
+        fuel_records,
+        columns=[
+            "product",
+            "source_kind",
+            "source_id",
+            "source_sheet",
+            "branch_path",
+        ],
+    ).drop_duplicates()
+    return flow_frame, fuel_frame
+
+
+def _balance_grid_evidence(
+    template_structures: list[tuple[pd.DataFrame, pd.DataFrame]],
+    detailed_flows: pd.DataFrame,
+) -> pd.DataFrame:
+    """Cross report flows with their structurally available fuel columns."""
+    pair_frames: list[pd.DataFrame] = []
+    template_catalog_frames: list[pd.DataFrame] = []
+    template_flow_frames = [
+        flows
+        for flows, catalogue in template_structures
+        if not flows.empty and not catalogue.empty
+    ]
+    template_catalog_frames = [
+        catalogue
+        for flows, catalogue in template_structures
+        if not flows.empty and not catalogue.empty
+    ]
+    if template_flow_frames and template_catalog_frames:
+        all_template_flows = pd.concat(
+            template_flow_frames,
+            ignore_index=True,
+        ).drop_duplicates()
+        global_catalogue = (
+            pd.concat(template_catalog_frames, ignore_index=True)[["product"]]
+            .drop_duplicates()
+        )
+        pairs = all_template_flows.merge(global_catalogue, how="cross")
+        pairs["source_kind"] = "balance_export_template"
+        pair_frames.append(
+            pairs[
+                [
+                    "flow",
+                    "product",
+                    "source_kind",
+                    "source_id",
+                    "source_sheet",
+                    "branch_path",
+                    "parse_rule",
+                ]
+            ]
+        )
+
+    if template_catalog_frames and not detailed_flows.empty:
+        global_catalogue = pd.concat(
+            template_catalog_frames,
+            ignore_index=True,
+        )[["product"]].drop_duplicates()
+        detailed_pairs = detailed_flows.merge(
+            global_catalogue,
+            how="cross",
+        )
+        detailed_pairs["source_kind"] = "balance_detailed_model_rows"
+        pair_frames.append(
+            detailed_pairs[
+                [
+                    "flow",
+                    "product",
+                    "source_kind",
+                    "source_id",
+                    "source_sheet",
+                    "branch_path",
+                    "parse_rule",
+                ]
+            ]
+        )
+
+    if not pair_frames:
+        return pd.DataFrame(
+            columns=[
+                "flow",
+                "product",
+                "source_kind",
+                "source_id",
+                "source_sheet",
+                "branch_path",
+                "parse_rule",
+            ]
+        )
+    return pd.concat(pair_frames, ignore_index=True).drop_duplicates()
+
+
+def _read_export_template_pairs(
+    path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read one template into direct pairs and balance-grid structure."""
     frame = pd.read_excel(
         path,
         sheet_name=EXPORT_SHEET_NAME,
@@ -315,18 +558,26 @@ def _read_export_template_pairs(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]
         usecols=["Branch Path"],
         dtype=object,
     )
-    return parse_leap_branch_paths_to_pairs(
+    pairs, diagnostics = parse_leap_branch_paths_to_pairs(
+        frame["Branch Path"],
+        source_kind="direct_export_template",
+        source_id=path.name,
+        source_sheet=EXPORT_SHEET_NAME,
+    )
+    flows, catalogue = derive_leap_balance_structure(
         frame["Branch Path"],
         source_kind="export_template",
         source_id=path.name,
         source_sheet=EXPORT_SHEET_NAME,
+        include_fixed_flows=True,
     )
+    return pairs, diagnostics, flows, catalogue
 
 
 def _read_detailed_model_row_pairs(
     path: Path,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Read the required demand/power tabs from the detailed-row workbook."""
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read direct pairs and balance flows from detailed demand/power tabs."""
     available_sheets = set(pd.ExcelFile(path).sheet_names)
     missing = [sheet for sheet in NEW_ROW_SHEETS if sheet not in available_sheets]
     if missing:
@@ -336,6 +587,7 @@ def _read_detailed_model_row_pairs(
 
     pair_frames: list[pd.DataFrame] = []
     diagnostic_frames: list[pd.DataFrame] = []
+    flow_frames: list[pd.DataFrame] = []
     for sheet in NEW_ROW_SHEETS:
         frame = pd.read_excel(
             path,
@@ -345,15 +597,24 @@ def _read_detailed_model_row_pairs(
         )
         pairs, diagnostics = parse_leap_branch_paths_to_pairs(
             frame["Branch Path"],
-            source_kind="detailed_model_rows",
+            source_kind="direct_detailed_model_rows",
             source_id=path.name,
             source_sheet=sheet,
         )
+        flows, _catalogue = derive_leap_balance_structure(
+            frame["Branch Path"],
+            source_kind="detailed_model_rows",
+            source_id=path.name,
+            source_sheet=sheet,
+            include_fixed_flows=False,
+        )
         pair_frames.append(pairs)
         diagnostic_frames.append(diagnostics)
+        flow_frames.append(flows)
     return (
         pd.concat(pair_frames, ignore_index=True),
         pd.concat(diagnostic_frames, ignore_index=True),
+        pd.concat(flow_frames, ignore_index=True).drop_duplicates(),
     )
 
 
@@ -366,23 +627,45 @@ def build_leap_pair_registry(
     template_dir: Path,
     new_rows_workbook_path: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Build the exact structural LEAP pair registry and diagnostics."""
+    """Build layered direct-branch and deterministic balance-grid pairs."""
     sources = discover_leap_pair_sources(
         template_dir,
         new_rows_workbook_path,
     )
     pair_frames: list[pd.DataFrame] = []
     diagnostic_frames: list[pd.DataFrame] = []
+    template_structures: list[tuple[pd.DataFrame, pd.DataFrame]] = []
+    detailed_flow_frames: list[pd.DataFrame] = []
     for source in sources:
         path = Path(source["path"])
         if source["source_kind"] == "export_template":
-            pairs, diagnostics = _read_export_template_pairs(path)
+            pairs, diagnostics, flows, catalogue = (
+                _read_export_template_pairs(path)
+            )
+            template_structures.append((flows, catalogue))
         else:
-            pairs, diagnostics = _read_detailed_model_row_pairs(path)
+            pairs, diagnostics, flows = _read_detailed_model_row_pairs(path)
+            detailed_flow_frames.append(flows)
         pair_frames.append(pairs)
         diagnostic_frames.append(diagnostics)
 
-    evidence = pd.concat(pair_frames, ignore_index=True).drop_duplicates()
+    direct_evidence = pd.concat(
+        pair_frames,
+        ignore_index=True,
+    ).drop_duplicates()
+    detailed_flows = (
+        pd.concat(detailed_flow_frames, ignore_index=True).drop_duplicates()
+        if detailed_flow_frames
+        else pd.DataFrame()
+    )
+    balance_evidence = _balance_grid_evidence(
+        template_structures,
+        detailed_flows,
+    )
+    evidence = pd.concat(
+        [direct_evidence, balance_evidence],
+        ignore_index=True,
+    ).drop_duplicates()
     diagnostics = pd.concat(
         diagnostic_frames,
         ignore_index=True,
@@ -396,18 +679,32 @@ def build_leap_pair_registry(
         sort=True,
         dropna=False,
     ):
-        template_group = group[group["source_kind"].eq("export_template")]
-        new_rows_group = group[group["source_kind"].eq("detailed_model_rows")]
+        template_group = group[
+            group["source_kind"].str.contains("export_template")
+        ]
+        new_rows_group = group[
+            group["source_kind"].str.contains("detailed_model_rows")
+        ]
         source_kinds = set(group["source_kind"])
+        has_direct = bool(group["source_kind"].str.startswith("direct_").any())
+        has_balance = bool(
+            group["source_kind"].str.startswith("balance_").any()
+        )
+        authority_layer = (
+            "direct_model_branch_and_balance_grid"
+            if has_direct and has_balance
+            else (
+                "direct_model_branch"
+                if has_direct
+                else "deterministic_balance_grid"
+            )
+        )
         records.append(
             {
                 "flow": flow,
                 "product": product,
-                "source_kind": (
-                    "export_templates_and_detailed_model_rows"
-                    if len(source_kinds) > 1
-                    else next(iter(source_kinds))
-                ),
+                "authority_layer": authority_layer,
+                "source_kind": _join_sorted(source_kinds),
                 "template_support_count": int(
                     template_group["source_id"].nunique()
                 ),
@@ -448,12 +745,20 @@ def build_leap_pair_registry(
     )
     registry["pair_exists_in_dataset"] = True
     registry["pair_universe_member"] = True
-    registry["pair_status"] = "structurally_eligible"
-    registry["temporal_evidence_status"] = (
-        "structurally_eligible_from_current_model_rows"
+    registry["pair_status"] = registry["authority_layer"].map(
+        {
+            "direct_model_branch_and_balance_grid": (
+                "structurally_eligible_branch_and_balance"
+            ),
+            "direct_model_branch": "structurally_eligible_model_branch",
+            "deterministic_balance_grid": (
+                "structurally_eligible_balance_cell"
+            ),
+        }
     )
+    registry["temporal_evidence_status"] = registry["pair_status"]
     registry["pair_universe_authority"] = (
-        "generated_from_export_templates_and_detailed_model_rows"
+        "generated_from_model_branches_and_balance_report_contract"
     )
     registry = registry[PAIR_COLUMNS].sort_values(
         ["flow", "product"],
@@ -461,20 +766,28 @@ def build_leap_pair_registry(
     ).reset_index(drop=True)
 
     summary = {
-        "registry_version": 1,
+        "registry_version": LEAP_PAIR_REGISTRY_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "pair_count": len(registry),
         "subtotal_pair_count": int(registry["pair_is_subtotal"].sum()),
-        "template_only_pair_count": int(
-            registry["source_kind"].eq("export_template").sum()
+        "direct_only_pair_count": int(
+            registry["authority_layer"].eq("direct_model_branch").sum()
         ),
-        "detailed_rows_only_pair_count": int(
-            registry["source_kind"].eq("detailed_model_rows").sum()
-        ),
-        "shared_source_pair_count": int(
-            registry["source_kind"].eq(
-                "export_templates_and_detailed_model_rows"
+        "balance_only_pair_count": int(
+            registry["authority_layer"].eq(
+                "deterministic_balance_grid"
             ).sum()
+        ),
+        "shared_authority_pair_count": int(
+            registry["authority_layer"].eq(
+                "direct_model_branch_and_balance_grid"
+            ).sum()
+        ),
+        "balance_flow_count": int(
+            balance_evidence["flow"].nunique()
+        ),
+        "balance_product_count": int(
+            balance_evidence["product"].nunique()
         ),
         "excluded_leaf_count": len(diagnostics),
     }

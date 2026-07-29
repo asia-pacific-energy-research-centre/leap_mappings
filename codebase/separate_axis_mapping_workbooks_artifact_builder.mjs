@@ -354,7 +354,7 @@ async function buildPairWorkbook() {
     ],
     [
       "LEAP boundary",
-      "This is the literal model-branch pair layer. Standard balance-report totals, supply rows, and generated rollup keys require a separate deterministic layer before this can replace the complete current LEAP source-key contract.",
+      "This combines exact model-branch pairs with the deterministic balance-report grid. Current observed balance exports are verification evidence; they do not define global validity.",
     ],
     [
       "Subtotal labels",

@@ -26,6 +26,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
 )
 from codebase.mapping_tools.leap_pair_registry import (
     build_source_manifest,
+    derive_leap_balance_structure,
     parse_leap_branch_paths_to_pairs,
     source_manifest_changed,
 )
@@ -57,6 +58,9 @@ def test_leap_pair_parser_uses_demand_leaves_and_transformation_fuel_roles() -> 
         r"Demand\Industry",
         r"Demand\Industry\Iron and steel",
         r"Demand\Industry\Iron and steel\Natural gas",
+        r"Demand\All demand aggregated",
+        r"Demand\All demand aggregated\Industry",
+        r"Demand\All demand aggregated\Industry\Electricity",
         r"Transformation\Electricity Generation",
         r"Transformation\Electricity Generation\Output Fuels",
         r"Transformation\Electricity Generation\Output Fuels\Electricity",
@@ -78,12 +82,49 @@ def test_leap_pair_parser_uses_demand_leaves_and_transformation_fuel_roles() -> 
 
     assert set(pairs[["flow", "product"]].itertuples(index=False, name=None)) == {
         ("Industry/Iron and steel", "Natural gas"),
+        ("All demand aggregated/Industry", "Electricity"),
+        (r"Demand\All demand aggregated\Industry", "Electricity"),
         ("Electricity Generation", "Electricity"),
         ("Electricity Generation/Processes/Coal", "Coal"),
     }
     diagnostic_statuses = set(diagnostics["status"])
     assert "excluded_non_energy_or_unrecognised_leaf" in diagnostic_statuses
     assert "excluded_legacy_do_not_use" in diagnostic_statuses
+
+
+def test_leap_balance_structure_derives_report_rows_and_fuel_catalogue() -> None:
+    paths = [
+        r"Demand\All demand aggregated",
+        r"Demand\All demand aggregated\Natural gas",
+        r"Demand\Industry",
+        r"Demand\Industry\Iron and steel",
+        r"Demand\Industry\Iron and steel\Electricity",
+        r"Transformation\Electricity Generation",
+        r"Transformation\Electricity Generation\Processes",
+        r"Transformation\Electricity Generation\Processes\Coal",
+        r"Transformation\Electricity Generation\Processes\Coal\Feedstock Fuels",
+        r"Transformation\Electricity Generation\Processes\Coal\Feedstock Fuels\Coal",
+    ]
+
+    flows, catalogue = derive_leap_balance_structure(
+        paths,
+        source_kind="export_template",
+        source_id="template.xlsx",
+        source_sheet="Export",
+        include_fixed_flows=True,
+    )
+
+    assert {
+        "Production",
+        "Total Transformation",
+        "All demand aggregated",
+        "All demand aggregated/Natural gas",
+        "Industry",
+        "Industry/Iron and steel",
+        "Electricity Generation",
+        "Electricity Generation/Coal",
+    }.issubset(set(flows["flow"]))
+    assert set(catalogue["product"]) == {"Natural gas"}
 
 
 def test_leap_source_manifest_detects_content_and_timestamp_updates(
