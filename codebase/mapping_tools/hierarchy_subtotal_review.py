@@ -89,6 +89,7 @@ def build_review_frames(
     workbook_path: Path,
     exception_workbook_path: Path,
     contract_frames: dict[str, pd.DataFrame],
+    workbook_sheets: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Build review-only tables keyed to exact workbook rows and cells."""
     nodes = contract_frames["axis_nodes"].copy()
@@ -98,8 +99,14 @@ def build_review_frames(
         ["dataset_id", "axis_1_node_id", "axis_2_node_id"]
     ).to_dict("index")
 
+    if workbook_sheets is None:
+        workbook_sheets = pd.read_excel(
+            workbook_path,
+            sheet_name=sorted({config["sheet"] for config in SIDE_CONFIGS}),
+            dtype=object,
+        )
     sheets = {
-        sheet: _active(pd.read_excel(workbook_path, sheet_name=sheet, dtype=object))
+        sheet: _active(workbook_sheets[sheet])
         for sheet in sorted({config["sheet"] for config in SIDE_CONFIGS})
     }
     cell_records: list[dict[str, object]] = []

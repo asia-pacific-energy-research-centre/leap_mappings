@@ -433,6 +433,13 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   synthetic output-subtotal treatments, and carries 168,509 current-run Common
   ESTO checks in `value_conformance_diagnostics.csv`. The wide output and
   dashboard consume the same classification/contract path.
+- **2026-07-29 mapping-master review copy:** Re-ran the current contract against
+  an exact SHA-256-recorded MAPQ-030 review base and generated a review-only
+  workbook with `CHANGED` annotations on all three mapping sheets. The reusable
+  rerun recorded 3,402 proposed subtotal-cell differences: 597 applied, 2,413
+  partial or unresolved, and 392 held because of a prior label exception. No mapping
+  relationships or maintained workbook cells were changed. See
+  [`subtotal_mapping_master_review_20260729.md`](subtotal_mapping_master_review_20260729.md).
 - **Next decision:** Review the bounded unresolved queue, beginning with the
   missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
   sibling groups before any workbook application. See

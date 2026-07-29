@@ -611,6 +611,7 @@ def build_common_esto_pair_classification(
 def current_adapter_registry(
     repo_root: Path,
     workbook_path: Path,
+    include_common_esto: bool = True,
 ) -> list[CallableDatasetAdapter]:
     """Return the current explicit adapter registry without core dataset branches."""
     repo_root = Path(repo_root)
@@ -620,7 +621,7 @@ def current_adapter_registry(
     leap_inventory = repo_root / "data" / "temp" / "new leap rows.xlsx"
     extended_tree = repo_root / "results" / "tree_structure" / "esto_extended_tree.csv"
     common_rows = repo_root / "results" / "common_esto" / "common_esto_rows.csv"
-    return [
+    adapters = [
         CallableDatasetAdapter(
             "esto",
             ADAPTER_VERSION,
@@ -646,12 +647,16 @@ def current_adapter_registry(
                 "derived_extended_source",
             ),
         ),
-        CallableDatasetAdapter(
-            "common_esto",
-            ADAPTER_VERSION,
-            lambda: build_common_esto_adapter(common_rows, workbook_path),
-        ),
     ]
+    if include_common_esto:
+        adapters.append(
+            CallableDatasetAdapter(
+                "common_esto",
+                ADAPTER_VERSION,
+                lambda: build_common_esto_adapter(common_rows, workbook_path),
+            )
+        )
+    return adapters
 
 
 def build_ninth_family_conformance(
