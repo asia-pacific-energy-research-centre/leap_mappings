@@ -28,7 +28,15 @@ from codebase.mapping_tools.non_expanding_rollups import (
     load_rollup_source_flow_modes,
     non_expanding_rollup_id,
 )
+from codebase.mapping_tools.dataset_registry import load_dataset_registry
+from codebase.mapping_tools.mapping_sheet_registry import (
+    load_mapping_sheet_registry,
+)
+from codebase.mapping_tools.value_adapter_registry import (
+    get_registered_stage3_source_paths,
+)
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 VALIDATION_SUMMARY_COLUMNS = [
     "run_id",
@@ -156,25 +164,58 @@ def build_source_comparison_frontier(
     adding artificial unavailable mappings to the workbook.
     """
     rows: list[dict[str, str]] = []
+    dataset_registry = load_dataset_registry()
+    stage3_source_ids = list(get_registered_stage3_source_paths(REPO_ROOT))
     mapped_flows: dict[str, set[str]] = {
-        "ESTO": set(),
-        "ESTO_EXTENDED": set(),
-        "LEAP": set(),
-        "NINTH": set(),
+        dataset_id: set() for dataset_id in stage3_source_ids
     }
+    identity_source_ids = set(
+        dataset_registry.loc[
+            dataset_registry["enabled"]
+            & dataset_registry["dataset_id"].isin(stage3_source_ids)
+            & dataset_registry["dataset_id"].eq(
+                dataset_registry["canonical_target_dataset_id"]
+            ),
+            "dataset_id",
+        ]
+    )
     if workbook_path is not None and workbook_path.exists():
-        sheet_sources = {
-            "leap_combined_esto": "LEAP",
-            "ninth_pairs_to_esto_pairs": "NINTH",
-        }
-        for sheet_name, source_system in sheet_sources.items():
+        mapping_registry = load_mapping_sheet_registry()
+        mapping_registry = mapping_registry[
+            mapping_registry["enabled"]
+            & mapping_registry["target_dataset_id"].eq("ESTO")
+        ]
+        for mapping_config in mapping_registry.itertuples(index=False):
             try:
-                mapping = pd.read_excel(workbook_path, sheet_name=sheet_name, dtype=object).fillna("")
+                if mapping_config.input_relative_path:
+                    mapping = pd.read_csv(
+                        REPO_ROOT / mapping_config.input_relative_path,
+                        dtype=object,
+                    ).fillna("")
+                else:
+                    mapping = pd.read_excel(
+                        workbook_path,
+                        sheet_name=mapping_config.sheet_name,
+                        dtype=object,
+                    ).fillna("")
             except Exception:
                 continue
-            if "esto_flow" in mapping.columns:
-                mapped_flows[source_system].update(
-                    _str(value) for value in mapping["esto_flow"] if _str(value)
+            target_flow_column = next(
+                (
+                    column
+                    for column in mapping_config.target_axis_1_candidates
+                    if column in mapping.columns
+                ),
+                "",
+            )
+            if target_flow_column:
+                mapped_flows.setdefault(
+                    mapping_config.source_dataset_id,
+                    set(),
+                ).update(
+                    _str(value)
+                    for value in mapping[target_flow_column]
+                    if _str(value)
                 )
 
         # Synthetic ESTO rollups define source-specific comparison aliases.
@@ -218,7 +259,7 @@ def build_source_comparison_frontier(
     for parent_code, children in children_by_parent.items():
         for source_system, source_flows in mapped_flows.items():
             for child_code in children:
-                if source_system in {"ESTO", "ESTO_EXTENDED"} or child_code in source_flows:
+                if source_system in identity_source_ids or child_code in source_flows:
                     status = "comparable"
                     reason = "active_source_to_esto_mapping"
                 else:
@@ -240,9 +281,10 @@ def _load_diagnostic_source_values(output_dir: Path) -> dict[str, pd.DataFrame]:
 
     relationship_dir = output_dir.parent / "mapping_relationships"
     paths = {
-        "ESTO": relationship_dir / "esto_results_exact_rows.csv.gz",
-        "LEAP": relationship_dir / "leap_results_converted_to_esto.csv",
-        "NINTH": relationship_dir / "ninth_results_converted_to_esto.csv.gz",
+        source_system: relationship_dir / path.name
+        for source_system, path in get_registered_stage3_source_paths(
+            REPO_ROOT
+        ).items()
     }
     result: dict[str, pd.DataFrame] = {}
     group_cols = ["economy", "scenario", "year", "esto_flow", "esto_product"]
@@ -799,8 +841,28 @@ def run_common_esto_validation_workflow(
         )
     except Exception:
         rollup_modes = {}
-    ninth_subtotal_flow_labels = build_ninth_subtotal_esto_flow_labels(tree_df, workbook_path)
-    source_specific_exclude_parents = {"NINTH": ninth_subtotal_flow_labels}
+    exclusion_adapters = {
+        "ninth_subtotal_flow_labels": (
+            lambda: build_ninth_subtotal_esto_flow_labels(
+                tree_df,
+                workbook_path,
+            )
+        ),
+    }
+    source_specific_exclude_parents: dict[str, set[str]] = {}
+    datasets = load_dataset_registry()
+    for dataset in datasets[datasets["enabled"]].itertuples(index=False):
+        adapter_name = dataset.validation_parent_exclusion_adapter
+        if not adapter_name:
+            continue
+        if adapter_name not in exclusion_adapters:
+            raise ValueError(
+                f"{dataset.dataset_id}: unknown validation parent-exclusion "
+                f"adapter {adapter_name!r}."
+            )
+        source_specific_exclude_parents[dataset.dataset_id] = (
+            exclusion_adapters[adapter_name]()
+        )
     detail_path = output_dir / "common_esto_validation.csv"
     summary_path = output_dir / "common_esto_validation_summary.csv"
     grouped_checks_path = output_dir / "common_esto_validation_grouped_checks.csv"

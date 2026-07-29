@@ -28,6 +28,9 @@ VALUE_ADAPTER_REGISTRY_COLUMNS = [
     "input_relative_path",
     "output_relative_path",
     "stage3_source",
+    "relevance_period_policy",
+    "relevance_evidence_column",
+    "relevance_include_year_range",
     "lineage_relative_path",
     "owner",
     "notes",
@@ -42,6 +45,11 @@ NORMALIZED_VALUE_COLUMNS = [
     "value",
 ]
 GENERIC_NORMALIZED_ADAPTER = "normalized_long_passthrough"
+RELEVANCE_PERIOD_POLICIES = {
+    "latest_available_year",
+    "from_projection_start",
+    "all_periods",
+}
 
 
 def _boolean(value: object, field: str, dataset_id: str) -> bool:
@@ -80,7 +88,11 @@ def load_value_adapter_registry(
     )
     if duplicates:
         raise ValueError(f"Duplicate value-adapter dataset IDs: {duplicates}")
-    for column in ["enabled", "stage3_source"]:
+    for column in [
+        "enabled",
+        "stage3_source",
+        "relevance_include_year_range",
+    ]:
         frame[column] = [
             _boolean(value, column, dataset_id)
             for value, dataset_id in zip(frame[column], frame["dataset_id"])
@@ -110,6 +122,16 @@ def load_value_adapter_registry(
                 f"{row.dataset_id}: adapter_name and output_relative_path "
                 "must not be empty."
             )
+        if row.relevance_period_policy not in RELEVANCE_PERIOD_POLICIES:
+            raise ValueError(
+                f"{row.dataset_id}: unknown relevance_period_policy "
+                f"{row.relevance_period_policy!r}."
+            )
+        if row.stage3_source and not row.relevance_evidence_column:
+            raise ValueError(
+                f"{row.dataset_id}: Stage 3 sources require "
+                "relevance_evidence_column."
+            )
     return frame.sort_values("execution_order", kind="stable").reset_index(
         drop=True
     )
@@ -132,6 +154,27 @@ def get_registered_stage3_source_paths(
         )
         for row in sources.itertuples(index=False)
     }
+
+
+def get_component_relevance_policies(
+    registry_path: Path = VALUE_ADAPTER_REGISTRY_PATH,
+    dataset_registry_path: Path = DATASET_REGISTRY_PATH,
+) -> list[dict[str, object]]:
+    """Return ordered relevance policies for enabled Stage 3 sources."""
+    registry = load_value_adapter_registry(
+        registry_path,
+        dataset_registry_path,
+    )
+    selected = registry[registry["enabled"] & registry["stage3_source"]]
+    return [
+        {
+            "dataset_id": row.dataset_id,
+            "period_policy": row.relevance_period_policy,
+            "evidence_column": row.relevance_evidence_column,
+            "include_year_range": bool(row.relevance_include_year_range),
+        }
+        for row in selected.itertuples(index=False)
+    ]
 
 
 def run_registered_value_adapters(

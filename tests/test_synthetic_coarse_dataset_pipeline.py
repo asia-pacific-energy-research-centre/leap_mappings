@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
+    build_component_relevance,
 )
 from codebase.mapping_tools.build_common_esto_structure import (
     build_common_esto_for_scope,
@@ -30,6 +31,7 @@ from codebase.mapping_tools.hierarchy_subtotal_adapters import (
 from codebase.mapping_tools.mapping_sheet_registry import (
     MAPPING_SHEET_REGISTRY_PATH,
     build_mapping_sheet_configs,
+    get_mapping_review_routes,
 )
 from codebase.mapping_tools.value_adapter_registry import (
     VALUE_ADAPTER_REGISTRY_PATH,
@@ -114,6 +116,30 @@ def test_synthetic_acceptance_values_publish_mapped_rows_and_bound_missing() -> 
     assert comparison["common_row_id"].nunique() == 1
     assert comparison["source_system"].eq("SYNTH_BALANCE").all()
     assert comparison["source_aggregate_group_ids"].astype(str).ne("").all()
+
+
+def test_synthetic_relevance_policy_uses_all_declared_periods() -> None:
+    source_values = pd.read_csv(
+        FIXTURE_DIR / "synthetic_first_level_esto_acceptance_values.csv"
+    )
+    relevance, latest_year = build_component_relevance(
+        source_df=source_values,
+        active_component_abs_tolerance=0.0,
+        ninth_projection_start_year=2023,
+        relevance_policies=[{
+            "dataset_id": "SYNTH_BALANCE",
+            "period_policy": "all_periods",
+            "evidence_column": "synth_balance_nonzero",
+            "include_year_range": True,
+        }],
+    )
+
+    assert latest_year is None
+    assert len(relevance) == 2
+    assert relevance["synth_balance_nonzero"].all()
+    assert set(relevance["synth_balance_first_nonzero_year"]) == {2020}
+    assert set(relevance["synth_balance_last_nonzero_year"]) == {2040}
+    assert set(relevance["synth_balance_nonzero_row_count"]) == {12}
 
 
 def test_synthetic_hierarchy_adapter_publishes_strict_contract(
@@ -255,6 +281,18 @@ def test_synthetic_dataset_can_be_enabled_without_core_code_changes(
         for config in mapping_configs
         if config["sheet_name"] == "synthetic_first_level_esto"
     )
+    review_routes = get_mapping_review_routes(
+        target_dataset_id="ESTO",
+        registry_path=mapping_path,
+        dataset_registry_path=dataset_path,
+    )
+    assert review_routes["SYNTH_BALANCE"] == {
+        "mapping_sheet_to_review": (
+            "tests/fixtures/synthetic_first_level_esto_mapping_table.csv"
+        ),
+        "mapping_source_columns": "synthetic_flow|synthetic_product",
+        "mapping_target_columns": "esto_flow|esto_product",
+    }
     compiled = build_relationship_rows(
         source_df=pd.read_csv(
             FIXTURE_DIR / "synthetic_first_level_esto_mapping_table.csv"

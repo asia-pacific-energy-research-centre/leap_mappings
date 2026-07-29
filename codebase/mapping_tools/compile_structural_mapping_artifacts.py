@@ -13,7 +13,15 @@ from typing import Any
 import pandas as pd
 
 from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
+from codebase.mapping_tools.dataset_registry import load_dataset_registry
+from codebase.mapping_tools.rollup_sheet_registry import (
+    load_active_rollup_rules,
+    load_rollup_sheet_registry,
+)
 from codebase.mapping_tools.structural_resolver import prepare_pair_rollup_rules
+from codebase.mapping_tools.value_adapter_registry import (
+    get_registered_stage3_source_paths,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -114,20 +122,10 @@ def _attach_common_row_is_subtotal(source_common: pd.DataFrame, common_map_path:
     return annotated
 
 
-def _rule_columns(system: str) -> tuple[str, str, str, str]:
-    if system == "LEAP":
-        return (
-            "input_leap_sector_name_full_path", "input_raw_leap_fuel_name",
-            "rolled_leap_sector_name_full_path", "rolled_raw_leap_fuel_name",
-        )
-    if system == "NINTH":
-        return "input_ninth_sector", "input_ninth_fuel", "rolled_ninth_sector", "rolled_ninth_fuel"
-    return "input_esto_flow", "input_esto_product", "rolled_esto_flow", "rolled_esto_product"
-
-
 def _compile_source_components(
     relationships_df: pd.DataFrame,
     rollup_rules: dict[str, pd.DataFrame],
+    rule_columns_by_system: dict[str, tuple[str, str, str, str]],
     version: str,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     required = {
@@ -142,7 +140,6 @@ def _compile_source_components(
         & relationships_df["target_system"].astype(str).str.upper().eq("ESTO")
         & ~relationships_df["is_rollup_derived"].apply(_truthy)
     ].copy()
-    active = active[active["source_system"].astype(str).str.upper().isin(["LEAP", "NINTH"])]
     records: list[dict[str, Any]] = []
     for row in active.drop_duplicates([
         "source_system", "source_flow", "source_product", "target_flow", "target_product", "relationship_id"
@@ -158,11 +155,12 @@ def _compile_source_components(
         })
 
     qa: dict[str, pd.DataFrame] = {}
-    for system in ["LEAP", "NINTH"]:
-        rules = rollup_rules.get(system, pd.DataFrame())
+    for system, rules in rollup_rules.items():
         if rules.empty:
             continue
-        columns = _rule_columns(system)
+        columns = rule_columns_by_system.get(system)
+        if columns is None:
+            continue
         context_groups = rules.groupby("rollup_context", dropna=False) if "rollup_context" in rules else [("", rules)]
         qa_frames: list[pd.DataFrame] = []
         system_base = [record for record in records if record["source_system"] == system and not record["rule_id"]]
@@ -199,6 +197,11 @@ def compile_structural_frames(
     rollup_rules: dict[str, pd.DataFrame] | None = None,
     input_fingerprint: str = "in_memory",
     common_rows_path: Path | None = None,
+    rule_columns_by_system: dict[
+        str,
+        tuple[str, str, str, str],
+    ] | None = None,
+    identity_source_systems: tuple[str, ...] = ("ESTO",),
 ) -> dict[str, pd.DataFrame]:
     """Compile deterministic structural tables without loading source values."""
     required_common = {
@@ -209,27 +212,59 @@ def compile_structural_frames(
     if missing:
         raise ValueError(f"Common map artifact is missing columns: {sorted(missing)}")
     version = f"{STRUCTURAL_SCHEMA_VERSION}:{input_fingerprint[:16]}"
-    source_components, rule_qa = _compile_source_components(relationships_df, rollup_rules or {}, version)
+    if rule_columns_by_system is None:
+        registry = load_rollup_sheet_registry()
+        rule_columns_by_system = {
+            row.dataset_id: (
+                row.input_axis_1_column,
+                row.input_axis_2_column,
+                row.output_axis_1_column,
+                row.output_axis_2_column,
+            )
+            for row in registry[registry["enabled"]].itertuples(index=False)
+        }
+    source_components, rule_qa = _compile_source_components(
+        relationships_df,
+        rollup_rules or {},
+        rule_columns_by_system,
+        version,
+    )
     components = common_map_df.copy()
     components.insert(0, "structural_mapping_version", version)
     components = _stable(components, COMPONENT_COMMON_COLUMNS)
 
-    # ESTO is an identity source system over every component represented in the common map.
-    esto = components[["structural_mapping_version", "component_esto_flow", "component_esto_product"]].drop_duplicates()
-    esto["source_system"] = "ESTO"
-    esto["original_source_flow"] = esto["component_esto_flow"]
-    esto["original_source_product"] = esto["component_esto_product"]
-    esto["effective_source_flow"] = esto["component_esto_flow"]
-    esto["effective_source_product"] = esto["component_esto_product"]
-    esto["relationship_id"] = esto.apply(
-        lambda row: "esto_identity_" + hashlib.sha1(
-            f"{row['component_esto_flow']}|{row['component_esto_product']}".encode("utf-8")
-        ).hexdigest()[:16], axis=1,
+    identity_frames = []
+    for source_system in identity_source_systems:
+        identity = components[[
+            "structural_mapping_version",
+            "component_esto_flow",
+            "component_esto_product",
+        ]].drop_duplicates()
+        identity["source_system"] = source_system
+        identity["original_source_flow"] = identity["component_esto_flow"]
+        identity["original_source_product"] = identity["component_esto_product"]
+        identity["effective_source_flow"] = identity["component_esto_flow"]
+        identity["effective_source_product"] = identity["component_esto_product"]
+        identity["relationship_id"] = identity.apply(
+            lambda row: (
+                f"{source_system.lower()}_identity_"
+                + hashlib.sha1(
+                    (
+                        f"{row['component_esto_flow']}|"
+                        f"{row['component_esto_product']}"
+                    ).encode("utf-8")
+                ).hexdigest()[:16]
+            ),
+            axis=1,
+        )
+        identity["rule_id"] = ""
+        identity["rollup_context"] = ""
+        identity["evidence_type"] = "identity"
+        identity_frames.append(identity)
+    source_components = _stable(
+        pd.concat([source_components, *identity_frames], ignore_index=True),
+        SOURCE_COMPONENT_COLUMNS,
     )
-    esto["rule_id"] = ""
-    esto["rollup_context"] = ""
-    esto["evidence_type"] = "identity"
-    source_components = _stable(pd.concat([source_components, esto], ignore_index=True), SOURCE_COMPONENT_COLUMNS)
 
     joined = source_components.merge(
         components,
@@ -294,11 +329,44 @@ def compile_structural_mapping_artifacts(
     fingerprint = _fingerprint(paths)
     relationships = pd.read_csv(relationships_path, dtype=object)
     common_map = pd.read_csv(common_map_path, dtype=object)
-    rules = {
-        "LEAP": pd.read_excel(workbook_path, sheet_name="leap_rollup_rules", dtype=object),
-        "NINTH": pd.read_excel(workbook_path, sheet_name="ninth_rollup_rules", dtype=object),
-    }
-    artifacts = compile_structural_frames(relationships, common_map, rules, fingerprint, Path(common_map_path))
+    rollup_registry = load_rollup_sheet_registry()
+    raw_rules = load_active_rollup_rules(workbook_path)
+    rules: dict[str, pd.DataFrame] = {}
+    rule_columns_by_system: dict[str, tuple[str, str, str, str]] = {}
+    for row in rollup_registry[rollup_registry["enabled"]].itertuples(index=False):
+        raw = raw_rules.get(row.sheet_name, pd.DataFrame())
+        if not raw.empty:
+            rules[row.dataset_id] = pd.concat(
+                [rules.get(row.dataset_id, pd.DataFrame()), raw],
+                ignore_index=True,
+            )
+        rule_columns_by_system[row.dataset_id] = (
+            row.input_axis_1_column,
+            row.input_axis_2_column,
+            row.output_axis_1_column,
+            row.output_axis_2_column,
+        )
+    datasets = load_dataset_registry()
+    stage3_source_ids = set(get_registered_stage3_source_paths(REPO_ROOT))
+    identity_source_systems = tuple(
+        datasets.loc[
+            datasets["enabled"]
+            & datasets["dataset_id"].isin(stage3_source_ids)
+            & datasets["dataset_id"].eq(
+                datasets["canonical_target_dataset_id"]
+            ),
+            "dataset_id",
+        ]
+    )
+    artifacts = compile_structural_frames(
+        relationships,
+        common_map,
+        rules,
+        fingerprint,
+        Path(common_map_path),
+        rule_columns_by_system=rule_columns_by_system,
+        identity_source_systems=identity_source_systems,
+    )
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, frame in artifacts.items():

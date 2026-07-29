@@ -30,6 +30,7 @@ DATASET_REGISTRY_COLUMNS = [
     "value_adapter",
     "hierarchy_adapter",
     "hierarchy_input_relative_path",
+    "validation_parent_exclusion_adapter",
     "axis_1_id",
     "axis_1_role",
     "axis_2_id",

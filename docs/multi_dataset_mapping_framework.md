@@ -568,6 +568,30 @@ LEAP-export directory correctly from an isolated Git worktree.
 Verification: current validation status and failure ownership remain
 equivalent.
 
+Implementation status (2026-07-29): the shared validation and structural
+compilation paths now obtain:
+
+- mapping-review destinations and source/target columns from the mapping-sheet
+  registry;
+- source comparison-frontier membership and diagnostic value paths from
+  enabled dataset and value-adapter rows;
+- latest-year, projection-start, or all-period relevance evidence from
+  per-adapter policy rather than source-name branches;
+- source-specific parent exclusions from a named validation adapter;
+- structural source systems, rollup columns, and canonical identity sources
+  from the dataset, rollup, and value-adapter registries.
+
+The current ESTO/NINTH/LEAP diagnostic column names and ordering remain
+compatible. With the synthetic dataset enabled, the same machinery adds
+`synth_balance_*` evidence without changing core code. Focused tests pass and
+fresh disabled-dataset Stages 1 and 2 remain byte-identical to M0: 17,076
+relationships and 10,044 Common rows.
+
+M5 is not yet declared complete. The optional unmapped-LEAP indirect-chain
+candidate diagnostic is intentionally source-specific and should be exposed as
+a registered diagnostic adapter before the core Stage 3 orchestration can be
+described as having no current-source branches.
+
 ### M6 — Add the synthetic fourth dataset
 
 - implement the acceptance fixture above;
@@ -594,8 +618,8 @@ that:
   output byte-for-byte at 17,076 rows and SHA-256
   `cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`.
 
-A fresh full Stage 3 orchestration run with the fixture enabled remains after
-M5 removes the remaining fixed-source validator routes.
+A fresh full Stage 3 orchestration run with the fixture enabled and registration
+of the remaining source-specific candidate diagnostic remain.
 
 ### M7 — Onboard the first real additional dataset
 

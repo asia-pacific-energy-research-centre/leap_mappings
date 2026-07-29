@@ -185,4 +185,42 @@ def build_mapping_sheet_configs(
     return configs
 
 
+def get_mapping_review_routes(
+    target_dataset_id: str,
+    registry_path: Path = MAPPING_SHEET_REGISTRY_PATH,
+    dataset_registry_path: Path = DATASET_REGISTRY_PATH,
+) -> dict[str, dict[str, str]]:
+    """Return enabled source-to-target review destinations by source dataset."""
+    frame = load_mapping_sheet_registry(
+        registry_path=registry_path,
+        dataset_registry_path=dataset_registry_path,
+    )
+    selected = frame[
+        frame["enabled"]
+        & frame["target_dataset_id"].eq(target_dataset_id)
+        & frame["use_cases"].map(lambda values: "mapping_review" in values)
+    ]
+    routes: dict[str, dict[str, str]] = {}
+    for row in selected.itertuples(index=False):
+        if row.source_dataset_id in routes:
+            raise ValueError(
+                f"Multiple mapping-review routes from {row.source_dataset_id} "
+                f"to {target_dataset_id}."
+            )
+        routes[row.source_dataset_id] = {
+            "mapping_sheet_to_review": (
+                row.input_relative_path or row.sheet_name
+            ),
+            "mapping_source_columns": "|".join([
+                row.source_axis_1_candidates[0],
+                row.source_axis_2_candidates[0],
+            ]),
+            "mapping_target_columns": "|".join([
+                row.target_axis_1_candidates[0],
+                row.target_axis_2_candidates[0],
+            ]),
+        }
+    return routes
+
+
 #%%
