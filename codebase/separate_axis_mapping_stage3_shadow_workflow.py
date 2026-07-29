@@ -141,6 +141,16 @@ def configure_shadow_pipeline_paths() -> None:
 
 # --- Workflow ---------------------------------------------------------------
 
+def shadow_stage3_source_paths() -> dict[str, Path]:
+    """Return explicit cached sources for the isolated shadow output tree."""
+    return {
+        "LEAP": pipeline.LEAP_ESTO_PATH,
+        "NINTH": pipeline.NINTH_ESTO_PATH,
+        "ESTO": pipeline.ESTO_ROWS_PATH,
+        "ESTO_EXTENDED": pipeline.ESTO_EXTENDED_ROWS_PATH,
+    }
+
+
 def _read_optional_csv(
     path: Path,
     usecols: list[str] | None = None,
@@ -348,6 +358,7 @@ def run_separate_axis_stage3_shadow(
         pipeline.run_stage_3(
             skip_deep_validation=skip_deep_validation,
             chunk_value_application=True,
+            stage3_source_paths=shadow_stage3_source_paths(),
         )
         write_stage3_shadow_gate_summary()
 

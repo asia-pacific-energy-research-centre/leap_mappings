@@ -295,8 +295,12 @@ def normalize_adapter_tables(tables: AdapterTables) -> AdapterTables:
     )
 
 
-def classify_pairs(nodes: pd.DataFrame, pairs: pd.DataFrame) -> pd.DataFrame:
-    """Classify each pair by the canonical any-axis-parent rule."""
+def classify_pairs(
+    nodes: pd.DataFrame,
+    pairs: pd.DataFrame,
+    edges: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Classify structural subtotals and separate output rollup treatment."""
     lookup = nodes.set_index(NODE_KEY)["is_structural_parent"].to_dict()
     hierarchy_lookup = nodes.set_index(NODE_KEY)["hierarchy_status"].to_dict()
     result = pairs.copy()
@@ -324,7 +328,48 @@ def classify_pairs(nodes: pd.DataFrame, pairs: pd.DataFrame) -> pd.DataFrame:
     )
     result["classification_rule"] = PAIR_RULE
     result["source_signal_disagreement"] = False
-    result["synthetic_status"] = result.get("synthetic_status", "ordinary")
+    synthetic_by_node: dict[tuple[str, str, str], str] = {}
+    if edges is not None and not edges.empty:
+        synthetic_edges = edges[
+            ~edges["relationship_type"].eq("ordinary_hierarchy")
+            & ~edges["relationship_type"].eq("unresolved")
+        ]
+        grouped = synthetic_edges.groupby(
+            ["dataset_id", "axis_id", "parent_node_id"],
+            dropna=False,
+        )["relationship_type"].agg(
+            lambda values: ";".join(sorted(set(map(str, values))))
+        )
+        synthetic_by_node = grouped.to_dict()
+    synthetic_statuses: list[str] = []
+    declared_output_subtotals: list[bool] = []
+    subtotal_relationships = {
+        "additive_synthetic_rollup",
+        "expanding_rollup",
+        "non_expanding_replacement",
+        "detached_diagnostic_boundary",
+    }
+    for row in result.itertuples(index=False):
+        statuses = []
+        for ordinal in [1, 2]:
+            key = (
+                str(row.dataset_id),
+                str(getattr(row, f"axis_{ordinal}_id")),
+                str(getattr(row, f"axis_{ordinal}_node_id")),
+            )
+            status = synthetic_by_node.get(key, "")
+            if status:
+                statuses.extend(status.split(";"))
+        unique_statuses = sorted(set(statuses))
+        synthetic_statuses.append(
+            ";".join(unique_statuses) if unique_statuses else "ordinary"
+        )
+        declared_output_subtotals.append(
+            bool(row.pair_is_subtotal)
+            or bool(subtotal_relationships.intersection(unique_statuses))
+        )
+    result["synthetic_status"] = synthetic_statuses
+    result["declared_output_subtotal"] = declared_output_subtotals
     result["review_state"] = result["every_node_resolved"].map(
         {True: "resolved", False: "review_required"}
     )
@@ -467,7 +512,7 @@ def build_contract_frames(
         [tables.observations for tables in normalized],
         ignore_index=True,
     )
-    canonical_pairs = classify_pairs(nodes, pairs)
+    canonical_pairs = classify_pairs(nodes, pairs, edges)
     diagnostics = validate_value_conformance(nodes, edges, observations, tolerance)
     datasets = pd.DataFrame([
         {

@@ -1,0 +1,2 @@
+diagnostic_id,enabled,adapter_name,execution_order,source_dataset_id,raw_source_relative_path,direct_mapping_sheet,bridge_mapping_sheet,bridge_target_mapping_sheet,owner,notes
+unmapped_source_indirect_chain,true,unmapped_indirect_chain,1,LEAP,results/mapping_relationships/raw_leap_results.csv,leap_combined_esto,leap_combined_ninth,ninth_pairs_to_esto_pairs,system_user,Optional LEAP-specific review diagnostic that follows the transitional LEAP-to-NINTH-to-ESTO chain

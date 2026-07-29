@@ -248,7 +248,10 @@ encodes repeated source labels during the relevance pass. The ordinary
 canonical code path keeps its existing default; batching is selected
 explicitly by the separate-axis shadow workflow.
 
-The final full-data shadow gate completed on 2026-07-29:
+The final full-data shadow gate completed on 2026-07-29 after merging the
+current `master` implementation. It used the `generated_merged_final` Stage 2
+variant and explicit shadow-cache source paths, leaving the registry-backed
+production defaults unchanged:
 
 | Stage 3 measure | Result |
 |---|---:|
@@ -260,7 +263,7 @@ The final full-data shadow gate completed on 2026-07-29:
 | mapped scope/source combinations checked | 10 |
 | maximum absolute mapped-row total difference | `1.1641532182693481e-10` |
 | mapped value coverage | 100% in all 10 combinations |
-| Stage 3 elapsed time | 2,064.814 seconds |
+| Stage 3 elapsed time | 1,839.189 seconds |
 | published output-status records | 10 passed, 0 failed |
 
 The additive fact/metadata contract was published atomically and its hashes
@@ -357,4 +360,4 @@ in QA and work-queue records until resolved.
 
 The deferred move of `data/temp/new leap rows.xlsx` to
 `leap_initialisation/data/leap_export_templates/detailed leap model rows.xlsx`
-is tracked as MAPQ-034 in `docs/work_queue.md`.
+is tracked as MAPQ-035 in `docs/work_queue.md`.

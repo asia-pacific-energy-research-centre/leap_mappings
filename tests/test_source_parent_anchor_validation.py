@@ -1,11 +1,14 @@
 """Focused synthetic tests for original-source parent anchor validation."""
 
+from pathlib import Path
+
 import pandas as pd
 
 from codebase.mapping_tools.source_parent_anchor_validation import (
     ANCHOR_COLUMNS,
     DATA_QUALITY_EXCEPTION_SHEET,
     _augment_with_data_quality_exceptions,
+    _read_anchor_wide_source,
     build_leaf_reconciliation_exception_candidates,
     build_failed_anchor_mapped_component_context_values,
     build_failed_anchor_raw_child_context_values,
@@ -14,6 +17,47 @@ from codebase.mapping_tools.source_parent_anchor_validation import (
     select_source_parent_anchor_findings,
     validate_source_parent_anchors,
 )
+
+
+def test_read_anchor_wide_source_loads_only_selected_years_and_latest(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "wide.csv"
+    pd.DataFrame(
+        [
+            {
+                "economy": "E",
+                "flows": "F",
+                "products": "P",
+                "unused_metadata": "large",
+                "2020": 1,
+                "2021": 2,
+                "2030": 3,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+
+    selected = _read_anchor_wide_source(
+        source_path,
+        ["economy", "flows", "products"],
+        target_years={2020},
+        include_latest_year=True,
+    )
+
+    assert selected.columns.tolist() == [
+        "economy",
+        "flows",
+        "products",
+        "2020",
+        "2030",
+    ]
+    assert selected.iloc[0].to_dict() == {
+        "economy": "E",
+        "flows": "F",
+        "products": "P",
+        "2020": "1",
+        "2030": "3",
+    }
 
 
 def _fixture(child_b_value: float = 6, include_child_b_mapping: bool = True):

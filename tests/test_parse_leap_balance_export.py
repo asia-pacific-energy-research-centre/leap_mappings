@@ -74,3 +74,29 @@ def test_parse_leap_balance_xlsx_uses_mapping_workbook_fuel_spellings(
         "Solar photovoltaics",
         "Solar",
     }
+
+
+def test_parse_leap_balance_xlsx_normalizes_stock_and_statistical_flow_aliases(
+    tmp_path: Path,
+) -> None:
+    workbook_path = tmp_path / "balance_flow_aliases.xlsx"
+    raw = pd.DataFrame(
+        [
+            ['Energy Balance for Area "Test Area"', None],
+            ["Scenario: Reference, Year: 2022, Units: Petajoule", None],
+            [None, "Natural gas"],
+            ["From Stocks", 1.0],
+            ["Statistical Differences", 2.0],
+            ["Total Transformation", 3.0],
+        ]
+    )
+    with pd.ExcelWriter(workbook_path) as writer:
+        raw.to_excel(writer, sheet_name="2022", header=False, index=False)
+
+    parsed = parse_leap_balance_xlsx(workbook_path, economy_override="01_AUS")
+
+    assert set(parsed["leap_flow"]) == {
+        "Stock Changes",
+        "Statistical Differences",
+        "Total Transformation",
+    }

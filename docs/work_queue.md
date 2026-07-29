@@ -150,8 +150,10 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
-| MAPQ-033 | P2 | `shadow_feature_complete_merge_review` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | opt-in feature; canonical promotion separate | 2026-07-29 |
-| MAPQ-034 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-033 | after current detailed-row work | 2026-07-29 |
+| MAPQ-032 | P1 | `ready_for_implementation` | `leap_mappings` | MAPQ-001 | W2 | 2026-07-28 |
+| MAPQ-033 | P2 | `blocked_pending_dataset_selection` | `leap_mappings` | multi-dataset M1-M6 | W3 | 2026-07-29 |
+| MAPQ-034 | P2 | `shadow_feature_complete_merge_review` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | opt-in feature; canonical promotion separate | 2026-07-29 |
+| MAPQ-035 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-034 | after current detailed-row work | 2026-07-29 |
 
 ---
 
@@ -424,6 +426,17 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   review workbook. The review currently contains 9,121 canonical pairs, 3,410
   proposed cell changes, 520 current cross-sheet conflicts, and 1,055
   unresolved pairs. No maintained workbook cells were written.
+- **2026-07-28 conformance refinement:** ESTO is now the primary numerical
+  conformance source. Across every 1990–2023 economy/product context, both
+  `09.06 Gas processing plants` and `09.08 Coal transformation` passed all
+  55,692 immediate-child comparisons. The bounded 9th check remains secondary
+  inherited-source evidence and does not determine structural status.
+- **2026-07-28 Common ESTO integration:** The contract now builds Common ESTO
+  directly from `common_esto_rows.csv` and typed hierarchy edges, classifies
+  the 2,835 actual output pairs, keeps 218 structural pairs separate from 394
+  synthetic output-subtotal treatments, and carries 168,509 current-run Common
+  ESTO checks in `value_conformance_diagnostics.csv`. The wide output and
+  dashboard consume the same classification/contract path.
 - **Next decision:** Review the bounded unresolved queue, beginning with the
   missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
   sibling groups before any workbook application. See
@@ -464,7 +477,38 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   canonical guide treats either retired workbook filename as current; and
   subtotal/path QA passes on the reviewed template census.
 
-### MAPQ-033 — Decide and shadow-test the separate-axis mapping contract
+### MAPQ-033 — Onboard the first real additional energy-balance dataset
+
+- **Priority / status / week:** P2 · `blocked_pending_dataset_selection` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** the multi-dataset M1–M6
+  migration in `codex/multi-dataset-registry-m1`
+- **Evidence (2026-07-29):** The disabled `SYNTH_BALANCE` fixture now proves
+  registry-only scope admission, reviewed CSV mappings, declared CSV hierarchy,
+  normalized PJ ingestion, coarse-boundary conservation, bounded unmapped-row
+  review, and Stage 3-style lineage. A real four-source Stage 3 application
+  smoke run also published a passed 3,952,646-row output contract after the
+  validator registry refactor. The registry-enabled
+  `synthetic_multi_dataset_acceptance_v1` run subsequently passed all twelve
+  fixture criteria plus mapped-value conservation, publishing ESTO, LEAP,
+  NINTH, and `SYNTH_BALANCE` through one unsplit coarse Common row. The fresh
+  source-parent anchor rerun also completed: 217,099 eligible checks, 209,837
+  passed, and 7,262 retained semantic failures. Implementation evidence is in
+  commits `16b4c5d`, `796cfbe`, and `49eb119`.
+- **Input needed from the user:** Select the first real additional dataset,
+  provide a representative extract that includes its axis columns, economy,
+  scenario, period, unit, and values, and identify someone who understands its
+  balance/subtotal semantics well enough to review mappings.
+- **Next action after input:** Register the dataset disabled, implement or
+  configure its adapters, generate a bounded review table against the
+  ESTO/ESTO Extended hub, record every manual semantic decision, and enable
+  only a dedicated comparison scope for the first reviewed run.
+- **Completion criteria:** The real dataset passes the same acceptance gates as
+  `SYNTH_BALANCE`; no core Python edit is needed solely to name it; its
+  scenarios and periods align through explicit scope rules; all non-PJ values
+  are converted before mapping; and a reviewer accepts its mappings,
+  exclusions, hierarchy status, and conservation evidence.
+
+### MAPQ-034 — Decide and shadow-test the separate-axis mapping contract
 
 - **Priority / status / timing:** P2 · `shadow_feature_complete_merge_review` · merge opt-in feature, defer canonical promotion
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-029, MAPQ-031
@@ -476,10 +520,10 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Next action:** Review and merge the compiler/workbooks/docs as an isolated further-development feature, not a production switch. Before canonical promotion, decide whether to accept or narrow the changed Common partition and review the 3,501 provisional relationships, eight within-axis many-to-many components, 29 broad Common rows, and remaining partial coverage. The recursive source-tree/parent-anchor suite was deliberately skipped in the RAM-constrained shadow value gate and should be run as part of an eventual production-promotion rehearsal.
 - **Completion criteria:** Human-approved context and dormancy policies exist; structural/reserved validity is explicit; the accepted compiler reproduces the pair contract and Common ESTO membership without unexplained overrides; Stage 3 proves source-once delivery and lineage; refresh performance is acceptable; and compatibility views have a tested rollback path.
 
-### MAPQ-034 — Move and rename the detailed LEAP row inventory
+### MAPQ-035 — Move and rename the detailed LEAP row inventory
 
 - **Priority / status / timing:** P2 · `deferred_until_current_row_work_finishes` · after the active detailed-row work
-- **Owner repos:** `leap_mappings` + `leap_initialisation` · **Depends on:** MAPQ-031, MAPQ-033
+- **Owner repos:** `leap_mappings` + `leap_initialisation` · **Depends on:** MAPQ-031, MAPQ-034
 - **Current source:** `leap_mappings/data/temp/new leap rows.xlsx`, using the required `demand` and `power` sheets.
 - **Recorded destination:** Move the workbook to `leap_initialisation/data/leap_export_templates/detailed leap model rows.xlsx`.
 - **Reason for deferral:** The current workbook is still being used by active mapping work. Moving it now would create avoidable path churn and could disrupt that work.

@@ -3,7 +3,7 @@
 > Archived 2026-07-29 after the opt-in compiler, generated workbooks,
 > Stage 1-2 structure checks, bounded Stage 3 value/lineage gate, tests, and
 > active pipeline documentation were completed. Remaining production-promotion
-> review is tracked in MAPQ-033.
+> review is tracked in MAPQ-034.
 
 > **Status 2026-07-29:** Resumed as an isolated prototype after further user
 > direction. The prototype may generate review workbooks and compatibility

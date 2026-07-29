@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from codebase.mapping_tools.rollup_sheet_registry import (
+    build_rollup_sheet_configs,
+)
 
 #%%
 NON_EXPANDING_REASON = "NON_EXPANDING_ROLLUP"
@@ -31,29 +34,7 @@ NON_EXPANDING_MODE = "NON_EXPANDING"
 DETACHED_MODE = "DETACHED"
 ROLLUP_MODES = {EXPANDING_MODE, NON_EXPANDING_MODE, DETACHED_MODE}
 
-ROLLUP_SHEET_CONFIGS = {
-    "leap_rollup_rules": {
-        "source_system": "LEAP",
-        "input_flow": "input_leap_sector_name_full_path",
-        "input_product": "input_raw_leap_fuel_name",
-        "rolled_flow": "rolled_leap_sector_name_full_path",
-        "rolled_product": "rolled_raw_leap_fuel_name",
-    },
-    "esto_rollup_rules": {
-        "source_system": "ESTO",
-        "input_flow": "input_esto_flow",
-        "input_product": "input_esto_product",
-        "rolled_flow": "rolled_esto_flow",
-        "rolled_product": "rolled_esto_product",
-    },
-    "ninth_rollup_rules": {
-        "source_system": "NINTH",
-        "input_flow": "input_ninth_sector",
-        "input_product": "input_ninth_fuel",
-        "rolled_flow": "rolled_ninth_sector",
-        "rolled_product": "rolled_ninth_fuel",
-    },
-}
+ROLLUP_SHEET_CONFIGS = build_rollup_sheet_configs()
 
 CATALOGUE_COLUMNS = [
     "rule_sheet",

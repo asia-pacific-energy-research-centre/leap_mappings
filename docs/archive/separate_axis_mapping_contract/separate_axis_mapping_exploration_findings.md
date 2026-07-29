@@ -6,7 +6,7 @@ validated; canonical promotion remains a separate review decision
 **Archived:** 2026-07-29 after the exploration became a tested opt-in feature.
 The maintained operating guide is
 `docs/separate_axis_mapping_pipeline.md`; future promotion work remains in
-MAPQ-033.
+MAPQ-034.
 
 **Exploration branch:** `codex/separate-axis-mapping-exploration`
 
@@ -352,7 +352,7 @@ Missing from one template or one economy is never global invalidity. Demand
 templates provide branch structure but do not manufacture a global
 branch-fuel Cartesian registry. The detailed-row workbook is now explicit
 structural evidence, but its future move and rename are deferred under
-MAPQ-034.
+MAPQ-035.
 
 ## Cross-repository impact
 
@@ -994,7 +994,10 @@ They match the Stage 2 source-aggregate split QA and do not represent duplicate
 value delivery.
 
 The full generated value gate then completed with economy-bounded Ninth
-conversion and source-system/economy-bounded Common application:
+conversion and source-system/economy-bounded Common application. The final
+post-merge rerun used the `generated_merged_final` Stage 2 variant and explicit
+shadow-cache source paths, so the registry-backed production defaults were not
+changed:
 
 - 18,657,595 source rows read after configured exclusions;
 - 2,579,778 non-zero relevant source rows applied;
@@ -1003,7 +1006,8 @@ conversion and source-system/economy-bounded Common application:
 - 100% mapped-row value coverage in all ten scope/source combinations;
 - maximum absolute before/after difference
   `1.1641532182693481e-10`; and
-- ten Stage 3 output-status records passed with none failed.
+- ten Stage 3 output-status records passed with none failed;
+- total Stage 3 elapsed time was 1,839.189 seconds.
 
 The 520,964 rows in the missing-Common-map diagnostic are outside the generated
 exact-component contract. The largest ESTO/ESTO Extended groups are source
@@ -1121,6 +1125,6 @@ the production master:
 4. What exact hierarchy-frontier rule rejects a conflicting parent-to-child
    mapping without rejecting legitimate coarse mappings between datasets?
 
-MAPQ-033 remains isolated from the production filename. Treat every generated
+MAPQ-034 remains isolated from the production filename. Treat every generated
 axis, registry, candidate, compatibility sheet, and override as reviewable
 compiler output until the promotion questions above are resolved explicitly.

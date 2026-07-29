@@ -10,6 +10,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     build_source_coverage_check,
     build_total_check,
     build_unmapped_leap_branch_evidence,
+    build_wide_year_output,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     filter_source_to_relevant_pairs,
@@ -19,6 +20,54 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     tagged_output_path,
 )
 from codebase.mapping_issue_exceptions import filter_unmodelled_source_rows
+
+
+def test_wide_output_uses_canonical_common_pair_subtotal_classification(
+    tmp_path: Path,
+) -> None:
+    common_rows_path = tmp_path / "common_esto_rows.csv"
+    pd.DataFrame([
+        {
+            "common_flow_label": "14 Industry sector",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "14.03 Manufacturing",
+            "common_product_label": "01 Coal",
+        },
+    ]).to_csv(common_rows_path, index=False)
+    workbook_path = tmp_path / "mapping.xlsx"
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        pd.DataFrame(columns=[
+            "include",
+            "rolled_esto_flow",
+            "child_flow_labels",
+        ]).to_excel(writer, sheet_name="esto_rollup_rules", index=False)
+    comparison = pd.DataFrame([
+        {
+            "comparison_scope": "esto_leap",
+            "source_system": "ESTO",
+            "economy": "20_USA",
+            "scenario": "historical",
+            "year": 2023,
+            "common_flow_label": flow,
+            "common_product_label": "01 Coal",
+            "value": value,
+        }
+        for flow, value in [
+            ("14 Industry sector", 10),
+            ("14.03 Manufacturing", 10),
+        ]
+    ])
+
+    wide = build_wide_year_output(
+        comparison,
+        common_rows_path,
+        outlook_mappings_path=workbook_path,
+    ).set_index("flow")
+
+    assert bool(wide.loc["14 Industry sector", "is_subtotal"])
+    assert not bool(wide.loc["14.03 Manufacturing", "is_subtotal"])
 
 
 def test_tagged_output_path_preserves_plain_and_compressed_csv_suffixes() -> None:
@@ -217,6 +266,55 @@ def test_apply_common_structure_retains_generated_total_label() -> None:
         "12,13,14,16.01-16.02 Total final consumption"
     ]
     assert comparison_df["value"].tolist() == [10.0]
+
+
+def test_apply_common_structure_uses_injected_scope_membership() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": source_system,
+                "economy": "20_USA",
+                "scenario": "scenario",
+                "year": 2030,
+                "esto_flow": "F1",
+                "esto_product": "P1",
+                "value": value,
+            }
+            for source_system, value in [
+                ("LEAP", 10.0),
+                ("ESTO", 20.0),
+            ]
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "registered_custom_scope",
+                "component_esto_flow": "F1",
+                "component_esto_product": "P1",
+                "common_row_id": "common_1",
+                "common_flow_code": "F1",
+                "common_flow_name": "Flow",
+                "common_flow_label": "F1 Flow",
+                "common_product_code": "P1",
+                "common_product_name": "Product",
+                "common_product_label": "P1 Product",
+                "component_sign": 1,
+            }
+        ]
+    )
+
+    comparison, missing, _ = apply_common_structure(
+        source_df,
+        common_rows_df,
+        comparison_scope_systems={
+            "registered_custom_scope": {"LEAP"},
+        },
+    )
+
+    assert missing.empty
+    assert comparison["source_system"].tolist() == ["LEAP"]
+    assert comparison["value"].tolist() == [10.0]
 
 
 def test_apply_common_structure_default_returns_three_tuple() -> None:

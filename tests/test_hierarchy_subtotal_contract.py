@@ -7,7 +7,10 @@ import pandas as pd
 import pytest
 
 from codebase.mapping_tools.hierarchy_subtotal_adapters import (
+    build_common_esto_pair_classification,
+    build_esto_family_conformance,
     build_ninth_family_conformance,
+    normalize_common_esto_value_conformance,
 )
 from codebase.mapping_tools.hierarchy_subtotal_contract import (
     AdapterTables,
@@ -173,6 +176,12 @@ def test_detached_boundary_is_not_an_ordinary_parent_edge() -> None:
     assert "detached_diagnostic_boundary" in set(
         frames["declared_relationship_edges"]["relationship_type"]
     )
+    detached_pair = frames["canonical_source_pairs"].query(
+        "axis_1_node_id == 'leaf' and axis_2_node_id == 'leaf'"
+    ).iloc[0]
+    assert not bool(detached_pair["pair_is_subtotal"])
+    assert bool(detached_pair["declared_output_subtotal"])
+    assert detached_pair["synthetic_status"] == "detached_diagnostic_boundary"
 
 
 def test_new_dataset_adapter_requires_no_core_classifier_change() -> None:
@@ -235,6 +244,200 @@ def test_ninth_0906_and_0908_real_semantics_fixture_are_failed_but_structural(
         "09_total_transformation_sector/09_06_gas_processing_plants",
         "09_total_transformation_sector/09_08_coal_transformation",
     }
+
+
+def test_esto_0906_and_0908_compare_immediate_children_at_fixed_product(
+    tmp_path: Path,
+) -> None:
+    rows = []
+    family_children = {
+        "09.06 Gas processing plants": [
+            "09.06.01 Gas works plants",
+            "09.06.02 Liquefaction/regasification plants",
+        ],
+        "09.08 Coal transformation": [
+            "09.08.01 Coke ovens",
+            "09.08.02 Blast furnaces",
+        ],
+    }
+    for parent, children in family_children.items():
+        for product, parent_value in [("08 Gas", 5), ("17 Electricity", 6)]:
+            rows.extend([
+                {
+                    "economy": "20USA",
+                    "flows": parent,
+                    "products": product,
+                    "is_subtotal": True,
+                    "2022": parent_value,
+                },
+                {
+                    "economy": "20USA",
+                    "flows": children[0],
+                    "products": product,
+                    "is_subtotal": False,
+                    "2022": 2,
+                },
+                {
+                    "economy": "20USA",
+                    "flows": children[1],
+                    "products": product,
+                    "is_subtotal": False,
+                    "2022": 3,
+                },
+            ])
+    data_path = tmp_path / "esto.csv"
+    pd.DataFrame(rows).to_csv(data_path, index=False)
+
+    diagnostics = build_esto_family_conformance(data_path)
+
+    assert set(diagnostics["parent_node_id"]) == set(family_children)
+    assert set(diagnostics["fixed_opposite_axis_node_id"]) == {
+        "08 Gas",
+        "17 Electricity",
+    }
+    assert set(diagnostics.query("fixed_opposite_axis_node_id == '08 Gas'")["status"]) == {
+        "passed"
+    }
+    assert set(
+        diagnostics.query("fixed_opposite_axis_node_id == '17 Electricity'")["status"]
+    ) == {"failed"}
+
+
+def test_common_esto_pairs_use_typed_edges_for_structural_subtotal(
+    tmp_path: Path,
+) -> None:
+    common_rows_path = tmp_path / "common_esto_rows.csv"
+    pd.DataFrame([
+        {
+            "common_flow_label": "09 Total transformation sector",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "09.06 Gas processing plants",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "09.06.01 Gas works plants",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "09.06 Gas processing plants (including own use)",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "14 Industry sector",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "14.03 Manufacturing",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "09.01 Main activity producer",
+            "common_product_label": "01 Coal",
+        },
+        {
+            "common_flow_label": "09.01-09.02 Power sector",
+            "common_product_label": "01 Coal",
+        },
+    ]).to_csv(common_rows_path, index=False)
+    workbook_path = tmp_path / "mapping.xlsx"
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        pd.DataFrame([
+            {
+                "include": True,
+                "rolled_esto_flow": "09.06 Gas processing plants (including own use)",
+                "input_esto_flow": "09.06 Gas processing plants",
+                "parent_flow_label": "09 Total transformation sector",
+                "child_flow_labels": "09.06 Gas processing plants",
+                "ROLLUP_MODE": "NON_EXPANDING",
+            },
+            {
+                "include": True,
+                "rolled_esto_flow": "09.01-09.02 Power sector",
+                "input_esto_flow": "09.01 Main activity producer",
+                "parent_flow_label": "09 Total transformation sector",
+                "child_flow_labels": "09.01 Main activity producer",
+                "ROLLUP_MODE": "EXPANDING",
+            },
+        ]).to_excel(writer, sheet_name="esto_rollup_rules", index=False)
+
+    pairs = build_common_esto_pair_classification(
+        common_rows_path,
+        workbook_path,
+    ).set_index("axis_1_node_id")
+
+    assert bool(pairs.loc["14 Industry sector", "pair_is_subtotal"])
+    assert not bool(
+        pairs.loc[
+            "09.06 Gas processing plants (including own use)",
+            "pair_is_subtotal",
+        ]
+    )
+    assert bool(
+        pairs.loc[
+            "09.06 Gas processing plants (including own use)",
+            "declared_output_subtotal",
+        ]
+    )
+    assert not bool(pairs.loc["09.01-09.02 Power sector", "pair_is_subtotal"])
+    assert bool(
+        pairs.loc["09.01-09.02 Power sector", "declared_output_subtotal"]
+    )
+    assert (
+        pairs.loc["09.01-09.02 Power sector", "synthetic_status"]
+        == "expanding_rollup"
+    )
+
+
+def test_common_esto_value_conformance_preserves_full_output_context(
+    tmp_path: Path,
+) -> None:
+    validation_path = tmp_path / "common_esto_validation.csv"
+    pd.DataFrame([{
+        "run_id": "run-1",
+        "validation_axis": "flow",
+        "comparison_scope": "esto_leap_ninth",
+        "source_system": "NINTH",
+        "economy": "20_USA",
+        "scenario": "reference",
+        "other_axis_value": "08.01 Natural gas",
+        "parent_code": "09.06 Gas processing plants",
+        "child_count": 4,
+        "frontier_row_count": 3,
+        "missing_expected_children": "09.06.04 Gas-to-liquids plants",
+        "year": 2050,
+        "parent_value": 10,
+        "children_sum": 9,
+        "difference": 1,
+        "abs_error": 1,
+        "status": "failed",
+        "reason": "missing_expected_children",
+        "source_inconsistency_status": "confirmed_inherited",
+        "sector_hierarchy_status": "failed",
+        "fuel_hierarchy_status": "",
+        "source_issue_ids": "issue-1",
+        "inherited_source_inconsistency": True,
+    }]).to_csv(validation_path, index=False)
+
+    diagnostics = normalize_common_esto_value_conformance(
+        validation_path,
+        expected_run_id="run-1",
+    )
+
+    diagnostic = diagnostics.iloc[0]
+    assert diagnostic["dataset_id"] == "common_esto"
+    assert diagnostic["comparison_scope"] == "esto_leap_ninth"
+    assert diagnostic["source_system"] == "NINTH"
+    assert diagnostic["validation_axis"] == "axis_1"
+    assert diagnostic["fixed_opposite_axis_node_id"] == "08.01 Natural gas"
+    assert diagnostic["missing_child_count"] == 1
+    assert diagnostic["tolerance_mode"] == "relative_with_absolute_floor"
+    with pytest.raises(ValueError, match="run_id"):
+        normalize_common_esto_value_conformance(
+            validation_path,
+            expected_run_id="run-2",
+        )
 
 
 def test_same_pair_in_two_mapping_sheets_gets_one_canonical_flag(tmp_path: Path) -> None:

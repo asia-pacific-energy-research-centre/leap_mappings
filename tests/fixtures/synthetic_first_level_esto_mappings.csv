@@ -1,0 +1,4 @@
+relationship_id,include_in_use_case,use_case,source_system,target_system,source_flow,source_product,target_flow,target_product,esto_pair_is_subtotal,is_rollup_derived,allocation_method
+synth_0,true,synthetic_to_esto_balance_conversion,SYNTH_BALANCE,ESTO,09 Total transformation,01 Coal,09 Total transformation,01 Coal,false,false,direct
+synth_1,true,synthetic_to_esto_balance_conversion,SYNTH_BALANCE,ESTO,09 Total transformation,01 Coal,09.01 Electricity plants,01.01 Hard coal,false,false,direct
+synth_2,true,synthetic_to_esto_balance_conversion,SYNTH_BALANCE,ESTO,09 Total transformation,01 Coal,09.02 Autoproducers,01.02 Brown coal,false,false,direct

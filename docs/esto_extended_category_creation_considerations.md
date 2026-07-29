@@ -276,10 +276,9 @@ Before editing the maintained workbook:
 - perform the required lossless workbook round-trip proof;
 - back up the workbook;
 - review additions, replacements, and removals by domain.
-- identify a clean checkbox cell on every edited sheet and copy only its
-  checkbox capability into new Boolean cells before setting their values;
-  retain the ordinary unfilled surrounding style and require every complete
-  active row to contain `True` or `False`, not a blank.
+- require new Boolean cells to contain actual `TRUE` or `FALSE` values, retain
+  the ordinary unfilled surrounding style, and add no checkbox controls or
+  other special formatting.
 
 After each reviewed domain:
 
@@ -290,10 +289,9 @@ After each reviewed domain:
 - check raw and rollup-aware mapping cardinality;
 - check parent-versus-child and source-total preservation;
 - confirm no rejected rows remain in the maintained mapping sheets.
-- reopen and visually inspect every edited Boolean column; require consistent
-  in-cell checkboxes across the populated rows, with no mixture of checkboxes
-  and literal Boolean text, no black/solid fills or masked values, and no
-  required Boolean blanks.
+- reopen and inspect every edited Boolean column; require actual Boolean values
+  displayed as ordinary `TRUE` or `FALSE`, with no checkbox controls,
+  black/solid fills, masked values, text substitutes, or required blanks.
 
 Only after the structural review is clean should the full value pipeline and
 downstream `leap_initialisation` and dashboard checks be run.

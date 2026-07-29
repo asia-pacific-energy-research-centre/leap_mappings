@@ -25,7 +25,10 @@ from codebase.mapping_issue_exceptions import (
     filter_unmodelled_source_rows,
     row_is_allowed,
 )
-from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
+from codebase.mapping_tools.build_dataset_tree_structure import OUTLOOK_MAPPINGS_PATH
+from codebase.mapping_tools.hierarchy_subtotal_adapters import (
+    build_common_esto_pair_classification,
+)
 from codebase.mapping_tools.common_esto_output_contract import (
     LEGACY_COMPARISON_COLUMNS,
     MANIFEST_FILENAME,
@@ -39,6 +42,18 @@ from codebase.mapping_tools.mapping_candidate_generation import (
     summarise_nonzero_ninth_projection_pairs,
 )
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
+from codebase.mapping_tools.value_adapter_registry import (
+    get_component_relevance_policies,
+    get_registered_stage3_source_paths,
+)
+from codebase.mapping_tools.mapping_sheet_registry import (
+    get_mapping_review_routes,
+)
+from codebase.mapping_tools.diagnostic_adapter_registry import (
+    DIAGNOSTIC_ADAPTER_REGISTRY_PATH,
+    run_registered_diagnostic_adapters,
+)
 
 #%%
 OUTPUT_COLUMNS = LEGACY_COMPARISON_COLUMNS
@@ -115,16 +130,51 @@ COMPONENT_RELEVANCE_COLUMNS = [
     "unmapped_leap_branch_count",
     "relevance_reasons",
 ]
-COMPARISON_SCOPE_SYSTEMS = {
-    "esto_leap": {"LEAP", "ESTO"},
-    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
-    "leap_vs_ninth": {"LEAP", "NINTH"},
-    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
-    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
-    "esto_only": {"ESTO"},
-}
+COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 
 #%%
+def _relevance_stat_columns(
+    evidence_column: str,
+    include_year_range: bool,
+) -> list[str]:
+    """Return stable statistic columns derived from one evidence flag."""
+    prefix = evidence_column.removesuffix("_nonzero")
+    columns = [
+        f"{prefix}_nonzero_row_count",
+        f"{prefix}_nonzero_economy_count",
+    ]
+    if include_year_range:
+        columns.extend([
+            f"{prefix}_first_nonzero_year",
+            f"{prefix}_last_nonzero_year",
+        ])
+    columns.extend([
+        f"{prefix}_abs_sum",
+        f"{prefix}_max_abs_value",
+    ])
+    return columns
+
+
+def _component_relevance_output_columns(
+    policies: list[dict[str, object]],
+) -> list[str]:
+    """Keep the legacy schema stable and append fields for new datasets."""
+    columns = list(COMPONENT_RELEVANCE_COLUMNS)
+    for policy in policies:
+        evidence_column = str(policy["evidence_column"])
+        additions = [
+            evidence_column,
+            *_relevance_stat_columns(
+                evidence_column,
+                bool(policy["include_year_range"]),
+            ),
+        ]
+        for column in additions:
+            if column not in columns:
+                columns.append(column)
+    return columns
+
+
 def _find_repo_root(start_path: Path) -> Path:
     """Find the leap_mappings repo root from a nested workflow path."""
     for candidate in [start_path, *start_path.parents]:
@@ -396,16 +446,17 @@ def build_component_relevance(
     active_component_abs_tolerance: float,
     ninth_projection_start_year: int,
     esto_base_year: int | None = None,
+    relevance_policies: list[dict[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, int | None]:
-    """Return ESTO pairs with non-zero evidence in the periods used for mapping QA.
-
-    ESTO contributes only its latest available base year unless a year is
-    supplied explicitly. NINTH contributes projection years only. Mapped LEAP
-    rows contribute every exported balance year because LEAP exports are
-    already selected model results rather than a full historical time series.
-    """
+    """Return component pairs with policy-selected non-zero mapping evidence."""
+    policies = (
+        get_component_relevance_policies()
+        if relevance_policies is None
+        else relevance_policies
+    )
+    output_columns = _component_relevance_output_columns(policies)
     if source_df.empty:
-        return pd.DataFrame(columns=COMPONENT_RELEVANCE_COLUMNS), esto_base_year
+        return pd.DataFrame(columns=output_columns), esto_base_year
 
     working_df = source_df.copy()
     working_df["year"] = pd.to_numeric(working_df["year"], errors="coerce")
@@ -436,30 +487,47 @@ def build_component_relevance(
         working_df["economy"] = ""
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
-    esto_years = working_df.loc[
-        working_df["source_system"].isin({"ESTO", "ESTO_EXTENDED"}) & working_df["year"].notna(),
+    latest_year_dataset_ids = {
+        str(policy["dataset_id"])
+        for policy in policies
+        if policy["period_policy"] == "latest_available_year"
+    }
+    latest_years = working_df.loc[
+        working_df["source_system"].isin(latest_year_dataset_ids)
+        & working_df["year"].notna(),
         "year",
     ]
     resolved_esto_base_year = esto_base_year
-    if resolved_esto_base_year is None and not esto_years.empty:
-        resolved_esto_base_year = int(esto_years.max())
+    if resolved_esto_base_year is None and not latest_years.empty:
+        resolved_esto_base_year = int(latest_years.max())
 
-    evidence_masks = {
-        "esto_base_year_nonzero": (
-            working_df["source_system"].isin({"ESTO", "ESTO_EXTENDED"})
-            & (working_df["year"] == resolved_esto_base_year)
-            & nonzero_mask
-        ),
-        "ninth_projection_nonzero": (
-            (working_df["source_system"] == "NINTH")
-            & (working_df["year"] >= ninth_projection_start_year)
-            & nonzero_mask
-        ),
-        "mapped_leap_balance_nonzero": (
-            (working_df["source_system"] == "LEAP")
-            & nonzero_mask
-        ),
-    }
+    evidence_masks: dict[str, pd.Series] = {}
+    include_year_range: dict[str, bool] = {}
+    for policy in policies:
+        dataset_id = str(policy["dataset_id"])
+        period_policy = str(policy["period_policy"])
+        evidence_column = str(policy["evidence_column"])
+        mask = working_df["source_system"].eq(dataset_id) & nonzero_mask
+        if period_policy == "latest_available_year":
+            mask &= working_df["year"].eq(resolved_esto_base_year)
+        elif period_policy == "from_projection_start":
+            mask &= working_df["year"].ge(ninth_projection_start_year)
+        elif period_policy != "all_periods":
+            raise ValueError(
+                f"{dataset_id}: unsupported relevance period policy "
+                f"{period_policy!r}."
+            )
+        evidence_masks[evidence_column] = (
+            evidence_masks.get(
+                evidence_column,
+                pd.Series(False, index=working_df.index),
+            )
+            | mask
+        )
+        include_year_range[evidence_column] = (
+            include_year_range.get(evidence_column, False)
+            or bool(policy["include_year_range"])
+        )
 
     evidence_frames: list[pd.DataFrame] = []
     pair_columns = ["esto_flow", "esto_product"]
@@ -471,7 +539,7 @@ def build_component_relevance(
         evidence_frames.append(evidence_df)
 
     if not evidence_frames:
-        return pd.DataFrame(columns=COMPONENT_RELEVANCE_COLUMNS), resolved_esto_base_year
+        return pd.DataFrame(columns=output_columns), resolved_esto_base_year
 
     relevance_df = evidence_frames[0]
     for evidence_df in evidence_frames[1:]:
@@ -482,44 +550,28 @@ def build_component_relevance(
             "esto_product": "component_esto_product",
         }
     )
-    for evidence_column in [
-        "esto_base_year_nonzero",
-        "ninth_projection_nonzero",
-        "mapped_leap_balance_nonzero",
-    ]:
+    for evidence_column in evidence_masks:
         if evidence_column not in relevance_df.columns:
             relevance_df[evidence_column] = False
         relevance_df[evidence_column] = relevance_df[evidence_column].fillna(False).astype(bool)
     relevance_df["unmapped_leap_balance_nonzero"] = False
     relevance_df["unmapped_leap_branch_count"] = 0
 
-    stats_specs = {
-        "esto_base_year_nonzero": {
-            "esto_base_year_nonzero_row_count": ("value", "size"),
-            "esto_base_year_nonzero_economy_count": ("economy", "nunique"),
-            "esto_base_year_abs_sum": ("_abs_value", "sum"),
-            "esto_base_year_max_abs_value": ("_abs_value", "max"),
-        },
-        "ninth_projection_nonzero": {
-            "ninth_projection_nonzero_row_count": ("value", "size"),
-            "ninth_projection_nonzero_economy_count": ("economy", "nunique"),
-            "ninth_projection_first_nonzero_year": ("year", "min"),
-            "ninth_projection_last_nonzero_year": ("year", "max"),
-            "ninth_projection_abs_sum": ("_abs_value", "sum"),
-            "ninth_projection_max_abs_value": ("_abs_value", "max"),
-        },
-        "mapped_leap_balance_nonzero": {
-            "mapped_leap_balance_nonzero_row_count": ("value", "size"),
-            "mapped_leap_balance_nonzero_economy_count": ("economy", "nunique"),
-            "mapped_leap_balance_first_nonzero_year": ("year", "min"),
-            "mapped_leap_balance_last_nonzero_year": ("year", "max"),
-            "mapped_leap_balance_abs_sum": ("_abs_value", "sum"),
-            "mapped_leap_balance_max_abs_value": ("_abs_value", "max"),
-        },
-    }
     working_df["_abs_value"] = working_df["value"].abs()
-    for evidence_column, aggregation_spec in stats_specs.items():
-        evidence_df = working_df.loc[evidence_masks[evidence_column]].copy()
+    for evidence_column, mask in evidence_masks.items():
+        prefix = evidence_column.removesuffix("_nonzero")
+        aggregation_spec = {
+            f"{prefix}_nonzero_row_count": ("value", "size"),
+            f"{prefix}_nonzero_economy_count": ("economy", "nunique"),
+            f"{prefix}_abs_sum": ("_abs_value", "sum"),
+            f"{prefix}_max_abs_value": ("_abs_value", "max"),
+        }
+        if include_year_range[evidence_column]:
+            aggregation_spec.update({
+                f"{prefix}_first_nonzero_year": ("year", "min"),
+                f"{prefix}_last_nonzero_year": ("year", "max"),
+            })
+        evidence_df = working_df.loc[mask].copy()
         if evidence_df.empty:
             continue
         stats_df = evidence_df.groupby(
@@ -540,20 +592,23 @@ def build_component_relevance(
         del evidence_df, stats_df
     del working_df
     relevance_df["esto_base_year"] = resolved_esto_base_year
-    reason_columns = [
-        "esto_base_year_nonzero",
-        "ninth_projection_nonzero",
-        "mapped_leap_balance_nonzero",
-        "unmapped_leap_balance_nonzero",
-    ]
+    configured_evidence_columns = list(dict.fromkeys(evidence_masks))
+    reason_columns = sorted(
+        configured_evidence_columns,
+        key=lambda column: (
+            COMPONENT_RELEVANCE_COLUMNS.index(column)
+            if column in COMPONENT_RELEVANCE_COLUMNS
+            else len(COMPONENT_RELEVANCE_COLUMNS)
+        ),
+    ) + ["unmapped_leap_balance_nonzero"]
     relevance_df["relevance_reasons"] = relevance_df.apply(
         lambda row: "|".join(column for column in reason_columns if bool(row[column])),
         axis=1,
     )
-    for column in COMPONENT_RELEVANCE_COLUMNS:
+    for column in output_columns:
         if column not in relevance_df.columns:
             relevance_df[column] = False if column.endswith("_nonzero") else 0
-    return relevance_df[COMPONENT_RELEVANCE_COLUMNS], resolved_esto_base_year
+    return relevance_df[output_columns], resolved_esto_base_year
 
 
 def build_unmapped_leap_branch_evidence(
@@ -687,26 +742,25 @@ def merge_component_relevance(
     """Merge direct source evidence with indirectly inferred LEAP evidence."""
     if unmapped_leap_relevance_df.empty:
         return relevance_df.copy()
+    output_columns = list(dict.fromkeys([
+        *COMPONENT_RELEVANCE_COLUMNS,
+        *relevance_df.columns.tolist(),
+    ]))
     pair_columns = ["component_esto_flow", "component_esto_product"]
     combined_df = relevance_df.merge(unmapped_leap_relevance_df, on=pair_columns, how="outer", suffixes=("", "_indirect"))
-    for column in [
-        "esto_base_year_nonzero",
-        "ninth_projection_nonzero",
-        "mapped_leap_balance_nonzero",
-        "unmapped_leap_balance_nonzero",
-    ]:
+    boolean_evidence_columns = [
+        column
+        for column in output_columns
+        if column.endswith("_nonzero")
+    ]
+    for column in boolean_evidence_columns:
         direct_values = combined_df[column] if column in combined_df.columns else False
         indirect_column = f"{column}_indirect"
         indirect_values = combined_df[indirect_column] if indirect_column in combined_df.columns else False
         combined_df[column] = pd.Series(direct_values, index=combined_df.index).fillna(False).astype(bool) | pd.Series(
             indirect_values, index=combined_df.index
         ).fillna(False).astype(bool)
-    reason_columns = [
-        "esto_base_year_nonzero",
-        "ninth_projection_nonzero",
-        "mapped_leap_balance_nonzero",
-        "unmapped_leap_balance_nonzero",
-    ]
+    reason_columns = boolean_evidence_columns
     combined_df["relevance_reasons"] = combined_df.apply(
         lambda row: "|".join(column for column in reason_columns if bool(row[column])),
         axis=1,
@@ -720,10 +774,10 @@ def merge_component_relevance(
         known_base_years = pd.to_numeric(combined_df["esto_base_year"], errors="coerce").dropna().unique()
         if len(known_base_years) == 1:
             combined_df["esto_base_year"] = int(known_base_years[0])
-    for column in COMPONENT_RELEVANCE_COLUMNS:
+    for column in output_columns:
         if column not in combined_df.columns:
             combined_df[column] = False if column.endswith("_nonzero") else 0
-    return combined_df[COMPONENT_RELEVANCE_COLUMNS].drop_duplicates()
+    return combined_df[output_columns].drop_duplicates()
 
 
 def label_looks_aggregate(value: object) -> bool:
@@ -735,10 +789,13 @@ def label_looks_aggregate(value: object) -> bool:
 def filter_partial_coverage_by_relevance(
     structural_partial_df: pd.DataFrame,
     relevance_df: pd.DataFrame,
+    mapping_review_routes: dict[str, dict[str, str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Keep only data-relevant missing pairs and audit inactive candidates."""
     if structural_partial_df.empty:
         return structural_partial_df.copy(), pd.DataFrame()
+    if mapping_review_routes is None:
+        mapping_review_routes = get_mapping_review_routes("ESTO")
     relevance_lookup = {
         (str(row["component_esto_flow"]).strip(), str(row["component_esto_product"]).strip()): row.to_dict()
         for _, row in relevance_df.iterrows()
@@ -763,22 +820,25 @@ def filter_partial_coverage_by_relevance(
             output_row["relevant_missing_component_count"] = 1
             evidence = relevance_lookup[(flow, product)]
             output_row["relevance_evidence"] = evidence.get("relevance_reasons", "")
-            for evidence_column in COMPONENT_RELEVANCE_COLUMNS[2:]:
+            for evidence_column in relevance_df.columns:
+                if evidence_column in {
+                    "component_esto_flow",
+                    "component_esto_product",
+                }:
+                    continue
                 output_row[evidence_column] = evidence.get(evidence_column, "")
             source_system = str(row.get("source_system", "")).upper().strip()
-            if source_system == "LEAP":
-                output_row["mapping_action"] = "review_or_add_leap_to_esto_mapping"
-                output_row["mapping_sheet_to_review"] = "leap_combined_esto"
-                output_row["mapping_source_columns"] = "leap_sector_name_full_path|raw_leap_fuel_name"
-            elif source_system == "NINTH":
-                output_row["mapping_action"] = "review_or_add_ninth_to_esto_mapping"
-                output_row["mapping_sheet_to_review"] = "ninth_pairs_to_esto_pairs"
-                output_row["mapping_source_columns"] = "ninth_sector|ninth_fuel"
+            route = mapping_review_routes.get(source_system)
+            if route is not None:
+                output_row["mapping_action"] = (
+                    f"review_or_add_{source_system.lower()}_to_esto_mapping"
+                )
+                output_row.update(route)
             else:
                 output_row["mapping_action"] = "review_common_structure_or_coverage_configuration"
                 output_row["mapping_sheet_to_review"] = ""
                 output_row["mapping_source_columns"] = ""
-            output_row["mapping_target_columns"] = "esto_flow|esto_product"
+                output_row["mapping_target_columns"] = ""
             output_row["target_flow_looks_aggregate"] = label_looks_aggregate(flow)
             output_row["target_product_looks_aggregate"] = label_looks_aggregate(product)
             if output_row["target_flow_looks_aggregate"] or output_row["target_product_looks_aggregate"]:
@@ -874,8 +934,14 @@ def apply_common_structure(
     source_df: pd.DataFrame,
     common_rows_df: pd.DataFrame,
     return_lineage: bool = False,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Join ESTO-shaped source rows to common rows and aggregate values."""
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     if source_df.empty:
         comparison_df = pd.DataFrame(columns=OUTPUT_COLUMNS)
         missing_map_df = pd.DataFrame()
@@ -953,7 +1019,7 @@ def apply_common_structure(
         expanded_frames: list[pd.DataFrame] = []
         for _, scope_row in scopes_df.iterrows():
             comparison_scope = str(scope_row["comparison_scope"])
-            allowed_systems = COMPARISON_SCOPE_SYSTEMS.get(comparison_scope)
+            allowed_systems = scope_systems.get(comparison_scope)
             if allowed_systems is None:
                 scoped_source_df = source_df.copy()
             else:
@@ -967,7 +1033,10 @@ def apply_common_structure(
     else:
         source_df = source_df.copy()
         valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in COMPARISON_SCOPE_SYSTEMS.get(str(row["comparison_scope"]), {row["source_system"]}),
+            lambda row: row["source_system"] in scope_systems.get(
+                str(row["comparison_scope"]),
+                {row["source_system"]},
+            ),
             axis=1,
         )
         source_df = source_df[valid_scope_mask].copy()
@@ -1005,6 +1074,7 @@ def apply_common_structure_by_source_economy(
     source_df: pd.DataFrame,
     common_rows_df: pd.DataFrame,
     lineage_output_path: Path,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common map in disjoint fact-key chunks.
 
@@ -1079,6 +1149,7 @@ def apply_common_structure_by_source_economy(
                         source_chunk_df,
                         common_rows_df,
                         return_lineage=True,
+                        comparison_scope_systems=comparison_scope_systems,
                     )
                     lineage_chunk_df.to_csv(
                         lineage_handle,
@@ -1095,6 +1166,9 @@ def apply_common_structure_by_source_economy(
                         build_total_check(
                             mapped_source_chunk_df,
                             comparison_chunk_df,
+                            comparison_scope_systems=(
+                                comparison_scope_systems
+                            ),
                         )
                     )
                     chunk_count += 1
@@ -1363,8 +1437,17 @@ def intersecting_axis_group_error_message(
     )
 
 
-def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
+def build_total_check(
+    source_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> pd.DataFrame:
     """Check before/after total preservation by source/economy/scenario/year."""
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     if source_df.empty:
         return pd.DataFrame(columns=TOTAL_GROUP_COLUMNS + ["source_total", "common_total", "difference"])
     source_df = source_df.copy()
@@ -1376,7 +1459,7 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
             expanded_frames: list[pd.DataFrame] = []
             for _, scope_row in scopes_df.iterrows():
                 comparison_scope = str(scope_row["comparison_scope"])
-                allowed_systems = COMPARISON_SCOPE_SYSTEMS.get(comparison_scope)
+                allowed_systems = scope_systems.get(comparison_scope)
                 if allowed_systems is None:
                     scoped_source_df = source_df.copy()
                 else:
@@ -1389,7 +1472,10 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
             del expanded_frames
     else:
         valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in COMPARISON_SCOPE_SYSTEMS.get(str(row["comparison_scope"]), {row["source_system"]}),
+            lambda row: row["source_system"] in scope_systems.get(
+                str(row["comparison_scope"]),
+                {row["source_system"]},
+            ),
             axis=1,
         )
         source_df = source_df[valid_scope_mask].copy()
@@ -1413,7 +1499,11 @@ SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS = [
 ]
 
 
-def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
+def build_source_coverage_check(
+    source_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> pd.DataFrame:
     """Build a limited whole-source total diagnostic.
 
     This is not hierarchy coverage. It compares full source totals with scope-expanded
@@ -1424,12 +1514,17 @@ def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataF
     empty_cols = SOURCE_COVERAGE_GROUP_COLUMNS + ["source_total", "common_total", "difference"]
     if source_df.empty:
         return pd.DataFrame(columns=empty_cols)
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     source_df = source_df.copy()
     if "comparison_scope" not in source_df.columns:
         scopes = comparison_df[["comparison_scope"]].drop_duplicates() if not comparison_df.empty else pd.DataFrame()
         expanded = []
         for comparison_scope in scopes.get("comparison_scope", pd.Series(dtype=object)):
-            allowed = COMPARISON_SCOPE_SYSTEMS.get(str(comparison_scope))
+            allowed = scope_systems.get(str(comparison_scope))
             scoped = source_df if allowed is None else source_df[source_df["source_system"].isin(allowed)]
             if scoped.empty:
                 continue
@@ -1457,7 +1552,11 @@ def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataF
     return check_df.sort_values(SOURCE_COVERAGE_GROUP_COLUMNS).reset_index(drop=True)
 
 
-def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) -> pd.DataFrame:
+def build_wide_year_output(
+    comparison_df: pd.DataFrame,
+    common_rows_path: Path,
+    outlook_mappings_path: Path = OUTLOOK_MAPPINGS_PATH,
+) -> pd.DataFrame:
     """Create scope/economy/scenario/product/flow rows with year columns.
 
     The wide file intentionally has no source_system column, so source_system is
@@ -1466,8 +1565,8 @@ def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) 
     appear in several scopes at different product granularity (e.g. exact ESTO
     detail in esto_leap vs NINTH-lumped unions in esto_leap_ninth); flattening
     scopes together would double count those rows.
-    An is_subtotal flag marks rows whose flow or product has children in the
-    common ESTO tree hierarchy (from build_common_esto_tree, not label text).
+    ``is_subtotal`` comes from the same canonical Common ESTO adapter and
+    any-axis-parent rule published by the hierarchy/subtotal contract.
     """
     if comparison_df.empty:
         return pd.DataFrame(columns=WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"])
@@ -1496,21 +1595,23 @@ def build_wide_year_output(comparison_df: pd.DataFrame, common_rows_path: Path) 
         [column for column in wide_df.columns if column not in WIDE_OUTPUT_ID_COLUMNS],
         key=lambda value: int(value) if value.isdigit() else value,
     )
-    tree_df = build_common_esto_tree(common_rows_path)
-    common_tree_df = tree_df[tree_df["dataset"] == "common_esto"]
-    flow_lookup = (
-        common_tree_df[common_tree_df["axis"] == "flow"]
-        .drop_duplicates(subset="code")
-        .set_index("code")["is_subtotal"]
+    classification = build_common_esto_pair_classification(
+        common_rows_path=common_rows_path,
+        workbook_path=outlook_mappings_path,
+    )[["axis_1_node_id", "axis_2_node_id", "declared_output_subtotal"]].rename(
+        columns={
+            "axis_1_node_id": "flow",
+            "axis_2_node_id": "product",
+        }
     )
-    product_lookup = (
-        common_tree_df[common_tree_df["axis"] == "product"]
-        .drop_duplicates(subset="code")
-        .set_index("code")["is_subtotal"]
+    wide_df = wide_df.merge(
+        classification,
+        on=["flow", "product"],
+        how="left",
+        validate="many_to_one",
     )
     wide_df["is_subtotal"] = (
-        wide_df["flow"].map(flow_lookup).fillna(False).astype(bool)
-        | wide_df["product"].map(product_lookup).fillna(False).astype(bool)
+        wide_df.pop("declared_output_subtotal").fillna(False).astype(bool)
     )
     return wide_df[WIDE_OUTPUT_ID_COLUMNS + ["is_subtotal"] + year_columns]
 
@@ -1785,6 +1886,7 @@ def run_common_esto_comparison_fast_path(
     economies: list[str] | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -1835,7 +1937,11 @@ def run_common_esto_comparison_fast_path(
         relevance_df=relevance_df,
         common_rows_df=common_rows_df,
     )
-    comparison_df, missing_map_df, _ = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    comparison_df, missing_map_df, _ = apply_common_structure(
+        active_source_df,
+        adjusted_common_rows_df,
+        comparison_scope_systems=comparison_scope_systems,
+    )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
     save_fast_path_outputs(
@@ -1876,6 +1982,11 @@ def run_apply_common_esto_structure(
     chunk_by_source_economy: bool = False,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
+    diagnostic_adapter_registry_path: Path = (
+        DIAGNOSTIC_ADAPTER_REGISTRY_PATH
+    ),
+    relevance_policies: list[dict[str, object]] | None = None,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(
@@ -1892,30 +2003,115 @@ def run_apply_common_esto_structure(
         active_component_abs_tolerance=active_component_abs_tolerance,
         ninth_projection_start_year=ninth_projection_start_year,
         esto_base_year=esto_base_year,
+        relevance_policies=relevance_policies,
     )
     leap_branch_audit_df = pd.DataFrame()
     raw_leap_df = pd.DataFrame()
     leap_esto_df = pd.DataFrame()
     ninth_esto_df = pd.DataFrame()
     if (
-        raw_leap_results_path is not None
-        and raw_leap_results_path.exists()
-        and outlook_mappings_path is not None
+        outlook_mappings_path is not None
         and outlook_mappings_path.exists()
     ):
-        raw_leap_df = pd.read_csv(raw_leap_results_path, low_memory=False)
-        leap_esto_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_combined_esto")
-        leap_ninth_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_combined_ninth")
-        ninth_esto_df = pd.read_excel(outlook_mappings_path, sheet_name="ninth_pairs_to_esto_pairs")
-        leap_branch_audit_df, unmapped_leap_relevance_df = build_unmapped_leap_branch_evidence(
-            raw_leap_df=raw_leap_df,
-            leap_esto_df=leap_esto_df,
-            leap_ninth_df=leap_ninth_df,
-            ninth_esto_df=ninth_esto_df,
-            active_component_abs_tolerance=active_component_abs_tolerance,
+        def run_unmapped_indirect_chain(
+            registry_row: pd.Series,
+        ) -> dict[str, pd.DataFrame]:
+            """Run the registered transitional indirect-chain diagnostic."""
+            configured_raw_source_path = (
+                SCRIPT_REPO_ROOT
+                / registry_row["raw_source_relative_path"]
+            )
+            raw_source_path = (
+                raw_leap_results_path
+                if raw_leap_results_path is not None
+                else configured_raw_source_path
+            )
+            if not raw_source_path.exists():
+                return {
+                    "audit": pd.DataFrame(),
+                    "relevance": pd.DataFrame(),
+                }
+            raw_source_df = pd.read_csv(
+                raw_source_path,
+                low_memory=False,
+            )
+            direct_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["direct_mapping_sheet"],
+            )
+            bridge_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["bridge_mapping_sheet"],
+            )
+            bridge_target_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["bridge_target_mapping_sheet"],
+            )
+            audit_df, relevance_delta_df = (
+                build_unmapped_leap_branch_evidence(
+                    raw_leap_df=raw_source_df,
+                    leap_esto_df=direct_mapping_df,
+                    leap_ninth_df=bridge_mapping_df,
+                    ninth_esto_df=bridge_target_mapping_df,
+                    active_component_abs_tolerance=(
+                        active_component_abs_tolerance
+                    ),
+                )
+            )
+            return {
+                "audit": audit_df,
+                "relevance": relevance_delta_df,
+                "raw_source": raw_source_df,
+                "direct_mapping": direct_mapping_df,
+                "bridge_target_mapping": bridge_target_mapping_df,
+            }
+
+        diagnostic_results = run_registered_diagnostic_adapters(
+            adapter_runners={
+                "unmapped_indirect_chain": run_unmapped_indirect_chain,
+            },
+            registry_path=diagnostic_adapter_registry_path,
         )
-        relevance_df = merge_component_relevance(relevance_df, unmapped_leap_relevance_df)
-        del leap_ninth_df, unmapped_leap_relevance_df
+        candidate_contexts: list[dict[str, pd.DataFrame]] = []
+        audit_frames: list[pd.DataFrame] = []
+        for diagnostic_result in diagnostic_results.values():
+            if not isinstance(diagnostic_result, dict):
+                continue
+            audit_frame = diagnostic_result.get("audit", pd.DataFrame())
+            relevance_delta = diagnostic_result.get(
+                "relevance",
+                pd.DataFrame(),
+            )
+            if not audit_frame.empty:
+                audit_frames.append(audit_frame)
+            if not relevance_delta.empty:
+                relevance_df = merge_component_relevance(
+                    relevance_df,
+                    relevance_delta,
+                )
+            if {
+                "raw_source",
+                "direct_mapping",
+                "bridge_target_mapping",
+            }.issubset(diagnostic_result):
+                candidate_contexts.append(diagnostic_result)
+        if len(candidate_contexts) > 1:
+            raise ValueError(
+                "Multiple registered diagnostics supplied the legacy mapping-"
+                "candidate context; configure at most one until candidate "
+                "generation has its own adapter registry."
+            )
+        if audit_frames:
+            leap_branch_audit_df = pd.concat(
+                audit_frames,
+                ignore_index=True,
+            ).drop_duplicates()
+        if candidate_contexts:
+            candidate_context = candidate_contexts[0]
+            raw_leap_df = candidate_context["raw_source"]
+            leap_esto_df = candidate_context["direct_mapping"]
+            ninth_esto_df = candidate_context["bridge_target_mapping"]
+        del diagnostic_results, candidate_contexts, audit_frames
         gc.collect()
 
     active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
@@ -2004,6 +2200,7 @@ def run_apply_common_esto_structure(
             active_source_df,
             adjusted_common_rows_df,
             esto_component_lineage_output_path,
+            comparison_scope_systems=comparison_scope_systems,
         )
     else:
         (
@@ -2015,6 +2212,7 @@ def run_apply_common_esto_structure(
             active_source_df,
             adjusted_common_rows_df,
             return_lineage=True,
+            comparison_scope_systems=comparison_scope_systems,
         )
         missing_map_df = filter_missing_common_map_diagnostics(
             missing_map_df
@@ -2022,6 +2220,7 @@ def run_apply_common_esto_structure(
         total_check_df = build_total_check(
             mapped_source_df,
             unfiltered_comparison_df,
+            comparison_scope_systems=comparison_scope_systems,
         )
     # The comparison can exceed a million rows. The remaining helpers treat it
     # as read-only, so retain the existing frame instead of doubling its memory
@@ -2043,8 +2242,20 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {broad_warning_message}")
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
-    wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
-    source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
+    wide_year_df = build_wide_year_output(
+        comparison_df,
+        common_rows_path,
+        outlook_mappings_path=(
+            outlook_mappings_path
+            if outlook_mappings_path is not None
+            else OUTLOOK_MAPPINGS_PATH
+        ),
+    )
+    source_coverage_check_df = build_source_coverage_check(
+        source_totals_df,
+        unfiltered_comparison_df,
+        comparison_scope_systems=comparison_scope_systems,
+    )
     save_outputs(
         comparison_df,
         wide_year_df,
@@ -2128,15 +2339,7 @@ OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 NINTH_SOURCE_DATA_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 
-SOURCE_PATHS = {
-    "LEAP": RELATIONSHIP_DIR / "leap_results_converted_to_esto.csv",
-    "NINTH": RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv.gz",
-    "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz",
-}
-SOURCE_PATHS = {
-    system: prefer_compressed_csv_path(path)
-    for system, path in SOURCE_PATHS.items()
-}
+SOURCE_PATHS = get_registered_stage3_source_paths(REPO_ROOT)
 DEFAULT_ECONOMY = "20_USA"
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0

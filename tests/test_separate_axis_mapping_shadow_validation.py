@@ -257,3 +257,37 @@ def test_stage3_shadow_summary_records_pass_and_review_findings(
         ).read_text(encoding="utf-8")
     )
     assert persisted["stage3_run_id"] == "test-run"
+
+
+def test_shadow_stage3_source_paths_use_isolated_pipeline_cache(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    expected = {
+        "LEAP": tmp_path / "leap.csv",
+        "NINTH": tmp_path / "ninth.csv.gz",
+        "ESTO": tmp_path / "esto.csv.gz",
+        "ESTO_EXTENDED": tmp_path / "esto_extended.csv.gz",
+    }
+    monkeypatch.setattr(
+        stage3_shadow.pipeline,
+        "LEAP_ESTO_PATH",
+        expected["LEAP"],
+    )
+    monkeypatch.setattr(
+        stage3_shadow.pipeline,
+        "NINTH_ESTO_PATH",
+        expected["NINTH"],
+    )
+    monkeypatch.setattr(
+        stage3_shadow.pipeline,
+        "ESTO_ROWS_PATH",
+        expected["ESTO"],
+    )
+    monkeypatch.setattr(
+        stage3_shadow.pipeline,
+        "ESTO_EXTENDED_ROWS_PATH",
+        expected["ESTO_EXTENDED"],
+    )
+
+    assert stage3_shadow.shadow_stage3_source_paths() == expected
