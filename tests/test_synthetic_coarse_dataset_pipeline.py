@@ -8,6 +8,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
 )
 from codebase.mapping_tools.build_common_esto_structure import (
     build_common_esto_for_scope,
+    run_common_esto_structure_workflow,
 )
 from codebase.mapping_tools.build_energy_balance_relationships import (
     build_relationship_rows,
@@ -36,6 +37,9 @@ from codebase.mapping_tools.mapping_sheet_registry import (
 from codebase.mapping_tools.value_adapter_registry import (
     VALUE_ADAPTER_REGISTRY_PATH,
     run_registered_value_adapters,
+)
+from codebase.synthetic_multi_dataset_acceptance_workflow import (
+    run_synthetic_multi_dataset_acceptance,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -77,6 +81,42 @@ def test_first_level_synthetic_dataset_rolls_detail_to_coarse_common_row() -> No
     totals = comparison.groupby("source_system")["value"].sum().to_dict()
     assert missing.empty
     assert totals == {"ESTO": 100.0, "SYNTH_BALANCE": 100.0}
+
+
+def test_common_structure_workflow_accepts_registry_built_scope_configs(
+    tmp_path: Path,
+) -> None:
+    relationships_path = (
+        FIXTURE_DIR / "synthetic_first_level_esto_mappings.csv"
+    )
+    output_dir = tmp_path / "common"
+    common_rows, _, _ = run_common_esto_structure_workflow(
+        relationships_path=relationships_path,
+        coverage_exclusions_path=tmp_path / "missing_exclusions.csv",
+        common_esto_overrides_path=tmp_path / "missing_overrides.csv",
+        common_esto_label_overrides_path=(
+            tmp_path / "missing_label_overrides.csv"
+        ),
+        outlook_mappings_path=(
+            DATASET_REGISTRY_PATH.parents[2]
+            / "config"
+            / "outlook_mappings_master.xlsx"
+        ),
+        output_dir=output_dir,
+        enabled_scopes=["registered_synthetic_scope"],
+        comparison_scope_configs={
+            "registered_synthetic_scope": {
+                "systems": ["SYNTH_BALANCE", "ESTO"],
+                "use_cases": ["synthetic_to_esto_balance_conversion"],
+                "aggregate_source_systems": ["SYNTH_BALANCE"],
+            }
+        },
+    )
+
+    assert set(common_rows["comparison_scope"]) == {
+        "registered_synthetic_scope"
+    }
+    assert (output_dir / "common_esto_rows.csv").exists()
 
 
 def test_synthetic_acceptance_values_publish_mapped_rows_and_bound_missing() -> None:
@@ -341,3 +381,25 @@ def test_synthetic_dataset_can_be_enabled_without_core_code_changes(
         )
         .to_dict("records")
     )
+
+
+def test_synthetic_fourth_dataset_end_to_end_acceptance(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "synthetic_acceptance"
+
+    summary = run_synthetic_multi_dataset_acceptance(output_dir)
+    checks = pd.read_csv(output_dir / "acceptance_checklist.csv")
+    comparison = pd.read_csv(
+        output_dir / "stage3" / "common_esto_comparison_data.csv"
+    )
+
+    assert summary["status"] == "passed"
+    assert summary["passed_checks"] == 13
+    assert checks["status"].eq("passed").all()
+    assert set(comparison["source_system"]) == {
+        "ESTO",
+        "LEAP",
+        "NINTH",
+        "SYNTH_BALANCE",
+    }

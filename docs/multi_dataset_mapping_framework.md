@@ -369,7 +369,7 @@ flowchart TD
 | Hierarchy contract | Core consumes normalized dataset adapters; reviewed CSV hierarchies use a generic adapter | Optimized current-source adapters and paths remain explicit registrations |
 | Pipeline orchestration | Stages have clear boundaries and registered value execution/source discovery | Separate optimized native converters and current-source validation trees remain |
 | Output contract | Long output retains `source_system` and provenance | Current allowed scopes and consumer expectations are based on the known systems |
-| Tests | Strong current-semantics coverage plus a disabled synthetic fourth-dataset acceptance fixture | A fresh full Stage 3 run with the fourth dataset enabled remains pending |
+| Tests | Strong current-semantics coverage plus a passing registry-enabled synthetic fourth-dataset end-to-end acceptance run | A real additional dataset and reviewer remain an M7 input dependency |
 
 Relevant implementation entry points:
 
@@ -597,10 +597,19 @@ compatible. With the synthetic dataset enabled, the same machinery adds
 fresh disabled-dataset Stages 1 and 2 remain byte-identical to M0: 17,076
 relationships and 10,044 Common rows.
 
-M5 is not yet declared complete. The optional unmapped-LEAP indirect-chain
-candidate diagnostic is intentionally source-specific and should be exposed as
-a registered diagnostic adapter before the core Stage 3 orchestration can be
-described as having no current-source branches.
+The optional unmapped-source indirect-chain diagnostic is now exposed through
+`config/datasets/diagnostic_adapter_registry.csv`. Its current registered
+implementation remains deliberately LEAP-specific and follows the transitional
+LEAP-to-9th-to-ESTO chain, but Stage 3 invokes it by adapter name and obtains
+the three mapping surfaces from registry fields rather than embedding their
+sheet names in orchestration. Disabling its registry row suppresses the
+diagnostic without a Python edit.
+
+M5 registry migration is implemented, but its release verification remains
+open until the source-parent anchor pass is rerun against the fresh Stage 3
+output. Dataset-specific semantics inside registered adapters are expected;
+the remaining release question is whether the new registered execution retains
+the same validation status and ownership on real data.
 
 A fresh real-data Stage 3 application smoke run completed after this refactor
 using the current 10,044-row Common structure and the latest available
@@ -648,8 +657,32 @@ that:
   output byte-for-byte at 17,076 rows and SHA-256
   `cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`.
 
-A fresh full Stage 3 orchestration run with the fixture enabled and registration
-of the remaining source-specific candidate diagnostic remain.
+The fixture now has a notebook-safe end-to-end runner at
+`codebase/synthetic_multi_dataset_acceptance_workflow.py`. Run ID
+`synthetic_multi_dataset_acceptance_v1` passed all twelve specified acceptance
+criteria plus a mapped-value conservation invariant:
+
+- the copied registries enabled the dataset, scope, mapping table, value
+  adapter, and hierarchy adapter without changing production configuration;
+- the reviewed mapping CSV compiled to 6 relationship/use-case rows;
+- the declared hierarchy published 4 ordinary edges and retained
+  `children_incomplete` as value-conformance evidence;
+- 3 canonical components formed one unsplit coarse Common row;
+- Stage 3-style application published 15 rows across ESTO, LEAP, NINTH, and
+  `SYNTH_BALANCE`;
+- all 1,890 PJ of mapped synthetic input was conserved;
+- the 12 deliberately unmapped economy/scenario/year contexts remained in the
+  bounded missing-map review output; and
+- the disabled production mapping surface remains tied to the byte-exact
+  17,076-row Stage 1 baseline SHA-256
+  `cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`.
+
+The runnable evidence is written under
+`results/multi_dataset_acceptance/synthetic_v1/`, including
+`acceptance_checklist.csv`, `acceptance_summary.json`, the hierarchy contract,
+Stage 2 QA, and the Stage 3 output contract. M6 is complete for the deliberately
+small acceptance fixture; a production-scale real additional dataset belongs
+to M7 rather than being a hidden extra condition on M6.
 
 ### M7 — Onboard the first real additional dataset
 

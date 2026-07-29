@@ -49,6 +49,10 @@ from codebase.mapping_tools.value_adapter_registry import (
 from codebase.mapping_tools.mapping_sheet_registry import (
     get_mapping_review_routes,
 )
+from codebase.mapping_tools.diagnostic_adapter_registry import (
+    DIAGNOSTIC_ADAPTER_REGISTRY_PATH,
+    run_registered_diagnostic_adapters,
+)
 
 #%%
 OUTPUT_COLUMNS = LEGACY_COMPARISON_COLUMNS
@@ -1664,6 +1668,10 @@ def run_apply_common_esto_structure(
     esto_component_lineage_output_path: Path | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
+    diagnostic_adapter_registry_path: Path = (
+        DIAGNOSTIC_ADAPTER_REGISTRY_PATH
+    ),
+    relevance_policies: list[dict[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(source_paths, default_economy=default_economy)
@@ -1676,30 +1684,115 @@ def run_apply_common_esto_structure(
         active_component_abs_tolerance=active_component_abs_tolerance,
         ninth_projection_start_year=ninth_projection_start_year,
         esto_base_year=esto_base_year,
+        relevance_policies=relevance_policies,
     )
     leap_branch_audit_df = pd.DataFrame()
     raw_leap_df = pd.DataFrame()
     leap_esto_df = pd.DataFrame()
     ninth_esto_df = pd.DataFrame()
     if (
-        raw_leap_results_path is not None
-        and raw_leap_results_path.exists()
-        and outlook_mappings_path is not None
+        outlook_mappings_path is not None
         and outlook_mappings_path.exists()
     ):
-        raw_leap_df = pd.read_csv(raw_leap_results_path, low_memory=False)
-        leap_esto_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_combined_esto")
-        leap_ninth_df = pd.read_excel(outlook_mappings_path, sheet_name="leap_combined_ninth")
-        ninth_esto_df = pd.read_excel(outlook_mappings_path, sheet_name="ninth_pairs_to_esto_pairs")
-        leap_branch_audit_df, unmapped_leap_relevance_df = build_unmapped_leap_branch_evidence(
-            raw_leap_df=raw_leap_df,
-            leap_esto_df=leap_esto_df,
-            leap_ninth_df=leap_ninth_df,
-            ninth_esto_df=ninth_esto_df,
-            active_component_abs_tolerance=active_component_abs_tolerance,
+        def run_unmapped_indirect_chain(
+            registry_row: pd.Series,
+        ) -> dict[str, pd.DataFrame]:
+            """Run the registered transitional indirect-chain diagnostic."""
+            configured_raw_source_path = (
+                SCRIPT_REPO_ROOT
+                / registry_row["raw_source_relative_path"]
+            )
+            raw_source_path = (
+                raw_leap_results_path
+                if raw_leap_results_path is not None
+                else configured_raw_source_path
+            )
+            if not raw_source_path.exists():
+                return {
+                    "audit": pd.DataFrame(),
+                    "relevance": pd.DataFrame(),
+                }
+            raw_source_df = pd.read_csv(
+                raw_source_path,
+                low_memory=False,
+            )
+            direct_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["direct_mapping_sheet"],
+            )
+            bridge_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["bridge_mapping_sheet"],
+            )
+            bridge_target_mapping_df = pd.read_excel(
+                outlook_mappings_path,
+                sheet_name=registry_row["bridge_target_mapping_sheet"],
+            )
+            audit_df, relevance_delta_df = (
+                build_unmapped_leap_branch_evidence(
+                    raw_leap_df=raw_source_df,
+                    leap_esto_df=direct_mapping_df,
+                    leap_ninth_df=bridge_mapping_df,
+                    ninth_esto_df=bridge_target_mapping_df,
+                    active_component_abs_tolerance=(
+                        active_component_abs_tolerance
+                    ),
+                )
+            )
+            return {
+                "audit": audit_df,
+                "relevance": relevance_delta_df,
+                "raw_source": raw_source_df,
+                "direct_mapping": direct_mapping_df,
+                "bridge_target_mapping": bridge_target_mapping_df,
+            }
+
+        diagnostic_results = run_registered_diagnostic_adapters(
+            adapter_runners={
+                "unmapped_indirect_chain": run_unmapped_indirect_chain,
+            },
+            registry_path=diagnostic_adapter_registry_path,
         )
-        relevance_df = merge_component_relevance(relevance_df, unmapped_leap_relevance_df)
-        del leap_ninth_df, unmapped_leap_relevance_df
+        candidate_contexts: list[dict[str, pd.DataFrame]] = []
+        audit_frames: list[pd.DataFrame] = []
+        for diagnostic_result in diagnostic_results.values():
+            if not isinstance(diagnostic_result, dict):
+                continue
+            audit_frame = diagnostic_result.get("audit", pd.DataFrame())
+            relevance_delta = diagnostic_result.get(
+                "relevance",
+                pd.DataFrame(),
+            )
+            if not audit_frame.empty:
+                audit_frames.append(audit_frame)
+            if not relevance_delta.empty:
+                relevance_df = merge_component_relevance(
+                    relevance_df,
+                    relevance_delta,
+                )
+            if {
+                "raw_source",
+                "direct_mapping",
+                "bridge_target_mapping",
+            }.issubset(diagnostic_result):
+                candidate_contexts.append(diagnostic_result)
+        if len(candidate_contexts) > 1:
+            raise ValueError(
+                "Multiple registered diagnostics supplied the legacy mapping-"
+                "candidate context; configure at most one until candidate "
+                "generation has its own adapter registry."
+            )
+        if audit_frames:
+            leap_branch_audit_df = pd.concat(
+                audit_frames,
+                ignore_index=True,
+            ).drop_duplicates()
+        if candidate_contexts:
+            candidate_context = candidate_contexts[0]
+            raw_leap_df = candidate_context["raw_source"]
+            leap_esto_df = candidate_context["direct_mapping"]
+            ninth_esto_df = candidate_context["bridge_target_mapping"]
+        del diagnostic_results, candidate_contexts, audit_frames
         gc.collect()
 
     active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)

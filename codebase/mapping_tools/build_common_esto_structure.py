@@ -862,6 +862,7 @@ def build_non_expanding_rollup_qa(
         )
         rule_sheets: list[str] = []
         contributor_inputs: list[str] = []
+        catalogue_rows = pd.DataFrame()
         if not catalogue_df.empty:
             catalogue_rows = catalogue_df[
                 catalogue_df["rolled_flow_label"].astype(str).map(normalise_text).eq(label)
@@ -1702,6 +1703,7 @@ def run_common_esto_structure_workflow(
     outlook_mappings_path: Path,
     output_dir: Path,
     enabled_scopes: list[str] | None = None,
+    comparison_scope_configs: dict[str, dict[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build the selected common ESTO structures and QA outputs.
 
@@ -1709,12 +1711,21 @@ def run_common_esto_structure_workflow(
     Pipeline callers pass ``DEFAULT_ENABLED_COMPARISON_SCOPES`` so inactive
     definitions are not emitted accidentally.
     """
-    selected_scopes = list(COMPARISON_SCOPES) if enabled_scopes is None else list(enabled_scopes)
-    unknown_scopes = sorted(set(selected_scopes) - set(COMPARISON_SCOPES))
+    scope_configs = (
+        COMPARISON_SCOPES
+        if comparison_scope_configs is None
+        else comparison_scope_configs
+    )
+    selected_scopes = (
+        list(scope_configs)
+        if enabled_scopes is None
+        else list(enabled_scopes)
+    )
+    unknown_scopes = sorted(set(selected_scopes) - set(scope_configs))
     if unknown_scopes:
         raise ValueError(
             f"Unknown comparison scope(s): {unknown_scopes}. "
-            f"Choose from: {sorted(COMPARISON_SCOPES)}"
+            f"Choose from: {sorted(scope_configs)}"
         )
     if not selected_scopes:
         raise ValueError("enabled_scopes must contain at least one comparison scope.")
@@ -1750,7 +1761,7 @@ def run_common_esto_structure_workflow(
     map_frames: list[pd.DataFrame] = []
     qa_frames: dict[str, list[pd.DataFrame]] = {}
     for comparison_scope in selected_scopes:
-        scope_config = COMPARISON_SCOPES[comparison_scope]
+        scope_config = scope_configs[comparison_scope]
         scope_common_df, scope_map_df, scope_qa_outputs = build_common_esto_for_scope(
             comparison_scope=comparison_scope,
             scope_config=scope_config,
