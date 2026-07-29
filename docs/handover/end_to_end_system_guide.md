@@ -1,6 +1,6 @@
 # End-to-end LEAP system guide
 
-**Evidence snapshot:** 2026-07-28
+**Evidence snapshot:** 2026-07-29
 
 **Audience:** analysts, maintainers, and technical project staff
 **Detail level:** Level 2
@@ -17,7 +17,7 @@ worktrees, recent commits, and queues in all three repositories.
 
 | Area | Entry points and evidence inspected | Current evidence state |
 |---|---|---|
-| Mapping | `run_mapping_pipeline.py`; Stage 0 workflow; Stage 1–3 modules; canonical workbook; Common ESTO outputs; pipeline log and manifest | Current master runs Stage 0 from `codebase/archive/`; latest Stage 3 took 3,635.8 seconds and wrote four scopes |
+| Mapping | `run_mapping_pipeline.py`; optional hierarchy/ESTO-row workflows; Stage 1–3 modules; canonical workbook; Common ESTO outputs; pipeline log and manifest | The core pipeline starts at Stage 1; hierarchy and source-row maintenance are explicit review workflows |
 | Initialisation | reconciliation workflow/config/allocation modules; seed patcher; templates; latest real three-economy run; readiness summaries | Latest three-economy baseline run took 1h 26m 50.9s; it wrote workbooks but USA readiness still reports 3,244 blocking findings |
 | Dashboard | workflow/data/renderer/layout modules; template and series config; 21 economy output folders; logs and manifests | Long and legacy wide input are supported; default run uses long input; latest two-economy log wrote 650 charts |
 | Contracts | current output headers; manifests; producer and consumer contract code; consumer path constants | `common_esto_output_contract_v1` is integrated on both current masters, including hashes and strict opt-in loading; the artifacts on disk predate that integration and must be republished by a QA-successful Stage 3 run |
@@ -25,12 +25,9 @@ worktrees, recent commits, and queues in all three repositories.
 
 Important corrections to older prose:
 
-- Stage 0 is live at
-  `leap_mappings/codebase/archive/outlook_mapping_maintenance_workflow.py`, not
-  at the root-level path used in an older index.
-- `run_mapping_pipeline.py --apply-maintenance` is now a deprecated no-op
-  placeholder for workbook mutation; Stage 0 runs preview-first and reviewed
-  helpers perform canonical workbook edits.
+- The former Stage 0 monolith is retired under `codebase/archive/`. Structural
+  subtotal review and missing mapped ESTO-row preparation now use separate,
+  review-only workflows.
 - The dashboard is production code under `codebase/`, not a prototype under
   `test/`.
 - A completed run is not a clean run. Current Stage 3 artifacts contain failed
@@ -72,7 +69,7 @@ flowchart TB
 flowchart LR
     WB["outlook_mappings_master.xlsx"]
     SOURCES["ESTO, 9th, LEAP exports"]
-    S0["Stage 0: maintenance and QA"]
+    OPTIONAL["Optional hierarchy or ESTO-row review"]
     S1["Stage 1: relationships"]
     S2["Stage 2: Common ESTO structure"]
     P["LEAP parse"]
@@ -80,9 +77,10 @@ flowchart LR
     S3["Stage 3: apply, aggregate, validate"]
     PUB["Comparison values, structure, lineage, status"]
 
-    WB --> S0
+    WB -. "when structure/source coverage changed" .-> OPTIONAL
     WB --> S1
-    S0 -. "review findings" .-> WB
+    SOURCES -.-> OPTIONAL
+    OPTIONAL -. "human-reviewed findings" .-> WB
     S1 --> S2
     SOURCES --> P --> C
     SOURCES --> C
@@ -93,7 +91,6 @@ flowchart LR
 
 | Stage | Current implementation | Principal inputs | Principal outputs | Main question |
 |---|---|---|---|---|
-| 0 | archived maintenance workflow imported by orchestrator | workbook, ESTO/9th sources, LEAP template/export, exception workbook | subtotal preview, cardinality/conflict/coverage QA, trees | Is the maintained mapping set internally reviewable? |
 | 1 | `build_energy_balance_relationships.py` | active mapping sheets and rollup rules | relationship table/catalogue and conversion QA | What source-to-target relationships are declared for each use case? |
 | 2 | `build_common_esto_structure.py` | relationships, exclusions, overrides, names, rollup metadata | Common ESTO rows/components/maps and structural QA | What non-overlapping common rows make all included sources comparable? |
 | Parse | `parse_leap_balance_export.py` through orchestrator | sibling LEAP balance exports | raw long LEAP rows | What values did LEAP report? |
@@ -233,7 +230,7 @@ Likewise, a `skipped` validation means “not validated,” never “passed.”
 
 `regen_common_esto_comparison_fast_path_workflow.py` and the dashboard’s
 opt-in `UPDATE_DATA` route reuse cached converted values and Common ESTO rows.
-They skip Stage 0, Stage 1, Stage 2, tree validation, anchor validation, and
+They skip Stage 1, Stage 2, tree validation, anchor validation, and
 candidate diagnostics. Use them only when those cached inputs remain valid.
 
 Candidate generation infers the flow/sector axis and product/fuel axis
@@ -452,7 +449,7 @@ sequenceDiagram
     participant D as leap_dashboard
 
     H->>M: Review workbook and close Excel
-    M->>M: Stage 0, Stage 1, Stage 2, parse/convert, Stage 3
+    M->>M: Run optional review if needed then Stages 1 to 3 with parse and convert
     M-->>H: Values, lineage, status, validation
     H->>I: Run seed or results-update workflow
     I-->>H: Workbooks and readiness findings
@@ -465,13 +462,13 @@ sequenceDiagram
     D-->>H: Dashboard and diagnostic views
 ```
 
-| Change | Rerun mapping maintenance | Stage 1 | Stage 2 | Convert | Stage 3 | Initialisation | Dashboard |
+| Change | Optional hierarchy/source review | Stage 1 | Stage 2 | Convert | Stage 3 | Initialisation | Dashboard |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| canonical mapping row | yes | yes | yes | usually yes | yes | affected preparation | yes |
-| rollup/scope/override | yes | yes | yes | if conversion rule changed | yes | if consumed rule changed | yes |
-| ESTO/9th source vintage | yes | if coverage/cardinality changes | yes | yes | yes | yes | yes |
+| canonical mapping row | if structural/category coverage changed | yes | yes | usually yes | yes | affected preparation | yes |
+| rollup/scope/override | hierarchy review if structural meaning changed | yes | yes | if conversion rule changed | yes | if consumed rule changed | yes |
+| ESTO/9th source vintage | ESTO-row review if categories changed | if coverage/cardinality changes | yes | yes | yes | yes | yes |
 | LEAP balance export only | no | no | no | LEAP only | yes | results update | yes |
-| LEAP template structure | Stage 0 LEAP hierarchy evidence | maybe | maybe | LEAP parse/convert | yes | yes | yes |
+| LEAP template structure | hierarchy contract review | maybe | maybe | LEAP parse/convert | yes | yes | yes |
 | dashboard routing/config only | no | no | no | no | no | no | yes |
 | cached source values only, structure unchanged | no | no | no | if stale | fast path allowed | independent | yes |
 

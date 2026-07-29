@@ -174,11 +174,12 @@ outputs.
    writes, producing a run whose canonical outputs are stale.
 2. **`leap_initialisation`** — refresh LEAP balance exports if the LEAP model
    changed. Only needed when LEAP-side data must move; otherwise skip.
-3. **`leap_mappings` maintenance** —
-   `codebase/archive/outlook_mapping_maintenance_workflow.py`
-   after any edit to `config/outlook_mappings_master.xlsx`.
+3. **Optional `leap_mappings` review** — run
+   `codebase/hierarchy_subtotal_contract_workflow.py` when structural meaning
+   changes, or `codebase/missing_mapped_esto_rows_workflow.py` when reviewed
+   ESTO category coverage changes.
 4. **`leap_mappings` Stages 1–3** — `codebase/run_mapping_pipeline.py`:
-   `run_stage_0` → `run_stage_1` → `run_stage_2` → `run_leap_parse` →
+   `run_stage_1` → `run_stage_2` → `run_leap_parse` →
    `run_leap_to_esto` → `run_ninth_to_esto` → `run_esto_exact_rows` →
    `run_esto_extended_exact_rows` → `run_data_convert` → `run_stage_3`.
    Log: `results/logs/mapping_pipeline.log`.

@@ -1,8 +1,13 @@
 # Repo data slim-down plan (config / data / results)
 
 Source: `config data results leap mappigns.zip` (repo root), 485 entries, ~4.9 GB uncompressed.
-Goal: extract only what `codebase/run_mapping_pipeline.py` (Stages 0, 1, 2, `leap_parse`,
-`data_convert`, 3) and its Stage 0 maintenance workflow actually read as *inputs*. Everything
+
+> **Execution update (2026-07-29):** the active pipeline now starts at Stage 1.
+> References below have been updated accordingly; focused hierarchy/subtotal
+> and missing-ESTO-row reviews are optional workflows outside the pipeline.
+
+Goal: extract only what `codebase/run_mapping_pipeline.py` (Stages 1, 2, `leap_parse`,
+`data_convert`, 3) and its applicable optional review workflows actually read as *inputs*. Everything
 else in `results/` is a regenerated **output** of running the pipeline, so almost none of it
 needs to be extracted at all.
 
@@ -30,8 +35,8 @@ not as a literal to-do list for this repo's current working tree.
 
 `results/` is entirely pipeline output. Every script that writes into it creates its output
 directories with `mkdir(parents=True, exist_ok=True)` before writing, so none of the ~350
-result files in the zip need to be extracted for the pipeline to run — a clean run from Stage 0
-through Stage 3 regenerates all of it. Extract empty `results/` subfolders only if you want the
+result files in the zip need to be extracted for the pipeline to run — a clean run from Stage 1
+through Stage 3 regenerates the active pipeline outputs. Extract empty `results/` subfolders only if you want the
 working tree to look pre-populated; it isn't required.
 
 ---
@@ -40,9 +45,9 @@ working tree to look pre-populated; it isn't required.
 
 | File | Why it's required |
 |---|---|
-| `config/outlook_mappings_master.xlsx` | The core editable mapping workbook. Read by Stage 0, Stage 1, Stage 3, and most `mapping_tools/*` scripts. |
+| `config/outlook_mappings_master.xlsx` | The core editable mapping workbook. Read by Stage 1, Stage 3, the optional review workflows, and most `mapping_tools/*` scripts. |
 | `config/master_config.xlsx` | `FALLBACK_WORKBOOK_PATH` in `build_energy_balance_relationships.py` (Stage 1). |
-| `config/mapping_issue_exception_sets.xlsx` | `EXCEPTION_WORKBOOK_PATH` in `codebase/mapping_issue_exceptions.py`, used by Stage 0 maintenance and several `mapping_tools/*` scripts. |
+| `config/mapping_issue_exception_sets.xlsx` | `EXCEPTION_WORKBOOK_PATH` in `codebase/mapping_issue_exceptions.py`, used by mapping QA and several `mapping_tools/*` scripts. |
 | `config/source_branch_fallback_rules.csv` | `SOURCE_BRANCH_FALLBACK_RULES_PATH`, read during LEAP→ESTO conversion (`data_convert` stage). |
 | `config/all_demand_aggregated_components.json` | `ALL_DEMAND_COMPONENTS_PATH`, same conversion step. |
 | `config/common_esto_label_overrides.csv` | `COMMON_ESTO_LABEL_OVERRIDES_PATH`, read in Stage 2 (`build_common_esto_structure.py`). |
@@ -51,7 +56,7 @@ working tree to look pre-populated; it isn't required.
 
 | Folder | Why |
 |---|---|
-| `config/archive/` | Only used as a **write** target (`ARCHIVE_DIR`) by maintenance scripts (`apply_display_name_updates.py`, `apply_duplicate_mapping_removal.py`, `apply_subtotal_mismatch_review.py`, `apply_subtotal_mismatch_source_flip.py`, `apply_subtotal_updates.py`, Stage 0) when they back up the workbook before editing it. None of the ~80 archived `.xlsx` snapshots in the zip (`outlook_mappings_master.before_*`, `.maintenance_run_*`, etc.) are read by anything — they're historical backups only. Safe to leave out entirely; a re-run will just start a fresh archive history. |
+| `config/archive/` | Only used as a **write** target (`ARCHIVE_DIR`) by explicit apply scripts (`apply_display_name_updates.py`, `apply_duplicate_mapping_removal.py`, `apply_subtotal_mismatch_review.py`, `apply_subtotal_mismatch_source_flip.py`, `apply_subtotal_updates.py`) when they back up the workbook before editing it. None of the ~80 archived `.xlsx` snapshots in the zip (`outlook_mappings_master.before_*`, `.maintenance_run_*`, etc.) are read by anything — they're historical backups only. Safe to leave out entirely; an approved apply run will start a fresh archive history. |
 
 ## config/ — not needed at all (unreferenced anywhere in `codebase/`)
 
@@ -72,9 +77,9 @@ Confirmed via grep across every `.py` file — none of these paths appear as a l
 
 | File | Why it's required |
 |---|---|
-| `data/00APEC_2025_low_with_subtotals.csv` | Primary ESTO source table (`ESTO_CSV_PATH`) — Stage 0, `data_convert`, Stage 3. |
-| `data/00APEC_2024_low_with_subtotals.csv` | Secondary ESTO year checked by Stage 0 maintenance (`ESTO_SOURCE_DATA_PATHS`) for missing-mapped-row detection. |
-| `data/merged_file_energy_ALL_20251106.csv` | 9th Outlook source table (`NINTH_CSV_PATH`) — Stage 0, `data_convert`, Stage 3. This is the single largest required input (~288 MB). |
+| `data/00APEC_2025_low_with_subtotals.csv` | Primary ESTO source table (`ESTO_CSV_PATH`) — `data_convert`, Stage 3, and optional review workflows. |
+| `data/00APEC_2024_low_with_subtotals.csv` | Secondary ESTO vintage checked by the optional missing-ESTO-row review. It is not required for a normal Stage 1–3 run. |
+| `data/merged_file_energy_ALL_20251106.csv` | 9th Outlook source table (`NINTH_CSV_PATH`) — `data_convert`, Stage 3, and optional review workflows. This is the single largest required input (~288 MB). |
 
 ## data/ — not needed
 

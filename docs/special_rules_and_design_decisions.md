@@ -47,7 +47,10 @@ run identifiers.
 **Status:** Existing QA mechanism; subtotal classifications pending full review (MAPQ-030)
 **Owner:** leap_mappings
 **Type:** Mapping
-**Affected areas:** `config/outlook_mappings_master.xlsx`; `config/mapping_issue_exception_sets.xlsx` sheet `subtotal_mismatch_allowed`; `codebase/archive/outlook_mapping_maintenance_workflow.py`; `results/maintenance/subtotal_mismatches.csv`
+**Affected areas:** `config/outlook_mappings_master.xlsx`;
+`config/mapping_issue_exception_sets.xlsx` sheet
+`subtotal_mismatch_allowed`;
+`codebase/hierarchy_subtotal_contract_workflow.py`; Stage 1 relationship QA
 
 ### Situation
 
@@ -70,7 +73,12 @@ correct; that work is queued as MAPQ-030.
 
 ### Validation
 
-Run the mapping maintenance workflow. Confirm that `subtotal_mismatches.csv` contains only unapproved cases, allowlisted rows are separated as allowed, and parent/child totals remain consistent after any mapping change. Unit coverage for allowlist splitting is in `tests/test_outlook_mapping_maintenance_workflow.py`.
+Run the hierarchy/subtotal contract review when structural evidence changes,
+then run Stages 1–3. Confirm that workbook subtotal decisions match the
+reviewed contract, exception rows remain explicit, and parent/child totals stay
+consistent after a mapping change. The archived maintenance helper tests
+preserve the old allowlist-splitting behavior as historical coverage; they do
+not make `results/maintenance/subtotal_mismatches.csv` current.
 
 ### History
 
@@ -260,7 +268,7 @@ The following ESTO flows are marked `esto_pair_is_subtotal = True` in `leap_comb
 
 ### Validation
 
-After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16.02 Total final consumption` no longer appears as a common flow code.  Confirm that standalone common rows for flows 07, 09, 12, 13, 14, and 15 are still generated.  Confirm that sector-level demand rows (14.xx, 15.xx, 16.01-16.02, etc.) remain correctly grouped by product aggregates from Ninth source data.  Confirm `subtotal_mismatches.csv` contains only unapproved cases after any change to this list.
+After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16.02 Total final consumption` no longer appears as a common flow code. Confirm that standalone common rows for flows 07, 09, 12, 13, 14, and 15 are still generated. Confirm that sector-level demand rows (14.xx, 15.xx, 16.01-16.02, etc.) remain correctly grouped by product aggregates from Ninth source data. Review the hierarchy/subtotal contract and current Stage 1 relationship QA after any change to this list; do not use a legacy `subtotal_mismatches.csv` as current evidence.
 
 ### History
 
@@ -272,7 +280,8 @@ After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16
 **Status:** Confirmed
 **Owner:** leap_mappings
 **Type:** Hierarchy
-**Affected areas:** Stage 0 missing ESTO row generation; ESTO flow `16.01`; Common ESTO hierarchy validation
+**Affected areas:** optional missing-ESTO-row review; ESTO flow `16.01`;
+Common ESTO hierarchy validation
 
 ### Situation
 
@@ -287,7 +296,8 @@ validation incomplete and makes parent/detail additive selection unsafe.
 completion child for eligible products present under `16.01`. Product
 eligibility is established by mapping the ESTO product to its best-supported
 Ninth fuel and requiring non-zero data for the exact Ninth sector
-`16_01_01_commercial_and_public_services`. Stage 0 calculates every year as
+`16_01_01_commercial_and_public_services`. The missing-ESTO-row review
+calculates every year as
 `16.01` minus `16.01.01 Datacentres`; a missing Datacentres row is zero. New
 keys go to the insert output. Existing `16.01.99` keys that differ go to a
 separate update output and are never silently replaced.

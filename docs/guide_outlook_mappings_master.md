@@ -281,7 +281,7 @@ flowchart TD
     CARDINALITY{"Is the many-target relationship intentional and fully allocated?"}
     DECIDE["Record the human decision and intended mapping sheet"]
     EDIT["Edit and save outlook_mappings_master.xlsx"]
-    STAGE0["Run Stage 0 maintenance"]
+    OPTIONAL["If source/hierarchy evidence changed: run the applicable review workflow"]
     PIPELINE["Run Stages 1-3"]
     CHECK["Inspect cardinality, unresolved rollups, hierarchy, and value preservation"]
     PASS{"All relevant checks pass?"}
@@ -298,7 +298,7 @@ flowchart TD
     EXISTING -- "Yes" --> CARDINALITY
     CARDINALITY -- "No or unresolved" --> QA
     CARDINALITY -- "Yes" --> DECIDE
-    DECIDE --> EDIT --> STAGE0 --> PIPELINE --> CHECK --> PASS
+    DECIDE --> EDIT --> OPTIONAL --> PIPELINE --> CHECK --> PASS
     PASS -- "Yes" --> ACCEPT
     PASS -- "No" --> REVISE --> SEMANTICS
 ```

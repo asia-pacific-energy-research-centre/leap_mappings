@@ -27,11 +27,15 @@ Scripts then generate the structured outputs used by comparison tools and dashbo
 
 ## Layered Workflow
 
-1. Refresh and audit the simple mapping workbook:
-   - `codebase/archive/outlook_mapping_maintenance_workflow.py`
-   - input: `config/outlook_mappings_master.xlsx`
+1. Review changed inputs when needed:
+   - `codebase/hierarchy_subtotal_contract_workflow.py` for hierarchy/subtotal
+     evidence and exact-cell workbook review
+   - `codebase/missing_mapped_esto_rows_workflow.py` for reviewed ESTO source
+     rows that are still missing
+   - both workflows are review-only; the default pipeline starts at Stage 1
 
-2. Generate canonical relationship rows:
+2. Generate canonical relationship rows from
+   `config/outlook_mappings_master.xlsx`:
    - `codebase/mapping_tools/build_energy_balance_relationships.py`
    - output: `results/mapping_relationships/energy_balance_relationships.csv`
    - output: `results/mapping_relationships/energy_balance_relationships.xlsx`

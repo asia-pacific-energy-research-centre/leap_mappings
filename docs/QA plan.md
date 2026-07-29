@@ -14,13 +14,16 @@ RUN_MAPPING_PIPELINE_SMOKE=1 pytest -q tests/test_mapping_pipeline_smoke.py
 
 What it exercises:
 
-1. Stage 0 maintenance: subtotal flags, cardinality, and maintenance QA files.
-2. Stage 1 relationships: `energy_balance_relationships.csv` and `.xlsx`.
-3. Stage 2 common ESTO structure: `common_esto_rows.csv` and the map output.
-4. LEAP parse and data conversion: raw LEAP export, LEAP-to-ESTO, 9th-to-ESTO,
+1. Stage 1 relationships: `energy_balance_relationships.csv` and `.xlsx`.
+2. Stage 2 common ESTO structure: `common_esto_rows.csv` and the map output.
+3. LEAP parse and data conversion: raw LEAP export, LEAP-to-ESTO, 9th-to-ESTO,
    and ESTO exact rows.
-5. Stage 3 application: `common_esto_comparison_data.csv` plus tree validation
+4. Stage 3 application: `common_esto_comparison_data.csv` plus tree validation
    outputs and the Stage 3 status manifest.
+
+Focused hierarchy/subtotal-contract and missing-ESTO-row reviews are tested
+separately because they are optional input-review workflows, not a generic
+pipeline stage.
 
 The test is skipped by default so the regular unit suite stays fast. It writes
 to `results/` and reads the real tracked inputs, so it is best treated as an

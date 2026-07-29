@@ -4,7 +4,8 @@
 The workflow is deliberately dry-run by default. It appends only missing
 ``economy/flows/products`` keys, preserves each target CSV's exact schema and
 column order, and never replaces an existing row. Use the dedicated update
-outputs from Stage 0 when an existing row's values must be changed.
+outputs from ``missing_mapped_esto_rows_workflow.py`` when an existing row's
+values must be changed.
 """
 
 #%%

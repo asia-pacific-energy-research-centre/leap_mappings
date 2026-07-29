@@ -209,7 +209,7 @@ def _build_override_rows(
         values: dict[str, object] = {
             "enabled": True,
             "sheet": sheet_name,
-            "notes": "Reviewed subtotal decision; overrides Stage 0 computed subtotal values.",
+            "notes": "Reviewed subtotal decision supported by explicit structural evidence.",
         }
         for key_column in SHEET_CONFIGS[sheet_name]["keys"]:
             values[key_column] = ws.cell(workbook_row, headers[key_column]).value

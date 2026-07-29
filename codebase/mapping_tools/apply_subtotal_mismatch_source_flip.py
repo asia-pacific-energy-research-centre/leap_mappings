@@ -1,6 +1,8 @@
 #%%
-"""Flip leap_is_subtotal False -> True for rows flagged by the M6 subtotal
-mismatch check (results/maintenance/subtotal_mismatches.csv).
+"""Legacy-input helper for a reviewed M6 ``subtotal_mismatches.csv`` report.
+
+The former report generator is retired. Verify the report's date and
+provenance before using it to flip leap_is_subtotal False -> True.
 
 Each flagged row has a leaf-level LEAP source (leap_is_subtotal=False)
 mapped to an aggregate target (esto_pair_is_subtotal/ninth_pair_is_subtotal
@@ -9,9 +11,8 @@ align the LEAP source side with the target: set leap_is_subtotal=True so the
 pair is treated consistently as a subtotal-to-subtotal mapping.
 
 Edits are made directly to config/outlook_mappings_master.xlsx (no exception
-or override sheet routing) since Stage 0's lookup-based recompute-and-write
-of these columns has been disabled -- direct edits now persist across
-maintenance reruns.
+or override sheet routing). No active workflow automatically recomputes or
+overwrites these columns.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 # Workflow Inventory — `codebase/` navigation guide
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-29
 
 `codebase/` mixes several things that look similar at a glance but aren't: the live mapping
 pipeline, standalone maintenance/QA tools a researcher runs by hand, an explicitly-legacy
@@ -20,18 +20,16 @@ is reached from it.
 | Script | Stage |
 |---|---|
 | `codebase/run_mapping_pipeline.py` | Orchestrator |
-| `codebase/archive/outlook_mapping_maintenance_workflow.py` | Stage 0 — maintenance/QA on the mapping workbook |
 | `codebase/mapping_tools/build_energy_balance_relationships.py` | Stage 1 |
 | `codebase/mapping_tools/build_common_esto_structure.py` | Stage 2 |
 | `codebase/mapping_tools/parse_leap_balance_export.py` | `leap_parse` |
 | `codebase/mapping_tools/convert_leap_results_to_esto.py`, `apply_ninth_to_esto_conversion.py` | `data_convert` |
 | `codebase/mapping_tools/apply_common_esto_structure.py`, `build_dataset_tree_structure.py`, `common_esto_validation_orchestration.py`, `source_parent_anchor_validation.py` | Stage 3 |
 | `codebase/mapping_tools/source_branch_preflight.py` | invoked from the `data_convert` LEAP conversion step |
-| `codebase/mapping_tools/build_missing_mapped_esto_rows.py` | invoked from Stage 0 |
 | `codebase/mapping_tools/non_expanding_rollups.py` | invoked directly from `run_mapping_pipeline.py`'s ESTO-exact-rows step |
 | `codebase/mapping_tools/result_storage.py` | resolves compressed `.csv.gz` inputs/outputs for the live pipeline |
 | `codebase/mapping_tools/common_esto_output_contract.py` | publishes and certifies the versioned Common ESTO contract used by Stage 3/dashboard consumers |
-| `codebase/mapping_tools/mapping_issue_exceptions.py`, `codebase/mapping_issue_exceptions.py` | shared library, read by Stage 0 and several other tools (note: two similarly-named files — the one under `mapping_tools/` re-exports from the top-level one) |
+| `codebase/mapping_tools/mapping_issue_exceptions.py`, `codebase/mapping_issue_exceptions.py` | shared library, read by relationship and maintenance tools (note: two similarly-named files — the one under `mapping_tools/` re-exports from the top-level one) |
 | `codebase/utilities/outlook_mappings_filters.py`, `codebase/utilities/leap_balance_export_resolver.py` | the only two `utilities/` modules the live pipeline actually imports |
 
 See `results/README.md` and its subfolder READMEs for what each stage writes.
@@ -79,9 +77,13 @@ imported by `run_mapping_pipeline.py`:
   until that work is integrated and verified.
 
 Top-level standalone workflows: `codebase/propagate_esto_rows_workflow.py`,
+`codebase/missing_mapped_esto_rows_workflow.py` (review-only ESTO category and
+structural-completion rows),
+`codebase/hierarchy_subtotal_contract_workflow.py` (versioned structural
+contract and workbook-cell review),
 `codebase/for_colleagues_export_workflow.py` (see `results/for_colleagues/README.md`),
 `codebase/regen_common_esto_comparison_fast_path_workflow.py` (fast-path rerun from cached
-intermediates, skips Stages 0–2).
+intermediates, skips Stages 1–2).
 
 `codebase/functions/ninth_projection_mapping.py` is a helper used only by `build_no_data_mapping_rows.py`
 and the dashboard-prototype cluster below — not by the live pipeline.
@@ -128,6 +130,9 @@ referenced from anywhere else in `codebase/`, so nothing else needed updating.
 
 ## Legacy (superseded, kept for reference only)
 
+- `codebase/archive/outlook_mapping_maintenance_workflow.py` — former Stage 0
+  monolith. Its active path returned before the advertised broad QA/write
+  section; retained for helper/test history, not as an operating entry point.
 - `codebase/leap_mapping_refresh_workflow.py` — old refresh workflow for
   `config/leap_mappings.xlsx` / `config/master_config.xlsx`, explicitly superseded by
   `config/outlook_mappings_master.xlsx` (see root `README.md`, `AGENTS.md`). This is the sole
@@ -159,5 +164,5 @@ referenced from anywhere else in `codebase/`, so nothing else needed updating.
 - `AGENTS.md` used to reference `codebase/transformation_analysis_workflow.py` as a script that
   exists (it never did, at any depth under `codebase/`) — already fixed earlier the same day
   (2026-07-23, commit `18b1989`), so this note is historical, not an outstanding item.
-- When the workbook or source data changes, run the maintenance workflow (Stage 0) before the
-  main pipeline.
+- When the workbook or source data changes, run only the applicable optional
+  hierarchy or ESTO-row review, then rerun the affected core stages.

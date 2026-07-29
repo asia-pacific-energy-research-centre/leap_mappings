@@ -29,7 +29,7 @@ extending, or reviewing comparison outputs across energy-balance datasets.
 
 ### The pipeline
 
-- [Mapping maintenance workflow](#mapping-maintenance-workflow)
+- [Optional mapping and source review workflows](#optional-mapping-and-source-review-workflows)
 - [Splitting 09.06.02 into liquefaction and regasification sub-flows](#splitting-090602-into-liquefaction-and-regasification-sub-flows)
 - [From mapping rows to comparison outputs](#from-mapping-rows-to-comparison-outputs)
 
@@ -157,22 +157,21 @@ now held in the per-economy export templates under
 `leap_initialisation/data/leap_export_templates/`; template ownership and LEAP
 import-ID integrity belong to `leap_initialisation`.
 
-The archived Stage 0 maintenance implementation still checks two retired
+The retired Stage 0 maintenance implementation checked two retired
 literal filenames, in order:
 
 1. `leap_mappings/data/full model export.xlsx`; then
 2. `leap_initialisation/data/full model export.xlsx`.
 
-Neither file is present in the current checkout. Consequently, that workflow
-currently derives subtotal structure from active mapping paths rather than from
-a live full-model export. Do not recreate either retired filename merely to
-satisfy the old resolver. Before treating Stage 0 hierarchy validation as
-template-backed, update the resolver deliberately to use the reviewed
-per-economy template set and add focused coverage for differences between
+Neither file is present in the current checkout, and the archived workflow is
+no longer part of the runnable mapping pipeline. Do not recreate either retired
+filename merely to satisfy the old resolver. Current structural review belongs
+in the canonical hierarchy/subtotal contract workflow, using the reviewed
+per-economy template set and explicit evidence for differences between
 economies.
 
 The following separates the current source of structural authority from the
-archived Stage 0 resolver's present behavior:
+retired Stage 0 resolver and its replacement:
 
 ```mermaid
 flowchart TD
@@ -180,25 +179,25 @@ flowchart TD
     EXPORT["Refresh that economy's LEAP export template"]
     AUTHORITY["Per-economy templates are the current structural authority"]
     INITCHECK["Initialisation validates paths, logical keys, and import IDs"]
-    STAGE0["Archived Stage 0 maintenance resolver"]
+    STAGE0["Retired Stage 0 maintenance resolver"]
     RETIRED{"Retired full-model export found?"}
     PATHS["No: infer subtotal structure from active mapping paths"]
     LEGACY["Yes: read the legacy workbook"]
-    LIMIT["Current limitation: Stage 0 is not template-backed"]
-    FUTURE["MAPQ-032: resolve and compare reviewed per-economy templates"]
+    LIMIT["Historical limitation: resolver was not template-backed"]
+    FUTURE["Canonical hierarchy/subtotal contract workflow"]
     REVIEW["Review missing paths, new leaves, subtotal changes, and cardinality"]
 
     CHANGE --> EXPORT --> AUTHORITY --> INITCHECK
     STAGE0 --> RETIRED
     RETIRED -- "No in current checkout" --> PATHS --> LIMIT
     RETIRED -- "Only if a legacy file is restored" --> LEGACY --> LIMIT
-    LIMIT -. "planned replacement" .-> FUTURE
-    AUTHORITY -. "future Stage 0 input" .-> FUTURE --> REVIEW
+    LIMIT -. "replaced by" .-> FUTURE
+    AUTHORITY --> FUTURE --> REVIEW
 ```
 
-The dotted route is planned work, not a claim that Stage 0 already consumes the
-template set. Until that resolver is implemented, mapping-path inference cannot
-prove that a mapped branch exists in every economy's real LEAP area.
+The retired resolver never proved that a mapped branch existed in every
+economy's real LEAP area. The contract workflow makes the evidence source and
+review boundary explicit; mapping-path inference alone is not structural proof.
 
 See the current template inventory and retirement record in
 [`leap_initialisation/data/README.md`](../../leap_initialisation/data/README.md#full-model-exportxlsx-retired-legacy-filename)
@@ -379,11 +378,19 @@ The processing order matters:
 4. Calculate cardinality on those effective pairs.
 5. Flag any many-to-many relationships that remain after rollup.
 
-The current maintenance workflow writes cardinality to QA CSVs in `results/maintenance/`; it does not write cardinality columns back into the workbook. Conceptually, `pair_mapping_cardinality_raw` means cardinality before rollup and `pair_mapping_cardinality_after_rollup` means cardinality after applying relevant rollup rules. If a future workflow writes a single visible `pair_mapping_cardinality` column, it should represent the effective after-rollup cardinality.
+Stage 1 relationship QA records raw and after-rollup cardinality; it does not
+write cardinality columns back into the workbook. Conceptually,
+`pair_mapping_cardinality_raw` means cardinality before rollup and
+`pair_mapping_cardinality_after_rollup` means cardinality after applying
+relevant rollup rules. If a future workflow writes a single visible
+`pair_mapping_cardinality` column, it should represent the effective
+after-rollup cardinality.
 
-**Many-to-many before rollup is a signal. Many-to-many after rollup usually needs review.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. Some many-to-many rows are deliberate placeholder overlaps, such as completed LEAP power branches coexisting with interim fallback branches while the 9th Outlook has unallocated fuel categories. Reviewed exceptions are maintained in `config/mapping_issue_exception_sets.xlsx`, written to `results/maintenance/many_to_many_allowed_matched.csv` when matched, and removed from `results/maintenance/many_to_many_conflicts.csv` so the conflict file stays actionable.
+**Many-to-many before rollup is a signal. Many-to-many after rollup usually needs review.** A raw many-to-many relationship often means the base mapping has crossed a comparison boundary and needs a known rollup or graph-generated common category. Some many-to-many rows are deliberate placeholder overlaps, such as completed LEAP power branches coexisting with interim fallback branches while the 9th Outlook has unallocated fuel categories. Review the current Stage 1 relationship QA and the manual exception sets in `config/mapping_issue_exception_sets.xlsx`; old `results/maintenance/many_to_many_*.csv` files are legacy artifacts and are not refreshed by the active pipeline.
 
-Subtotal columns are updated by the mapping maintenance workflow, not maintained manually. Cardinality is currently reviewed through generated QA outputs.
+Subtotal columns are human-reviewed workbook fields. Compare them with the
+canonical hierarchy/subtotal contract and its exact-cell review outputs before
+changing them. Cardinality is reviewed through generated Stage 1 QA outputs.
 
 ---
 
@@ -801,15 +808,12 @@ Subtotals are aggregate rows where the value is the sum of child rows rather tha
 Each source dataset flags subtotals differently:
 
 - **ESTO** (`data/00APEC_2025_low_with_subtotals.csv`): a single `is_subtotal` column.
-- **9th Outlook** (`data/merged_file_energy_ALL_20251106.csv`): two columns — `subtotal_layout` for historical years (pre-2022) and `subtotal_results` for projection years. The maintenance workflow takes the logical OR of both to determine whether a 9th row is a subtotal.
-- **LEAP**: subtotal status is derived from the branch structure — any branch
-  that has children is a subtotal. The archived maintenance workflow can
-  normalize `Branch Path` values from either of its two retired
-  `full model export.xlsx` locations, but neither workbook is present in the
-  current checkout. It therefore uses the mapping-sheet path hierarchy today.
-  The per-economy templates in `leap_initialisation` are the current LEAP
-  structure evidence, but they are not yet wired into this Stage 0 subtotal
-  resolver.
+- **9th Outlook** (`data/merged_file_energy_ALL_20251106.csv`): two columns — `subtotal_layout` for historical years (pre-2022) and `subtotal_results` for projection years. These are value-selection and source-conformance evidence; neither flag, nor their logical OR, is the canonical structural definition.
+- **LEAP**: structural subtotal status is derived from the branch structure —
+  any branch that has children is a subtotal. Per-economy templates in
+  `leap_initialisation` are the current LEAP structure evidence. The retired
+  Stage 0 resolver's mapping-path inference is historical behavior, not current
+  structural authority.
 
 The mapping sheets (`leap_combined_esto`, `leap_combined_ninth`, `ninth_pairs_to_esto_pairs`) each include computed columns recording subtotal status:
 
@@ -817,7 +821,9 @@ The mapping sheets (`leap_combined_esto`, `leap_combined_ninth`, `ninth_pairs_to
 - `esto_pair_is_subtotal`
 - `ninth_pair_is_subtotal`
 
-These are computed by the mapping maintenance workflow and should not be edited manually. They are recorded for auditing and QA purposes.
+These are maintained review decisions in the workbook. The hierarchy/subtotal
+contract workflow compares them with current structural evidence and produces
+exact-cell review tables. It does not silently overwrite the workbook.
 
 Because all three datasets operate at different levels of detail, subtotal↔non-subtotal mappings will naturally occur throughout the sheets. In most cases these are fine — the mapped branch in the coarser dataset effectively represents the same scope as the non-subtotal rows in the finer dataset.
 
@@ -825,34 +831,30 @@ Because all three datasets operate at different levels of detail, subtotal↔non
 - **Non-subtotal↔non-subtotal**: fine — direct row-level comparison.
 - **Subtotal↔non-subtotal**: will occur frequently and is generally acceptable given the different levels of detail across datasets.
 
-A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. Reviewed acceptable cases live in `config/mapping_issue_exception_sets.xlsx` on the `subtotal_mismatch_allowed` sheet. The maintenance workflow reads that sheet but does not update it automatically. Current mismatches that are not present in the manual allowlist are written to `results/maintenance/subtotal_mismatches.csv` for review.
+A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggregate target (is_subtotal = True) **and** a more specific (non-subtotal) target also exists at the same flow. Reviewed acceptable cases live in `config/mapping_issue_exception_sets.xlsx` on the `subtotal_mismatch_allowed` sheet. Treat any existing `results/maintenance/subtotal_mismatches.csv` as legacy evidence; use the contract review outputs and current Stage 1 relationship QA for active review.
 
 ---
 
-## Mapping maintenance workflow
+## Optional mapping and source review workflows
 
-`codebase/archive/outlook_mapping_maintenance_workflow.py` reads `config/outlook_mappings_master.xlsx` and maintains or checks workbook fields without creating the final dashboard dataset.
+The default mapping pipeline starts at Stage 1. Two focused, review-only
+workflows can be run before it when their inputs have changed:
 
-Run this after editing mapping rows or rollup rules.
+- `codebase/missing_mapped_esto_rows_workflow.py` writes paste-ready rows and
+  supporting audits for reviewed ESTO balance changes missing from maintained
+  ESTO source vintages. It never edits the ESTO source files.
+- `codebase/hierarchy_subtotal_contract_workflow.py` builds the versioned
+  hierarchy/subtotal contract and exact workbook-cell review tables. It never
+  edits the mapping workbook.
 
-Each run first writes a timestamped workbook copy to `config/archive/`, using filenames like `outlook_mappings_master.maintenance_run_YYYYMMDD_HHMMSS.xlsx`.
-
-What it does:
-
-- Loads ESTO and 9th source tables and resolves code/name lookups.
-- Recalculates subtotal flags in the workbook from the current mapping rows.
-- Writes cardinality QA CSVs from the active mapping rows.
-- Checks subtotal flags.
-- Builds tree-structure CSVs and validates ESTO recursive sums.
-- Finds duplicate and conflicting mappings.
-- Checks active row presence across the three base mapping sheets.
-- Detects crosswalk target conflicts, such as the same source implying inconsistent ESTO or 9th targets.
-- Produces researcher-facing QA outputs.
-- Writes paste-ready rows for reviewed ESTO balance changes missing from the maintained ESTO source vintages.
+`codebase/archive/outlook_mapping_maintenance_workflow.py` is retained for
+historical helper coverage and provenance only. It is not Stage 0, is not
+called by `run_mapping_pipeline.py`, and must not be used as evidence that old
+`results/maintenance/` reports are current.
 
 ### Adding reviewed balance rows missing from ESTO source files
 
-The standard Stage 0 run checks both maintained ESTO vintages:
+The missing-ESTO-row review checks both maintained ESTO vintages:
 
 ```text
 data/00APEC_2025_low_with_subtotals.csv
@@ -916,19 +918,21 @@ rows file to the corresponding ESTO source CSV. Do not also paste the LNG
 support file: those keys already occur in the main file. Existing `16.01.99`
 rows are never silently replaced; review and apply the separate updates file
 deliberately. The generator never edits an ESTO source file automatically.
-After inserting the main file, rerunning Stage 0 should produce no remaining
-missing rows under the same rules.
+After inserting the main file, rerunning the missing-ESTO-row review should
+produce no remaining missing rows under the same rules.
 
-The check is controlled near the top of the maintenance workflow:
+The check is controlled near the bottom of
+`codebase/missing_mapped_esto_rows_workflow.py`:
 
 ```python
-GENERATE_MISSING_MAPPED_ESTO_ROWS = True
+RUN_MISSING_MAPPED_ESTO_ROWS_REVIEW = False
 ```
 
-Set it to `False` to skip the output. Add future ESTO vintages to
-`ESTO_SOURCE_DATA_PATHS`; year columns are discovered from each file rather
-than hard-coded. Keep the generator enabled after mapping, Ninth, or ESTO
-vintage updates so reviewed changes are visible before downstream validation.
+Set it to `True` only when that review is needed. Pass future ESTO vintages
+through the explicit `esto_source_data_paths` parameter; year columns are
+discovered from each file rather than hard-coded. Rerun the review after
+mapping, Ninth, or ESTO-vintage updates so reviewed changes are visible before
+downstream validation.
 
 ### Splitting 09.06.02 into liquefaction and regasification sub-flows
 
@@ -1040,19 +1044,18 @@ separate update output after human review.
 
 ---
 
-The maintenance workflow is upstream QA and workbook maintenance. It does not write to LEAP, and it does not create the final dashboard comparison dataset.
+These optional workflows are upstream review tools. They do not write to LEAP,
+edit the mapping workbook, or create the final dashboard comparison dataset.
 
 ---
 
 ## From mapping rows to comparison outputs
 
-The mapping rows in `outlook_mappings_master.xlsx` are the human-maintained input. Everything downstream is generated by scripts. The maintenance workflow (Stage 0) is described in the [Mapping maintenance workflow](#mapping-maintenance-workflow) section above; run it whenever workbook rows or rollup rules change, before running the downstream stages.
-
-### Stage 0 - Mapping maintenance
-
-`codebase/archive/outlook_mapping_maintenance_workflow.py`
-
-Maintains the workbook, recalculates subtotal columns, writes cardinality QA outputs, checks subtotal alignment, and produces tree-structure outputs.
+The mapping rows in `outlook_mappings_master.xlsx` are the human-maintained
+input. Everything downstream is generated by scripts. Run an
+[optional review workflow](#optional-mapping-and-source-review-workflows) only
+when its underlying hierarchy or source-row evidence changed, then run Stages
+1–3.
 
 ### Stage 1 - Relationship rows
 
@@ -1344,7 +1347,10 @@ The tree files still record flow, 9th, LEAP, and Common ESTO hierarchy, but valu
 
 ### Current implementation status
 
-The maintenance workflow builds hierarchical tree structures for all four datasets (ESTO, 9th, LEAP, Common ESTO) and runs recursive sum validation against the ESTO balance data. Tree CSVs are written to `results/tree_structure/` each time the maintenance workflow runs.
+The hierarchy/subtotal contract workflow builds the versioned structural
+evidence. Stage 3 uses the applicable tree structures for recursive sum and
+common-output validation. Files in `results/tree_structure/` should be treated
+as current only when their producing Stage 3 or contract run is current.
 
 | Output | Content |
 | --- | --- |
@@ -1739,25 +1745,19 @@ Many-to-many relationships that survive into the common structure are a high-sev
 
 Stage 2 outputs are structure outputs, not final result data. Review `common_esto_rows.csv` and `esto_to_common_esto_map.csv` for the generated comparison categories that Stage 3 will apply to LEAP, ESTO, and 9th data. The QA files above explain why rows were rolled together and whether any source aggregate was split or only partially covered. A clean Stage 2 does not mean source values match; it means the common comparison structure is internally consistent enough for Stage 3.
 
-### Maintenance workflow (`codebase/archive/outlook_mapping_maintenance_workflow.py`)
+### Optional review outputs
 
-`codebase/archive/outlook_mapping_maintenance_workflow.py` produces QA outputs to `results/maintenance/`:
+The missing-ESTO-row review writes its main paste file and supporting audits
+under `results/maintenance/missing_mapped_esto_rows/`. The hierarchy/subtotal
+contract workflow writes versioned contract members, a manifest, and exact-cell
+review tables to its configured contract/review locations.
 
-| File | Contents |
-| --- | --- |
-| `maintenance_summary.csv` | Compact row-count and status summary for the main Stage 0 maintenance and tree validation outputs |
-| `cardinality_leap_esto.csv` | (LEAP source, ESTO target) pair cardinality |
-| `cardinality_leap_ninth.csv` | (LEAP source, 9th target) pair cardinality |
-| `cardinality_ninth_esto.csv` | (9th source, ESTO target) pair cardinality |
-| `many_to_many_allowed_matched.csv` | Current many-to-many rows matched by the manual `many_to_many_allowed` exception sheet |
-| `many_to_many_conflicts.csv` | Active many-to-many mapping pairs that are not allowlisted and still need review |
-| `leap_source_presence_conflicts.csv` | Active LEAP source pairs present in only one of `leap_combined_esto` or `leap_combined_ninth` |
-| `crosswalk_target_conflicts_allowed_matched.csv` | Current crosswalk rows matched by the manual `crosswalk_allowed` exception sheet |
-| `crosswalk_target_conflicts.csv` | Active LEAP-to-9th mappings where the 9th-to-ESTO crosswalk implies ESTO targets that are not active for the same LEAP source; `conflict_classification` separates missing crosswalk rows, expected combined/aggregate targets, partial combined-target reviews, and target mismatches |
-| `unmapped_nonzero_esto_pairs.csv` | ESTO (flow, product) pairs in the data file with no active mapping row |
-| `unmapped_nonzero_ninth_pairs.csv` | 9th (sector, fuel) pairs in the data file with no active mapping row |
-| `subtotal_mismatches_allowed_matched.csv` | Current subtotal mismatch rows matched by the manual `subtotal_mismatch_allowed` exception sheet |
-| `subtotal_mismatches.csv` | Current leaf source → aggregate target subtotal mismatch rows not present in the manual exception workbook |
+Other files directly under `results/maintenance/`, including
+`maintenance_summary.csv`, `cardinality_*.csv`, `many_to_many_*.csv`,
+`crosswalk_target_conflicts*.csv`, and `subtotal_mismatches*.csv`, were
+produced by the retired monolith. They remain useful historical evidence but
+are not regenerated by the active pipeline and must not be presented as
+current-run QA.
 
 ### Notes on interpreting outputs
 
@@ -1775,13 +1775,16 @@ The table below covers the stable conceptual columns. The authoritative full col
 
 | Column | Updated by | Meaning |
 | --- | --- | --- |
-| `leap_is_subtotal` | Mapping maintenance workflow | LEAP branch is a subtotal row |
-| `esto_pair_is_subtotal` / `ninth_pair_is_subtotal` | Mapping maintenance workflow | Target pair is a subtotal row |
+| `leap_is_subtotal` | Human, reviewed against hierarchy contract | LEAP branch is a subtotal row |
+| `esto_pair_is_subtotal` / `ninth_pair_is_subtotal` | Human, reviewed against hierarchy contract | Target pair is a subtotal row |
 | `remove_row` | Human | Whether the row is excluded, when present |
 | `remove_row_reason` | Human | Reason for exclusion, when present |
 | `Note` | Human | Free text explanation |
 
-Subtotal columns should not be manually edited. They are overwritten by the mapping maintenance workflow. Cardinality is currently written to `results/maintenance/cardinality_*.csv` rather than workbook columns.
+Change subtotal columns deliberately after reviewing the hierarchy contract's
+evidence and exact-cell review output. No active workflow overwrites them.
+Review cardinality in the current Stage 1 relationship QA rather than legacy
+`results/maintenance/cardinality_*.csv` files.
 
 ## Review-only computer-generated mapping candidates
 
@@ -1848,7 +1851,10 @@ Before copying a candidate into the workbook:
 
 **Comparing dashboard totals against raw ESTO or 9th data.** The comparison outputs use common comparison rows, which may aggregate several ESTO pairs or apply rollup rules. Comparing them directly against individual raw rows may show apparent differences that are actually correct rollup results.
 
-**Editing subtotal columns manually.** These are computed by the mapping maintenance workflow. Manual edits will be overwritten on the next maintenance run. Cardinality should be reviewed in the generated `results/maintenance/cardinality_*.csv` files.
+**Editing subtotal columns without structural evidence.** These are
+human-reviewed fields. Compare them with the hierarchy/subtotal contract and
+its exact-cell review outputs before changing them. Review cardinality in the
+current Stage 1 relationship QA.
 
 **Treating `ninth_pairs_to_esto_pairs` as complete.** This sheet can have known gaps. Use mapping coverage outputs to identify which 9th or ESTO rows are currently unmapped, removed-only, or intentionally excluded.
 
@@ -1861,7 +1867,7 @@ pipeline still runs against the checked-in inputs:
 RUN_MAPPING_PIPELINE_SMOKE=1 pytest -q tests/test_mapping_pipeline_smoke.py
 ```
 
-It runs Stage 0 through Stage 3 against the real workbook and source files,
+It runs Stages 1 through 3 against the real workbook and source files,
 including LEAP parsing and data conversion. The test is intentionally
 expensive, so it is skipped by default and should be treated as an
 integration-level check rather than a routine unit test.

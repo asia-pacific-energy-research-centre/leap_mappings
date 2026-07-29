@@ -34,12 +34,10 @@ from codebase.run_mapping_pipeline import (  # noqa: E402
     RELATIONSHIPS_PATH,
     run_data_convert,
     run_leap_parse,
-    run_stage_0,
     run_stage_1,
     run_stage_2,
     run_stage_3,
 )
-import codebase.archive.outlook_mapping_maintenance_workflow as maintenance_workflow  # noqa: E402
 
 
 TREE_DIR = Path(r"C:\Users\Work\github\leap_mappings\results\tree_structure")
@@ -70,26 +68,6 @@ def _assert_grouped_values_match(
 
 
 def test_real_pipeline_smoke_run() -> None:
-    original_generate_missing_rows = maintenance_workflow.GENERATE_MISSING_MAPPED_ESTO_ROWS
-    maintenance_workflow.GENERATE_MISSING_MAPPED_ESTO_ROWS = False
-    try:
-        run_stage_0()
-    finally:
-        maintenance_workflow.GENERATE_MISSING_MAPPED_ESTO_ROWS = original_generate_missing_rows
-
-    stage0_outputs = [
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\maintenance_summary.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\cardinality_leap_esto.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\cardinality_leap_ninth.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\cardinality_ninth_esto.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\subtotal_mismatches.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_nonzero_esto_pairs.csv"),
-        Path(r"C:\Users\Work\github\leap_mappings\results\maintenance\unmapped_nonzero_ninth_pairs.csv"),
-    ]
-    for path in stage0_outputs:
-        _assert_exists(path)
-    _assert_csv_has_rows(stage0_outputs[0])
-
     run_stage_1()
     relationships_df = _assert_csv_has_rows(RELATIONSHIPS_PATH)
     _assert_exists(RELATIONSHIPS_PATH.with_suffix(".xlsx"))

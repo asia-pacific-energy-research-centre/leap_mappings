@@ -1,6 +1,6 @@
 # Mapping pipeline guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-07-29
 
 **Audience:** mapping analysts and maintainers
 
@@ -39,23 +39,29 @@ system.
 
 | Stage | Entry/module | What it does | Review point |
 |---|---|---|---|
-| 0 | `codebase/archive/outlook_mapping_maintenance_workflow.py` | computes/compares subtotal state; cardinality, duplicate, crosswalk, coverage, display-name and tree QA | review preview/QA; do not assume workbook changed |
 | 1 | `build_energy_balance_relationships.py` | normalizes mapping sheets into directional relationship/use-case rows and applies rollup rules | duplicate, unknown target, missing pair, parent/child QA |
 | 2 | `build_common_esto_structure.py` | partitions scope-specific ESTO component graphs into exact/generated common rows | structural coverage, intersections, non-expanding frontier |
 | parse | `parse_leap_balance_export.py` | reads LEAP balance exports into long source rows | economy/export discovery and schema |
 | convert | LEAP/9th converters plus exact ESTO selectors | creates ESTO-shaped values and source lineage | missing mappings and value preservation |
 | 3 | `apply_common_esto_structure.py` and validators | applies components/signs, aggregates values, publishes data/lineage/status | application QA, recursive hierarchy, source anchors |
 
-## Why Stage 0 is unusual
+## Optional maintenance before the pipeline
 
-The live Stage 0 workflow is under `codebase/archive/`. The orchestrator imports
-it from there, and tests/docs reference it. Treat that as current behavior, not
-as evidence that the workflow is retired.
+There is no active Stage 0. The former archived maintenance workflow mixed
+several unrelated checks, returned before most of its advertised QA code, and
+did not feed Stage 1. Its useful responsibilities now have explicit routes:
 
-Stage 0 defaults to review/preview behavior. The orchestrator’s historical
-`--apply-maintenance` option is currently described by its own help text as a
-deprecated no-op. Reviewed helper scripts perform specific workbook changes
-and create backups.
+| Need | Entry point | When to run | Mutation |
+|---|---|---|---|
+| Generate mapped ESTO or ESTO Extended rows missing from a source vintage | `codebase/missing_mapped_esto_rows_workflow.py` | after reviewed ESTO-category or structural-completion changes | review files only |
+| Build structural subtotal truth and exact workbook-cell review tables | `codebase/hierarchy_subtotal_contract_workflow.py` | after hierarchy, mapping workbook, exception, or structural source changes | contract/review artifacts only |
+| Compile and validate relationships | Stage 1 | after mapping or rollup changes | generated relationship/QA outputs only |
+
+The retired implementation remains under
+`codebase/archive/outlook_mapping_maintenance_workflow.py` for helper and test
+history. Do not use its old `maintenance_summary.csv`, cardinality, unmapped,
+or subtotal-mismatch files as evidence of a current run: the live workflow
+stopped before regenerating them.
 
 ## Relationships and use cases
 
@@ -149,11 +155,11 @@ validation state.
 
 ## Source hierarchy and subtotals
 
-- ESTO subtotal status comes from source `is_subtotal`.
-- 9th subtotal status is the logical OR of historical layout and projection
-  subtotal flags.
-- LEAP parent status comes from branch hierarchy, with maintained mapping
-  evidence as fallback where exports are incomplete.
+Structural subtotal truth comes from the versioned
+[`hierarchy/subtotal contract`](../hierarchy_subtotal_contract.md). Ordinary
+declared hierarchy edges determine parenthood. Period-specific ESTO/9th source
+flags remain value-filtering or conformance evidence; they do not redefine a
+node's structural status.
 
 A label is not enough to determine any of these. Review complete siblings,
 raw/after-rollup cardinality, and additive frontiers.
@@ -168,8 +174,8 @@ Candidate generation:
 4. reports destination sheet, evidence, support, confidence, ambiguity, and
    cardinality.
 
-Only a human can copy a reviewed row into the workbook. Then rerun maintenance
-and Stages 1–3.
+Only a human can copy a reviewed row into the workbook. Then run the applicable
+optional hierarchy/source review and rerun Stages 1–3.
 
 ## Fast path
 

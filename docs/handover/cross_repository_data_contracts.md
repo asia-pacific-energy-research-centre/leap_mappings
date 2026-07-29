@@ -285,7 +285,7 @@ underscore (`20_USA`, `02_BD`). `02_BD` is Brunei Darussalam.
 | Configuration | Owner | Consumers | Change impact |
 |---|---|---|---|
 | canonical mapping workbook | mappings | mapping stages; initialisation loaders | coordinated schema and full affected rerun |
-| mapping exception workbook | mappings | maintenance and mapping QA | rerun affected QA/stages |
+| mapping exception workbook | mappings | mapping and contract review QA | rerun affected QA/stages |
 | source coverage and aggregate-component config | mappings | Stage 2/3; dashboard live import | mapping and dashboard verification |
 | LEAP templates | initialisation | initialisation | regenerate/validate affected economy workbooks; mapping parse if export structure changed |
 | reconciliation config/caps | initialisation | initialisation | rerun affected economy/pass |
@@ -300,7 +300,7 @@ underscore (`20_USA`, `02_BD`). `02_BD` is Brunei Darussalam.
 | Stage 2 Common rows | relationships, scopes, overrides, names, Stage 2 code unchanged | structural or comparison-scope change |
 | converted source values | source files and conversion logic unchanged | source vintage/export/conversion change |
 | Stage 3 values | Common rows and converted values unchanged | either input changed |
-| mapping fast-path result | all cached inputs above are current | Stage 0–2 or conversion should have rerun |
+| mapping fast-path result | all cached inputs above are current | Stage 1–2 or conversion should have rerun |
 | initialisation seed | source/config/template and run scope unchanged | any producer/config/template change |
 | dashboard render | input values/structure and dashboard code/config unchanged | either producer or presentation changed |
 
@@ -336,4 +336,4 @@ generation and select it explicitly in a downstream render.
 | dashboard imports mapping Python directly | supported but tightly coupled | mappings + dashboard |
 | external structural notes under `C:\Users\Work\.codex` | not available in a clean clone | handover queues |
 | local masters ahead of remotes | work exists only on this machine until normal push process | each repository |
-| Stage 0 live code under `codebase/archive/` | operationally valid but surprising navigation | mappings |
+| retired Stage 0 reports remain in `results/maintenance/` | historical evidence is easy to mistake for current QA | mappings |

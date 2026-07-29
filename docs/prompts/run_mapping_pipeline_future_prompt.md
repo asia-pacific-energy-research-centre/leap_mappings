@@ -41,9 +41,10 @@ config/outlook_mappings_master.xlsx
 ```
 
 If a script attempts to make automatic workbook adjustments, disable or bypass
-that behavior for this run and record exactly what was changed. Stage 0
-maintenance should be preview/check/report only unless the user has explicitly
-asked for workbook writes in this prompt.
+that behavior for this run and record exactly what was changed. There is no
+active Stage 0. The focused hierarchy/subtotal and missing-ESTO-row workflows
+are review-only unless the user explicitly asks for a separate approved apply
+step.
 
 Generated CSV and QA outputs in `results/` should still be written normally.
 

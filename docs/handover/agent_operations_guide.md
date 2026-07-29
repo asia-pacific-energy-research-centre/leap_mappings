@@ -1,6 +1,6 @@
 # Cross-repository agent operations guide
 
-**Evidence snapshot:** 2026-07-28
+**Evidence snapshot:** 2026-07-29
 
 **Audience:** coding agents and maintainers running or changing workflows
 **Detail level:** Level 3
@@ -81,8 +81,9 @@ specific LEAP fill/scrape toggle is enabled.
 
 | Workflow | Owner | Entry point | Inputs | Outputs | Mutates canonical data? | Validation | Downstream |
 |---|---|---|---|---|---|---|---|
-| mapping maintenance | mappings | `codebase/archive/outlook_mapping_maintenance_workflow.py` | workbook, sources, template/export, exceptions | preview and QA/tree files | default no; reviewed helpers can | maintenance summary and QA | Stage 1/reviewer |
-| mapping pipeline | mappings | `codebase/run_mapping_pipeline.py` | workbook, ESTO/9th/LEAP | relationships, Common ESTO, values, lineage/status | generated outputs only | Stage 0–3 QA | dashboard |
+| hierarchy/subtotal review | mappings | `codebase/hierarchy_subtotal_contract_workflow.py` | workbook, sources, structure, exceptions | versioned contract and review CSVs | no | strict contract reload and review summary | reviewer/consumers |
+| missing mapped ESTO-row review | mappings | `codebase/missing_mapped_esto_rows_workflow.py` | workbook and ESTO/9th sources | paste-ready rows and audits | no | review summary and source preservation | human source-data review |
+| mapping pipeline | mappings | `codebase/run_mapping_pipeline.py` | workbook, ESTO/9th/LEAP | relationships, Common ESTO, values, lineage/status | generated outputs only | Stage 1–3 QA | dashboard |
 | Common ESTO fast path | mappings | `codebase/regen_common_esto_comparison_fast_path_workflow.py` | cached converted values and rows | final long/wide/status | overwrites generated outputs | no deep validation | dashboard |
 | supply reconciliation | initialisation | `codebase/supply_reconciliation_workflow.py` | sources, canonical mappings, templates, optional LEAP results | run-labelled seeds/updates and diagnostics | generated outputs; optional live LEAP fill | preflight, invariants, readiness, conservation | LEAP/human |
 | seed patch | initialisation | `codebase/functions/patch_baseline_seeds.py` through orchestrator mode | existing seed and module output | patched seed and validation | generated seed | shared emit-boundary checks | LEAP/human |
@@ -98,7 +99,6 @@ In a mappings-root notebook:
 ```python
 #%%
 from codebase.run_mapping_pipeline import (
-    run_stage_0,
     run_stage_1,
     run_stage_2,
     run_leap_parse,
@@ -107,7 +107,6 @@ from codebase.run_mapping_pipeline import (
 )
 
 #%%
-RUN_STAGE_0 = True
 RUN_STAGE_1 = True
 RUN_STAGE_2 = True
 RUN_LEAP_PARSE = True
@@ -117,8 +116,6 @@ LEAP_ECONOMIES = None  # Or an explicit reviewed list such as ["20_USA"].
 SKIP_DEEP_VALIDATION = False
 
 #%%
-if RUN_STAGE_0:
-    run_stage_0()
 if RUN_STAGE_1:
     run_stage_1()
 if RUN_STAGE_2:
@@ -140,7 +137,6 @@ boundary.
 
 | Stage | Key modules | Inputs | Expected success artifacts |
 |---|---|---|---|
-| 0 | archived maintenance workflow, tree builder, display-name update | canonical workbook, source CSVs, exceptions, model structure | `results/maintenance/maintenance_summary.csv`, tree CSVs |
 | 1 | relationship builder, rollup modules | workbook base/rollup sheets | `energy_balance_relationships.csv`, catalogue, QA |
 | 2 | Common structure builder, structural resolver | relationships, exclusions, overrides | `common_esto_rows.csv`, map and structural QA |
 | LEAP parse | balance export resolver/parser | sibling balance-export tree | `raw_leap_results.csv` |
@@ -163,20 +159,20 @@ and process CPU/command line without modifying outputs.
 
 ### 4.4 Workbook and output behavior
 
-- Stage 0 is preview-first. `--apply-maintenance` in the current orchestrator is
-  deprecated/no-op; do not claim it mutates the workbook.
+- Optional hierarchy and missing-row workflows are review-only and are not
+  prepended automatically to the mapping pipeline.
 - Workbook-changing helper scripts create backups under `config/archive/`.
 - Stage 3 can write `*_needs_mapping_review` on application errors.
 - Locked CSVs can cause `_rebuilt` outputs.
 - `common_esto_output_status.csv/current_output_file` selects the current file.
 - The fast path overwrites the long/wide/status outputs and deliberately skips
-  maintenance, structure, candidate, tree, and anchor checks.
+  relationship rebuilding, structure, candidate, tree, and anchor checks.
 
 ### 4.5 Mapping release checks
 
 At minimum:
 
-1. confirm Stage 0 summary and actionable QA;
+1. confirm any applicable optional hierarchy/source review;
 2. confirm relationship/structure files exist and have expected non-empty
    schemas;
 3. inspect `common_esto_output_status.csv`;

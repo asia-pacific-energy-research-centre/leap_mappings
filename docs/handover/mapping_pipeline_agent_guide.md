@@ -1,6 +1,6 @@
 # Mapping pipeline agent guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-07-29
 
 Use this runbook only after reading `AGENTS.md`,
 [`../mappings_system.md`](../mappings_system.md), and
@@ -10,7 +10,6 @@ Use this runbook only after reading `AGENTS.md`,
 
 | Workflow | Entry point | Supporting modules | Inputs | Outputs | Workbook mutation |
 |---|---|---|---|---|---|
-| Stage 0 | archived maintenance workflow | tree builder, display-name updater, exception loader | workbook, ESTO/9th, model template/export | `results/maintenance`, `results/tree_structure` | default preview/no |
 | Stage 1 | relationship builder | rollups, exception/coverage helpers | mapping/rollup sheets | `results/mapping_relationships` | no |
 | Stage 2 | Common structure builder | structural resolver, non-expanding rollups | relationships, overrides/exclusions | `results/common_esto` structure/QA | no |
 | LEAP parse | orchestrator `run_leap_parse` | balance-export resolver/parser | sibling balance exports | raw long LEAP CSV | no |
@@ -29,6 +28,21 @@ Use this runbook only after reading `AGENTS.md`,
 6. Record commit, source vintages, workbook state, and requested scopes.
 7. Decide whether a full run or a cached fast path is justified.
 
+## Optional maintenance workflows
+
+Do not prepend a generic Stage 0 to every run. Use the narrow workflow that
+matches the change:
+
+| Change | Workflow | Default toggle |
+|---|---|---|
+| reviewed ESTO/ESTO Extended categories or structural-completion rows | `codebase/missing_mapped_esto_rows_workflow.py` | `RUN_MISSING_MAPPED_ESTO_ROWS_REVIEW = False` |
+| hierarchy, subtotal flags, structural source inventory, or subtotal exceptions | `codebase/hierarchy_subtotal_contract_workflow.py` | `BUILD_CONTRACT = False` |
+
+Both workflows are review-only. Neither writes the canonical mapping workbook
+or ESTO source CSVs. The archived
+`codebase/archive/outlook_mapping_maintenance_workflow.py` is not an operating
+entry point.
+
 ## Jupyter run block
 
 ```python
@@ -43,7 +57,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.run_mapping_pipeline import (
-    run_stage_0,
     run_stage_1,
     run_stage_2,
     run_leap_parse,
@@ -52,7 +65,6 @@ from codebase.run_mapping_pipeline import (
 )
 
 #%%
-RUN_STAGE_0 = True
 RUN_STAGE_1 = True
 RUN_STAGE_2 = True
 RUN_LEAP_PARSE = True
@@ -62,8 +74,6 @@ LEAP_ECONOMIES = None
 SKIP_DEEP_VALIDATION = False
 
 #%%
-if RUN_STAGE_0:
-    run_stage_0()
 if RUN_STAGE_1:
     run_stage_1()
 if RUN_STAGE_2:
@@ -97,9 +107,9 @@ Full published columns are in
 
 | Changed | Minimum safe rerun |
 |---|---|
-| workbook mapping/rollup | Stage 0, 1, 2, conversions as affected, 3 |
+| workbook mapping/rollup | Stage 1, 2, conversions as affected, 3; run hierarchy review when structural flags or hierarchy changed |
 | scope/override/name affecting structure | Stage 1 if relationship-dependent; Stage 2 and 3 |
-| source vintage | Stage 0, conversion, Stage 3; Stage 1/2 if coverage/structure changes |
+| source vintage | conversion and Stage 3; Stage 1/2 if coverage/structure changes; run ESTO-row review only when category coverage changed |
 | LEAP balance export only | LEAP parse, LEAP conversion, Stage 3 |
 | values only; every cached dependency proven current | fast path |
 | Stage 3 validation logic | Stage 3 full validation |
@@ -107,18 +117,17 @@ Full published columns are in
 ## Outputs to inspect in order
 
 1. `results/logs/mapping_pipeline.log`;
-2. `results/maintenance/maintenance_summary.csv`;
-3. Stage 1 QA and relationship catalogue;
-4. Stage 2 structure summary, partial coverage, intersections, and
+2. Stage 1 QA and relationship catalogue;
+3. Stage 2 structure summary, partial coverage, intersections, and
    non-expanding frontier QA;
-5. `results/common_esto/common_esto_output_status.csv`;
-6. `results/common_esto/stage3_run_manifest.json`;
-7. for a QA-successful publication,
+4. `results/common_esto/common_esto_output_status.csv`;
+5. `results/common_esto/stage3_run_manifest.json`;
+6. for a QA-successful publication,
    `common_esto_output_contract.json` and its declared/hash-verified fact and
    metadata members;
-8. recursive and source-anchor summaries;
-9. material missing-map/candidate diagnostics;
-10. representative lineage.
+7. recursive and source-anchor summaries;
+8. material missing-map/candidate diagnostics;
+9. representative lineage.
 
 ## Overwrite and lock behavior
 
@@ -126,8 +135,6 @@ Full published columns are in
 - Locked CSVs can produce `_rebuilt`.
 - Application errors can produce `_needs_mapping_review`.
 - Status manifest selection outranks filename convention.
-- Stage 0 reviewed helper mutations back up the workbook; default Stage 0 does
-  not apply proposed subtotal changes.
 - Fast path overwrites the final status with a fast-path status and omits deep
   validation rows. Preserve the prior full-run evidence separately if needed.
 

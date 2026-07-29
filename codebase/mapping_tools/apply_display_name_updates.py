@@ -3,13 +3,14 @@ apply_display_name_updates.py
 
 Applies reviewed leap_display_names changes to config/outlook_mappings_master.xlsx.
 
-The Stage 0 maintenance run (update_leap_display_names) no longer edits the
-master.  It only reports proposed additions/updates to
+This is a legacy-input helper for reviewed additions/updates formerly written
+to
 
     results/maintenance/display_names_proposed_updates.csv
 
-This helper reads that review CSV, applies the rows the user has approved, and
-writes them into the leap_display_names sheet.
+The former Stage 0 report generator is retired. Verify the CSV's date and
+provenance before using this helper to apply approved rows to the
+leap_display_names sheet.
 
 A row is applied when its approval column
 ("CAN BE INSERTED INTO MAPPINGS") is truthy.

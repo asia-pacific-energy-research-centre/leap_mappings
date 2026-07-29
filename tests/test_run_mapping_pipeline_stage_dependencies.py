@@ -1,9 +1,14 @@
 import pandas as pd
 
 from codebase.run_mapping_pipeline import (
+    _ALL_STAGES,
     _stage3_completion_status,
     expand_requested_stages,
 )
+
+
+def test_default_pipeline_excludes_retired_stage_zero() -> None:
+    assert _ALL_STAGES == ["1", "2", "leap_parse", "data_convert", "3"]
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:

@@ -69,30 +69,12 @@ assert_files_exist(required_inputs)
 # ### Unit gate — per-stage tests must pass before running stages
 
 # %%
-run(["python", "-m", "pytest", "-q", "tests/test_outlook_mapping_maintenance_workflow.py"])
+run(["python", "-m", "pytest", "-q", "tests/test_missing_mapped_esto_rows_workflow.py"])
 run(["python", "-m", "pytest", "-q", "tests/test_build_energy_balance_relationships.py"])
 run(["python", "-m", "pytest", "-q", "tests/test_build_dataset_tree_structure.py"])
 run(["python", "-m", "pytest", "-q",
      "tests/test_apply_common_esto_structure.py",
      "tests/test_common_esto_validation_orchestration.py"])
-
-# %% [markdown]
-# ### Stage 0 — maintenance workflow
-
-# %%
-run(["python", "codebase/archive/outlook_mapping_maintenance_workflow.py"])
-
-stage0_outputs = [
-    REPO_ROOT / "results" / "maintenance" / "maintenance_summary.csv",
-    REPO_ROOT / "results" / "maintenance" / "cardinality_leap_esto.csv",
-    REPO_ROOT / "results" / "maintenance" / "cardinality_leap_ninth.csv",
-    REPO_ROOT / "results" / "maintenance" / "cardinality_ninth_esto.csv",
-    REPO_ROOT / "results" / "maintenance" / "subtotal_mismatches.csv",
-    REPO_ROOT / "results" / "maintenance" / "unmapped_nonzero_esto_pairs.csv",
-    REPO_ROOT / "results" / "maintenance" / "unmapped_nonzero_ninth_pairs.csv",
-]
-assert_files_exist(stage0_outputs)
-show_csv_head(stage0_outputs[0])
 
 # %% [markdown]
 # ### Stage 1 — build energy balance relationships
@@ -143,7 +125,6 @@ run(["python", "codebase/run_mapping_pipeline.py"])
 
 # %%
 summary_files = [
-    REPO_ROOT / "results" / "maintenance" / "maintenance_summary.csv",
     REPO_ROOT / "results" / "mapping_relationships" / "energy_balance_relationships.csv",
     REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv",
     REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv",

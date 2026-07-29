@@ -1,9 +1,14 @@
 #%%
 """
-Maintenance workflow for config/outlook_mappings_master.xlsx.
+Legacy maintenance implementation retained for helper and test history.
 
-Stage 0 of the mapping pipeline.  Run this before Stage 1 whenever the
-workbook or the source data CSVs have been updated.
+This module is no longer Stage 0 of the active mapping pipeline. Its ``run``
+function returns after writing review previews, leaving the former workbook
+write and broad QA section unreachable. Current optional entry points are:
+
+- ``codebase/missing_mapped_esto_rows_workflow.py`` for review-only ESTO rows;
+- ``codebase/hierarchy_subtotal_contract_workflow.py`` for structural subtotal
+  classification and workbook review.
 
 What it does
 ------------
@@ -29,8 +34,7 @@ What it does
    rules and non-zero Ninth mappings.  Source files are never edited
    automatically.
 
-Usage:
-    python codebase/archive/outlook_mapping_maintenance_workflow.py
+Do not run this archived module as an operating workflow.
 """
 
 from __future__ import annotations
@@ -1690,4 +1694,8 @@ def run(
 
 
 if __name__ == "__main__":
-    run()
+    raise RuntimeError(
+        "This archived maintenance workflow is retired. Use "
+        "codebase/missing_mapped_esto_rows_workflow.py or "
+        "codebase/hierarchy_subtotal_contract_workflow.py."
+    )

@@ -3,9 +3,8 @@ run_mapping_pipeline.py
 
 End-to-end mapping pipeline for LEAP -> ESTO / 9th Outlook comparison.
 
-Stages
-------
-0  Maintenance — update subtotal flags, produce QA outputs, build tree structure
+Core stages
+-----------
 1  Relationships — build energy_balance_relationships.csv from outlook_mappings_master.xlsx
 2  Common ESTO structure — build common comparison rows via graph partitioning
    LEAP parse   — parse raw LEAP balance xlsx exports to long-format CSV
@@ -13,17 +12,19 @@ Stages
    ESTO rows    — prepare non-subtotal ESTO rows as long-format CSV
 3  Apply structure — map all sources to common comparison rows and aggregate
 
+Optional maintenance is deliberately outside this pipeline:
+- codebase/missing_mapped_esto_rows_workflow.py prepares review-only ESTO rows.
+- codebase/hierarchy_subtotal_contract_workflow.py builds the structural
+  hierarchy/subtotal contract and workbook review tables.
+
 Run all stages:
     python codebase/run_mapping_pipeline.py
-
-Apply Stage 0 subtotal changes before continuing (reviewed overrides win):
-    python codebase/run_mapping_pipeline.py --apply-maintenance
 
 Run specific stages (comma-separated):
     python codebase/run_mapping_pipeline.py --stages 1,2,3
 
-Skip stages:
-    python codebase/run_mapping_pipeline.py --skip 0
+Run only Stage 1:
+    python codebase/run_mapping_pipeline.py --stages 1
 """
 
 from __future__ import annotations
@@ -154,18 +155,6 @@ def _log_to_file(log_path):
             yield log_path
         finally:
             sys.stdout = original
-
-
-# ---------------------------------------------------------------------------
-# Stage 0 — Maintenance
-# ---------------------------------------------------------------------------
-
-def run_stage_0(apply_subtotal_changes: bool = False) -> None:
-    print("\n" + "=" * 60)
-    print("STAGE 0  Maintenance")
-    print("=" * 60)
-    from codebase.archive.outlook_mapping_maintenance_workflow import run as maintenance_run
-    maintenance_run(apply_subtotal_changes_to_workbook=apply_subtotal_changes)
 
 
 # ---------------------------------------------------------------------------
@@ -1165,10 +1154,9 @@ def run_stage_3(
 # CLI
 # ---------------------------------------------------------------------------
 
-_ALL_STAGES = ["0", "1", "2", "leap_parse", "data_convert", "3"]
+_ALL_STAGES = ["1", "2", "leap_parse", "data_convert", "3"]
 
 _STAGE_RUNNERS = {
-    "0":            run_stage_0,
     "1":            run_stage_1,
     "2":            run_stage_2,
     "leap_parse":   run_leap_parse,
@@ -1210,14 +1198,6 @@ def main() -> None:
         "--skip",
         default="",
         help="Comma-separated list of stages to skip.",
-    )
-    parser.add_argument(
-        "--apply-maintenance",
-        action="store_true",
-        help=(
-            "Deprecated no-op placeholder. Stage 0 now runs preview-only and does not "
-            "write the mapping workbook."
-        ),
     )
     parser.add_argument(
         "--leap-economies",
@@ -1310,9 +1290,7 @@ def main() -> None:
             else None
         )
         for stage in stages_to_run:
-            if stage == "0":
-                run_stage_0(apply_subtotal_changes=args.apply_maintenance)
-            elif stage == "leap_parse":
+            if stage == "leap_parse":
                 run_leap_parse(economies=leap_economies)
             elif stage == "data_convert":
                 run_data_convert(

@@ -34,7 +34,7 @@ flowchart LR
 
     subgraph M["leap_mappings"]
         WB["Canonical mapping workbook"]
-        PIPE["Maintenance and Stages 1-3"]
+        PIPE["Optional source review and Stages 1-3"]
         COMMON["Common ESTO values, structure, lineage, QA"]
         WB --> PIPE --> COMMON
     end
@@ -97,7 +97,7 @@ flowchart TD
 
 | Repository | Defines | Executes | Principal outputs | Does not own |
 |---|---|---|---|---|
-| `leap_mappings` | Mapping rows, rollups, comparison scopes, Common ESTO membership | Stage 0 maintenance and Stages 1–3 | relationships, Common ESTO structure/values, lineage, mapping QA | LEAP import IDs; dashboard page design |
+| `leap_mappings` | Mapping rows, rollups, comparison scopes, Common ESTO membership | optional hierarchy/source review and Stages 1–3 | relationships, Common ESTO structure/values, lineage, mapping QA | LEAP import IDs; dashboard page design |
 | `leap_initialisation` | Reconciliation, allocation, caps, LEAP preparation rules | baseline-seed, results-update, patch, validation, workbook generation | LEAP-ready workbooks, balance tables, reconciliation and readiness diagnostics | mapping semantics; dashboard presentation |
 | `leap_dashboard` | Page routing, visible series, display signs, chart/table layout, publication gates | ingest, filter, enrich, render, diagnose, publish | HTML/JS pages, chart manifest, page and sign summaries | source-to-target mappings; LEAP preparation |
 
@@ -122,7 +122,8 @@ For exact producer/consumer boundaries, see
 1. Refresh ESTO, 9th Outlook, LEAP balance exports, or LEAP templates only when
    their source changed.
 2. Close `config/outlook_mappings_master.xlsx` in Excel.
-3. Run mapping Stage 0, then Stages 1–3.
+3. If hierarchy evidence or reviewed ESTO source-row requirements changed, run
+   the applicable focused review workflow. Then run mapping Stages 1–3.
 4. Inspect `common_esto_output_status.csv`, the Stage 3 manifest, and relevant
    failed/review diagnostics. “Completed” means the process finished; it does
    not mean every validation passed.

@@ -14,16 +14,18 @@ same sheet:
                               -> (ninth_sector, ninth_fuel)
   ninth_pairs_to_esto_pairs   (ninth_sector, ninth_fuel) -> (esto_flow, esto_product)
 
-Counterpart to the duplicate_mappings.csv report produced by
-codebase/archive/outlook_mapping_maintenance_workflow.py. Because the removed rows are
-exact duplicates of a retained row, deleting them is lossless: the mapping the
-row expressed is still present via the copy that is kept (the lowest workbook
-row of each group).
+This is a legacy-input helper for a reviewed
+``results/maintenance/duplicate_mappings.csv`` report. The workflow that
+produced that report is retired, so verify the report's date and provenance
+before using this script. Because the removed rows are exact duplicates of a
+retained row, deleting them is lossless: the mapping the row expressed is
+still present via the copy that is kept (the lowest workbook row of each
+group).
 
 Safety gates
 ------------
-1.  Requires results/maintenance/duplicate_mappings.csv to exist — run the
-    maintenance workflow first so the duplicates have been reported/reviewed.
+1.  Requires an explicitly reviewed results/maintenance/duplicate_mappings.csv.
+    Mere file existence does not prove that the report matches the workbook.
 2.  Rows to delete are re-derived from the live workbook (not trusted from the
     CSV row numbers), so the plan is correct even if the workbook was edited
     after the report was written.
@@ -251,8 +253,8 @@ def main() -> None:
         sys.exit(1)
     if not DUPLICATE_CSV_PATH.exists():
         print(f"[ERROR] Duplicate report not found: {DUPLICATE_CSV_PATH}")
-        print("        Run codebase/archive/outlook_mapping_maintenance_workflow.py first "
-              "(apply mode) to generate and review it.")
+        print("        The former report generator is retired; do not use an "
+              "unverified historical report.")
         sys.exit(1)
 
     reported = pd.read_csv(DUPLICATE_CSV_PATH)

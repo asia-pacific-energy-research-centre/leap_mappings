@@ -2,9 +2,10 @@
 """
 Regenerate Common ESTO comparison outputs from cached pipeline intermediates.
 
-This fast path skips Stage 0 maintenance, Stage 1 relationship building,
-Stage 2 structure building, tree validation, source-parent anchor validation,
-and mapping-candidate diagnostics.
+This fast path skips Stage 1 relationship building, Stage 2 structure
+building, tree validation, source-parent anchor validation, and
+mapping-candidate diagnostics. Optional hierarchy/source review workflows are
+outside the pipeline and are not run here.
 """
 
 #%%

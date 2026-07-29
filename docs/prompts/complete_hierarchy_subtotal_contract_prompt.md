@@ -562,7 +562,7 @@ At minimum test:
 
 Then run:
 
-- mapping maintenance and relevant Stage 0 QA;
+- the hierarchy/subtotal contract review and relevant mapping QA;
 - Stages 1–3 on a bounded representative slice;
 - the full pipeline when safe and proportionate;
 - dashboard contract and render tests;
