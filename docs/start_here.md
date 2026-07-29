@@ -28,7 +28,7 @@ flowchart LR
     SOURCE --> INIT
     MAP -. "reviewed mapping semantics" .-> INIT
     INIT --> LEAP
-    LEAP --> MAP
+    LEAP -. "LEAP results" .-> MAP
     MAP --> DASH
 ```
 
@@ -37,7 +37,8 @@ flowchart LR
 - `leap_initialisation` owns reconciliation, allocation, LEAP templates,
   import identities, and seed/update workbooks.
 - `leap_dashboard` owns page routing, display signs, charts, diagnostics
-  presentation, and publication checks.
+  presentation, and publication checks. It also provides a visual way to inspect
+  mapping diagnostics and compare data across datasets.
 
 If a problem crosses repositories, establish the mapping or source-data truth
 first. Do not repair mapping semantics in dashboard configuration or repair
