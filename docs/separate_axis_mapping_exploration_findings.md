@@ -638,6 +638,55 @@ Stage 1 rows, eight ESTO override rows, and 122 non-expanding catalogue rows
 without an interface error. This proves schema compatibility, not semantic
 correctness.
 
+### Temporal-gap and subtotal evidence review
+
+The initial `absent` versus `zero_only` comparison was too coarse. In
+particular, `absent` can mean that the compiler never formed a candidate
+because its source pair was missing from the generated source registry; it
+does not always mean that the target pair is absent from the target dataset.
+The review workbook under
+`outputs/separate_axis_mapping_gap_review_20260729/` now contains all 4,373
+missing maintained relationships with direct exact-pair evidence for base
+ESTO, ESTO Extended, and Ninth.
+
+The more useful first-pass classification is:
+
+| Primary diagnostic | Rows |
+|---|---:|
+| source pair absent from generated registry | 1,698 |
+| ESTO pair missing from base or Extended structural scope | 600 |
+| Ninth target pair not structurally present | 146 |
+| ESTO pair structural but zero across every available year in both scopes | 822 |
+| Ninth pair structural but zero across every available year | 296 |
+| ESTO non-zero in another year but not accepted at the final-year boundary | 500 |
+| Ninth non-zero in another year but not after the ESTO boundary | 311 |
+
+Only 811 rows are therefore straightforward boundary-window policy questions.
+The other 3,562 need source-authority, structural-pair, zero-all-years, or
+original-mapping review. This supports reviewing the maintained mappings
+before weakening the temporal rule globally.
+
+Subtotal metadata also needs a dedicated cleanup:
+
+- 1,993 of the 4,373 missing relationships are marked as a source or target
+  subtotal in the maintained workbook; 1,868 mark both sides as subtotals.
+- The maintained workbook has 29 exact source-pair groups with mixed source
+  subtotal flags across 216 rows.
+- It has 149 exact target-pair groups with mixed target subtotal flags across
+  339 rows.
+- Among the 3,276 exact generated/master relationship matches, 100 source
+  subtotal flags differ. Every one is `False` in the maintained row and
+  `True` in the generated compatibility row; target flags do not differ.
+- Across the full maintained contract, 1,926 relationships have either an
+  internally mixed subtotal flag or a disagreement with generated structural
+  metadata.
+
+Generated structural flags are review evidence rather than automatically
+authoritative, but mixed flags for the same exact pair are direct internal
+inconsistencies in the maintained workbook. The review workbook also exposes
+130 active incomplete mapping rows separately; these are excluded from the
+7,649 complete-relationship comparison.
+
 ### LEAP adapter boundary
 
 The circular LEAP bootstrap has been removed. The generated registry now has
