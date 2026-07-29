@@ -19,18 +19,14 @@ prompt into a current decision without re-measuring them.
 - Prefer searchable symbol names to line numbers.
 - Preserve unrelated changes and require reviewed workbook decisions.
 - For any prompt that can add or edit rows in a mapping workbook, require all
-  maintained Boolean columns to remain real Boolean cells displayed as Excel
-  in-cell checkboxes. New rows must copy only the checkbox capability from a
-  clean existing Boolean cell on the same sheet, while retaining the ordinary
-  unfilled style of surrounding cells. Each required Boolean cell must contain
-  `True` or `False`; blanks are not acceptable on complete active rows.
-- Require a post-save, post-reopen visual check covering every edited Boolean
-  column. If the editing library cannot preserve or create the workbook's
-  checkbox representation, stop and use a proven formatting-preserving route
-  or request a manual Excel edit; do not leave mixed checkboxes and literal
-  Boolean text in one column. Reject black/solid fills, hidden-text number
-  formats, font masking, or any other extra formatting in Boolean cells; the
-  checkbox is the only special presentation.
+  maintained Boolean columns to contain actual Boolean `TRUE` or `FALSE`
+  values. Text strings, numbers, blanks on complete active rows, checkbox
+  controls, and checkbox glyphs are not acceptable.
+- Require a post-save, post-reopen check covering every edited Boolean column.
+  Boolean cells must retain the ordinary unfilled style of surrounding cells.
+  Reject Excel in-cell checkboxes, black/solid fills, hidden-text number
+  formats, font masking, conditional formatting, data validation, or other
+  special formatting in Boolean cells.
 
 ## Archiving prompts
 
