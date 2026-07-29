@@ -423,8 +423,9 @@ test without dataset-specific branches in core engines.
 
 Use a small synthetic fixture, for example `SYNTH_BALANCE`, that demonstrates
 how a less detailed energy-balance system can still participate safely. Its
-fuel vocabulary should largely use ESTO parent fuel categories and its flow
-vocabulary should be deliberately simpler than ESTO. It contains:
+two axes use first-level ESTO flow and fuel categories. Values are aggregated
+to those categories before entering the comparison, so the fixture contains no
+invented coarse-to-detailed allocation. It contains:
 
 - two economies;
 - two scenarios;
@@ -608,9 +609,11 @@ The following decisions were confirmed on 2026-07-29:
 6. **Units:** the normalized mapping-system input is PJ. Non-PJ native data must
    be converted at the ingestion/adaptation boundary before it enters mapping,
    Common-row, or validation logic.
-7. **Synthetic additional dataset:** the acceptance example should demonstrate
-   a simpler balance system using ESTO parent fuel categories and heavily
-   simplified flows.
+7. **Synthetic additional dataset:** the acceptance example uses first-level
+   ESTO fuel and flow categories. Existing component mappings and rollups bring
+   detailed datasets to that grain; new large rollups are added only where a
+   required first-level boundary cannot be represented by the maintained
+   hierarchy.
 8. **Registry format and stewardship:** maintained dataset and scope registries
    use CSV files under `config/datasets/`. They do not require one permanent
    named owner. The owner or user operating the system is responsible for their
