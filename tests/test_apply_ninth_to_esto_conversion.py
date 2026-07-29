@@ -3,6 +3,7 @@ import pandas as pd
 from codebase.mapping_tools.apply_ninth_to_esto_conversion import (
     apply_default_source_conserving_allocation,
     convert_ninth_results_to_esto,
+    iter_ninth_results_to_esto_by_economy,
     prepare_ninth_long_format,
     relationships_need_target_dataset_share,
 )
@@ -172,6 +173,88 @@ def test_ninth_lineage_sums_to_aggregated_values_and_keeps_allocation_share() ->
         "Component B": 0.3,
     }
     assert set(lineage_df["relationship_id"]) == {"rel-combined-source"}
+
+
+def test_economy_chunked_conversion_matches_single_pass() -> None:
+    source = pd.concat(
+        [
+            _ninth_results(),
+            _ninth_results().assign(economy="02_BD", value=40.0),
+        ],
+        ignore_index=True,
+    )
+    target_values = pd.concat(
+        [
+            _target_values(),
+            pd.DataFrame(
+                [
+                    {
+                        "economy": "02BD",
+                        "scenario": "historical",
+                        "year": 2023,
+                        "esto_flow": "Component A",
+                        "esto_product": "Fuel",
+                        "value": 20.0,
+                    },
+                    {
+                        "economy": "02BD",
+                        "scenario": "historical",
+                        "year": 2023,
+                        "esto_flow": "Component B",
+                        "esto_product": "Fuel",
+                        "value": 80.0,
+                    },
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    expected_converted, expected_lineage = convert_ninth_results_to_esto(
+        source,
+        _relationship_rows(),
+        target_values_df=target_values,
+        return_lineage=True,
+    )
+    chunks = list(
+        iter_ninth_results_to_esto_by_economy(
+            source,
+            _relationship_rows(),
+            target_values_df=target_values,
+        )
+    )
+    actual_converted = pd.concat(
+        [converted for _, converted, _ in chunks],
+        ignore_index=True,
+    )
+    actual_lineage = pd.concat(
+        [lineage for _, _, lineage in chunks],
+        ignore_index=True,
+    )
+
+    converted_sort = [
+        "economy",
+        "scenario",
+        "year",
+        "target_flow",
+        "target_product",
+    ]
+    lineage_sort = [
+        "economy",
+        "scenario",
+        "year",
+        "source_flow",
+        "source_product",
+        "target_flow",
+        "target_product",
+    ]
+    pd.testing.assert_frame_equal(
+        actual_converted.sort_values(converted_sort).reset_index(drop=True),
+        expected_converted.sort_values(converted_sort).reset_index(drop=True),
+    )
+    pd.testing.assert_frame_equal(
+        actual_lineage.sort_values(lineage_sort).reset_index(drop=True),
+        expected_lineage.sort_values(lineage_sort).reset_index(drop=True),
+    )
 
 
 def test_ninth_preparation_keeps_deeper_sector_detail_separate(tmp_path) -> None:

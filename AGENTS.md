@@ -88,6 +88,8 @@ Pandoc and Mermaid CLI remain the underlying requirements:
 ## Output clarity
 
 - Keep output folders small and easy to inspect.
+- Do not format Boolean columns as in-cell checkboxes in newly generated
+  spreadsheets. Display literal `TRUE` / `FALSE` values instead.
 - Prefer a few clearly named primary outputs.
 - Do not create extra files unless they serve a clear human-facing purpose.
 - Keep primary outputs narrow: include important columns only.

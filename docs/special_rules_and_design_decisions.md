@@ -248,6 +248,26 @@ This is the current graph-building behaviour, not approval of every workbook
 subtotal flag feeding it. The complete subtotal classification across all three
 mapping sheets must be re-derived carefully in MAPQ-030.
 
+### Separate-axis shadow refinement
+
+The generated separate-axis contract may map one source pair directly to
+several products under the same subtotal flow. Excluding those direct targets
+from edge creation splits one source value across unrelated Common rows. The
+separate-axis shadow path therefore enables
+`allow_direct_subtotal_edges=True` and applies these narrower rules:
+
+- direct reviewed subtotal targets may define an aggregate edge;
+- every rollup-derived target remains excluded from edge creation;
+- a declared non-expanding subtotal flow never shares a Common row with its
+  child flows; and
+- several products on that same protected subtotal flow may remain together
+  so one source observation is delivered once.
+
+This is opt-in. The default remains `False`, so the canonical-master path keeps
+the rule documented above. Common-row `rollup_mode` is propagated uniformly
+across every component in the row; conflicting nonblank modes fail the build
+instead of producing ambiguous output metadata.
+
 The following ESTO flows are marked `esto_pair_is_subtotal = True` in `leap_combined_esto`:
 
 | ESTO flow | Reason |
@@ -274,6 +294,11 @@ After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16
 
 - 2026-06-28: Identified that the `tfc_comparison` rollup caused LEAP `Industry` and `Buildings` to produce cross-flow graph edges, generating the spurious `12,13,14,16.01-16.02` combined row.  Decided to use `esto_pair_is_subtotal` as the exclusion signal and marked flows 07, 12, and 13 as subtotals in `leap_combined_esto`.
 - 2026-06-30: Extended subtotal marking to the full set of parent/aggregate ESTO flows (08, 09, 09.06, 09.08, 09.13, 14.03, 15, 16.01, 16.01-16.02) so that edge exclusion and M6 subtotal-alignment checks apply consistently across supply, transformation, and demand sections.  Marking `09 Total transformation sector` as a subtotal is consistent with MAP-010: LEAP uses a generated frontier (`Total transformation - no transfers`) that sums non-transfer children, so mapping the LEAP total to the ESTO parent aggregate is semantically correct and should not trigger M6 mismatch warnings.
+- 2026-07-29: Added the opt-in separate-axis refinement after the source-once
+  diagnostic proved that direct subtotal targets on the product axis must
+  aggregate while the protected flow parent remains separate from its
+  children. The generated shadow result has zero unsafe fan-outs; canonical
+  defaults are unchanged.
 
 ## MAP-008: Commercial services require an unallocated completion child
 
@@ -425,6 +450,46 @@ Also report coverage, dropped rows, source-versus-output totals, hierarchy consi
 - **Totals:** mapped-universe preservation passed with maximum absolute difference `9.313225746154785e-10` PJ.
 - **Hierarchy consistency:** rerunning Common recursive validation after restoring total-labelled rows exposed 4,677 mismatches: 4,672 Ninth product checks (`15 Solid biomass` and `16 Others`) and 5 LEAP flow checks (`09 Total transformation sector`). Industry produced no mismatches; the USA Reference 2060 natural-gas Manufacturing parent differed from its 11 direct children by only `1.82e-12` PJ. The validation still does not report its total eligible-check count.
 - **Mapping cardinality and semantics:** Stage 3 warned of 22 product-axis and 27 flow-axis overlapping Common groups. These remain review findings; total preservation alone does not establish that the overlaps are semantically correct or additive-safe.
+
+### 2026-07-29: Separate-axis generated-master shadow gate
+
+- **Newly discovered decisions:** direct reviewed subtotal targets must be
+  eligible to group products on the separate-axis shadow path, while
+  rollup-derived edges stay suppressed and protected parent flows remain
+  separate from their children.
+- **Unresolved decisions blocking canonical promotion:** approve or narrow the
+  changed Common partition, 3,501 provisional relationships, eight within-axis
+  many-to-many components, and 29 broad Common rows.
+- **Provisional assumptions used to continue:** the provisional Cartesian
+  relationships remain enabled for end-to-end testing; they are review debt,
+  not production approval.
+- **Rules that became automated validation:** structural source-once results
+  distinguish protected parent/detail alternatives from unsafe fan-out;
+  conflicting Common-row rollup modes fail; converted Ninth values and Common
+  application are bounded by economy; and lineage is published atomically.
+- **Coverage and dropped rows:** Stage 3 read 18,657,595 source rows after
+  configured exclusions, applied 2,579,778 non-zero relevant rows, wrote
+  1,658,315 Common fact rows, and reported 520,964 rows outside the exact
+  component map. The dominant ESTO/ESTO Extended groups are source parents,
+  combined flows, and subtotals, while other out-of-contract pairs remain
+  reviewable; 598 rows are one Extended-only Ninth pair in the base-ESTO
+  scope. This is coverage review, not source-once failure.
+- **Totals and source-once:** all ten mapped scope/source combinations preserve
+  100% of mapped values; maximum absolute difference is
+  `1.1641532182693481e-10`. The generated structure has 54 protected
+  parent/detail alternatives and zero unsafe source fan-outs.
+- **Output contract:** ten Stage 3 artifact/status records passed; the atomic
+  fact contract contains 1,658,315 rows, metadata contains 2,365 unique keys,
+  and component lineage is a 259,058,883-byte gzip.
+- **Hierarchy consistency:** all 30 non-expanding frontier checks pass and
+  Stage 2 has zero missing or duplicate components. The recursive source-tree
+  and parent-anchor suite was skipped explicitly during this RAM-constrained
+  shadow value gate and remains part of a future production-promotion
+  rehearsal.
+- **Mapping cardinality and semantics:** 29 broad Common rows remain, with a
+  maximum of 126 exact components. There are 14 unresolved partial-coverage
+  rows in each three-source scope and 178 non-zero LEAP branches without a
+  direct ESTO mapping; none generated a copy-ready high-confidence candidate.
 
 ## MAP-011: Ignored sectors/fuels are excluded via the exception set, not chased as mapping gaps
 

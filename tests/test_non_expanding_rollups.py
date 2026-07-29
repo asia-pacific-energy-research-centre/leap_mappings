@@ -219,6 +219,36 @@ class TestScenario1AgricultureFishing:
         assert not bool(detail["is_non_expanding_rollup"])
         assert detail["common_row_basis"] == "exact_esto_row"
 
+    def test_expanding_mode_is_common_row_metadata(self) -> None:
+        common_rows = pd.DataFrame(
+            [
+                {
+                    "common_row_id": "row_chp",
+                    "component_esto_flow": flow,
+                    "component_esto_product": "17 Electricity",
+                    "is_non_expanding_rollup": False,
+                    "non_expanding_rollup_id": "",
+                    "common_row_basis": "connected_component_rollup",
+                }
+                for flow in [
+                    "09.01.02,09.02.02 CHP plants",
+                    "09.01.02.01 Coal CHP",
+                ]
+            ]
+        )
+
+        flagged = apply_non_expanding_flags(
+            common_rows,
+            {},
+            {
+                "09.01.02,09.02.02 CHP plants": "EXPANDING",
+            },
+        )
+
+        assert set(flagged["rollup_mode"]) == {"EXPANDING"}
+        assert not flagged["is_non_expanding_rollup"].any()
+        assert flagged["non_expanding_rollup_id"].eq("").all()
+
 
 class TestScenario2NormalRollupStillUnions:
     def test_ordinary_override_group_still_creates_edges(self) -> None:
@@ -360,6 +390,42 @@ class TestScenario3FrontierCheck:
         assert len(comparison) == 2
         assert not comparison.duplicated(fact_key).any()
         assert sorted(comparison["value"].tolist()) == [30.0, 30.0]
+
+    def test_subtotal_flow_keeps_orthogonal_product_aggregation(self) -> None:
+        subtotal = "16.03-16.04 Agriculture and fishing"
+        agriculture = "16.03 Agriculture"
+        anthracite = "01.04 Anthracite"
+        sub_bituminous = "01.03 Sub-bituminous coal"
+        components = {
+            (subtotal, anthracite): [
+                (subtotal, anthracite),
+                (subtotal, sub_bituminous),
+                (agriculture, anthracite),
+            ]
+        }
+
+        isolated = isolate_non_expanding_frontiers(
+            components,
+            {subtotal: "nonexp_16_03_16_04_agriculture_and_fishing"},
+            preserve_subtotal_product_groups=True,
+        )
+
+        assert sorted(len(pairs) for pairs in isolated.values()) == [1, 2]
+        assert any(
+            set(pairs)
+            == {
+                (subtotal, anthracite),
+                (subtotal, sub_bituminous),
+            }
+            for pairs in isolated.values()
+        )
+        assert all(
+            not (
+                any(pair[0] == subtotal for pair in pairs)
+                and any(pair[0] == agriculture for pair in pairs)
+            )
+            for pairs in isolated.values()
+        )
 
     def test_frontier_violation_blocks_trusted_output_publish(self, tmp_path) -> None:
         frontier = pd.DataFrame(

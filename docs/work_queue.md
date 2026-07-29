@@ -150,6 +150,10 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
+| MAPQ-032 | P1 | `ready_for_implementation` | `leap_mappings` | MAPQ-001 | W2 | 2026-07-28 |
+| MAPQ-033 | P2 | `blocked_pending_dataset_selection` | `leap_mappings` | multi-dataset M1-M6 | W3 | 2026-07-29 |
+| MAPQ-034 | P2 | `shadow_feature_complete_merge_review` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | opt-in feature; canonical promotion separate | 2026-07-29 |
+| MAPQ-035 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-034 | after current detailed-row work | 2026-07-29 |
 
 ---
 
@@ -510,6 +514,28 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   scenarios and periods align through explicit scope rules; all non-PJ values
   are converted before mapping; and a reviewer accepts its mappings,
   exclusions, hierarchy status, and conservation evidence.
+
+### MAPQ-034 — Decide and shadow-test the separate-axis mapping contract
+
+- **Priority / status / timing:** P2 · `shadow_feature_complete_merge_review` · merge opt-in feature, defer canonical promotion
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-029, MAPQ-031
+- **Evidence:** [`separate_axis_mapping_exploration_findings.md`](archive/separate_axis_mapping_contract/separate_axis_mapping_exploration_findings.md) and the review-only evidence under `results/separate_axis_mapping_exploration/`.
+- **Measured result (2026-07-29):** The editable six-axis workbook is now the ordinary compiler authority (`axis_contract_bootstrapped_this_run = false`). It contains 585 axis relations and four narrow accepted-extra-pair sheets. The generated master reproduces all 7,649 maintained active relationships and provisionally adds 3,501, for 11,150 pair relationships. Current pair-sheet schemas pass unchanged through Stage 1: all 15,298 complete retained canonical use-case rows remain and 7,002 use-case rows are added. Stage 2 is not equivalent: only 6,032 of 10,044 canonical component memberships remain unchanged; 4,012 are replaced and 4,530 generated memberships appear. There are 184 shared source-subtotal corrections, all false-to-true with unchanged target flags.
+- **Recorded direction:** Treat sector and fuel axes as relations that may both be one-to-many or many-to-one. Historical possibility should be anchored to non-zero ESTO evidence in its final year, while future possibility should use non-zero Ninth evidence after that year. Avoid hierarchy-crossing mappings that conflict with mappings of siblings to target children. The intended benefits are easier auditing, fewer maintained rows, and clearer semantics.
+- **Safety:** Keep the generated pair and compatibility workbooks review-only until explicit promotion approval. The refined structural Stage 3 gate finds zero unsafe generated source fan-outs: 54 groups reach two Common rows and all are declared non-expanding parent/detail alternatives. The full bounded value run read 18,657,595 source rows, wrote 1,658,315 certified fact rows plus atomic lineage, and preserved 100% of mapped values in all ten scope/source combinations; maximum absolute difference was `1.1641532182693481e-10`. Direct-subtotal graph edges and chunked Stage 3 execution are opt-in, so merging does not change the canonical-master path. Do not replace the canonical workbook or migrate `leap_initialisation` / `leap_dashboard` consumers as part of this feature merge.
+- **Prototype checkpoint:** The prototype is now split into three config workbooks. The editable workbook contains the 585 single-axis rows plus four minimal accepted-extra-pair sheets. The initial one-time bootstrap accepted 425 LEAP, 965 ESTO, 965 ESTO Extended, and 917 Ninth pairs required by the maintained master but excluded by generated temporal authority. Presence of a row means accepted; deletion withdraws it, and no Boolean maintenance column is used. Generated registries merge these rows with `pair_origin = reviewed_extra`. The temporal compiler now reproduces all 7,649 maintained relationships with zero missing rows and emits 3,501 additional Cartesian relationships. Those additions are provisionally accepted with governance action `retain`; explicit exclusions remain available for later cleanup. The axes still contain eight blocking within-axis many-to-many components. The generated master preserves all 14 canonical sheet names and the existing pair-sheet column contracts.
+- **Next action:** Review and merge the compiler/workbooks/docs as an isolated further-development feature, not a production switch. Before canonical promotion, decide whether to accept or narrow the changed Common partition and review the 3,501 provisional relationships, eight within-axis many-to-many components, 29 broad Common rows, and remaining partial coverage. The recursive source-tree/parent-anchor suite was deliberately skipped in the RAM-constrained shadow value gate and should be run as part of an eventual production-promotion rehearsal.
+- **Completion criteria:** Human-approved context and dormancy policies exist; structural/reserved validity is explicit; the accepted compiler reproduces the pair contract and Common ESTO membership without unexplained overrides; Stage 3 proves source-once delivery and lineage; refresh performance is acceptable; and compatibility views have a tested rollback path.
+
+### MAPQ-035 — Move and rename the detailed LEAP row inventory
+
+- **Priority / status / timing:** P2 · `deferred_until_current_row_work_finishes` · after the active detailed-row work
+- **Owner repos:** `leap_mappings` + `leap_initialisation` · **Depends on:** MAPQ-031, MAPQ-034
+- **Current source:** `leap_mappings/data/temp/new leap rows.xlsx`, using the required `demand` and `power` sheets.
+- **Recorded destination:** Move the workbook to `leap_initialisation/data/leap_export_templates/detailed leap model rows.xlsx`.
+- **Reason for deferral:** The current workbook is still being used by active mapping work. Moving it now would create avoidable path churn and could disrupt that work.
+- **Next action:** Once the current detailed-row work is complete, move and rename the workbook, then update every code, test, documentation, and manifest reference in both repositories. Keep the `demand` and `power` sheet contract unchanged unless a separate reviewed migration says otherwise.
+- **Completion criteria:** The old temporary path has no live references; the renamed workbook is resolved from the export-template source area; the LEAP pair registry refresh manifest identifies it by its new path; relevant mapping, hierarchy, and initialisation tests pass; and the move is recorded in both repositories' handover notes.
 
 ---
 

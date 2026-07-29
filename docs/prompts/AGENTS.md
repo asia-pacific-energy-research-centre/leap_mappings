@@ -63,6 +63,12 @@ NINTH transformation, holistic-stocktake, interactive-tree, ESTO Extended
 design, and superseded whole-queue prompts. The orphaned Common ESTO lineage
 README was moved into its existing archived pack.
 
+The separate-axis mapping exploration prompt and companion findings were moved
+to `docs/archive/separate_axis_mapping_contract/` on 2026-07-29 after the
+opt-in compiler, generated workbook contract, structural source-once gate, and
+bounded Stage 3 value/lineage gate passed. MAPQ-034 retains the remaining
+canonical-promotion review.
+
 See [`../documentation_disposition_20260728.md`](../documentation_disposition_20260728.md)
 for the evidence and destination of every moved file.
 

@@ -1,0 +1,328 @@
+mapping_name,comparison_scope,source_system,source_flow,target_system,target_flow,relationship_semantics,notes
+leap_to_esto,BOTH,LEAP,Agriculture and fishing,ESTO,16.03-16.04 Agriculture and fishing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,BKB and PB plants/BKB and PB plants,ESTO,09.08.04 BKB/PB plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Blast furnaces/Blast furnaces,ESTO,09.08.02 Blast furnaces (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings,ESTO,16.01-16.02 Buildings,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Residential,ESTO,16.02 Residential,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services,ESTO,16.01 Commercial and public services,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services/Data_Centers,ESTO,16.01.01 Datacentres,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services/Educational,ESTO,16.01.99 Commercial and public services unallocated,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services/Hospitals,ESTO,16.01.99 Commercial and public services unallocated,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services/Others_Unspecified,ESTO,16.01.99 Commercial and public services unallocated,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Buildings/Services/Service Buildings,ESTO,16.01.99 Commercial and public services unallocated,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,CHP interim/CHP interim,ESTO,"09.01.02,09.02.02 CHP plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,CHP plants,ESTO,"09.01.02,09.02.02 CHP plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Charcoal processing/Charcoal processing,ESTO,09.11 Charcoal processing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Chemical heat for electricity production/Chemical heat for electricity production,ESTO,09.05 Chemical heat for electricity production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coal transformation,ESTO,09.08 Coal transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Coke ovens/Coke ovens,ESTO,09.08.01 Coke ovens (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Demand\All demand aggregated\International transport,ESTO,04-05 International transport (bunkers),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Demand\All demand aggregated\Other sector,ESTO,16.03-16.05 Other sector (all demand aggregate),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Demand\All demand aggregated\Road,ESTO,15.02 Road,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Demand\All demand aggregated\Transport non road,ESTO,"15.01,15.03-15.06 Transport non-road",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Electric boilers/Electric boilers,ESTO,09.04 Electric boilers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Electricity Generation,ESTO,"09.01.01,09.02.01 Electricity plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Electricity interim/Electricity interim,ESTO,"09.01.01,09.02.01 Electricity plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Exports,ESTO,03 Exports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas processing plants,ESTO,09.06 Gas processing plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas to liquids plants/Gas to liquids plants,ESTO,09.06.04 Gas-to-liquids plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Gas works plants/Gas works plants,ESTO,09.06.01 Gas works plants (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Heat plant interim/Heat plant interim,ESTO,"09.01.03,09.02.03 Heat plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Heat plants,ESTO,"09.01.03,09.02.03 Heat plants",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydrogen transformation,ESTO,09.13 Hydrogen transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydrogen transformation/Electrolysers,ESTO,09.13.01 Electrolysers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Hydrogen transformation/SMR with CCS,ESTO,09.13.03 SMR w CCS,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Imports,ESTO,02 Imports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry,ESTO,14 Industry sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Construction,ESTO,14.02 Construction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing,ESTO,14.03 Manufacturing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Chemical,ESTO,14.03.02 Chemical (incl. petrochemical),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Food beverages and tobacco,ESTO,"14.03.07 Food, beverages and tobacco",one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Iron and steel,ESTO,14.03.01 Iron and steel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Machinery,ESTO,14.03.06 Machinery,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Non ferrous metals,ESTO,14.03.03 Non ferrous metals,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Non metallic mineral products,ESTO,14.03.04 Non-metallic mineral products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Non specified industry,ESTO,14.03.11 Non-specified industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Pulp paper and printing,ESTO,"14.03.08 Pulp, paper and printing",one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Textiles and leather,ESTO,14.03.10 Textiles and leather,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Transportation equipment,ESTO,14.03.05 Transportation equipment,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Manufacturing/Wood and wood products,ESTO,14.03.09 Wood and wood products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Industry/Mining and quarrying,ESTO,14.01 Mining and quarrying,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,International transport,ESTO,04-05 International transport (bunkers),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,LNG regasification/Regasification,ESTO,09.06.02.02 Regasification,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,LNG regasification/Regasification,ESTO,09.06.02.01 Liquefaction,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Liquefaction coal to oil/Liquefaction coal to oil,ESTO,09.08.05 Liquefaction (coal to oil),one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Liquefaction/regasification plants,ESTO,09.06.02 Liquefaction/regasification plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,NG Liquefaction/Liquefaction,ESTO,09.06.02.01 Liquefaction,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,NG Liquefaction/NG Liquefaction,ESTO,09.06.02.01 Liquefaction,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Natural gas blending plants/Natural gas blending plants,ESTO,09.06.03 Natural gas blending plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Non specified transformation/Non specified transformation,ESTO,09.12 Non-specified transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Non-energy use,ESTO,17 Non-energy use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Oil Refining/Oil Refining,ESTO,09.07 Oil refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Coal mines,ESTO,10.01.06 Coal mines,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Electricity CHP and heat plants,ESTO,"10.01.01 Electricity, CHP and heat plants",one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Liquefaction and regasification plants,ESTO,10.01.03 Liquefaction/regasification plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Non specified own uses,ESTO,10.01.17 Non-specified own uses,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Oil and gas extraction,ESTO,10.01.12 Oil and gas extraction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Oil refineries,ESTO,10.01.11 Oil refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Pump storage plants,ESTO,10.01.13 Pump storage plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other loss and own use/Transmission and distribution loss,ESTO,10.02 Transmission and distribution losses,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other sector,ESTO,16.03-16.05 Other sector (all demand aggregate),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other sector/Agriculture,ESTO,16.03 Agriculture,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other sector/Fishing,ESTO,16.04 Fishing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Other sector/Non specified others,ESTO,16.05 Non-specified others,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Patent fuel plants/Patent fuel plants,ESTO,09.08.03 Patent fuel plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Petrochemical industry/Petrochemical industry,ESTO,09.09 Petrochemical industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Power,ESTO,09.01-09.02 Power sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Production,ESTO,01 Production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Road,ESTO,15.02 Road,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Total Primary Supply,ESTO,07 Total primary energy supply,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Total final consumption,ESTO,12 Total final consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Total final energy consumption,ESTO,13 Total final energy consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Total transformation - no transfers,ESTO,09 Total transformation sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transfers,ESTO,08 Transfers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transmission and Distribution,ESTO,10.02 Transmission and distribution losses,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport,ESTO,15 Transport sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road,ESTO,"15.01,15.03-15.06 Transport non-road",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Freight non road/Air,ESTO,15.01 Domestic air transport,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Freight non road/Rail,ESTO,15.03 Rail,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Freight non road/Shipping,ESTO,15.04 Domestic navigation,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/International transport/Air,ESTO,05 International aviation bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/International transport/Shipping,ESTO,04 International marine bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Nonspecified transport,ESTO,15.06 Non-specified transport,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Nonspecified transport,ESTO,15.02 Road,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Nonspecified transport,ESTO,15.03 Rail,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Passenger non road/Air,ESTO,15.01 Domestic air transport,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Passenger non road/Rail,ESTO,15.03 Rail,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Passenger non road/Shipping,ESTO,15.04 Domestic navigation,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,BOTH,LEAP,Transport non road/Pipeline transport,ESTO,15.05 Pipeline transport,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_esto,ESTO_EXTENDED,LEAP,CHP plants/Processes/Coal CHP,ESTO,09.01.02.01 Coal CHP,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Agriculture and fishing,NINTH,16_02_agriculture_and_fishing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings,NINTH,16_01_buildings,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Residential,NINTH,16_01_02_residential,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services,NINTH,16_01_01_commercial_and_public_services_incl_datacentres,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Data_Centers,NINTH,16_01_03_ai_training,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Data_Centers,NINTH,16_01_04_traditional_data_centres,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Educational,NINTH,16_01_01_commercial_and_public_services,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Hospitals,NINTH,16_01_01_commercial_and_public_services,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Others_Unspecified,NINTH,16_01_01_commercial_and_public_services,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Buildings/Services/Service Buildings,NINTH,16_01_01_commercial_and_public_services,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,CHP interim/CHP interim,NINTH,09_02_chp_plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,CHP plants,NINTH,09_02_chp_plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Charcoal processing/Charcoal processing,NINTH,09_11_charcoal_processing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Chemical heat for electricity production/Chemical heat for electricity production,NINTH,09_05_chemical_heat_for_electricity_production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Coal transformation,NINTH,09_08_coal_transformation_incl_own_use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\Buildings,NINTH,16_01_buildings,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\Industry,NINTH,14_industry_sector,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\International transport,NINTH,04-05 International transport (bunkers),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\Other sector,NINTH,16_02-16_05 Other sector (all demand aggregate),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\Road,NINTH,15_02_road,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Demand\All demand aggregated\Transport non road,NINTH,"15_01,15_03-15_06 Transport non-road",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electric boilers/Electric boilers,NINTH,09_04_electric_boilers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electricity Generation,NINTH,09_01_electricity_plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electricity interim/Electricity interim,NINTH,09_01_electricity_plants,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Electricity interim/Electricity interim,NINTH,"09_01-09_02,09_x Power sector",many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Exports,NINTH,03_exports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road,NINTH,15_02_02_freight,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/LCVs,NINTH,15_02_02_02_light_commercial_vehicle,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks,NINTH,15_02_02_03_medium_truck,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks,NINTH,15_02_02_04_heavy_truck,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/BEV heavy,NINTH,15_02_02_04_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/FCEV heavy,NINTH,15_02_02_04_08_fuel_cell_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/FCEV medium,NINTH,15_02_02_03_08_fuel_cell_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/ICE heavy,NINTH,15_02_02_04_01_diesel_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/ICE heavy,NINTH,15_02_02_04_02_gasoline_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/ICE heavy,NINTH,15_02_02_04_09_lng,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/ICE heavy,NINTH,15_02_02_04_07_liquified_petroleum_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Freight road/Trucks/ICE heavy,NINTH,15_02_02_04_04_compressed_natual_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas processing plants,NINTH,09_06_gas_processing_plants_incl_own_use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Gas works plants/Gas works plants,NINTH,09_06_01_gas_works_plants_incl_own_use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Heat plant interim/Heat plant interim,NINTH,09_x_heat_plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Heat plants,NINTH,09_x_heat_plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Hydrogen transformation,NINTH,09_13_hydrogen_transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Hydrogen transformation/Electrolysers,NINTH,09_13_01_electrolysers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Hydrogen transformation/SMR with CCS,NINTH,09_13_03_smr_w_ccs,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Imports,NINTH,02_imports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry,NINTH,14_industry_sector,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Construction,NINTH,14_02_construction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing,NINTH,14_03_manufacturing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Chemical,NINTH,14_03_02_chemical_incl_petrochemical,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Food beverages and tobacco,NINTH,14_03_07_food_beverages_and_tobacco,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Iron and steel,NINTH,14_03_01_iron_and_steel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Machinery,NINTH,14_03_06_machinery,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Non ferrous metals,NINTH,14_03_03_non_ferrous_metals,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Non metallic mineral products,NINTH,14_03_04_nonmetallic_mineral_products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Non specified industry,NINTH,14_03_11_nonspecified_industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Pulp paper and printing,NINTH,14_03_08_pulp_paper_and_printing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Textiles and leather,NINTH,14_03_10_textiles_and_leather,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Transportation equipment,NINTH,14_03_05_transportation_equipment,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Manufacturing/Wood and wood products,NINTH,14_03_09_wood_and_wood_products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Industry/Mining and quarrying,NINTH,14_01_mining_and_quarrying,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,International transport,NINTH,04-05 International transport (bunkers),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Liquefaction/regasification plants,NINTH,09_06_02_liquefaction_regasification_plants_incl_own_use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Non specified transformation/Non specified transformation,NINTH,09_12_nonspecified_transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Non-energy use,NINTH,17_nonenergy_use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Oil Refining/Oil Refining,NINTH,09_07_oil_refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Coal mines,NINTH,10_01_06_coal_mines,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Electricity CHP and heat plants,NINTH,10_01_01_electricity_chp_and_heat_plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Liquefaction and regasification plants,NINTH,10_01_03_liquefaction_regasification_plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Non specified own uses,NINTH,10_01_17_nonspecified_own_uses,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Oil and gas extraction,NINTH,10_01_12_oil_and_gas_extraction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Oil refineries,NINTH,10_01_11_oil_refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Pump storage plants,NINTH,10_01_13_pump_storage_plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other loss and own use/Transmission and distribution loss,NINTH,10_02_transmission_and_distribution_losses,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other sector,NINTH,16_02-16_05 Other sector (all demand aggregate),many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Other sector/Non specified others,NINTH,16_05_nonspecified_others,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road,NINTH,15_02_01_passenger,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses,NINTH,15_02_01_05_bus,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses/BEV,NINTH,15_02_01_05_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses/ICE,NINTH,15_02_01_05_01_diesel_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses/ICE,NINTH,15_02_01_05_02_gasoline_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses/ICE,NINTH,15_02_01_05_07_liquified_petroleum_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Buses/ICE,NINTH,15_02_01_05_04_compressed_natual_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs,NINTH,15_02_01_02_car,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs,NINTH,15_02_01_03_sports_utility_vehicle,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs,NINTH,15_02_01_04_light_truck,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/BEV large,NINTH,15_02_01_04_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/BEV medium,NINTH,15_02_01_03_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/BEV small,NINTH,15_02_01_02_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE large,NINTH,15_02_01_04_01_diesel_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE large,NINTH,15_02_01_04_02_gasoline_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE large,NINTH,15_02_01_04_07_liquified_petroleum_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE large,NINTH,15_02_01_04_04_compressed_natual_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE medium,NINTH,15_02_01_03_01_diesel_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE medium,NINTH,15_02_01_03_02_gasoline_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE medium,NINTH,15_02_01_03_07_liquified_petroleum_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE medium,NINTH,15_02_01_03_04_compressed_natual_gas,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE small,NINTH,15_02_01_02_01_diesel_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/ICE small,NINTH,15_02_01_02_02_gasoline_engine,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/PHEV large,NINTH,15_02_01_04_05_plugin_hybrid_ev_gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/PHEV medium,NINTH,15_02_01_03_05_plugin_hybrid_ev_gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/LPVs/PHEV small,NINTH,15_02_01_02_05_plugin_hybrid_ev_gasoline,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Motorcycles,NINTH,15_02_01_01_two_wheeler,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Motorcycles/BEV,NINTH,15_02_01_01_03_battery_ev,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Passenger road/Motorcycles/ICE,NINTH,15_02_01_01_02_gasoline_engine,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Petrochemical industry/Petrochemical industry,NINTH,09_09_petrochemical_industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Power,NINTH,"09_01-09_02,09_x Power sector",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Production,NINTH,01_production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Road,NINTH,15_02_road,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Total Primary Supply,NINTH,07_total_primary_energy_supply,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Total final consumption,NINTH,12_total_final_consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Total final energy consumption,NINTH,13_total_final_energy_consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Total transformation - no transfers,NINTH,09_total_transformation_sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transfers,NINTH,08_transfers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transmission and Distribution,NINTH,10_02_transmission_and_distribution_losses,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport,NINTH,15_transport_sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road,NINTH,"15_01,15_03-15_06 Transport non-road",many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road,NINTH,15_01_02_freight,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road,NINTH,15_03_02_freight,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road,NINTH,15_04_02_freight,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road/Air,NINTH,15_01_domestic_air_transport,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road/Rail,NINTH,15_03_rail,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Freight non road/Shipping,NINTH,15_04_domestic_navigation,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/International transport/Air,NINTH,05_international_aviation_bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/International transport/Shipping,NINTH,04_international_marine_bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Nonspecified transport,NINTH,15_06_nonspecified_transport,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Nonspecified transport,NINTH,15_02_road,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Nonspecified transport,NINTH,15_03_rail,many_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road,NINTH,15_01_01_passenger,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road,NINTH,15_03_01_passenger,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road,NINTH,15_04_01_passenger,one_to_many,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road/Air,NINTH,15_01_domestic_air_transport,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road/Rail,NINTH,15_03_rail,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Passenger non road/Shipping,NINTH,15_04_domestic_navigation,many_to_one,Derived from active reviewed pair mappings; prototype only.
+leap_to_ninth,NINTH,LEAP,Transport non road/Pipeline transport,NINTH,15_05_pipeline_transport,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,01_production,ESTO,01 Production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,02_imports,ESTO,02 Imports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,03_exports,ESTO,03 Exports,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,04-05 International transport (bunkers),ESTO,04-05 International transport (bunkers),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,04_international_marine_bunkers,ESTO,04 International marine bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,05_international_aviation_bunkers,ESTO,05 International aviation bunkers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,07_total_primary_energy_supply,ESTO,07 Total primary energy supply,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,08_transfers,ESTO,08 Transfers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,"09_01-09_02,09_x Power sector",ESTO,09.01-09.02 Power sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_01_electricity_plants,ESTO,"09.01.01,09.02.01 Electricity plants",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_02_chp_plants,ESTO,"09.01.02,09.02.02 CHP plants",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_04_electric_boilers,ESTO,09.04 Electric boilers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_05_chemical_heat_for_electricity_production,ESTO,09.05 Chemical heat for electricity production,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_01_gas_works_plants,ESTO,09.06.01 Gas works plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_01_gas_works_plants_incl_own_use,ESTO,09.06.01 Gas works plants (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_02_liquefaction_regasification_plants,ESTO,09.06.02 Liquefaction/regasification plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_02_liquefaction_regasification_plants_incl_own_use,ESTO,09.06.02 Liquefaction/regasification plants (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_gas_processing_plants,ESTO,09.06 Gas processing plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_06_gas_processing_plants_incl_own_use,ESTO,09.06 Gas processing plants (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_07_oil_refineries,ESTO,09.07 Oil refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_07_oil_refineries_incl_own_use,ESTO,09.07 Oil refineries (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_08_coal_transformation,ESTO,09.08 Coal transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_08_coal_transformation_incl_own_use,ESTO,09.08 Coal transformation (including own use),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_09_petrochemical_industry,ESTO,09.09 Petrochemical industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_11_charcoal_processing,ESTO,09.11 Charcoal processing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_12_nonspecified_transformation,ESTO,09.12 Non-specified transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_13_01_electrolysers,ESTO,09.13.01 Electrolysers,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_13_02_smr_wo_ccs,ESTO,09.13.02 SMR wo CCS,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_13_03_smr_w_ccs,ESTO,09.13.03 SMR w CCS,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_13_hydrogen_transformation,ESTO,09.13 Hydrogen transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_total_transformation_sector,ESTO,09 Total transformation sector,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_total_transformation_sector,ESTO,09.03 Heat pumps,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,09_x_heat_plants,ESTO,"09.01.03,09.02.03 Heat plants",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_01_electricity_chp_and_heat_plants,ESTO,"10.01.01 Electricity, CHP and heat plants",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_02_gas_works_plants,ESTO,10.01.02 Gas works plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_03_liquefaction_regasification_plants,ESTO,10.01.03 Liquefaction/regasification plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_05_coke_ovens,ESTO,10.01.05 Coke ovens,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_06_coal_mines,ESTO,10.01.06 Coal mines,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_07_blast_furnaces,ESTO,10.01.07 Blast furnaces,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_11_oil_refineries,ESTO,10.01.11 Oil refineries,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_12_oil_and_gas_extraction,ESTO,10.01.12 Oil and gas extraction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_13_pump_storage_plants,ESTO,10.01.13 Pump storage plants,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_17_nonspecified_own_uses,ESTO,10.01.17 Non-specified own uses,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_17_nonspecified_own_uses,ESTO,10.01.13 Pump storage plants,many_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_01_19_hydrogen_transformation,ESTO,10.01.19 Hydrogen transformation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,10_02_transmission_and_distribution_losses,ESTO,10.02 Transmission and distribution losses,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,12_total_final_consumption,ESTO,12 Total final consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,13_total_final_energy_consumption,ESTO,13 Total final energy consumption,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_01_mining_and_quarrying,ESTO,14.01 Mining and quarrying,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_02_construction,ESTO,14.02 Construction,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_01_iron_and_steel,ESTO,14.03.01 Iron and steel,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_02_chemical_incl_petrochemical,ESTO,14.03.02 Chemical (incl. petrochemical),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_03_non_ferrous_metals,ESTO,14.03.03 Non ferrous metals,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_04_nonmetallic_mineral_products,ESTO,14.03.04 Non-metallic mineral products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_05_transportation_equipment,ESTO,14.03.05 Transportation equipment,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_06_machinery,ESTO,14.03.06 Machinery,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_07_food_beverages_and_tobacco,ESTO,"14.03.07 Food, beverages and tobacco",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_08_pulp_paper_and_printing,ESTO,"14.03.08 Pulp, paper and printing",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_09_wood_and_wood_products,ESTO,14.03.09 Wood and wood products,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_10_textiles_and_leather,ESTO,14.03.10 Textiles and leather,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_11_nonspecified_industry,ESTO,14.03.11 Non-specified industry,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_03_manufacturing,ESTO,14.03 Manufacturing,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,14_industry_sector,ESTO,14 Industry sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,"15_01,15_03-15_06 Transport non-road",ESTO,"15.01,15.03-15.06 Transport non-road",one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_01_domestic_air_transport,ESTO,15.01 Domestic air transport,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_02_road,ESTO,15.02 Road,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_03_rail,ESTO,15.03 Rail,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_04_domestic_navigation,ESTO,15.04 Domestic navigation,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_05_pipeline_transport,ESTO,15.05 Pipeline transport,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_06_nonspecified_transport,ESTO,15.06 Non-specified transport,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,15_transport_sector,ESTO,15 Transport sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_01_commercial_and_public_services,ESTO,16.01.99 Commercial and public services unallocated,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_01_commercial_and_public_services_incl_datacentres,ESTO,16.01 Commercial and public services,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_02_residential,ESTO,16.02 Residential,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_03_ai_training,ESTO,16.01.01 Datacentres,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_01_04_traditional_data_centres,ESTO,16.01.01 Datacentres,many_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_02-16_05 Other sector (all demand aggregate),ESTO,16.03-16.05 Other sector (all demand aggregate),one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_02_agriculture_and_fishing,ESTO,16.03-16.04 Agriculture and fishing,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_02_agriculture_and_fishing,ESTO,16.03 Agriculture,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_02_agriculture_and_fishing,ESTO,16.04 Fishing,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_05_nonspecified_others,ESTO,16.05 Non-specified others,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,16_other_sector,ESTO,16 Other sector,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,17_nonenergy_use,ESTO,17 Non-energy use,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_01_electricity_plants,ESTO,18.01 MAP electricity plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_01_electricity_plants,ESTO,18.02 MAP CHP plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_01_electricity_plants,ESTO,18.03 AP electricity plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_02_chp_plants,ESTO,18.04 AP CHP plants,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,18_electricity_output_in_gwh,ESTO,18 Electricity output in GWh,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,19_01_chp_plants,ESTO,19.01 MAP CHP plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,19_01_chp_plants,ESTO,19.03 AP CHP plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,19_02_heat_plants,ESTO,19.02 MAP heat plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,19_02_heat_plants,ESTO,19.04 AP heat plants,one_to_many,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,BOTH,NINTH,19_heat_output_in_pj,ESTO,19 Heat output in PJ,one_to_one,Derived from active reviewed pair mappings; prototype only.
+ninth_to_esto,ESTO_EXTENDED,NINTH,09_02_chp_plants,ESTO,09.01.02.01 Coal CHP,one_to_one,Derived from active reviewed pair mappings; prototype only.

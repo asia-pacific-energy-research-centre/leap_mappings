@@ -379,6 +379,7 @@ def build_source_aggregate_edges(
     relationships_df: pd.DataFrame,
     comparison_scope: str,
     aggregate_source_systems: list[str],
+    allow_direct_subtotal_edges: bool = False,
 ) -> tuple[list[tuple[tuple[str, str], tuple[str, str]]], pd.DataFrame, pd.DataFrame]:
     """Build graph edges from source rows that map to multiple ESTO components.
 
@@ -388,21 +389,17 @@ def build_source_aggregate_edges(
     are later fed into a union-find structure so that all reachable pairs end up
     in the same connected component — and therefore the same common ESTO row.
 
-    Subtotal and rollup-derived exclusion
-    --------------------------------------
-    Rows where ``esto_pair_is_subtotal`` is True are excluded from edge
-    creation.  They remain in the output as standalone common rows but are not
-    used to structurally connect other flows.  This prevents parent-level ESTO
-    aggregate flows — such as ``07 Total primary energy supply``,
-    ``12 Total final consumption``, and ``13 Total final energy consumption`` —
-    from inadvertently forcing their descendant sector flows into a single
-    combined common row.  For example, without this exclusion a LEAP sector such
-    as ``Industry`` that maps to both ``14 Industry sector`` (direct) and
-    ``12 Total final consumption`` (via the tfc_comparison rollup) would
-    otherwise cause the graph to merge flows 12, 13, 14, and 16.01-16.02 into
-    one ``12,13,14,16.01-16.02 Total final consumption`` row.
+    Rollup-derived exclusion
+    ------------------------
+    When ``allow_direct_subtotal_edges`` is enabled, direct reviewed mappings
+    remain eligible to define an aggregate edge even when the target pair is
+    labelled as a subtotal. A source that maps to two sibling products under
+    the same subtotal flow must place those products in one common row;
+    otherwise the source value is delivered once to each target. The option is
+    disabled by default so merging the separate-axis feature cannot change the
+    canonical mapping pipeline implicitly.
 
-    Rows where ``is_rollup_derived`` is True are excluded for the same reason.
+    Rows where ``is_rollup_derived`` is True are excluded from edge creation.
     ``_apply_leap_rollup_rules`` duplicates existing leaf-level relationships
     under a shared generic source label (e.g. every ``Transport`` subsector's
     mapping gets copied under ``source_flow="Transport"``) so that an
@@ -412,9 +409,8 @@ def build_source_aggregate_edges(
     and ``15.06 Non-specified transport``), and unions genuinely distinct
     sibling flows into a single common row.
 
-    The full set of component pairs (including subtotals and rollup-derived
-    rows) is still recorded in the aggregate-group metadata for diagnostic
-    purposes, and every graph edge suppressed by the exclusion is published in
+    The full set of component pairs is recorded in aggregate-group metadata,
+    and every rollup-derived edge suppressed by the exclusion is published in
     the suppressed-edge QA frame so new structural risks stay reviewable.
     """
     edges: list[tuple[tuple[str, str], tuple[str, str]]] = []
@@ -426,9 +422,14 @@ def build_source_aggregate_edges(
     # Relationships with no source_flow are unspecified-sector catch-alls that must not
     # create connected-component edges — doing so would merge unrelated ESTO flows.
     relationships_df = relationships_df[relationships_df["source_flow"].notna() & (relationships_df["source_flow"].astype(str).str.strip() != "")]
-    subtotal_mask = relationships_df.get("esto_pair_is_subtotal", pd.Series(False, index=relationships_df.index)).fillna(False).astype(bool)
+    subtotal_mask = relationships_df.get(
+        "esto_pair_is_subtotal",
+        pd.Series(False, index=relationships_df.index),
+    ).fillna(False).astype(bool)
     rollup_derived_mask = relationships_df.get("is_rollup_derived", pd.Series(False, index=relationships_df.index)).fillna(False).astype(bool)
-    exclude_mask = subtotal_mask | rollup_derived_mask
+    exclude_mask = rollup_derived_mask.copy()
+    if not allow_direct_subtotal_edges:
+        exclude_mask |= subtotal_mask
     group_columns = ["use_case", "source_system", "source_flow", "source_product"]
     for group_values, group_df in relationships_df.groupby(group_columns, dropna=False):
         all_pairs = sorted({component_pair(row) for _, row in group_df.iterrows()})
@@ -446,7 +447,10 @@ def build_source_aggregate_edges(
                 reasons = pair_reasons.setdefault(pair, set())
                 if bool(rollup_derived_mask.get(index, False)):
                     reasons.add("is_rollup_derived")
-                if bool(subtotal_mask.get(index, False)):
+                if (
+                    not allow_direct_subtotal_edges
+                    and bool(subtotal_mask.get(index, False))
+                ):
                     reasons.add("esto_pair_is_subtotal")
             for pair, reasons in sorted(pair_reasons.items()):
                 suppressed_rows.append(
@@ -590,13 +594,18 @@ def build_connected_components(
 def isolate_non_expanding_frontiers(
     components_by_root: dict[tuple[str, str], list[tuple[str, str]]],
     non_expanding_labels: dict[str, str],
+    preserve_subtotal_product_groups: bool = False,
 ) -> dict[tuple[str, str], list[tuple[str, str]]]:
     """Keep named subtotal components separate from their additive frontier.
 
     Source aggregates can connect a named subtotal to the detailed components
     that provide its alternative representation. Preserve the detail frontier
-    as one common row, but split each named subtotal pair into its own row so
-    parent and children can never be summed under one fact identity.
+    as one common row and keep each named subtotal flow separate from its
+    children. When ``preserve_subtotal_product_groups`` is enabled, product
+    pairs for the same subtotal flow may remain grouped; this preserves
+    source-once aggregation on the orthogonal product axis without ever
+    summing a parent flow with its descendants. The legacy singleton behaviour
+    remains the default.
     """
     boundary_flows = {
         normalise_text(label)
@@ -608,16 +617,26 @@ def isolate_non_expanding_frontiers(
 
     isolated_components: dict[tuple[str, str], list[tuple[str, str]]] = {}
     for component_pairs in components_by_root.values():
-        subtotal_pairs = sorted(
-            pair for pair in component_pairs if normalise_text(pair[0]) in boundary_flows
-        )
+        subtotal_pairs_by_flow: dict[
+            str,
+            list[tuple[str, str]],
+        ] = {}
+        for pair in sorted(component_pairs):
+            if normalise_text(pair[0]) not in boundary_flows:
+                continue
+            subtotal_pairs_by_flow.setdefault(pair[0], []).append(pair)
         detail_pairs = sorted(
             pair for pair in component_pairs if normalise_text(pair[0]) not in boundary_flows
         )
         if detail_pairs:
             isolated_components[detail_pairs[0]] = detail_pairs
-        for subtotal_pair in subtotal_pairs:
-            isolated_components[subtotal_pair] = [subtotal_pair]
+        for subtotal_flow in sorted(subtotal_pairs_by_flow):
+            subtotal_pairs = subtotal_pairs_by_flow[subtotal_flow]
+            if preserve_subtotal_product_groups:
+                isolated_components[subtotal_pairs[0]] = subtotal_pairs
+                continue
+            for subtotal_pair in subtotal_pairs:
+                isolated_components[subtotal_pair] = [subtotal_pair]
     return isolated_components
 
 
@@ -783,9 +802,11 @@ def apply_non_expanding_flags(
     rollup_mode_labels: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """Flag common rows whose component is a named non-expanding subtotal label."""
-    if common_rows_df.empty or not non_expanding_labels:
+    if common_rows_df.empty:
         return common_rows_df
     rollup_mode_labels = rollup_mode_labels or {}
+    if not non_expanding_labels and not rollup_mode_labels:
+        return common_rows_df
     adjusted_df = common_rows_df.copy()
     component_flows = adjusted_df["component_esto_flow"].astype(str).map(normalise_text)
     flagged_ids = component_flows.map(lambda label: non_expanding_labels.get(label, ""))
@@ -795,12 +816,31 @@ def apply_non_expanding_flags(
     for common_row_id, rollup_id in zip(adjusted_df["common_row_id"], flagged_ids):
         if rollup_id:
             row_ids_by_common.setdefault(str(common_row_id), rollup_id)
-    if not row_ids_by_common:
-        return common_rows_df
     mapped_ids = adjusted_df["common_row_id"].astype(str).map(lambda value: row_ids_by_common.get(value, ""))
     adjusted_df["non_expanding_rollup_id"] = mapped_ids
-    adjusted_df["rollup_mode"] = adjusted_df["component_esto_flow"].astype(str).map(
+    component_modes = adjusted_df["component_esto_flow"].astype(str).map(
         lambda value: rollup_mode_labels.get(normalise_text(value), "NON_EXPANDING" if normalise_text(value) in non_expanding_labels else "")
+    )
+    row_modes_by_common: dict[str, str] = {}
+    for common_row_id, group_df in adjusted_df.assign(
+        _component_rollup_mode=component_modes
+    ).groupby("common_row_id", dropna=False):
+        modes = sorted(
+            {
+                normalise_text(value)
+                for value in group_df["_component_rollup_mode"]
+                if normalise_text(value)
+            }
+        )
+        if len(modes) > 1:
+            raise ValueError(
+                "A Common ESTO row contains conflicting rollup modes: "
+                f"common_row_id={common_row_id}, modes={modes}"
+            )
+        if modes:
+            row_modes_by_common[str(common_row_id)] = modes[0]
+    adjusted_df["rollup_mode"] = adjusted_df["common_row_id"].astype(str).map(
+        lambda value: row_modes_by_common.get(value, "")
     )
     adjusted_df["is_non_expanding_rollup"] = adjusted_df["rollup_mode"].eq("NON_EXPANDING")
     adjusted_df.loc[adjusted_df["is_non_expanding_rollup"], "common_row_basis"] = "non_expanding_rollup"
@@ -1560,6 +1600,7 @@ def build_common_esto_for_scope(
     non_expanding_catalogue_df: pd.DataFrame | None = None,
     non_expanding_children: dict[str, list[str]] | None = None,
     rollup_mode_labels: dict[str, str] | None = None,
+    allow_direct_subtotal_edges: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build common ESTO rows, map rows, and QA outputs for one comparison scope."""
     non_expanding_labels = non_expanding_labels or {}
@@ -1575,6 +1616,7 @@ def build_common_esto_for_scope(
         included_df,
         comparison_scope=comparison_scope,
         aggregate_source_systems=scope_config["aggregate_source_systems"],
+        allow_direct_subtotal_edges=allow_direct_subtotal_edges,
     )
     override_edges, manual_aggregates_df = build_manual_override_edges(
         overrides_df,
@@ -1586,6 +1628,7 @@ def build_common_esto_for_scope(
     components_by_root = isolate_non_expanding_frontiers(
         components_by_root,
         non_expanding_labels,
+        preserve_subtotal_product_groups=allow_direct_subtotal_edges,
     )
     common_rows_df = build_common_rows(
         components_by_root,
@@ -1703,6 +1746,7 @@ def run_common_esto_structure_workflow(
     outlook_mappings_path: Path,
     output_dir: Path,
     enabled_scopes: list[str] | None = None,
+    allow_direct_subtotal_edges: bool = False,
     comparison_scope_configs: dict[str, dict[str, object]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build the selected common ESTO structures and QA outputs.
@@ -1775,6 +1819,7 @@ def run_common_esto_structure_workflow(
             non_expanding_catalogue_df=non_expanding_catalogue_df,
             non_expanding_children=non_expanding_children,
             rollup_mode_labels=rollup_mode_labels,
+            allow_direct_subtotal_edges=allow_direct_subtotal_edges,
         )
         common_frames.append(scope_common_df)
         map_frames.append(scope_map_df)

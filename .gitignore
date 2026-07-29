@@ -210,6 +210,10 @@ config/*/
 !config/datasets/*.csv
 !config/datasets/README.md
 
+# Spreadsheet inspection sidecars and live Office lock files are transient.
+*.xlsx.inspect.ndjson
+config/~$*.xlsx
+
 # Repository outputs and large source data are restored from shared archives.
 data/*
 !data/README.md

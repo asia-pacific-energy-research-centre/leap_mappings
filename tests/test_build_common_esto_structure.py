@@ -154,3 +154,142 @@ def test_esto_leap_scope_excludes_ninth_relationships_and_aggregate_edges() -> N
     assert included_df["source_system"].tolist() == ["LEAP"]
     assert excluded_df.empty
     assert edges == []
+
+
+def test_direct_subtotal_targets_form_source_once_aggregate_edges() -> None:
+    """Direct sibling subtotal targets must not receive the source twice."""
+    relationships_df = pd.DataFrame(
+        [
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "Agriculture and fishing",
+                "source_product": "Anthracite",
+                "target_flow": "16.03-16.04 Agriculture and fishing",
+                "target_product": "01.03 Sub-bituminous coal",
+                "esto_pair_is_subtotal": True,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            },
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "Agriculture and fishing",
+                "source_product": "Anthracite",
+                "target_flow": "16.03-16.04 Agriculture and fishing",
+                "target_product": "01.04 Anthracite",
+                "esto_pair_is_subtotal": True,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            },
+        ]
+    )
+
+    edges, aggregate_groups, suppressed = build_source_aggregate_edges(
+        relationships_df,
+        "esto_leap",
+        ["LEAP"],
+        allow_direct_subtotal_edges=True,
+    )
+
+    assert edges == [
+        (
+            (
+                "16.03-16.04 Agriculture and fishing",
+                "01.03 Sub-bituminous coal",
+            ),
+            (
+                "16.03-16.04 Agriculture and fishing",
+                "01.04 Anthracite",
+            ),
+        )
+    ]
+    assert len(aggregate_groups) == 1
+    assert suppressed.empty
+
+
+def test_direct_subtotal_edges_remain_opt_in() -> None:
+    """Merging the feature must not change the canonical graph by default."""
+    relationships_df = pd.DataFrame(
+        [
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "Agriculture and fishing",
+                "source_product": "Anthracite",
+                "target_flow": "16.03-16.04 Agriculture and fishing",
+                "target_product": product,
+                "esto_pair_is_subtotal": True,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            }
+            for product in [
+                "01.03 Sub-bituminous coal",
+                "01.04 Anthracite",
+            ]
+        ]
+    )
+
+    edges, aggregate_groups, suppressed = build_source_aggregate_edges(
+        relationships_df,
+        "esto_leap",
+        ["LEAP"],
+    )
+
+    assert edges == []
+    assert aggregate_groups.empty
+    assert len(suppressed) == 2
+    assert set(suppressed["exclusion_reason"]) == {
+        "esto_pair_is_subtotal",
+    }
+
+
+def test_rollup_derived_targets_remain_suppressed() -> None:
+    """Synthetic rollups must not merge a parent flow with its descendants."""
+    relationships_df = pd.DataFrame(
+        [
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "Industry",
+                "source_product": "Electricity",
+                "target_flow": "14 Industry sector",
+                "target_product": "17 Electricity",
+                "esto_pair_is_subtotal": False,
+                "is_rollup_derived": False,
+                "allocation_method": "direct",
+            },
+            {
+                "include_in_use_case": True,
+                "use_case": "leap_to_esto_balance_conversion",
+                "source_system": "LEAP",
+                "target_system": "ESTO",
+                "source_flow": "Industry",
+                "source_product": "Electricity",
+                "target_flow": "12 Total final consumption",
+                "target_product": "17 Electricity",
+                "esto_pair_is_subtotal": True,
+                "is_rollup_derived": True,
+                "allocation_method": "direct",
+            },
+        ]
+    )
+
+    edges, _, suppressed = build_source_aggregate_edges(
+        relationships_df,
+        "esto_leap",
+        ["LEAP"],
+        allow_direct_subtotal_edges=True,
+    )
+
+    assert edges == []
+    assert len(suppressed) == 1
+    assert suppressed.iloc[0]["exclusion_reason"] == "is_rollup_derived"

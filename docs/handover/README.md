@@ -108,7 +108,7 @@ For exact producer/consumer boundaries, see
 
 | Need | Use | First evidence to inspect |
 |---|---|---|
-| Change or review a LEAP/ESTO/9th relationship | `leap_mappings` | `config/outlook_mappings_master.xlsx` and `docs/mappings_system.md` |
+| Change or review a LEAP/ESTO/9th relationship | `leap_mappings` | `config/outlook_mappings_single_axis_prototype.xlsx`, `docs/separate_axis_mapping_pipeline.md`, and `docs/mappings_system.md`; the old master remains production until promotion |
 | Add an ESTO Extended category | `leap_mappings` | `docs/esto_extended_category_creation_considerations.md` |
 | Investigate Stage 3 totals, rollups, missing rows, or lineage | `leap_mappings` | `results/common_esto/common_esto_output_status.csv` |
 | Create or repair baseline seeds and LEAP imports | `leap_initialisation` | `docs/supply_reconciliation_workflow_guide.md` |
@@ -121,18 +121,21 @@ For exact producer/consumer boundaries, see
 
 1. Refresh ESTO, 9th Outlook, LEAP balance exports, or LEAP templates only when
    their source changed.
-2. Close `config/outlook_mappings_master.xlsx` in Excel.
-3. If hierarchy evidence or reviewed ESTO source-row requirements changed, run
-   the applicable focused review workflow. Then run mapping Stages 1–3.
-4. Inspect `common_esto_output_status.csv`, the Stage 3 manifest, and relevant
+2. Close the mapping workbooks in Excel.
+3. Refresh the separate-axis compatibility master when its axes, accepted
+   pairs, evidence sources, or rollup rules changed.
+4. If hierarchy evidence or reviewed ESTO source-row requirements changed, run
+   the applicable focused review workflow. Then run mapping Stages 1–3 against
+   the selected canonical or isolated shadow workbook.
+5. Inspect `common_esto_output_status.csv`, the Stage 3 manifest, and relevant
    failed/review diagnostics. “Completed” means the process finished; it does
    not mean every validation passed.
-5. Run initialisation when LEAP seeds or reconciliation must change. Validate
+6. Run initialisation when LEAP seeds or reconciliation must change. Validate
    generated workbooks before importing.
-6. Import into LEAP, recalculate, export results, and repeat results-update
+7. Import into LEAP, recalculate, export results, and repeat results-update
    reconciliation until gaps are small and explained.
-7. Render the dashboard from the reviewed Common ESTO outputs.
-8. Run dashboard publication-readiness and page-noise checks before publishing.
+8. Render the dashboard from the reviewed Common ESTO outputs.
+9. Run dashboard publication-readiness and page-noise checks before publishing.
 
 Mapping and initialisation are partly independent: both use ESTO, 9th Outlook,
 and the canonical mapping workbook, but Common ESTO Stage 3 is not an input to
