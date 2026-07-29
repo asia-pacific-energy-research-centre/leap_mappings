@@ -897,6 +897,103 @@ The reproducible prototype build is split between:
 - `codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`, which builds,
   styles, renders, round-trips, and exports the three workbooks.
 
+## 2026-07-29 authoritative-axis and Stage 1-2 shadow update
+
+This section supersedes the earlier 6,290-row compatibility checkpoint above.
+That checkpoint proved the interface while excluding additional Cartesian
+relations. The current reviewed direction provisionally accepts those
+relations.
+
+The compiler now reads all six axis sheets directly from
+`config/outlook_mappings_single_axis_prototype.xlsx`. The old pair master is no
+longer the ordinary axis authority. It is used for bootstrap only when no axis
+sheets exist, plus comparison, shared metadata, rollup rules, and unchanged
+non-pair sheets. A partial six-sheet contract fails.
+
+The real refresh reported:
+
+- `axis_contract_authority = editable_single_axis_workbook`;
+- `axis_contract_bootstrapped_this_run = false`;
+- 327 sector/flow relations;
+- 258 fuel/product relations;
+- all 7,649 maintained active relationships reproduced;
+- 3,501 provisionally accepted additions; and
+- 11,150 generated compatibility relationships.
+
+The three generated mapping-sheet row counts are 4,811 LEAP-to-ESTO, 3,568
+LEAP-to-Ninth, and 2,771 Ninth-to-ESTO. The generated pair workbook now contains
+34,762 LEAP, 10,692 ESTO, 18,792 ESTO Extended, and 19,695 Ninth rows. Both
+generated workbooks were rebuilt and round-trip verified with literal Boolean
+text and without retained `.inspect.ndjson` sidecars.
+
+The Stage 1-2 shadow workflow runs canonical and generated workbooks into
+separate output directories. Results:
+
+| Check | Result |
+|---|---:|
+| exact pair-sheet schemas | match |
+| canonical Stage 1 complete retained rows | 15,298 |
+| generated Stage 1 complete retained rows | 22,300 |
+| current functional Stage 1 rows retained | 15,298 |
+| generated-only Stage 1 rows | 7,002 |
+| canonical Stage 2 component-map rows | 10,044 |
+| generated Stage 2 component-map rows | 10,562 |
+| unchanged Stage 2 memberships | 6,032 |
+| canonical-only Stage 2 memberships | 4,012 |
+| generated-only Stage 2 memberships | 4,530 |
+| shared relationship subtotal flag differences | 184 |
+
+The 7,002 Stage 1 additions are exactly the 3,501 new pair relationships
+emitted into two applicable use cases. The old Stage 1 total of 17,076 also
+contains incomplete and explicitly removed workbook diagnostics, which the
+clean generated master does not carry forward.
+
+All 184 subtotal differences change the source flag from false to true; no
+target subtotal flag changes. Of these, 183 are Ninth-to-ESTO and one is
+LEAP-to-Ninth. These changes are plausible corrections to old aggregate-source
+flags, but their downstream effect is large:
+
+- 1,021 LEAP-defined aggregate groups appear in each enabled scope;
+- LEAP-only scopes gain 127 rolled common rows;
+- three-source scopes increase from 170 to 230 rolled common rows;
+- source-aggregate split issues become 48 in LEAP scopes and 110 in
+  three-source scopes;
+- only 6,032 of 10,044 canonical component memberships remain unchanged; and
+- generated Stage 2 writes approximately 62 MB of resolved product
+  intersections and 23 MB each for common rows/components.
+
+The generated Stage 2 pass took about 14 minutes 37 seconds. The complete
+canonical Stage 1-2 pass took about 7 minutes 6 seconds. This is a material
+performance and semantic difference, not an interface problem.
+
+The structural Stage 3 source-once precheck is blocking:
+
+- canonical structure: 177 source-pair/scope groups reach more than one common
+  row;
+- generated structure: 3,007 groups reach more than one common row;
+- 2,830 unsafe groups are new and none of the 177 existing groups is resolved;
+  and
+- the maximum fan-out is eight common rows per source pair.
+
+The full generated value run was also stopped during Ninth conversion after
+the process reached approximately 9 GB RAM while another validation used about
+3.8 GB. At that point the workstation had less than 3 GB free. This is a
+performance stop, but the structural source-once failure already proves the
+current 3,501 provisional relationships cannot safely enter conversion use
+cases as ordinary mappings.
+
+The correct current boundary is therefore:
+
+- mergeable as an isolated compiler, workbook, QA, and documentation feature;
+- not promotion-ready as the canonical mapping workbook; and
+- provisional relationships may remain accepted for review, but require
+  source-once resolution or allocation before value application.
+
+The reproducible comparison is
+`codebase/separate_axis_mapping_shadow_validation_workflow.py`; its compact
+manifest and difference CSVs are under
+`outputs/separate_axis_mapping_shadow_validation_20260729/`.
+
 ## Possible staged implementation plan beyond the prototype
 
 ### Stage A — decide the two blocked policies

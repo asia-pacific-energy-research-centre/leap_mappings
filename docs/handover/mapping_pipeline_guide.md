@@ -1,6 +1,6 @@
 # Mapping pipeline guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-07-29
 
 **Audience:** mapping analysts and maintainers
 
@@ -17,11 +17,14 @@ source as universally authoritative.
 
 It does not own LEAP import IDs or dashboard presentation.
 
-## Canonical inputs
+## Inputs and migration workbooks
 
 | Input | Role |
 |---|---|
-| `config/outlook_mappings_master.xlsx` | human-maintained mapping, rollup, name, and reference sheets |
+| `config/outlook_mappings_single_axis_prototype.xlsx` | new human-maintained axis semantics and accepted extra exact pairs; shadow until promotion |
+| `config/outlook_mappings_key_pairs_generated_prototype.xlsx` | generated exact-pair evidence; do not edit |
+| `config/outlook_mappings_master_generated_prototype.xlsx` | generated compatibility master for current consumers; do not edit |
+| `config/outlook_mappings_master.xlsx` | current production pair contract plus rollup, name, and reference sheets; bootstrap/comparison baseline during migration |
 | `config/mapping_issue_exception_sets.xlsx` | reviewed QA exceptions; not automatic mappings |
 | `config/source_coverage_scopes.json` | source/scope relevance |
 | `config/all_demand_aggregated_components.json` | declared aggregate-demand membership |
@@ -35,10 +38,16 @@ Legacy `leap_mappings.xlsx`, `master_config.xlsx`, and
 `leap_mapping_refresh_workflow.py` are references, not the active mapping
 system.
 
+The separate-axis generate stage is the intended new first step. It is still a
+shadow boundary: use the generated master explicitly for validation and do not
+replace `config/outlook_mappings_master.xlsx` without promotion approval. See
+[`../separate_axis_mapping_pipeline.md`](../separate_axis_mapping_pipeline.md).
+
 ## Stage flow
 
 | Stage | Entry/module | What it does | Review point |
 |---|---|---|---|
+| generate | separate-axis prototype and split-workbook workflows | refreshes exact-pair authority and compiles the current pair-sheet interface from editable axes | missing maintained relations, provisional Cartesian additions, within-axis many-to-many, pair authority |
 | 0 | `codebase/archive/outlook_mapping_maintenance_workflow.py` | computes/compares subtotal state; cardinality, duplicate, crosswalk, coverage, display-name and tree QA | review preview/QA; do not assume workbook changed |
 | 1 | `build_energy_balance_relationships.py` | normalizes mapping sheets into directional relationship/use-case rows and applies rollup rules | duplicate, unknown target, missing pair, parent/child QA |
 | 2 | `build_common_esto_structure.py` | partitions scope-specific ESTO component graphs into exact/generated common rows | structural coverage, intersections, non-expanding frontier |

@@ -1,6 +1,6 @@
 # Mapping pipeline agent guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-07-29
 
 Use this runbook only after reading `AGENTS.md`,
 [`../mappings_system.md`](../mappings_system.md), and
@@ -10,6 +10,7 @@ Use this runbook only after reading `AGENTS.md`,
 
 | Workflow | Entry point | Supporting modules | Inputs | Outputs | Workbook mutation |
 |---|---|---|---|---|---|
+| Separate-axis generation | `separate_axis_mapping_master_prototype_workflow.py` | pair registries, split-workbook workflow, artifact builder | editable axes/extras, data evidence, templates, rollups | generated pair evidence and compatibility master | generated workbooks only; ordinary refresh leaves editable workbook unchanged |
 | Stage 0 | archived maintenance workflow | tree builder, display-name updater, exception loader | workbook, ESTO/9th, model template/export | `results/maintenance`, `results/tree_structure` | default preview/no |
 | Stage 1 | relationship builder | rollups, exception/coverage helpers | mapping/rollup sheets | `results/mapping_relationships` | no |
 | Stage 2 | Common structure builder | structural resolver, non-expanding rollups | relationships, overrides/exclusions | `results/common_esto` structure/QA | no |
@@ -22,12 +23,16 @@ Use this runbook only after reading `AGENTS.md`,
 
 1. `git status --short --branch`.
 2. Check worktrees and active Python processes.
-3. Close the canonical workbook in Excel.
-4. Confirm the intended workbook is
-   `config/outlook_mappings_master.xlsx`.
+3. Close the editable and generated mapping workbooks in Excel.
+4. Confirm whether the run is the current canonical path or the
+   separate-axis shadow path. For the latter, use
+   `codebase/separate_axis_mapping_shadow_validation_workflow.py`; do not assume
+   the Stage 0 wrapper honors the generated-workbook path override.
 5. Confirm current ESTO/9th filenames and sibling LEAP export discovery.
 6. Record commit, source vintages, workbook state, and requested scopes.
-7. Decide whether a full run or a cached fast path is justified.
+7. If axes, accepted extra pairs, data vintages, templates, or rollup rules
+   changed, refresh the separate-axis compiler before Stage 0.
+8. Decide whether a full run or a cached fast path is justified.
 
 ## Jupyter run block
 
@@ -97,6 +102,8 @@ Full published columns are in
 
 | Changed | Minimum safe rerun |
 |---|---|
+| editable axis or accepted extra pair | separate-axis generation, Stage 0, 1, 2, affected conversions, 3 |
+| pair-authority source/template vintage | separate-axis generation, then downstream stages affected by the compatibility diff |
 | workbook mapping/rollup | Stage 0, 1, 2, conversions as affected, 3 |
 | scope/override/name affecting structure | Stage 1 if relationship-dependent; Stage 2 and 3 |
 | source vintage | Stage 0, conversion, Stage 3; Stage 1/2 if coverage/structure changes |
