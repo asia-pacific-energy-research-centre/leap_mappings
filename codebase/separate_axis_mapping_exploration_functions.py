@@ -196,6 +196,201 @@ def _ninth_parent_nodes(frame: pd.DataFrame) -> tuple[set[str], set[str]]:
 
 # --- Valid-pair registries --------------------------------------------------
 
+REVIEWED_EXTRA_PAIR_ORIGIN = "reviewed_extra"
+
+
+def _reviewed_extra_pair_mask(registry: pd.DataFrame) -> pd.Series:
+    """Return rows explicitly accepted by the editable extra-pair contract."""
+    origins = registry.get(
+        "pair_origin",
+        pd.Series("", index=registry.index),
+    ).map(_clean)
+    return origins.eq(REVIEWED_EXTRA_PAIR_ORIGIN)
+
+
+def merge_reviewed_extra_pairs(
+    registry: pd.DataFrame,
+    extra_pairs: pd.DataFrame,
+    *,
+    dataset: str,
+) -> pd.DataFrame:
+    """Merge human-accepted exact pairs into one generated registry.
+
+    The editable table is intentionally narrow: it contains only ``flow`` and
+    ``product``. Presence means accepted. Existing structural rows retain their
+    evidence columns but use ``pair_origin = reviewed_extra`` to make the human
+    authority explicit. Pairs absent from the dataset are added as accepted
+    structural exceptions without claiming that they were observed.
+    """
+    required = {"flow", "product"}
+    missing = required - set(extra_pairs.columns)
+    if missing:
+        raise ValueError(
+            "Reviewed extra-pair table is missing columns: "
+            f"{sorted(missing)}"
+        )
+
+    result = registry.copy()
+    result["flow"] = result["flow"].map(_clean)
+    result["product"] = result["product"].map(_clean)
+    extras = extra_pairs[["flow", "product"]].copy()
+    extras["flow"] = extras["flow"].map(_clean)
+    extras["product"] = extras["product"].map(_clean)
+    extras = extras[
+        extras["flow"].ne("") & extras["product"].ne("")
+    ].drop_duplicates()
+    if extras.empty:
+        return result
+
+    keyed = result.set_index(["flow", "product"], drop=False)
+    extra_index = pd.MultiIndex.from_frame(extras[["flow", "product"]])
+    existing = extra_index.intersection(keyed.index)
+    if len(existing):
+        keyed.loc[existing, "pair_origin"] = REVIEWED_EXTRA_PAIR_ORIGIN
+        keyed.loc[existing, "pair_universe_member"] = True
+        keyed.loc[existing, "pair_universe_authority"] = (
+            "reviewed_extra_key_pair"
+        )
+        if "temporal_evidence_status" in keyed.columns:
+            keyed.loc[existing, "temporal_evidence_status"] = (
+                "reviewed_extra_pair"
+            )
+    result = keyed.reset_index(drop=True)
+
+    result_index = pd.MultiIndex.from_frame(result[["flow", "product"]])
+    missing_rows = extras.loc[~extra_index.isin(result_index)].copy()
+    if not missing_rows.empty:
+        missing_rows["dataset"] = dataset
+        missing_rows["pair_is_subtotal"] = False
+        missing_rows["pair_exists_in_dataset"] = False
+        missing_rows["pair_universe_member"] = True
+        missing_rows["pair_status"] = "reviewed_extra"
+        missing_rows["historical_boundary_active"] = False
+        missing_rows["projection_future_active"] = False
+        missing_rows["temporal_evidence_status"] = "reviewed_extra_pair"
+        missing_rows["pair_universe_authority"] = (
+            "reviewed_extra_key_pair"
+        )
+        missing_rows["pair_origin"] = REVIEWED_EXTRA_PAIR_ORIGIN
+        result = pd.concat([result, missing_rows], ignore_index=True)
+
+    return result.sort_values(
+        ["flow", "product"],
+        kind="stable",
+    ).reset_index(drop=True)
+
+
+def derive_required_reviewed_extra_pairs(
+    current_relationships: pd.DataFrame,
+    pair_universes: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """Bootstrap distinct inactive/absent pairs required by the master.
+
+    This function is used only when the editable extra-pair sheets do not yet
+    exist. Once those sheets have been created, their rows are loaded directly
+    so a user's deletion remains effective.
+    """
+    required_by_dataset: dict[str, list[pd.DataFrame]] = {
+        "LEAP": [],
+        "ESTO": [],
+        "ESTO_EXTENDED": [],
+        "NINTH": [],
+    }
+
+    for source_system in ("LEAP", "NINTH"):
+        source = current_relationships.loc[
+            current_relationships["source_system"].eq(source_system),
+            ["source_flow", "source_product"],
+        ].rename(
+            columns={
+                "source_flow": "flow",
+                "source_product": "product",
+            }
+        )
+        required_by_dataset[source_system].append(source)
+
+    ninth_targets = current_relationships.loc[
+        current_relationships["target_system"].eq("NINTH"),
+        ["target_flow", "target_product"],
+    ].rename(
+        columns={
+            "target_flow": "flow",
+            "target_product": "product",
+        }
+    )
+    required_by_dataset["NINTH"].append(ninth_targets)
+
+    esto_targets = current_relationships.loc[
+        current_relationships["target_system"].eq("ESTO"),
+        ["comparison_scope", "target_flow", "target_product"],
+    ].copy()
+    esto_targets = esto_targets.rename(
+        columns={
+            "target_flow": "flow",
+            "target_product": "product",
+        }
+    )
+    scopes = esto_targets["comparison_scope"].map(_clean).str.upper()
+    required_by_dataset["ESTO"].append(
+        esto_targets.loc[
+            scopes.isin({"ESTO", "BOTH"}),
+            ["flow", "product"],
+        ]
+    )
+    required_by_dataset["ESTO_EXTENDED"].append(
+        esto_targets.loc[
+            scopes.isin({"ESTO_EXTENDED", "BOTH"}),
+            ["flow", "product"],
+        ]
+    )
+
+    active_columns = {
+        "LEAP": None,
+        "ESTO": "historical_boundary_active",
+        "ESTO_EXTENDED": "historical_boundary_active",
+        "NINTH": "projection_future_active",
+    }
+    result: dict[str, pd.DataFrame] = {}
+    for dataset, frames in required_by_dataset.items():
+        required = pd.concat(frames, ignore_index=True)
+        required["flow"] = required["flow"].map(_clean)
+        required["product"] = required["product"].map(_clean)
+        required = required[
+            required["flow"].ne("") & required["product"].ne("")
+        ].drop_duplicates()
+
+        registry = pair_universes[dataset].copy()
+        active_column = active_columns[dataset]
+        if active_column is None:
+            eligible = pd.Series(True, index=registry.index)
+        else:
+            eligible = registry.get(
+                active_column,
+                pd.Series(False, index=registry.index),
+            ).fillna(False).astype(bool)
+        eligible = eligible | _reviewed_extra_pair_mask(registry)
+        eligible_pairs = registry.loc[
+            eligible,
+            ["flow", "product"],
+        ].drop_duplicates()
+        extra = required.merge(
+            eligible_pairs.assign(_already_eligible=True),
+            on=["flow", "product"],
+            how="left",
+        )
+        already_eligible = (
+            extra["_already_eligible"].fillna(False).astype(bool)
+        )
+        result[dataset] = extra.loc[
+            ~already_eligible,
+            ["flow", "product"],
+        ].sort_values(
+            ["flow", "product"],
+            kind="stable",
+        ).reset_index(drop=True)
+    return result
+
+
 def expand_pair_universe_with_rollups(
     registry: pd.DataFrame,
     rules_df: pd.DataFrame,

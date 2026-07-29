@@ -1,9 +1,9 @@
 #%%
 """Prepare the narrow tables used by the three separate-axis workbooks.
 
-The editable workbook contains only six user-maintained axis relationship
-tables. Generated pair registries and compiled compatibility sheets are written
-as separate source tables so their workbooks can be clearly marked read-only.
+The editable workbook contains six axis relationship tables and four reviewed
+extra-pair tables. Generated pair registries and compiled compatibility sheets
+are written separately so their workbooks can be clearly marked read-only.
 """
 
 #%%
@@ -79,6 +79,21 @@ COMPILED_SOURCE_FILES = {
         / "compiled_ninth_pairs_to_esto_pairs.csv"
     ),
 }
+EXTRA_PAIR_SOURCE_FILES = {
+    "extra_leap_key_pairs": (
+        PROTOTYPE_SOURCE_ROOT / "editable_extra_leap_key_pairs.csv"
+    ),
+    "extra_esto_key_pairs": (
+        PROTOTYPE_SOURCE_ROOT / "editable_extra_esto_key_pairs.csv"
+    ),
+    "extra_esto_extended_pairs": (
+        PROTOTYPE_SOURCE_ROOT
+        / "editable_extra_esto_extended_pairs.csv"
+    ),
+    "extra_ninth_key_pairs": (
+        PROTOTYPE_SOURCE_ROOT / "editable_extra_ninth_key_pairs.csv"
+    ),
+}
 
 
 # --- Helpers ----------------------------------------------------------------
@@ -90,6 +105,7 @@ def _assert_inputs() -> None:
         *AXIS_SOURCE_FILES.values(),
         *PAIR_SOURCE_FILES.values(),
         *COMPILED_SOURCE_FILES.values(),
+        *EXTRA_PAIR_SOURCE_FILES.values(),
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
@@ -141,10 +157,10 @@ def _build_axis_sheet(
 
 
 def build_editable_axis_sheets() -> dict[str, pd.DataFrame]:
-    """Build the six narrow sheets that people are expected to edit."""
+    """Build every narrow sheet that people are expected to edit."""
     sector_axis = pd.read_csv(AXIS_SOURCE_FILES["sector"])
     fuel_axis = pd.read_csv(AXIS_SOURCE_FILES["fuel"])
-    return {
+    sheets = {
         "leap_sector_to_esto": _build_axis_sheet(
             sector_axis,
             mapping_name="leap_to_esto",
@@ -200,6 +216,9 @@ def build_editable_axis_sheets() -> dict[str, pd.DataFrame]:
             include_esto_scope=True,
         ),
     }
+    for sheet_name, source_path in EXTRA_PAIR_SOURCE_FILES.items():
+        sheets[sheet_name] = pd.read_csv(source_path)
+    return sheets
 
 
 def _build_cartesian_registry(
@@ -229,12 +248,21 @@ def _build_cartesian_registry(
         active_column,
         "pair_origin",
     ]
+    if "pair_exists_in_dataset" in exact_pairs.columns:
+        evidence_columns.append("pair_exists_in_dataset")
     evidence = (
         exact_pairs[evidence_columns]
         .drop_duplicates(["flow", "product"])
         .copy()
     )
-    evidence["exists_in_dataset"] = True
+    if "pair_exists_in_dataset" in evidence.columns:
+        evidence["exists_in_dataset"] = (
+            evidence.pop("pair_exists_in_dataset")
+            .fillna(False)
+            .astype(bool)
+        )
+    else:
+        evidence["exists_in_dataset"] = True
     result = cartesian.merge(
         evidence,
         on=["flow", "product"],
@@ -250,7 +278,12 @@ def _build_cartesian_registry(
     result["pair_is_subtotal"] = (
         result["pair_is_subtotal"].fillna(False).astype(bool)
     )
-    result["eligible_for_compilation"] = result[active_column]
+    reviewed_extra = (
+        result["pair_origin"].fillna("").astype(str).eq("reviewed_extra")
+    )
+    result["eligible_for_compilation"] = (
+        result[active_column] | reviewed_extra
+    )
     result["registry_status"] = "possible_combination_not_observed"
     result.loc[
         result["exists_in_dataset"],
@@ -260,6 +293,10 @@ def _build_cartesian_registry(
         result[active_column],
         "registry_status",
     ] = active_status
+    result.loc[
+        reviewed_extra,
+        "registry_status",
+    ] = "reviewed_extra_pair"
     result = result.rename(
         columns={
             "flow": flow_name,
@@ -312,6 +349,10 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
     )
     leap_result["eligible_for_compilation"] = (
         leap_result["exists_in_dataset"].fillna(False).astype(bool)
+        | leap_result["pair_origin"]
+        .fillna("")
+        .astype(str)
+        .eq("reviewed_extra")
     )
     leap_result = leap_result[
         [

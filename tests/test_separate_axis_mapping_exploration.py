@@ -22,7 +22,9 @@ from codebase.separate_axis_mapping_exploration_functions import (
     compare_registry_snapshots,
     compile_axis_relationships,
     derive_axis_mappings,
+    derive_required_reviewed_extra_pairs,
     expand_pair_universe_with_rollups,
+    merge_reviewed_extra_pairs,
     select_alias_candidate,
 )
 from codebase.mapping_tools.leap_pair_registry import (
@@ -657,6 +659,101 @@ def test_compiler_can_use_exact_source_universe_and_zero_only_target_pairs() -> 
         ].itertuples(index=False, name=None)
     ) == {("S1", "T1"), ("S2", "T2")}
     assert compiled["target_pair_exists_in_dataset"].all()
+
+
+def test_reviewed_extra_pairs_promote_existing_and_absent_pairs() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "dataset": "ESTO",
+                "flow": "F1",
+                "product": "P1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_member": True,
+                "pair_status": "zero_only",
+                "historical_boundary_active": False,
+                "pair_origin": "raw",
+            }
+        ]
+    )
+    extras = pd.DataFrame(
+        [
+            {"flow": "F1", "product": "P1"},
+            {"flow": "F2", "product": "P2"},
+        ]
+    )
+    merged = merge_reviewed_extra_pairs(
+        registry,
+        extras,
+        dataset="ESTO",
+    ).set_index(["flow", "product"])
+
+    assert merged.loc[("F1", "P1"), "pair_origin"] == "reviewed_extra"
+    assert bool(merged.loc[("F1", "P1"), "pair_exists_in_dataset"])
+    assert merged.loc[("F2", "P2"), "pair_origin"] == "reviewed_extra"
+    assert not bool(merged.loc[("F2", "P2"), "pair_exists_in_dataset"])
+
+
+def test_bootstrap_extra_pairs_keeps_only_required_ineligible_pairs() -> None:
+    current = pd.DataFrame(
+        [
+            _relationship("L1", "LF1", "E1", "EP1"),
+            {
+                **_relationship("L2", "LF2", "N1", "NF1"),
+                "mapping_name": "leap_to_ninth",
+                "comparison_scope": "NINTH",
+                "target_system": "NINTH",
+            },
+        ]
+    )
+    universes = {
+        "LEAP": pd.DataFrame(
+            [
+                {"flow": "L1", "product": "LF1", "pair_origin": "raw"},
+                {"flow": "L2", "product": "LF2", "pair_origin": "raw"},
+            ]
+        ),
+        "ESTO": pd.DataFrame(
+            [
+                {
+                    "flow": "E1",
+                    "product": "EP1",
+                    "historical_boundary_active": False,
+                    "pair_origin": "raw",
+                }
+            ]
+        ),
+        "ESTO_EXTENDED": pd.DataFrame(
+            [
+                {
+                    "flow": "E1",
+                    "product": "EP1",
+                    "historical_boundary_active": True,
+                    "pair_origin": "raw",
+                }
+            ]
+        ),
+        "NINTH": pd.DataFrame(
+            [
+                {
+                    "flow": "N1",
+                    "product": "NF1",
+                    "projection_future_active": False,
+                    "pair_origin": "raw",
+                }
+            ]
+        ),
+    }
+    extras = derive_required_reviewed_extra_pairs(current, universes)
+
+    assert set(
+        extras["ESTO"].itertuples(index=False, name=None)
+    ) == {("E1", "EP1")}
+    assert extras["ESTO_EXTENDED"].empty
+    assert set(
+        extras["NINTH"].itertuples(index=False, name=None)
+    ) == {("N1", "NF1")}
+    assert extras["LEAP"].empty
 
 
 def test_compiled_sheet_frames_match_maintained_pair_sheet_columns() -> None:

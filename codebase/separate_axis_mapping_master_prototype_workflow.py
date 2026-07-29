@@ -38,14 +38,19 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     compare_compiled_relationships,
     compile_axis_relationships,
     derive_axis_mappings,
+    derive_required_reviewed_extra_pairs,
     expand_pair_universe_with_rollups,
     load_active_mapping_contract,
+    merge_reviewed_extra_pairs,
 )
 from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
     load_or_refresh_leap_pair_registry,
 )
 
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+EDITABLE_AXIS_WORKBOOK_PATH = (
+    REPO_ROOT / "config" / "outlook_mappings_single_axis_prototype.xlsx"
+)
 EXPLORATION_RESULTS_ROOT = (
     REPO_ROOT / "results" / "separate_axis_mapping_exploration"
 )
@@ -106,6 +111,29 @@ OBSERVED_LEAP_PAIR_EVIDENCE_PATH = (
     / "observed_pair_evidence.csv"
 )
 
+EXTRA_PAIR_SHEET_SPECS = {
+    "LEAP": {
+        "sheet": "extra_leap_key_pairs",
+        "flow_column": "leap_sector",
+        "product_column": "leap_fuel",
+    },
+    "ESTO": {
+        "sheet": "extra_esto_key_pairs",
+        "flow_column": "esto_flow",
+        "product_column": "esto_product",
+    },
+    "ESTO_EXTENDED": {
+        "sheet": "extra_esto_extended_pairs",
+        "flow_column": "esto_flow",
+        "product_column": "esto_product",
+    },
+    "NINTH": {
+        "sheet": "extra_ninth_key_pairs",
+        "flow_column": "ninth_sector",
+        "product_column": "ninth_fuel",
+    },
+}
+
 
 # --- Helpers ----------------------------------------------------------------
 
@@ -142,7 +170,12 @@ def _assert_inputs() -> None:
 def _load_pair_universes(
     historical_boundary_year: int,
     force_leap_registry_refresh: bool,
-) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    current_relationships: pd.DataFrame,
+) -> tuple[
+    dict[str, pd.DataFrame],
+    dict[str, Any],
+    dict[str, pd.DataFrame],
+]:
     """Load and annotate exact generated pair universes."""
     universes: dict[str, pd.DataFrame] = {}
     for dataset, path in REGISTRY_PATHS.items():
@@ -208,9 +241,79 @@ def _load_pair_universes(
             dataset_scope=spec["scope"],
         )
         rollup_counts[dataset] = len(universes[dataset]) - raw_count
+
+    reviewed_extra_pairs = _load_or_bootstrap_reviewed_extra_pairs(
+        current_relationships,
+        universes,
+    )
+    for dataset, extra_pairs in reviewed_extra_pairs.items():
+        universes[dataset] = merge_reviewed_extra_pairs(
+            universes[dataset],
+            extra_pairs,
+            dataset=dataset,
+        )
+
     leap_manifest = dict(leap_manifest)
     leap_manifest["rollup_pair_counts"] = rollup_counts
-    return universes, leap_manifest
+    leap_manifest["reviewed_extra_pair_counts"] = {
+        dataset: len(frame)
+        for dataset, frame in reviewed_extra_pairs.items()
+    }
+    return universes, leap_manifest, reviewed_extra_pairs
+
+
+def _load_or_bootstrap_reviewed_extra_pairs(
+    current_relationships: pd.DataFrame,
+    pair_universes: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    """Load editable extra pairs, or bootstrap them once from the master."""
+    existing_sheets: set[str] = set()
+    if EDITABLE_AXIS_WORKBOOK_PATH.exists():
+        with pd.ExcelFile(EDITABLE_AXIS_WORKBOOK_PATH) as workbook:
+            existing_sheets = set(workbook.sheet_names)
+    required_sheets = {
+        spec["sheet"] for spec in EXTRA_PAIR_SHEET_SPECS.values()
+    }
+    present = required_sheets & existing_sheets
+    if present and present != required_sheets:
+        missing = sorted(required_sheets - present)
+        raise ValueError(
+            "Editable extra-pair contract is incomplete. Missing sheets: "
+            f"{missing}"
+        )
+
+    if present == required_sheets:
+        result: dict[str, pd.DataFrame] = {}
+        for dataset, spec in EXTRA_PAIR_SHEET_SPECS.items():
+            frame = pd.read_excel(
+                EDITABLE_AXIS_WORKBOOK_PATH,
+                sheet_name=spec["sheet"],
+                dtype=object,
+            )
+            required_columns = {
+                spec["flow_column"],
+                spec["product_column"],
+            }
+            missing_columns = required_columns - set(frame.columns)
+            if missing_columns:
+                raise ValueError(
+                    f"{spec['sheet']} is missing columns: "
+                    f"{sorted(missing_columns)}"
+                )
+            result[dataset] = frame[
+                [spec["flow_column"], spec["product_column"]]
+            ].rename(
+                columns={
+                    spec["flow_column"]: "flow",
+                    spec["product_column"]: "product",
+                }
+            )
+        return result
+
+    return derive_required_reviewed_extra_pairs(
+        current_relationships,
+        pair_universes,
+    )
 
 
 def _build_both_esto_registry(
@@ -476,9 +579,15 @@ def _temporal_compiler_registry(
         active_column,
         pd.Series(False, index=result.index),
     ).fillna(False).astype(bool)
+    reviewed_extra = result.get(
+        "pair_origin",
+        pd.Series("", index=result.index),
+    ).fillna("").astype(str).eq("reviewed_extra")
     result["pair_status"] = "zero_only"
-    result.loc[active, "pair_status"] = "data_valid"
-    result["compiler_pair_policy"] = active_column
+    result.loc[active | reviewed_extra, "pair_status"] = "data_valid"
+    result["compiler_pair_policy"] = (
+        active_column + "_or_reviewed_extra"
+    )
     return result
 
 
@@ -677,9 +786,14 @@ def run_single_axis_master_prototype(
         ignore_index=True,
     )
 
-    pair_universes, leap_registry_manifest = _load_pair_universes(
+    (
+        pair_universes,
+        leap_registry_manifest,
+        reviewed_extra_pairs,
+    ) = _load_pair_universes(
         historical_boundary_year,
         force_leap_registry_refresh,
+        current,
     )
     both_esto = _build_both_esto_registry(
         pair_universes["ESTO"],
@@ -731,6 +845,10 @@ def run_single_axis_master_prototype(
             pair_universes["NINTH"]["projection_future_active"]
             .fillna(False)
             .astype(bool)
+            | pair_universes["NINTH"]["pair_origin"]
+            .fillna("")
+            .astype(str)
+            .eq("reviewed_extra")
         ].copy(),
     }
     temporal_compiled = compile_axis_relationships(
@@ -893,6 +1011,17 @@ def run_single_axis_master_prototype(
         _pair_universe_workbook_view(pair_universes["NINTH"]),
         "pair_universe_ninth.csv",
     )
+    for dataset, spec in EXTRA_PAIR_SHEET_SPECS.items():
+        editable_frame = reviewed_extra_pairs[dataset].rename(
+            columns={
+                "flow": spec["flow_column"],
+                "product": spec["product_column"],
+            }
+        )
+        sheet_sources[spec["sheet"]] = _write_csv(
+            editable_frame,
+            f"editable_{spec['sheet']}.csv",
+        )
     sheet_sources["Compiled LEAP ESTO"] = _write_csv(
         compiled_sheets["leap_combined_esto"],
         "compiled_leap_combined_esto.csv",
@@ -971,7 +1100,8 @@ def run_single_axis_master_prototype(
         "leap_pair_registry_manifest": leap_registry_manifest,
         "rollup_sheets_included": True,
         "compiled_compatibility_policy": (
-            "ESTO final-year nonzero; Ninth any post-ESTO-year nonzero"
+            "ESTO final-year nonzero or reviewed extra; Ninth any "
+            "post-ESTO-year nonzero or reviewed extra"
         ),
         "sheet_sources": {
             sheet: _relative_output_path(path)

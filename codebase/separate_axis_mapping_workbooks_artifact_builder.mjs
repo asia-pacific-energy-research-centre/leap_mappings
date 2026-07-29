@@ -11,10 +11,13 @@ import {
 // separate_axis_mapping_split_workbooks_workflow.py. Run from the repository
 // root with @oai/artifact-tool available to Node module resolution.
 
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const runtimeEnvironment = globalThis.process?.env ?? {};
+const repoRoot = runtimeEnvironment.SEPARATE_AXIS_REPO_ROOT
+  ? path.resolve(runtimeEnvironment.SEPARATE_AXIS_REPO_ROOT)
+  : path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
 const outputRoot = path.join(
   repoRoot,
   "outputs",
@@ -272,13 +275,13 @@ async function buildEditableWorkbook() {
   styleTitle(
     readme,
     "Single-axis mapping contract",
-    "EDIT THIS WORKBOOK — the six mapping sheets are the human-maintained source of truth for this prototype.",
+    "EDIT THIS WORKBOOK - axis mappings and accepted extra key pairs are the human-maintained source of truth.",
     { fill: colors.green, color: colors.greenText },
   );
   styleReadmeTable(readme, 6, [
     [
       "What people edit",
-      "Only the sector/flow and fuel/product relationship rows in the six mapping sheets. Yellow cells are editable.",
+      "The six single-axis mapping sheets and four extra-key-pair sheets. Yellow cells are editable.",
     ],
     [
       "Why it is smaller",
@@ -295,6 +298,10 @@ async function buildEditableWorkbook() {
     [
       "Generated outputs",
       "Key-pair evidence and final pair mappings live in separate generated workbooks. Do not copy generated columns back into this workbook.",
+    ],
+    [
+      "Extra key pairs",
+      "Each row accepts one exact dataset pair that would otherwise be excluded. Presence means accepted; delete the row to withdraw that authority. No checkbox column is used.",
     ],
     [
       "Subtotals and rollups",
@@ -317,10 +324,15 @@ async function buildEditableWorkbook() {
     leap_fuel_to_ninth: "A1:B20",
     ninth_sector_to_esto: "A1:C20",
     ninth_fuel_to_esto: "A1:C20",
+    extra_leap_key_pairs: "A1:B20",
+    extra_esto_key_pairs: "A1:B20",
+    extra_esto_extended_pairs: "A1:B20",
+    extra_ninth_key_pairs: "A1:B20",
   });
   await scanFormulaErrors(workbook, "editable axis workbook");
   const output = await SpreadsheetFile.exportXlsx(workbook);
   await output.save(editableWorkbookPath);
+  await removeInspectSidecar(editableWorkbookPath);
 }
 
 async function buildPairWorkbook() {
@@ -339,15 +351,15 @@ async function buildPairWorkbook() {
     ],
     [
       "Possible combinations",
-      "ESTO, ESTO Extended, and Ninth sheets contain the Cartesian combination of discovered axis keys. exists_in_dataset is TRUE for raw or deterministically rollup-derived pairs; pair_origin distinguishes raw, rollup, and raw_and_rollup.",
+      "ESTO, ESTO Extended, and Ninth sheets contain the Cartesian combination of discovered axis keys. pair_origin also identifies human-accepted reviewed_extra pairs.",
     ],
     [
       "Historical rule",
-      `ESTO and ESTO Extended pairs are eligible only when non-zero in the final ESTO year (${manifest.historical_boundary_year}).`,
+      `ESTO and ESTO Extended pairs are eligible when non-zero in the final ESTO year (${manifest.historical_boundary_year}) or accepted in the editable extra-pair sheets.`,
     ],
     [
       "Projection rule",
-      `Ninth pairs are eligible only when non-zero in a year after ${manifest.historical_boundary_year}.`,
+      `Ninth pairs are eligible when non-zero after ${manifest.historical_boundary_year} or accepted in the editable extra-pair sheet.`,
     ],
     [
       "LEAP authority",
@@ -363,7 +375,7 @@ async function buildPairWorkbook() {
     ],
     [
       "Compilation",
-      "eligible_for_compilation is the narrow programmatic gate used by the prototype compiler. The final mapping workbook remains review-only while within-axis many-to-many cases and generated overrides are unresolved.",
+      "eligible_for_compilation is TRUE for boundary-active or reviewed-extra pairs. The final mapping workbook remains review-only while within-axis many-to-many cases are unresolved.",
     ],
   ]);
   readme.getRange("A1:H30").format.font.name = "Aptos";
@@ -506,7 +518,6 @@ async function buildGeneratedMaster() {
   );
 }
 
-const runtimeEnvironment = globalThis.process?.env ?? {};
 const buildEditable = globalThis.BUILD_EDITABLE
   ?? runtimeEnvironment.BUILD_EDITABLE !== "false";
 const buildPairs = globalThis.BUILD_PAIRS

@@ -638,6 +638,46 @@ Stage 1 rows, eight ESTO override rows, and 122 non-expanding catalogue rows
 without an interface error. This proves schema compatibility, not semantic
 correctness.
 
+### Reviewed extra-pair bootstrap
+
+The editable single-axis workbook now contains four additional narrow sheets:
+
+- `extra_leap_key_pairs`;
+- `extra_esto_key_pairs`;
+- `extra_esto_extended_pairs`; and
+- `extra_ninth_key_pairs`.
+
+Each row contains only the two exact pair keys. Presence means accepted and
+deleting the row withdraws that authority. There is no include checkbox or
+other Boolean maintenance column.
+
+When these sheets were first created, the maintained master was used once to
+bootstrap every distinct source or target pair required by its 7,649
+relationships but excluded by generated temporal authority. Subsequent runs
+load the editable sheets directly and do not repeat the bootstrap, so deleted
+exceptions remain deleted. The initial accepted-pair counts are:
+
+| Dataset | Reviewed extra pairs | Structurally observed | Structurally absent |
+|---|---:|---:|---:|
+| LEAP | 425 | 0 | 425 |
+| ESTO | 965 | 905 | 60 |
+| ESTO Extended | 965 | 907 | 58 |
+| Ninth | 917 | 869 | 48 |
+
+The compiler now accepts a pair when it is active at the selected temporal
+boundary **or** has `pair_origin = reviewed_extra`. This restores all 7,649
+maintained relationships: the temporal comparison reports zero current
+relationships not compiled.
+
+Broad pair acceptance also exposes the remaining factorisation problem rather
+than hiding it. Independent-axis compilation now emits 11,150 relationships:
+7,649 maintained relationships and 3,501 additional Cartesian relationships.
+All 3,501 current compatibility overrides are exclusions with reason
+`cartesian_pair_not_reviewed`; 1,772 are extra targets on current source pairs
+and 1,729 are candidates on newly generated source pairs. These extras are not
+caused by missing pair authority. They remain a separate axis-semantics and
+within-axis-many-to-many review problem.
+
 ### Temporal-gap and subtotal evidence review
 
 The initial `absent` versus `zero_only` comparison was too coarse. In
