@@ -150,6 +150,9 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
 | MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
 | MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
+| MAPQ-032 | P1 | `ready_for_implementation` | `leap_mappings` | MAPQ-001 | W2 | 2026-07-28 |
+| MAPQ-033 | P1 | `not_started` | all three repositories | MAPQ-030 | W2 | 2026-07-29 |
+| MAPQ-034 | P1 | `not_started` | `leap_mappings` | MAPQ-030, MAPQ-033 | W2-W3 | 2026-07-29 |
 
 ---
 
@@ -472,6 +475,47 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   conflicting economy structures are explicit diagnostics; no live code or
   canonical guide treats either retired workbook filename as current; and
   subtotal/path QA passes on the reviewed template census.
+
+### MAPQ-033 — Publish and prove the shared hierarchy/subtotal consumer boundary
+
+- **Priority / status / week:** P1 · `not_started` · W2
+- **Owner repos:** `leap_mappings`, `leap_initialisation`, and
+  `leap_dashboard` · **Depends on:** MAPQ-030
+- **Evidence:** The producer contract is canonical, but the current contract
+  bundle exists only in an untracked mappings result directory. Initialisation's
+  strict loader is test-only. Dashboard selects the contract only when a
+  sibling-checkout manifest happens to exist. The two consumer loaders share
+  their load core but have repository-specific helpers and weaker schema/key
+  checks than the producer.
+- **Plan:** Use one generated/reference-tested consumer core plus a shared
+  corrupt/valid fixture matrix; publish immutable build-ID-named bundles; make
+  production consumers select an expected build and schema explicitly. Keep
+  dashboard rendering and initialisation ingress helpers local.
+- **Cross-repo tasks:** `leap_initialisation` INIT-HS-001 and
+  `leap_dashboard` DASHQ-026/DASHQ-027.
+- **Audit:** [Cross-repository hierarchy/subtotal modularisation plan](cross_repo_hierarchy_subtotal_modularisation_plan.md).
+- **Completion criteria:** The same loader fixtures pass in all repositories;
+  required members/columns/keys and booleans are validated; clean checkouts can
+  obtain one named bundle without importing a sibling checkout; every consumer
+  run records the same build ID and schema.
+
+### MAPQ-034 — Consolidate subtotal review and exception policy
+
+- **Priority / status / week:** P1 · `not_started` · W2-W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-030, MAPQ-033
+- **Evidence:** Contract review is the correct proposal path. The old inference
+  draft, majority-based mismatch review, and two associated workbook writers
+  answer the same structural question from current workbook state. Stage 0
+  still derives status independently even though its bulk write path is
+  intentionally unreachable.
+- **Plan:** Route Stage 0's subtotal preview through contract review frames,
+  type and audit the three exception mechanisms, freeze superseded proposal
+  and writer tools, and preserve unrelated Stage 0 mapping QA.
+- **Audit:** [Cross-repository hierarchy/subtotal modularisation plan](cross_repo_hierarchy_subtotal_modularisation_plan.md).
+- **Completion criteria:** One canonical pair has one proposal; every retained
+  exception has a typed policy and evidence/build identity; no active workflow
+  reads `subtotal_label_exceptions`; unique useful tests are ported before old
+  tools are removed.
 
 ---
 
