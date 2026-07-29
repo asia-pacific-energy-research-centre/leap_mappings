@@ -29,6 +29,7 @@ or a working backlog.
 | File | What it covers |
 |---|---|
 | [`hierarchy_subtotal_contract.md`](hierarchy_subtotal_contract.md) | Canonical structural-parent and subtotal semantics, artifact schema, consumer contract, migration rationale, and dated verification evidence. |
+| [`multi_dataset_mapping_framework.md`](multi_dataset_mapping_framework.md) | Target architecture for extending the mapping system from the current named datasets to N energy-balance datasets, including normalized contracts, current limitations, migration stages, and a fourth-dataset acceptance test. |
 | [`mappings_system.md`](mappings_system.md) | **Start here.** How the whole mappings system works — why it's structured the way it is, pipeline stages, code entry points, output files. |
 | [`guide_outlook_mappings_master.md`](guide_outlook_mappings_master.md) | Practical editor's guide to `config/outlook_mappings_master.xlsx` — what to put in the cells, with a rollup deep-dive. |
 | [`rollup_rules_system.md`](rollup_rules_system.md) | How the workbook's rollup-rule sheets get consumed by Stage 1/2 — for debugging relationship outputs. |
