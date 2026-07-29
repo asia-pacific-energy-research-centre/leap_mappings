@@ -1,6 +1,7 @@
-# Editor's guide: `config/outlook_mappings_master.xlsx`
+# Guide to `config/outlook_mappings_master.xlsx`
 
-A practical guide for editing the master mapping workbook, with a deep-dive on rollups.
+A practical guide to the generated compatibility workbook, with a deep-dive on
+the rollup and reference sheets that remain human-maintained for now.
 For the system architecture (pipeline stages, code entry points, output files) see
 [mappings_system.md](mappings_system.md). This guide is about **what to put in the cells and
 why**, and what goes wrong when the rules below are broken — every "common mistake" here is
@@ -8,8 +9,15 @@ one we actually made.
 
 Ground rules:
 
-- The workbook is the single source of truth for structure. **The pipeline never writes it**;
-  only humans edit it. Rerun `codebase/run_mapping_pipeline.py` after any edit.
+- Do not edit the three pair-sheet bodies. Maintain pair semantics in
+  `config/outlook_mappings_single_axis.xlsx`; the production `generate` stage
+  compiles and writes those pair sheets.
+- Rollup, display-name, label-override, and reference sheets remain
+  human-maintained in this workbook until they are migrated to the editable
+  upstream contract. The generator preserves them.
+- Rerun `codebase/separate_axis_mapping_refresh_workflow.py` after an editable
+  axis, accepted pair, rollup, display, or reference change, then run the
+  affected mapping stages.
 - Close Excel before running the pipeline if possible; at minimum, save. Automation reads the
   file on disk — unsaved buffers have burned us (a "fixed" sheet that was never saved).
 - `config/E0E85740`-style files and `~$outlook_mappings_master.xlsx` are Excel lock artifacts;

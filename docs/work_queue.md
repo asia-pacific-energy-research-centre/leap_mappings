@@ -154,6 +154,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-033 | P2 | `blocked_pending_dataset_selection` | `leap_mappings` | multi-dataset M1-M6 | W3 | 2026-07-29 |
 | MAPQ-034 | P2 | `shadow_feature_complete_merge_review` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | opt-in feature; canonical promotion separate | 2026-07-29 |
 | MAPQ-035 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-034 | after current detailed-row work | 2026-07-29 |
+| MAPQ-036 | P2 | `queued_after_separate_axis_promotion` | `leap_mappings` | MAPQ-034 | after production validation | 2026-07-30 |
 
 ---
 
@@ -517,14 +518,14 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-034 — Decide and shadow-test the separate-axis mapping contract
 
-- **Priority / status / timing:** P2 · `shadow_feature_complete_merge_review` · merge opt-in feature, defer canonical promotion
+- **Priority / status / timing:** P2 · `promoted_full_system_validation_in_progress` · production contract promoted 2026-07-30
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005, MAPQ-029, MAPQ-031
 - **Evidence:** [`separate_axis_mapping_exploration_findings.md`](archive/separate_axis_mapping_contract/separate_axis_mapping_exploration_findings.md) and the review-only evidence under `results/separate_axis_mapping_exploration/`.
 - **Measured result (2026-07-29):** The editable six-axis workbook is now the ordinary compiler authority (`axis_contract_bootstrapped_this_run = false`). It contains 585 axis relations and four narrow accepted-extra-pair sheets. The generated master reproduces all 7,649 maintained active relationships and provisionally adds 3,501, for 11,150 pair relationships. Current pair-sheet schemas pass unchanged through Stage 1: all 15,298 complete retained canonical use-case rows remain and 7,002 use-case rows are added. Stage 2 is not equivalent: only 6,032 of 10,044 canonical component memberships remain unchanged; 4,012 are replaced and 4,530 generated memberships appear. There are 184 shared source-subtotal corrections, all false-to-true with unchanged target flags.
 - **Recorded direction:** Treat sector and fuel axes as relations that may both be one-to-many or many-to-one. Historical possibility should be anchored to non-zero ESTO evidence in its final year, while future possibility should use non-zero Ninth evidence after that year. Avoid hierarchy-crossing mappings that conflict with mappings of siblings to target children. The intended benefits are easier auditing, fewer maintained rows, and clearer semantics.
-- **Safety:** Keep the generated pair and compatibility workbooks review-only until explicit promotion approval. The refined structural Stage 3 gate finds zero unsafe generated source fan-outs: 54 groups reach two Common rows and all are declared non-expanding parent/detail alternatives. The full bounded value run read 18,657,595 source rows, wrote 1,658,315 certified fact rows plus atomic lineage, and preserved 100% of mapped values in all ten scope/source combinations; maximum absolute difference was `1.1641532182693481e-10`. Direct-subtotal graph edges and chunked Stage 3 execution are opt-in, so merging does not change the canonical-master path. Do not replace the canonical workbook or migrate `leap_initialisation` / `leap_dashboard` consumers as part of this feature merge.
-- **Prototype checkpoint:** The prototype is now split into three config workbooks. The editable workbook contains the 585 single-axis rows plus four minimal accepted-extra-pair sheets. The initial one-time bootstrap accepted 425 LEAP, 965 ESTO, 965 ESTO Extended, and 917 Ninth pairs required by the maintained master but excluded by generated temporal authority. Presence of a row means accepted; deletion withdraws it, and no Boolean maintenance column is used. Generated registries merge these rows with `pair_origin = reviewed_extra`. The temporal compiler now reproduces all 7,649 maintained relationships with zero missing rows and emits 3,501 additional Cartesian relationships. Those additions are provisionally accepted with governance action `retain`; explicit exclusions remain available for later cleanup. The axes still contain eight blocking within-axis many-to-many components. The generated master preserves all 14 canonical sheet names and the existing pair-sheet column contracts.
-- **Next action:** Review and merge the compiler/workbooks/docs as an isolated further-development feature, not a production switch. Before canonical promotion, decide whether to accept or narrow the changed Common partition and review the 3,501 provisional relationships, eight within-axis many-to-many components, 29 broad Common rows, and remaining partial coverage. The recursive source-tree/parent-anchor suite was deliberately skipped in the RAM-constrained shadow value gate and should be run as part of an eventual production-promotion rehearsal.
+- **Safety:** Promotion was explicitly approved after the refined structural Stage 3 gate found zero unsafe generated source fan-outs: 54 groups reach two Common rows and all are declared non-expanding parent/detail alternatives. The earlier bounded value run read 18,657,595 source rows, wrote 1,658,315 certified fact rows plus atomic lineage, and preserved 100% of mapped values in all ten scope/source combinations; maximum absolute difference was `1.1641532182693481e-10`. Production generation now records and reopens the candidate workbook, verifies literal Boolean cells and exact schemas, preserves the original canonical Git hash, and enables direct-subtotal edges only when the generation manifest matches the active workbook.
+- **Production checkpoint (2026-07-30):** The contract is split into the human-edited `outlook_mappings_single_axis.xlsx`, generated `outlook_mappings_key_pairs_generated.xlsx`, and generated compatibility `outlook_mappings_master.xlsx`. The editable workbook contains the 585 single-axis rows plus four minimal accepted-extra-pair sheets. The initial one-time bootstrap accepted 425 LEAP, 965 ESTO, 965 ESTO Extended, and 917 Ninth pairs required by the maintained master but excluded by generated temporal authority. Presence of a row means accepted; deletion withdraws it, and no Boolean maintenance column is used. Generated registries merge these rows with `pair_origin = reviewed_extra`. The compiler reproduces all 7,649 maintained relationships with zero missing rows and emits 3,501 provisionally accepted Cartesian relationships, for 11,150 total. Eight within-axis many-to-many components remain explicit semantic review debt. The promoted master preserves all 14 canonical sheet names and the existing pair-sheet column contracts.
+- **Next action:** Complete the full production Stage 1–3 run with deep recursive and parent-anchor validation, then render and audit every dashboard economy against that exact run ID. Record the 3,501 provisional relationships, eight within-axis many-to-many components, 29 broad Common rows, changed Common partition, and remaining partial coverage as review debt rather than silently treating them as resolved.
 - **Completion criteria:** Human-approved context and dormancy policies exist; structural/reserved validity is explicit; the accepted compiler reproduces the pair contract and Common ESTO membership without unexplained overrides; Stage 3 proves source-once delivery and lineage; refresh performance is acceptable; and compatibility views have a tested rollback path.
 
 ### MAPQ-035 — Move and rename the detailed LEAP row inventory
@@ -536,6 +537,26 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Reason for deferral:** The current workbook is still being used by active mapping work. Moving it now would create avoidable path churn and could disrupt that work.
 - **Next action:** Once the current detailed-row work is complete, move and rename the workbook, then update every code, test, documentation, and manifest reference in both repositories. Keep the `demand` and `power` sheet contract unchanged unless a separate reviewed migration says otherwise.
 - **Completion criteria:** The old temporary path has no live references; the renamed workbook is resolved from the export-template source area; the LEAP pair registry refresh manifest identifies it by its new path; relevant mapping, hierarchy, and initialisation tests pass; and the move is recorded in both repositories' handover notes.
+
+### MAPQ-036 — Move remaining maintained non-pair sheets upstream
+
+- **Priority / status / timing:** P2 · `queued_after_separate_axis_promotion` · after the production validation run
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-034
+- **Scope:** Decide whether rollup rules, rollup label overrides, display names,
+  and reference lists should move into the primary human-edited workbook or a
+  second narrow maintained workbook.
+- **Current boundary:** The three pair-sheet bodies in
+  `outlook_mappings_master.xlsx` are generated and must not be edited. The
+  generator currently preserves the non-pair sheets from that workbook, so
+  those particular sheets remain a documented temporary human-maintained
+  exception.
+- **Next action:** After the promoted full-system run is stable, design the
+  smallest migration that keeps the single-axis workbook approachable and
+  gives every maintained non-pair sheet an explicit owner.
+- **Completion criteria:** Every maintained sheet has one unambiguous editable
+  authority; ordinary generation never copies editable state from a generated
+  output; downstream loaders retain their current compatibility interface; and
+  rollback/provenance tests cover the new ownership boundary.
 
 ---
 

@@ -1,14 +1,16 @@
 #%%
-"""Build the review-only single-axis master-mapping workbook data pack.
+"""Compile the production single-axis mapping data pack.
 
 The prototype bootstraps sector/flow and fuel/product axes from the maintained
 pair sheets, validates the no-within-axis-many-to-many rule, combines the axes
 only across exact source and target pair universes, and emits compatibility
 views shaped like the three maintained pair sheets.
 
-It never edits ``config/outlook_mappings_master.xlsx``. LEAP exact-pair
-authority is generated from all current economy export templates plus the
-temporary detailed demand/power branch inventory.
+This stage prepares workbook source tables but does not itself edit
+``config/outlook_mappings_master.xlsx``. The production refresh workflow
+validates and promotes the generated compatibility workbook afterward. LEAP
+exact-pair authority is generated from all current economy export templates
+plus the temporary detailed demand/power branch inventory.
 """
 
 #%%
@@ -49,13 +51,13 @@ from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
 
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 EDITABLE_AXIS_WORKBOOK_PATH = (
-    REPO_ROOT / "config" / "outlook_mappings_single_axis_prototype.xlsx"
+    REPO_ROOT / "config" / "outlook_mappings_single_axis.xlsx"
 )
 EXPLORATION_RESULTS_ROOT = (
     REPO_ROOT / "results" / "separate_axis_mapping_exploration"
 )
 OUTPUT_ROOT = (
-    REPO_ROOT / "outputs" / "separate_axis_mapping_prototype_20260729"
+    REPO_ROOT / "outputs" / "separate_axis_mapping_refresh" / "compiler"
 )
 OUTPUT_DATA_ROOT = OUTPUT_ROOT / "data"
 
@@ -1095,17 +1097,7 @@ def run_single_axis_master_prototype(
     )
 
     manifest = {
-        "prototype_status": (
-            "not_ready_blocking_axis_components"
-            if summary.loc[
-                summary["metric"].eq(
-                    "blocking_within_axis_many_to_many_components"
-                ),
-                "value",
-            ].iloc[0]
-            > 0
-            else "axis_contract_ready_for_semantic_review"
-        ),
+        "prototype_status": "production_with_explicit_semantic_review_debt",
         "historical_boundary_year": int(historical_boundary_year),
         "canonical_workbook_was_modified": False,
         "canonical_workbook_path": str(WORKBOOK_PATH),
@@ -1147,13 +1139,13 @@ def run_single_axis_master_prototype(
 
 # --- Frequently changed run flags ------------------------------------------
 
-RUN_SINGLE_AXIS_MASTER_PROTOTYPE = True
+RUN_SINGLE_AXIS_MASTER_PROTOTYPE = False
 HISTORICAL_BOUNDARY_YEAR = 2023
 FORCE_LEAP_REGISTRY_REFRESH = False
 
 
 #%%
-if RUN_SINGLE_AXIS_MASTER_PROTOTYPE:
+if __name__ == "__main__" and RUN_SINGLE_AXIS_MASTER_PROTOTYPE:
     try:
         PROTOTYPE_MANIFEST = run_single_axis_master_prototype(
             historical_boundary_year=HISTORICAL_BOUNDARY_YEAR,

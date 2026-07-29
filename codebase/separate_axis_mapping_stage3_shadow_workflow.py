@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_LEAP_EXPORTS_ROOT = (
-    REPO_ROOT.parent.parent
+    REPO_ROOT.parent
     / "leap_initialisation"
     / "data"
     / "leap balances exports"
@@ -42,8 +42,10 @@ from codebase.separate_axis_mapping_shadow_validation_workflow import (  # noqa:
 
 GENERATED_WORKBOOK_PATH = (
     REPO_ROOT
-    / "config"
-    / "outlook_mappings_master_generated_prototype.xlsx"
+    / "outputs"
+    / "separate_axis_mapping_refresh"
+    / "workbooks"
+    / "outlook_mappings_master_candidate.xlsx"
 )
 SHADOW_ROOT = (
     REPO_ROOT

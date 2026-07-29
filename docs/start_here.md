@@ -80,8 +80,9 @@ override the canonical semantic references.
 1. Confirm which source, workbook, template, code, or configuration changed.
 2. Inspect `git status --short --branch` in every repository the task will
    touch. Separate unrelated dirty work before running or committing.
-3. Close the canonical mapping workbook in Excel before mapping maintenance.
-4. Run mapping maintenance and Stages 1–3 from one reviewed input state.
+3. Close the editable and generated mapping workbooks in Excel.
+4. Run the separate-axis generation gate, any applicable focused maintenance
+   review, and Stages 1–3 from one reviewed input state.
 5. Review status, manifest, hierarchy, cardinality, preservation, and
    review-only findings. A zero exit code is not the whole release gate.
 6. If LEAP preparation changed, generate and validate the initialisation
@@ -96,7 +97,7 @@ semantics and source tables but does not consume the dashboard dataset.
 
 | Change | Required follow-up |
 |---|---|
-| mapping workbook row or rollup rule | run mapping maintenance and Stages 1–3; review sibling coverage, cardinality, hierarchy, and value preservation |
+| editable axis, accepted pair, generated mapping input, or rollup rule | run separate-axis generation, applicable focused review, and Stages 1–3; review sibling coverage, cardinality, hierarchy, and value preservation |
 | LEAP branch, process, variable, scenario, region, or import ID | refresh the affected economy template; validate logical keys and IDs; review affected mappings |
 | ESTO or 9th Outlook vintage | rerun the mappings pipeline; rerun affected initialisation sources; rerender dashboards |
 | recalculated LEAP results only | export the balance; run the required results-update and comparison stages; no template refresh unless structure changed |

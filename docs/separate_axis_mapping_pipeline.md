@@ -1,12 +1,12 @@
 # Separate-axis mapping generation
 
-**Status:** implemented and end-to-end shadow validated on
-`codex/separate-axis-mapping-exploration`; ready for merge review as an
-opt-in further-development feature.
+**Status:** merged to local `master` and promoted to the production mapping
+refresh on 2026-07-30 after end-to-end shadow validation.
 
-**Promotion boundary:** the generated compatibility master is not yet
-`config/outlook_mappings_master.xlsx`. Promotion requires review of the shadow
-validation results and an explicit decision to replace that file.
+**Production boundary:** people edit the single-axis workbook. The refresh
+generates exact-pair authority and, after reopen validation, promotes the
+compatibility view to `config/outlook_mappings_master.xlsx`. Existing consumers
+continue to read that stable filename.
 
 ## Why this is the new first mapping step
 
@@ -24,14 +24,14 @@ The separate-axis process moves the human-maintained semantics upstream:
 4. emit the same three pair sheets expected by the existing mapping pipeline.
 
 The generated compatibility workbook therefore becomes the input boundary for
-the existing Stage 0 and Stages 1–3. Downstream code does not need to understand
-the separate-axis representation.
+Stages 1–3. Downstream code does not need to understand the separate-axis
+representation. There is no active general Stage 0.
 
 ## Workbook responsibilities
 
 ### Human-edited contract
 
-`config/outlook_mappings_single_axis_prototype.xlsx`
+`config/outlook_mappings_single_axis.xlsx`
 
 This is the only new workbook people edit. It contains:
 
@@ -58,7 +58,7 @@ stops rather than silently mixing authorities.
 
 ### Generated pair evidence
 
-`config/outlook_mappings_key_pairs_generated_prototype.xlsx`
+`config/outlook_mappings_key_pairs_generated.xlsx`
 
 This workbook is generated and must not be edited. It records all considered
 flow/product or sector/fuel combinations and distinguishes:
@@ -75,19 +75,20 @@ checkboxes.
 
 ### Generated compatibility master
 
-`config/outlook_mappings_master_generated_prototype.xlsx`
+`config/outlook_mappings_master.xlsx`
 
-This workbook is also generated and must not be edited. It preserves all 14
-sheet names and the exact mapping-sheet headers used by
-`config/outlook_mappings_master.xlsx`. The 11 non-pair sheets come from the
-canonical workbook; only the bodies of these three sheets are compiled:
+This production compatibility workbook is also generated and must not be
+edited directly. It preserves all 14 sheet names and exact mapping-sheet
+headers. The 11 non-pair sheets are preserved; only the bodies of these three
+sheets are compiled:
 
 - `leap_combined_esto`;
 - `leap_combined_ninth`; and
 - `ninth_pairs_to_esto_pairs`.
 
-That stable interface is the rollback and migration mechanism: current
-consumers can read the generated workbook with their existing loaders.
+That stable interface means current consumers read the generated workbook with
+their existing loaders. The prior workbook hash and a backup copy are recorded
+in the generation evidence; Git restore plus regeneration is the rollback.
 
 ## Authority and temporal rules
 
@@ -121,7 +122,6 @@ flowchart TD
     P["Generated exact-pair authorities"]
     C["Independent-axis compiler"]
     G["Generated compatibility master"]
-    S0["Existing Stage 0 maintenance"]
     S1["Existing Stage 1 relationships"]
     S2["Existing Stage 2 common structure"]
     S3["Existing Stage 3 value application"]
@@ -132,7 +132,7 @@ flowchart TD
     E --> C
     P --> C
     C --> G
-    G --> S0 --> S1 --> S2 --> S3
+    G --> S1 --> S2 --> S3
 ```
 
 The compiler works by mapping each accepted source pair along its sector axis
@@ -185,16 +185,16 @@ construction.
 
 The initial generated graph exposed a source-once defect because direct target
 pairs labelled as subtotals were excluded from aggregate edges. The
-separate-axis shadow path now enables an opt-in rule that:
+separate-axis path uses a manifest-bound rule that:
 
 - allows direct reviewed subtotal targets to form source aggregate edges;
 - continues to suppress every `is_rollup_derived=TRUE` target;
 - keeps a protected subtotal flow separate from its declared child flows; and
 - permits product aggregation within that same protected subtotal flow.
 
-The option is default-off in the ordinary pipeline. Merging this feature
-therefore does not change the canonical-master graph unless the generated
-compatibility path is selected explicitly.
+The rule is enabled only when the generation-manifest hash matches the active
+canonical workbook. A manually restored or overridden workbook cannot silently
+inherit the generated-contract behavior.
 
 The refined generated Stage 2 result is:
 
@@ -244,9 +244,8 @@ identical to the former single-pass result.
 
 Stage 3 now also applies the Common structure in source-system/economy
 batches, streams component lineage to an atomic gzip file, and dictionary
-encodes repeated source labels during the relevance pass. The ordinary
-canonical code path keeps its existing default; batching is selected
-explicitly by the separate-axis shadow workflow.
+encodes repeated source labels during the relevance pass. Batching is now the
+production Stage 3 default.
 
 The final full-data shadow gate completed on 2026-07-29 after merging the
 current `master` implementation. It used the `generated_merged_final` Stage 2
@@ -277,8 +276,7 @@ parent, subtotal, and combined transformation/demand flows, but the file also
 contains other out-of-contract pairs that remain reviewable. The other 598
 rows are one ESTO-Extended-only Ninth pair correctly absent from the base-ESTO
 scope. This is a coverage diagnostic, not a source-once failure. These rows are
-outside the mapped-universe preservation test and must remain visible for
-review before canonical promotion.
+outside the mapped-universe preservation test and remain visible for review.
 
 The remaining review diagnostics are semantic rather than value-delivery
 failures:
@@ -294,43 +292,41 @@ source-once, lineage, contract, and value-preservation gates. The recursive
 source-tree and parent-anchor suite is unchanged canonical validation and was
 not repeated during this RAM-constrained feature gate.
 
-This makes the current decision precise:
+The 2026-07-30 promotion decision is:
 
-- the separate-axis compiler, workbooks, and review QA are suitable to merge as
-  an exploration/further-development feature;
+- the separate-axis compiler, workbooks, and review QA are the production first
+  mapping step;
 - the chunked Stage 3 value totals, lineage, and output contract pass;
-- the generated compatibility master still must not replace the canonical
-  master without explicit promotion approval and review of the semantic debt;
-  and
 - the 3,501 provisional relationships can remain enabled for continued
   end-to-end work, while the eight within-axis many-to-many components and
   broad Common rows remain explicit semantic review debt.
 
 ## Running the refresh from Jupyter
 
-The Python files use `#%%` blocks and hard-coded, repository-relative paths.
-Run their bottom cells in this order:
+The production entrypoint is:
 
-1. `codebase/separate_axis_mapping_master_prototype_workflow.py`
-2. `codebase/separate_axis_mapping_split_workbooks_workflow.py`
-3. the artifact builder for the generated workbook files
-4. `codebase/separate_axis_mapping_shadow_validation_workflow.py`
-5. `codebase/separate_axis_mapping_stage3_shadow_workflow.py`
+`codebase/separate_axis_mapping_refresh_workflow.py`
+
+It uses `#%%` cells and repository-relative paths. Its bottom cell compiles the
+contract, prepares workbook source tables, invokes the artifact builder,
+reopens and validates the outputs, and promotes the canonical compatibility
+workbook.
 
 The artifact builder is
 `codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`. It must use
 the bundled `@oai/artifact-tool` runtime. Build the editable workbook only for
 an intentional bootstrap or format migration; ordinary refreshes rebuild the
-two generated workbooks and leave the user-edited workbook untouched.
+generated pair workbook and compatibility master while leaving the user-edited
+workbook untouched.
 
-After promotion, the ordinary mapping run becomes:
+The ordinary mapping run is:
 
 1. refresh pair authority and compile the compatibility master;
-2. review generation and shadow QA;
-3. run mapping maintenance;
-4. run Stages 1–3.
+2. review generation QA and run a focused hierarchy/source-row review only
+   when its evidence changed;
+3. run Stages 1–3.
 
-## Required gates before promotion
+## Required gates on every promoted refresh
 
 The generated master must satisfy all of these:
 
@@ -351,11 +347,11 @@ in QA and work-queue records until resolved.
 
 | File | Owner | Edit policy |
 |---|---|---|
-| `config/outlook_mappings_single_axis_prototype.xlsx` | mapping reviewers | edit |
-| `config/outlook_mappings_key_pairs_generated_prototype.xlsx` | compiler | do not edit |
-| `config/outlook_mappings_master_generated_prototype.xlsx` | compiler | do not edit |
-| `config/outlook_mappings_master.xlsx` | current production contract | do not replace without promotion approval |
-| `outputs/separate_axis_mapping_prototype_20260729/` | compiler QA | generated |
+| `config/outlook_mappings_single_axis.xlsx` | mapping reviewers | edit |
+| `config/outlook_mappings_key_pairs_generated.xlsx` | compiler | do not edit |
+| `config/outlook_mappings_master.xlsx` | compiler / stable consumer interface | do not edit directly |
+| `config/outlook_mappings_generation_manifest.json` | compiler | do not edit |
+| `outputs/separate_axis_mapping_refresh/` | compiler QA, candidate, and rollback evidence | generated |
 | `outputs/separate_axis_mapping_shadow_validation_20260729/` | integration QA | generated |
 
 The deferred move of `data/temp/new leap rows.xlsx` to

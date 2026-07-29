@@ -9,11 +9,15 @@ connected-system [`handover overview`](docs/handover/README.md), then the
 should use the
 [`operations guide`](docs/handover/agent_operations_guide.md).
 
-Researchers should maintain simple editable mapping sheets such as:
+Researchers maintain the simple axis sheets in
+`config/outlook_mappings_single_axis.xlsx`, such as:
 
-- `leap_combined_esto`: LEAP rows mapped to exact ESTO flow/product components.
-- `ninth_pairs_to_esto_pairs`: 9th Outlook rows mapped to exact ESTO flow/product components.
-- `leap_combined_ninth`: LEAP rows mapped to 9th Outlook sector/fuel rows.
+- `leap_sector_to_esto` and `leap_fuel_to_esto`;
+- `leap_sector_to_ninth` and `leap_fuel_to_ninth`; and
+- `ninth_sector_to_esto` and `ninth_fuel_to_esto`.
+
+The three combined pair sheets in `config/outlook_mappings_master.xlsx` are
+generated compatibility outputs and should not be edited.
 
 The core idea is that people edit simple rows:
 
@@ -27,25 +31,31 @@ Scripts then generate the structured outputs used by comparison tools and dashbo
 
 ## Layered Workflow
 
-1. Review changed inputs when needed:
+1. Maintain pair semantics in
+   `config/outlook_mappings_single_axis.xlsx`, then run
+   `codebase/separate_axis_mapping_refresh_workflow.py` to regenerate pair
+   authority and the canonical compatibility workbook.
+
+2. Review changed structural inputs when needed:
    - `codebase/hierarchy_subtotal_contract_workflow.py` for hierarchy/subtotal
      evidence and exact-cell workbook review
    - `codebase/missing_mapped_esto_rows_workflow.py` for reviewed ESTO source
      rows that are still missing
-   - both workflows are review-only; the default pipeline starts at Stage 1
+   - both workflows are review-only; the production pipeline starts with the
+     separate-axis refresh above, then Stage 1
 
-2. Generate canonical relationship rows from
+3. Generate canonical relationship rows from
    `config/outlook_mappings_master.xlsx`:
    - `codebase/mapping_tools/build_energy_balance_relationships.py`
    - output: `results/mapping_relationships/energy_balance_relationships.csv`
    - output: `results/mapping_relationships/energy_balance_relationships.xlsx`
 
-3. Build automatic common ESTO rows:
+4. Build automatic common ESTO rows:
    - `codebase/mapping_tools/build_common_esto_structure.py`
    - output: `results/common_esto/common_esto_rows.csv`
    - output: `results/common_esto/esto_to_common_esto_map.csv`
 
-4. Apply the common structure to ESTO-shaped data:
+5. Apply the common structure to ESTO-shaped data:
    - `codebase/mapping_tools/apply_common_esto_structure.py`
    - output: `results/common_esto/common_esto_comparison_data.csv`
    - optional wide output: `results/common_esto/common_esto_comparison_wide.csv`
@@ -93,6 +103,8 @@ The system should usually resolve detail mismatches by rolling up. Final compari
 
 ## Current Inputs
 
+- `config/outlook_mappings_single_axis.xlsx`
+- `config/outlook_mappings_key_pairs_generated.xlsx`
 - `config/outlook_mappings_master.xlsx`
 - `data/00APEC_2025_low_with_subtotals.csv`
 - `data/merged_file_energy_ALL_20251106.csv`
@@ -106,9 +118,9 @@ non-standard checkout layout.
 
 `config/master_config.xlsx` is a legacy reference workbook.
 `config/leap_mappings.xlsx` is a retired legacy filename and is not present in
-the current checkout. New mapping pipeline work should use
-`config/outlook_mappings_master.xlsx` unless a script is explicitly documented
-as legacy.
+the current checkout. New pair semantics belong in
+`config/outlook_mappings_single_axis.xlsx`; existing consumers continue to use
+the generated `config/outlook_mappings_master.xlsx` interface.
 
 Run notebook-style from the repo root, following `AGENTS.md`.
 

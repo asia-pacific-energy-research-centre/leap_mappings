@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   FileBlob,
@@ -21,7 +22,8 @@ const repoRoot = runtimeEnvironment.SEPARATE_AXIS_REPO_ROOT
 const outputRoot = path.join(
   repoRoot,
   "outputs",
-  "separate_axis_mapping_split_20260729",
+  "separate_axis_mapping_refresh",
+  "workbooks",
 );
 const previewRoot = path.join(outputRoot, "previews");
 const manifestPath = path.join(
@@ -34,6 +36,18 @@ const editableWorkbookPath = manifest.editable_axis_workbook_path;
 const pairWorkbookPath = manifest.generated_pair_workbook_path;
 const generatedMasterPath = manifest.generated_master_workbook_path;
 const canonicalMasterPath = manifest.canonical_master_path;
+const generationManifestPath = path.join(
+  repoRoot,
+  "config",
+  "outlook_mappings_generation_manifest.json",
+);
+const compilerManifestPath = path.join(
+  repoRoot,
+  "outputs",
+  "separate_axis_mapping_refresh",
+  "compiler",
+  "workbook_manifest.json",
+);
 
 const colors = {
   navy: "#17365D",
@@ -84,10 +98,10 @@ async function loadCsvMatrix(relativePath, sheetName) {
       return value;
     }
     if (value.toLowerCase() === "true") {
-      return "TRUE";
+      return true;
     }
     if (value.toLowerCase() === "false") {
-      return "FALSE";
+      return false;
     }
     return value;
   }));
@@ -269,6 +283,89 @@ async function removeInspectSidecar(workbookPath) {
   await fs.rm(`${workbookPath}.inspect.ndjson`, { force: true });
 }
 
+async function sha256(filePath) {
+  const content = await fs.readFile(filePath);
+  return crypto.createHash("sha256").update(content).digest("hex");
+}
+
+function validateLiteralBooleans(workbook, sheetNames) {
+  const problems = [];
+  const checkedColumns = [];
+  for (const sheetName of sheetNames) {
+    const sheet = workbook.worksheets.getItem(sheetName);
+    const used = sheet.getUsedRange(true);
+    if (!used || used.rowCount < 1) {
+      problems.push(`${sheetName}: empty sheet`);
+      continue;
+    }
+    const matrix = used.values;
+    const headers = matrix[0] ?? [];
+    for (let column = 0; column < headers.length; column += 1) {
+      const header = String(headers[column] ?? "");
+      if (!booleanHeaders.has(header)) {
+        continue;
+      }
+      checkedColumns.push(`${sheetName}.${header}`);
+      for (let row = 1; row < matrix.length; row += 1) {
+        const value = matrix[row]?.[column];
+        if (
+          value !== null
+          && value !== undefined
+          && value !== true
+          && value !== false
+        ) {
+          problems.push(
+            `${sheetName}!R${row + 1}C${column + 1} `
+            + `(${header}) is ${JSON.stringify(value)}, not a Boolean`,
+          );
+          if (problems.length >= 30) {
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      "Workbook Boolean validation failed:\n- " + problems.join("\n- "),
+    );
+  }
+  return checkedColumns;
+}
+
+function validateMasterContract(workbook, expectedSheetNames) {
+  const actualSheetNames = workbook.worksheets.items.map((sheet) => sheet.name);
+  if (JSON.stringify(actualSheetNames) !== JSON.stringify(expectedSheetNames)) {
+    throw new Error(
+      "Generated master sheet order changed: "
+      + `${JSON.stringify(actualSheetNames)} vs `
+      + `${JSON.stringify(expectedSheetNames)}`,
+    );
+  }
+  for (const [sheetName, expectedHeaders] of Object.entries(
+    manifest.compiled_columns,
+  )) {
+    const sheet = workbook.worksheets.getItem(sheetName);
+    const used = sheet.getUsedRange(true);
+    const actualHeaders = used?.getRow(0).values?.[0] ?? [];
+    if (JSON.stringify(actualHeaders) !== JSON.stringify(expectedHeaders)) {
+      throw new Error(
+        `Generated master header mismatch for ${sheetName}: `
+        + `${JSON.stringify(actualHeaders)} vs `
+        + `${JSON.stringify(expectedHeaders)}`,
+      );
+    }
+  }
+  return {
+    sheetCount: actualSheetNames.length,
+    sheetNames: actualSheetNames,
+    booleanColumns: validateLiteralBooleans(
+      workbook,
+      Object.keys(manifest.compiled_sources),
+    ),
+  };
+}
+
 async function buildEditableWorkbook() {
   const workbook = Workbook.create();
   const readme = workbook.worksheets.add("README");
@@ -375,7 +472,7 @@ async function buildPairWorkbook() {
     ],
     [
       "Compilation",
-      "eligible_for_compilation is TRUE for boundary-active or reviewed-extra pairs. The final mapping workbook remains review-only while within-axis many-to-many cases are unresolved.",
+      "eligible_for_compilation is TRUE for boundary-active or reviewed-extra pairs. Within-axis many-to-many components remain explicit semantic review debt.",
     ],
   ]);
   readme.getRange("A1:H30").format.font.name = "Aptos";
@@ -392,6 +489,12 @@ async function buildPairWorkbook() {
   await scanFormulaErrors(workbook, "generated pair workbook");
   const output = await SpreadsheetFile.exportXlsx(workbook);
   await output.save(pairWorkbookPath);
+  const reopenedInput = await FileBlob.load(pairWorkbookPath);
+  const reopened = await SpreadsheetFile.importXlsx(reopenedInput);
+  validateLiteralBooleans(
+    reopened,
+    Object.keys(manifest.pair_sources),
+  );
   await removeInspectSidecar(pairWorkbookPath);
 }
 
@@ -427,6 +530,9 @@ async function verifyPairWorkbook() {
 async function buildGeneratedMaster() {
   const input = await FileBlob.load(canonicalMasterPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
+  const expectedSheetNames = workbook.worksheets.items.map(
+    (sheet) => sheet.name,
+  );
   const replacementSummary = {};
 
   for (const [sheetName, relativePath] of Object.entries(
@@ -490,6 +596,10 @@ async function buildGeneratedMaster() {
 
   const reopenedInput = await FileBlob.load(generatedMasterPath);
   const reopened = await SpreadsheetFile.importXlsx(reopenedInput);
+  const contractValidation = validateMasterContract(
+    reopened,
+    expectedSheetNames,
+  );
   await renderWorkbook(reopened, "generated_master", {
     leap_combined_esto: "A1:H18",
     leap_combined_ninth: "A1:G18",
@@ -513,19 +623,27 @@ async function buildGeneratedMaster() {
   }
   await fs.writeFile(
     path.join(outputRoot, "generated_master_replacement_summary.json"),
-    JSON.stringify({ replacementSummary, inspection }, null, 2),
+    JSON.stringify(
+      { replacementSummary, contractValidation, inspection },
+      null,
+      2,
+    ),
     "utf8",
   );
+
+  return { replacementSummary, contractValidation };
 }
 
 const buildEditable = globalThis.BUILD_EDITABLE
-  ?? runtimeEnvironment.BUILD_EDITABLE !== "false";
+  ?? runtimeEnvironment.BUILD_EDITABLE === "true";
 const buildPairs = globalThis.BUILD_PAIRS
   ?? runtimeEnvironment.BUILD_PAIRS !== "false";
 const buildMaster = globalThis.BUILD_MASTER
   ?? runtimeEnvironment.BUILD_MASTER !== "false";
 const verifyPairs = globalThis.VERIFY_PAIRS
   ?? runtimeEnvironment.VERIFY_PAIRS === "true";
+const promoteMaster = globalThis.PROMOTE_MASTER
+  ?? runtimeEnvironment.PROMOTE_MASTER === "true";
 
 if (buildEditable) {
   await buildEditableWorkbook();
@@ -533,15 +651,130 @@ if (buildEditable) {
 if (buildPairs) {
   await buildPairWorkbook();
 }
+let masterBuildResult = null;
 if (buildMaster) {
-  await buildGeneratedMaster();
+  masterBuildResult = await buildGeneratedMaster();
 }
 if (verifyPairs) {
   await verifyPairWorkbook();
+}
+
+if (promoteMaster) {
+  if (!buildMaster || !masterBuildResult) {
+    throw new Error("PROMOTE_MASTER requires BUILD_MASTER.");
+  }
+  const compilerManifest = JSON.parse(
+    await fs.readFile(compilerManifestPath, "utf8"),
+  );
+  const priorCanonicalHash = await sha256(canonicalMasterPath);
+  const candidateHash = await sha256(generatedMasterPath);
+  let existingGenerationManifest = null;
+  try {
+    existingGenerationManifest = JSON.parse(
+      await fs.readFile(generationManifestPath, "utf8"),
+    );
+  } catch {
+    existingGenerationManifest = null;
+  }
+  const originalCanonicalHash = (
+    existingGenerationManifest?.hashes?.original_canonical_master_sha256
+    ?? runtimeEnvironment.ORIGINAL_CANONICAL_MASTER_SHA256
+    ?? existingGenerationManifest?.hashes?.prior_canonical_master_sha256
+    ?? priorCanonicalHash
+  );
+  const backupPath = path.join(
+    outputRoot,
+    `prior_canonical_master_${priorCanonicalHash.slice(0, 12)}.xlsx`,
+  );
+  await fs.copyFile(canonicalMasterPath, backupPath);
+  let originalCanonicalBackupPath = (
+    existingGenerationManifest?.original_canonical_backup_path
+    ?? null
+  );
+  if (!originalCanonicalBackupPath) {
+    const expectedBackup = path.join(
+      outputRoot,
+      `prior_canonical_master_${originalCanonicalHash.slice(0, 12)}.xlsx`,
+    );
+    try {
+      await fs.access(expectedBackup);
+      originalCanonicalBackupPath = expectedBackup;
+    } catch {
+      originalCanonicalBackupPath = null;
+    }
+  }
+
+  const promotionTempPath = `${canonicalMasterPath}.separate_axis_refresh.tmp`;
+  await fs.copyFile(generatedMasterPath, promotionTempPath);
+  await fs.rename(promotionTempPath, canonicalMasterPath);
+
+  const promotedInput = await FileBlob.load(canonicalMasterPath);
+  const promotedWorkbook = await SpreadsheetFile.importXlsx(promotedInput);
+  const promotedValidation = validateMasterContract(
+    promotedWorkbook,
+    masterBuildResult.contractValidation.sheetNames,
+  );
+  const promotedHash = await sha256(canonicalMasterPath);
+  if (promotedHash !== candidateHash) {
+    throw new Error(
+      `Promoted workbook hash ${promotedHash} does not match `
+      + `candidate hash ${candidateHash}.`,
+    );
+  }
+  await removeInspectSidecar(canonicalMasterPath);
+
+  const generationManifest = {
+    status: "promoted_and_reopened",
+    generated_at_utc: new Date().toISOString(),
+    contract_version: "separate_axis_mapping_contract_v1",
+    historical_boundary_year: manifest.historical_boundary_year,
+    editable_axis_workbook_path: editableWorkbookPath,
+    generated_pair_workbook_path: pairWorkbookPath,
+    canonical_master_path: canonicalMasterPath,
+    candidate_path: generatedMasterPath,
+    prior_canonical_backup_path: backupPath,
+    original_canonical_backup_path: originalCanonicalBackupPath,
+    hashes: {
+      original_canonical_master_sha256: originalCanonicalHash,
+      prior_canonical_master_sha256: priorCanonicalHash,
+      promoted_master_sha256: promotedHash,
+      generated_pair_workbook_sha256: await sha256(pairWorkbookPath),
+      editable_axis_workbook_sha256: await sha256(editableWorkbookPath),
+      compiler_manifest_sha256: await sha256(compilerManifestPath),
+      split_manifest_sha256: await sha256(manifestPath),
+    },
+    compiled_counts: manifest.compiled_counts,
+    pair_counts: manifest.pair_counts,
+    compiler_summary: compilerManifest.summary,
+    leap_pair_registry_manifest: compilerManifest.leap_pair_registry_manifest,
+    provisional_relationship_policy: "provisionally_accepted",
+    semantic_review_debt: {
+      within_axis_many_to_many_components:
+        compilerManifest.summary
+          .blocking_within_axis_many_to_many_components,
+      additional_compiled_relationships:
+        compilerManifest.summary.generated_relationship_governance_rows,
+    },
+    validation: promotedValidation,
+    boolean_storage: "literal_boolean_no_checkbox_controls",
+    rollup_boundary:
+      "Manual rollups remain workbook rules; graph-generated Common rows "
+      + "are not written back as manual rollups.",
+    rollback:
+      "Restore config/outlook_mappings_master.xlsx from Git, then rerun "
+      + "the separate-axis refresh when ready.",
+  };
+  await fs.writeFile(
+    generationManifestPath,
+    JSON.stringify(generationManifest, null, 2),
+    "utf8",
+  );
 }
 
 console.log(JSON.stringify({
   editableWorkbookPath,
   pairWorkbookPath,
   generatedMasterPath,
+  generationManifestPath,
+  promoted: promoteMaster,
 }, null, 2));

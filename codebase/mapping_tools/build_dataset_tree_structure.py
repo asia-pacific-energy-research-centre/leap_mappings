@@ -1801,8 +1801,18 @@ def _validate_leap_recursive_sums_fast(
         .to_dict()
     )
     leaf_product_paths = esto_map.groupby(["parent_leaf", "source_product"])["parent_path"].agg(lambda values: set(map(_str, values))).to_dict()
-    source_path_column = "leap_sector_path" if "leap_sector_path" in leap_df.columns else "leap_flow_path" if "leap_flow_path" in leap_df.columns else "leap_flow"
-    leap_df["_source_key"] = leap_df[source_path_column].map(_str)
+    source_path_column = (
+        "leap_sector_path"
+        if "leap_sector_path" in leap_df.columns
+        else "leap_flow_path"
+        if "leap_flow_path" in leap_df.columns
+        else "leap_flow"
+        if leap_df["leap_flow"].astype(str).str.contains("/", regex=False).any()
+        else ""
+    )
+    leap_df["_source_key"] = leap_df[
+        source_path_column if source_path_column else "leap_flow"
+    ].map(_str)
     grouped = leap_df.groupby(["_source_key", "leap_product", "economy", "scenario", "year"], dropna=False, as_index=False)["value"].sum()
     source_lookup = {
         key: group[["economy", "scenario", "year", "value"]].copy()
@@ -1823,20 +1833,39 @@ def _validate_leap_recursive_sums_fast(
         missing_child_flows = expected_child_flows.difference(mapped_child_flows)
         parent_targets = source_pair_targets.get((parent_path, leap_product), set())
         parent_mapping_status = "exact" if parent_targets == {(esto_parent_flow, esto_parent_product)} else "ambiguous_parent_mapping"
-        parent_key = (parent_path if source_path_column != "leap_flow" else parent_leaf, leap_product)
+        parent_key = (
+            parent_path if source_path_column else parent_leaf,
+            leap_product,
+        )
         parent_data = source_lookup.get(parent_key, pd.DataFrame())
         if parent_data.empty:
             continue
-        source_context_status = "full_path" if source_path_column != "leap_flow" else ("leaf_only_unambiguous" if leaf_product_paths.get((parent_leaf, leap_product), set()) == {parent_path} else "leaf_only_ambiguous")
+        source_context_status = (
+            "full_path"
+            if source_path_column
+            else (
+                "leaf_only_unambiguous"
+                if leaf_product_paths.get((parent_leaf, leap_product), set())
+                == {parent_path}
+                else "leaf_only_ambiguous"
+            )
+        )
         child_frames = []
         child_paths: set[str] = set()
         child_mapping_ambiguous = False
         for child in child_mappings.itertuples(index=False):
             child_path, child_leaf, child_product = _str(child.parent_path), _str(child.parent_leaf), _str(child.source_product)
             child_paths.add(child_path)
-            if source_path_column == "leap_flow" and leaf_product_paths.get((child_leaf, child_product), set()) != {child_path}:
+            if (
+                not source_path_column
+                and leaf_product_paths.get((child_leaf, child_product), set())
+                != {child_path}
+            ):
                 child_mapping_ambiguous = True
-            child_key = (child_path if source_path_column != "leap_flow" else child_leaf, child_product)
+            child_key = (
+                child_path if source_path_column else child_leaf,
+                child_product,
+            )
             child_data = source_lookup.get(child_key)
             if child_data is not None and not child_data.empty:
                 child_frames.append(child_data)

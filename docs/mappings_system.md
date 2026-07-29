@@ -96,23 +96,21 @@ The compilation pipeline produces the final comparison-ready dataset.
 The new first step is documented in
 [separate_axis_mapping_pipeline.md](separate_axis_mapping_pipeline.md). Its
 human-edited contract is
-`config/outlook_mappings_single_axis_prototype.xlsx`; it generates
-`config/outlook_mappings_key_pairs_generated_prototype.xlsx` and
-`config/outlook_mappings_master_generated_prototype.xlsx`.
+`config/outlook_mappings_single_axis.xlsx`; it generates
+`config/outlook_mappings_key_pairs_generated.xlsx` and the compatibility
+interface at `config/outlook_mappings_master.xlsx`.
 
-On this branch the generated master is a shadow input, not yet the canonical
-filename. It deliberately preserves the existing 14-sheet interface so Stage
-0, Stages 1–3, and current consumers can be tested without loader changes.
-Promotion means replacing the canonical pair-maintenance boundary only after
-the recorded schema, subtotal, graph, source-once, and rollback gates pass.
+The generated master preserves the existing 14-sheet interface so Stages 1–3
+and current consumers need no loader changes. The generation manifest records
+schema, subtotal, graph, Boolean-storage, source fingerprints, workbook hashes,
+and rollback evidence.
 
 ### `config/outlook_mappings_master.xlsx`
 
-This remains the current production workbook and supplies rollup, display,
-reference, and other non-pair sheets. Its three pair sheets are also the
-bootstrap/comparison baseline during the shadow migration. They are not the
-intended long-term human-maintained pair authority once the separate-axis
-contract is promoted.
+This is the generated production compatibility workbook. It supplies the three
+compiled pair sheets plus preserved rollup, display, reference, and other
+non-pair sheets. People maintain mapping semantics in
+`outlook_mappings_single_axis.xlsx`, not in these generated pair sheets.
 
 It contains:
 
@@ -917,8 +915,9 @@ A mismatch is detected when a leaf-level source (not a subtotal) maps to an aggr
 
 ## Optional mapping and source review workflows
 
-The default mapping pipeline starts at Stage 1. Two focused, review-only
-workflows can be run before it when their inputs have changed:
+The production mapping pipeline starts with separate-axis generation and then
+Stage 1. Two focused, review-only workflows can also be run when their inputs
+have changed:
 
 - `codebase/missing_mapped_esto_rows_workflow.py` writes paste-ready rows and
   supporting audits for reviewed ESTO balance changes missing from maintained
@@ -1131,19 +1130,18 @@ edit the mapping workbook, or create the final dashboard comparison dataset.
 
 ## From mapping rows to comparison outputs
 
-The separate-axis workbook is the intended human-maintained mapping-semantic
-input. Its compiler produces a compatibility master with the same pair-sheet
-schema as `outlook_mappings_master.xlsx`. During the shadow period the
-canonical master remains the production input and comparison baseline.
+The separate-axis workbook is the human-maintained mapping-semantic input. Its
+compiler produces the production compatibility master with the same pair-sheet
+schema as `outlook_mappings_master.xlsx`.
 
-Refresh the separate-axis compiler before maintenance whenever axes, accepted
-extra pairs, source templates, source data vintages, or rollup rules change.
-The maintenance workflow then checks the resulting compatibility workbook
-before the downstream stages.
+Refresh the separate-axis compiler whenever axes, accepted extra pairs, source
+templates, source data vintages, or rollup rules change. Run focused
+hierarchy/source-row review workflows when their evidence changes, then run the
+downstream stages.
 
 ### First step - Generate the compatibility master
 
-`codebase/separate_axis_mapping_master_prototype_workflow.py`
+`codebase/separate_axis_mapping_refresh_workflow.py`
 
 Loads the six editable axis sheets, refreshes generated exact-pair authority,
 merges the four accepted-extra-pair sheets, and compiles the three current
@@ -1155,9 +1153,8 @@ See
 [Separate-axis mapping generation](separate_axis_mapping_pipeline.md)
 for authority rules, workbook ownership, QA, and promotion gates.
 
-The current 11,150-relationship shadow build is end-to-end executable but has
-not been approved for canonical promotion. It preserves every complete
-retained Stage 1 relationship and passes the pair-sheet schema gate. Its
+The promoted 11,150-relationship build preserves every complete retained
+Stage 1 relationship and passes the pair-sheet schema gate. Its
 Common ESTO partition differs materially: 4,012 canonical memberships are
 replaced and 4,530 generated memberships appear.
 
@@ -1170,12 +1167,11 @@ combinations, with maximum absolute difference
 outputs. The final post-merge run used explicit isolated shadow-cache paths;
 ordinary Stage 3 continues to resolve its sources from the dataset registry.
 
-Keep using the canonical master for production until a reviewer explicitly
-accepts the changed Common partition and the remaining semantic review debt:
-3,501 provisional relationships, eight within-axis many-to-many components,
-29 broad Common rows, and the recorded partial-coverage findings. Merging the
-feature does not switch production because the direct-subtotal graph rule and
-chunked execution are opt-in and the canonical workbook filename is unchanged.
+The accepted production boundary retains visible semantic review debt: 3,501
+provisional relationships, eight within-axis many-to-many components, 29 broad
+Common rows, and the recorded partial-coverage findings. Direct-subtotal graph
+behavior is activated only when the generation-manifest hash matches the
+canonical workbook, and Stage 3 uses the memory-bounded application path.
 
 ### Optional focused maintenance review
 

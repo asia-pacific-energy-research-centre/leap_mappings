@@ -10,7 +10,7 @@ Use this runbook only after reading `AGENTS.md`,
 
 | Workflow | Entry point | Supporting modules | Inputs | Outputs | Workbook mutation |
 |---|---|---|---|---|---|
-| Separate-axis generation | `separate_axis_mapping_master_prototype_workflow.py` | pair registries, split-workbook workflow, artifact builder | editable axes/extras, data evidence, templates, rollups | generated pair evidence and compatibility master | generated workbooks only; ordinary refresh leaves editable workbook unchanged |
+| Separate-axis generation | `separate_axis_mapping_refresh_workflow.py` | compiler, pair registries, workbook-source workflow, artifact builder | editable axes/extras, data evidence, templates, rollups | generated pair evidence, canonical compatibility master, generation manifest | generated workbooks only; ordinary refresh leaves editable workbook unchanged |
 | Stage 1 | relationship builder | rollups, exception/coverage helpers | mapping/rollup sheets | `results/mapping_relationships` | no |
 | Stage 2 | Common structure builder | structural resolver, non-expanding rollups | relationships, overrides/exclusions | `results/common_esto` structure/QA | no |
 | LEAP parse | orchestrator `run_leap_parse` | balance-export resolver/parser | sibling balance exports | raw long LEAP CSV | no |
@@ -23,14 +23,12 @@ Use this runbook only after reading `AGENTS.md`,
 1. `git status --short --branch`.
 2. Check worktrees and active Python processes.
 3. Close the editable and generated mapping workbooks in Excel.
-4. Confirm whether the run is the current canonical path or the
-   separate-axis shadow path. For the latter, use
-   `codebase/separate_axis_mapping_shadow_validation_workflow.py`; do not assume
-   the Stage 0 wrapper honors the generated-workbook path override.
+4. Run the production separate-axis refresh and confirm its generation-manifest
+   hash matches the canonical compatibility workbook.
 5. Confirm current ESTO/9th filenames and sibling LEAP export discovery.
 6. Record commit, source vintages, workbook state, and requested scopes.
 7. If axes, accepted extra pairs, data vintages, templates, or rollup rules
-   changed, refresh the separate-axis compiler before Stage 0.
+   changed, refresh the separate-axis compiler before Stage 1.
 8. Decide whether a full run or a cached fast path is justified.
 
 ## Optional maintenance workflows

@@ -21,9 +21,9 @@ It does not own LEAP import IDs or dashboard presentation.
 
 | Input | Role |
 |---|---|
-| `config/outlook_mappings_single_axis_prototype.xlsx` | new human-maintained axis semantics and accepted extra exact pairs; shadow until promotion |
-| `config/outlook_mappings_key_pairs_generated_prototype.xlsx` | generated exact-pair evidence; do not edit |
-| `config/outlook_mappings_master_generated_prototype.xlsx` | generated compatibility master for current consumers; do not edit |
+| `config/outlook_mappings_single_axis.xlsx` | human-maintained axis semantics and accepted extra exact pairs |
+| `config/outlook_mappings_key_pairs_generated.xlsx` | generated exact-pair evidence; do not edit |
+| `config/outlook_mappings_master.xlsx` | generated compatibility master for current consumers; do not edit directly |
 | `config/outlook_mappings_master.xlsx` | current production pair contract plus rollup, name, and reference sheets; bootstrap/comparison baseline during migration |
 | `config/mapping_issue_exception_sets.xlsx` | reviewed QA exceptions; not automatic mappings |
 | `config/source_coverage_scopes.json` | source/scope relevance |
@@ -38,16 +38,16 @@ Legacy `leap_mappings.xlsx`, `master_config.xlsx`, and
 `leap_mapping_refresh_workflow.py` are references, not the active mapping
 system.
 
-The separate-axis generate stage is the intended new first step. It is still a
-shadow boundary: use the generated master explicitly for validation and do not
-replace `config/outlook_mappings_master.xlsx` without promotion approval. See
+The separate-axis generate stage is the production first step. It promotes the
+compatibility workbook only after generation, reopen, Boolean, schema, and hash
+validation. See
 [`../separate_axis_mapping_pipeline.md`](../separate_axis_mapping_pipeline.md).
 
 ## Stage flow
 
 | Stage | Entry/module | What it does | Review point |
 |---|---|---|---|
-| generate | separate-axis prototype and split-workbook workflows | refreshes exact-pair authority and compiles the current pair-sheet interface from editable axes | missing maintained relations, provisional Cartesian additions, within-axis many-to-many, pair authority |
+| generate | `separate_axis_mapping_refresh_workflow.py` | refreshes exact-pair authority, compiles the pair-sheet interface, validates, and promotes it | missing maintained relations, provisional Cartesian additions, within-axis many-to-many, pair authority |
 | 1 | `build_energy_balance_relationships.py` | normalizes mapping sheets into directional relationship/use-case rows and applies rollup rules | duplicate, unknown target, missing pair, parent/child QA |
 | 2 | `build_common_esto_structure.py` | partitions scope-specific ESTO component graphs into exact/generated common rows | structural coverage, intersections, non-expanding frontier |
 | parse | `parse_leap_balance_export.py` | reads LEAP balance exports into long source rows | economy/export discovery and schema |

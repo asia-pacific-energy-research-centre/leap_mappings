@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import gc
 import gzip
+import hashlib
 import json
 import sys
 import tempfile
@@ -78,6 +79,9 @@ ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregate
 REL_DIR             = REPO_ROOT / "results" / "mapping_relationships"
 COMMON_ESTO_DIR     = REPO_ROOT / "results" / "common_esto"
 STAGE3_RUN_MANIFEST_PATH = COMMON_ESTO_DIR / "stage3_run_manifest.json"
+MAPPING_GENERATION_MANIFEST_PATH = (
+    REPO_ROOT / "config" / "outlook_mappings_generation_manifest.json"
+)
 
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
@@ -118,6 +122,36 @@ if not LEAP_EXPORTS_ROOT.is_dir():
 # Output logging
 # ---------------------------------------------------------------------------
 _PIPELINE_LOG_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline.log"
+
+
+def _sha256(path: Path) -> str:
+    """Return a stable SHA-256 digest for provenance checks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_active_mapping_generation_manifest() -> dict[str, object] | None:
+    """Load the generation manifest only when it matches the active workbook."""
+    if not MAPPING_GENERATION_MANIFEST_PATH.exists():
+        return None
+    manifest = json.loads(
+        MAPPING_GENERATION_MANIFEST_PATH.read_text(encoding="utf-8")
+    )
+    promoted_hash = (
+        manifest.get("hashes", {}).get("promoted_master_sha256")
+        if isinstance(manifest.get("hashes"), dict)
+        else None
+    )
+    if promoted_hash != _sha256(WORKBOOK_PATH):
+        raise ValueError(
+            "The mapping generation manifest does not match the active "
+            "outlook_mappings_master.xlsx. Refresh the separate-axis contract "
+            "or deliberately restore both workbook and manifest together."
+        )
+    return manifest
 
 
 def _write_stage3_run_manifest(manifest: dict[str, object]) -> None:
@@ -173,6 +207,18 @@ def _log_to_file(log_path):
 # Stage 1 — Build relationships
 # ---------------------------------------------------------------------------
 
+def run_separate_axis_refresh() -> None:
+    """Regenerate and promote the validated compatibility mapping workbook."""
+    print("\n" + "=" * 60)
+    print("GENERATE  Refresh separate-axis mapping contract")
+    print("=" * 60)
+    from codebase.separate_axis_mapping_refresh_workflow import (
+        run_separate_axis_mapping_refresh,
+    )
+
+    run_separate_axis_mapping_refresh(promote_master=True)
+
+
 def run_stage_1() -> None:
     print("\n" + "=" * 60)
     print("STAGE 1  Build energy balance relationships")
@@ -202,7 +248,10 @@ def run_stage_1() -> None:
 # Stage 2 — Common ESTO structure
 # ---------------------------------------------------------------------------
 
-def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
+def run_stage_2(
+    enabled_scopes: list[str] | None = None,
+    allow_direct_subtotal_edges: bool | None = None,
+) -> None:
     print("\n" + "=" * 60)
     print("STAGE 2  Build common ESTO structure")
     print("=" * 60)
@@ -216,6 +265,12 @@ def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
         RELATIONSHIPS_PATH as STAGE_2_RELATIONSHIPS_PATH,
         run_common_esto_structure_workflow,
     )
+    generation_manifest = load_active_mapping_generation_manifest()
+    direct_subtotal_edges = (
+        generation_manifest is not None
+        if allow_direct_subtotal_edges is None
+        else bool(allow_direct_subtotal_edges)
+    )
     run_common_esto_structure_workflow(
         relationships_path=STAGE_2_RELATIONSHIPS_PATH,
         coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
@@ -228,6 +283,7 @@ def run_stage_2(enabled_scopes: list[str] | None = None) -> None:
             if enabled_scopes is None
             else enabled_scopes
         ),
+        allow_direct_subtotal_edges=direct_subtotal_edges,
     )
 
 
@@ -697,7 +753,7 @@ def run_data_convert(write_esto_extended_delta: bool = False) -> None:
 def run_stage_3(
     skip_deep_validation: bool = False,
     use_esto_extended_delta: bool = False,
-    chunk_value_application: bool = False,
+    chunk_value_application: bool = True,
     stage3_source_paths: dict[str, Path] | None = None,
 ) -> None:
     import time
@@ -793,6 +849,7 @@ def run_stage_3(
         pd.read_csv(COMMON_ROWS_PATH, usecols=["comparison_scope"], dtype=object)
         ["comparison_scope"].dropna().astype(str).unique().tolist()
     )
+    generation_manifest = load_active_mapping_generation_manifest()
     run_manifest: dict[str, object] = {
         "run_id": run_id,
         "run_timestamp_utc": run_timestamp_utc,
@@ -808,6 +865,9 @@ def run_stage_3(
             for name, path in source_paths.items()
         },
         "mapping_workbook": str(WORKBOOK_PATH.resolve()),
+        "mapping_workbook_sha256": _sha256(WORKBOOK_PATH),
+        "mapping_generation": generation_manifest,
+        "chunk_value_application": chunk_value_application,
         "timings_seconds": {},
         "validation": {},
     }
@@ -1235,9 +1295,10 @@ def run_stage_3(
 # CLI
 # ---------------------------------------------------------------------------
 
-_ALL_STAGES = ["1", "2", "leap_parse", "data_convert", "3"]
+_ALL_STAGES = ["generate", "1", "2", "leap_parse", "data_convert", "3"]
 
 _STAGE_RUNNERS = {
+    "generate":     run_separate_axis_refresh,
     "1":            run_stage_1,
     "2":            run_stage_2,
     "leap_parse":   run_leap_parse,

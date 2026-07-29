@@ -17,7 +17,7 @@ worktrees, recent commits, and queues in all three repositories.
 
 | Area | Entry points and evidence inspected | Current evidence state |
 |---|---|---|
-| Mapping | `run_mapping_pipeline.py`; optional hierarchy/ESTO-row workflows; Stage 1–3 modules; canonical workbook; Common ESTO outputs; pipeline log and manifest | The core pipeline starts at Stage 1; hierarchy and source-row maintenance are explicit review workflows |
+| Mapping | separate-axis refresh; `run_mapping_pipeline.py`; optional hierarchy/ESTO-row workflows; Stage 1–3 modules; canonical compatibility workbook; Common ESTO outputs; pipeline log and manifest | The production pipeline starts by generating the mapping contract, then runs Stage 1; hierarchy and source-row maintenance are explicit review workflows |
 | Initialisation | reconciliation workflow/config/allocation modules; seed patcher; templates; latest real three-economy run; readiness summaries | Latest three-economy baseline run took 1h 26m 50.9s; it wrote workbooks but USA readiness still reports 3,244 blocking findings |
 | Dashboard | workflow/data/renderer/layout modules; template and series config; 21 economy output folders; logs and manifests | Long and legacy wide input are supported; default run uses long input; latest two-economy log wrote 650 charts |
 | Contracts | current output headers; manifests; producer and consumer contract code; consumer path constants | `common_esto_output_contract_v1` is integrated on both current masters, including hashes and strict opt-in loading; the artifacts on disk predate that integration and must be republished by a QA-successful Stage 3 run |
@@ -67,6 +67,8 @@ flowchart TB
 
 ```mermaid
 flowchart LR
+    AXIS["outlook_mappings_single_axis.xlsx"]
+    GENERATE["Separate-axis generation"]
     WB["outlook_mappings_master.xlsx"]
     SOURCES["ESTO, 9th, LEAP exports"]
     OPTIONAL["Optional hierarchy or ESTO-row review"]
@@ -77,6 +79,7 @@ flowchart LR
     S3["Stage 3: apply, aggregate, validate"]
     PUB["Comparison values, structure, lineage, status"]
 
+    AXIS --> GENERATE --> WB
     WB -. "when structure/source coverage changed" .-> OPTIONAL
     WB --> S1
     SOURCES -.-> OPTIONAL

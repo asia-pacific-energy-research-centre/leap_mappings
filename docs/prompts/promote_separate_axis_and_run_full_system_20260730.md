@@ -74,12 +74,18 @@ semantics beyond those already accepted in the two branches.
 
 The production ownership contract is:
 
-- one human-edited workbook containing only the six single-axis relation sheets
-  and four accepted-extra-pair sheets;
+- one primary human-edited workbook containing the six single-axis relation
+  sheets and four accepted-extra-pair sheets;
 - one generated exact-pair authority workbook in `config/`, visibly marked
   computer-generated and not for editing; and
 - `config/outlook_mappings_master.xlsx` as the generated compatibility
   workbook consumed by existing code.
+
+If rollup, display, label-override, or reference sheets still require direct
+human maintenance in the compatibility workbook, list them explicitly as a
+temporary exception and preserve them during generation. Do not describe the
+three generated pair-sheet bodies as human-editable. Queue migration of the
+remaining maintained non-pair sheets rather than hiding the hybrid boundary.
 
 Implement or finish one notebook-safe refresh workflow that:
 

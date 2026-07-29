@@ -108,7 +108,7 @@ For exact producer/consumer boundaries, see
 
 | Need | Use | First evidence to inspect |
 |---|---|---|
-| Change or review a LEAP/ESTO/9th relationship | `leap_mappings` | `config/outlook_mappings_single_axis_prototype.xlsx`, `docs/separate_axis_mapping_pipeline.md`, and `docs/mappings_system.md`; the old master remains production until promotion |
+| Change or review a LEAP/ESTO/9th relationship | `leap_mappings` | edit `config/outlook_mappings_single_axis.xlsx`, then run the documented generation gate |
 | Add an ESTO Extended category | `leap_mappings` | `docs/esto_extended_category_creation_considerations.md` |
 | Investigate Stage 3 totals, rollups, missing rows, or lineage | `leap_mappings` | `results/common_esto/common_esto_output_status.csv` |
 | Create or repair baseline seeds and LEAP imports | `leap_initialisation` | `docs/supply_reconciliation_workflow_guide.md` |
@@ -126,7 +126,7 @@ For exact producer/consumer boundaries, see
    pairs, evidence sources, or rollup rules changed.
 4. If hierarchy evidence or reviewed ESTO source-row requirements changed, run
    the applicable focused review workflow. Then run mapping Stages 1–3 against
-   the selected canonical or isolated shadow workbook.
+   the generated canonical workbook.
 5. Inspect `common_esto_output_status.csv`, the Stage 3 manifest, and relevant
    failed/review diagnostics. “Completed” means the process finished; it does
    not mean every validation passed.

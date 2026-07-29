@@ -45,8 +45,10 @@ CANONICAL_WORKBOOK_PATH = (
 )
 GENERATED_WORKBOOK_PATH = (
     REPO_ROOT
-    / "config"
-    / "outlook_mappings_master_generated_prototype.xlsx"
+    / "outputs"
+    / "separate_axis_mapping_refresh"
+    / "workbooks"
+    / "outlook_mappings_master_candidate.xlsx"
 )
 OUTPUT_ROOT = (
     REPO_ROOT

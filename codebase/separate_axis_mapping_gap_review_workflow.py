@@ -31,7 +31,8 @@ from codebase.separate_axis_mapping_exploration_functions import (
 PROTOTYPE_DATA_ROOT = (
     REPO_ROOT
     / "outputs"
-    / "separate_axis_mapping_prototype_20260729"
+    / "separate_axis_mapping_refresh"
+    / "compiler"
     / "data"
 )
 OUTPUT_ROOT = (
@@ -46,8 +47,10 @@ CANONICAL_MASTER_PATH = (
 )
 GENERATED_MASTER_PATH = (
     REPO_ROOT
-    / "config"
-    / "outlook_mappings_master_generated_prototype.xlsx"
+    / "outputs"
+    / "separate_axis_mapping_refresh"
+    / "workbooks"
+    / "outlook_mappings_master_candidate.xlsx"
 )
 
 RELATIONSHIP_KEYS = [

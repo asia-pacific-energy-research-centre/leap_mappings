@@ -13,6 +13,11 @@ These are project-level instructions for Codex (and similar agents).
 
 - This repo is the active home for LEAP mapping maintenance.
 - Use this repo for `config/outlook_mappings_master.xlsx`, canonical mapping helpers, mapping checks, mapping conversion tools, and `codebase/archive/outlook_mapping_maintenance_workflow.py`.
+- Maintain pair semantics in `config/outlook_mappings_single_axis.xlsx`.
+  `config/outlook_mappings_key_pairs_generated.xlsx` and the three pair-sheet
+  bodies in `config/outlook_mappings_master.xlsx` are generated; do not edit
+  them directly. The non-pair rollup/display/reference sheets remain a
+  temporary human-maintained exception and are preserved by generation.
 - `config/leap_mappings.xlsx`, `config/master_config.xlsx`, and `codebase/leap_mapping_refresh_workflow.py` are legacy references unless a task explicitly asks for old-workbook maintenance.
 - `C:\Users\Work\github\leap_utilities` is the old workspace where this mapping code was built. Do not use `leap_utilities` for active mapping work anymore unless the user explicitly asks for legacy cleanup or comparison.
 - For LEAP area initialisation and supply reconciliation work, use `C:\Users\Work\github\leap_initialisation` instead.

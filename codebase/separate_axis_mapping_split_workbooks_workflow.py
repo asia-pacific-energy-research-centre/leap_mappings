@@ -22,11 +22,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PROTOTYPE_SOURCE_ROOT = (
     REPO_ROOT
     / "outputs"
-    / "separate_axis_mapping_prototype_20260729"
+    / "separate_axis_mapping_refresh"
+    / "compiler"
     / "data"
 )
 OUTPUT_ROOT = (
-    REPO_ROOT / "outputs" / "separate_axis_mapping_split_20260729"
+    REPO_ROOT / "outputs" / "separate_axis_mapping_refresh" / "workbooks"
 )
 OUTPUT_DATA_ROOT = OUTPUT_ROOT / "data"
 
@@ -34,17 +35,15 @@ CANONICAL_MASTER_PATH = (
     REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 )
 EDITABLE_AXIS_WORKBOOK_PATH = (
-    REPO_ROOT / "config" / "outlook_mappings_single_axis_prototype.xlsx"
+    REPO_ROOT / "config" / "outlook_mappings_single_axis.xlsx"
 )
 GENERATED_PAIR_WORKBOOK_PATH = (
     REPO_ROOT
     / "config"
-    / "outlook_mappings_key_pairs_generated_prototype.xlsx"
+    / "outlook_mappings_key_pairs_generated.xlsx"
 )
 GENERATED_MASTER_WORKBOOK_PATH = (
-    REPO_ROOT
-    / "config"
-    / "outlook_mappings_master_generated_prototype.xlsx"
+    OUTPUT_ROOT / "outlook_mappings_master_candidate.xlsx"
 )
 
 HISTORICAL_BOUNDARY_YEAR = 2023
@@ -436,7 +435,7 @@ def prepare_split_workbook_sources() -> dict[str, object]:
 
     manifest: dict[str, object] = {
         "prototype_status": (
-            "Review-only. Generated outputs are not yet the canonical master."
+            "Production contract with explicit semantic review debt."
         ),
         "historical_boundary_year": HISTORICAL_BOUNDARY_YEAR,
         "canonical_master_path": str(CANONICAL_MASTER_PATH),
@@ -477,11 +476,11 @@ def prepare_split_workbook_sources() -> dict[str, object]:
 
 # --- Frequently changed run flag -------------------------------------------
 
-PREPARE_SPLIT_WORKBOOK_SOURCES = True
+PREPARE_SPLIT_WORKBOOK_SOURCES = False
 
 
 #%%
-if PREPARE_SPLIT_WORKBOOK_SOURCES:
+if __name__ == "__main__" and PREPARE_SPLIT_WORKBOOK_SOURCES:
     try:
         SPLIT_WORKBOOK_MANIFEST = prepare_split_workbook_sources()
         print(

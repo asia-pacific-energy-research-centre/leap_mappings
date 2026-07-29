@@ -1,14 +1,27 @@
-import pandas as pd
+import hashlib
+import json
 
+import pandas as pd
+import pytest
+
+import codebase.run_mapping_pipeline as pipeline
 from codebase.run_mapping_pipeline import (
     _ALL_STAGES,
     _stage3_completion_status,
     expand_requested_stages,
+    load_active_mapping_generation_manifest,
 )
 
 
 def test_default_pipeline_excludes_retired_stage_zero() -> None:
-    assert _ALL_STAGES == ["1", "2", "leap_parse", "data_convert", "3"]
+    assert _ALL_STAGES == [
+        "generate",
+        "1",
+        "2",
+        "leap_parse",
+        "data_convert",
+        "3",
+    ]
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:
@@ -44,3 +57,63 @@ def test_stage3_manifest_keeps_completed_for_non_error_validation_results() -> N
     ])
 
     assert _stage3_completion_status(summary) == "completed"
+
+
+def test_mapping_generation_manifest_must_match_active_workbook(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    workbook_path = tmp_path / "outlook_mappings_master.xlsx"
+    workbook_path.write_bytes(b"generated workbook")
+    manifest_path = tmp_path / "outlook_mappings_generation_manifest.json"
+    workbook_hash = hashlib.sha256(workbook_path.read_bytes()).hexdigest()
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "status": "promoted_and_reopened",
+                "hashes": {
+                    "promoted_master_sha256": workbook_hash,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pipeline, "WORKBOOK_PATH", workbook_path)
+    monkeypatch.setattr(
+        pipeline,
+        "MAPPING_GENERATION_MANIFEST_PATH",
+        manifest_path,
+    )
+
+    manifest = load_active_mapping_generation_manifest()
+
+    assert manifest is not None
+    assert manifest["status"] == "promoted_and_reopened"
+
+
+def test_stale_mapping_generation_manifest_fails_closed(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    workbook_path = tmp_path / "outlook_mappings_master.xlsx"
+    workbook_path.write_bytes(b"changed workbook")
+    manifest_path = tmp_path / "outlook_mappings_generation_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "hashes": {
+                    "promoted_master_sha256": "stale",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pipeline, "WORKBOOK_PATH", workbook_path)
+    monkeypatch.setattr(
+        pipeline,
+        "MAPPING_GENERATION_MANIFEST_PATH",
+        manifest_path,
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        load_active_mapping_generation_manifest()
