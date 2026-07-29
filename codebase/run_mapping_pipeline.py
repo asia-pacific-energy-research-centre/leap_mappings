@@ -82,6 +82,15 @@ STAGE3_RUN_MANIFEST_PATH = COMMON_ESTO_DIR / "stage3_run_manifest.json"
 MAPPING_GENERATION_MANIFEST_PATH = (
     REPO_ROOT / "config" / "outlook_mappings_generation_manifest.json"
 )
+DATASET_REGISTRY_ROOT = REPO_ROOT / "config" / "datasets"
+REGISTRY_PROVENANCE_FILES = {
+    "dataset_registry": "dataset_registry.csv",
+    "value_adapter_registry": "value_adapter_registry.csv",
+    "mapping_sheet_registry": "mapping_sheet_registry.csv",
+    "rollup_sheet_registry": "rollup_sheet_registry.csv",
+    "diagnostic_adapter_registry": "diagnostic_adapter_registry.csv",
+    "comparison_scope_registry": "comparison_scopes.csv",
+}
 
 RAW_LEAP_PATH       = REL_DIR / "raw_leap_results.csv"
 LEAP_ESTO_PATH      = REL_DIR / "leap_results_converted_to_esto.csv"
@@ -152,6 +161,67 @@ def load_active_mapping_generation_manifest() -> dict[str, object] | None:
             "or deliberately restore both workbook and manifest together."
         )
     return manifest
+
+
+def build_registry_provenance() -> dict[str, object]:
+    """Return hashes plus the active dataset/scope policy contract."""
+    files: dict[str, object] = {}
+    for registry_name, filename in REGISTRY_PROVENANCE_FILES.items():
+        path = DATASET_REGISTRY_ROOT / filename
+        frame = pd.read_csv(path, dtype=str).fillna("")
+        files[registry_name] = {
+            "path": str(path.resolve()),
+            "sha256": _sha256(path),
+            "row_count": int(len(frame)),
+        }
+
+    datasets = pd.read_csv(
+        DATASET_REGISTRY_ROOT / "dataset_registry.csv",
+        dtype=str,
+    ).fillna("")
+    enabled = datasets["enabled"].str.casefold().eq("true")
+    dataset_policies = (
+        datasets.loc[
+            enabled,
+            [
+                "dataset_id",
+                "source_version",
+                "value_adapter",
+                "hierarchy_adapter",
+                "scenario_policy_id",
+                "period_policy_id",
+                "native_unit",
+            ],
+        ]
+        .set_index("dataset_id")
+        .to_dict(orient="index")
+    )
+
+    scopes = pd.read_csv(
+        DATASET_REGISTRY_ROOT / "comparison_scopes.csv",
+        dtype=str,
+    ).fillna("")
+    default_scopes = scopes[
+        scopes["enabled"].str.casefold().eq("true")
+        & scopes["default_enabled"].str.casefold().eq("true")
+    ]
+    scope_policies = (
+        default_scopes[
+            [
+                "comparison_scope",
+                "included_dataset_ids",
+                "scenario_alignment_policy",
+                "period_alignment_policy",
+            ]
+        ]
+        .set_index("comparison_scope")
+        .to_dict(orient="index")
+    )
+    return {
+        "files": files,
+        "enabled_dataset_policies": dataset_policies,
+        "default_scope_policies": scope_policies,
+    }
 
 
 def _write_stage3_run_manifest(manifest: dict[str, object]) -> None:
@@ -285,6 +355,11 @@ def run_stage_2(
         ),
         allow_direct_subtotal_edges=direct_subtotal_edges,
     )
+    from codebase.mapping_tools.compile_structural_mapping_artifacts import (
+        compile_structural_mapping_artifacts,
+    )
+
+    compile_structural_mapping_artifacts()
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +942,7 @@ def run_stage_3(
         "mapping_workbook": str(WORKBOOK_PATH.resolve()),
         "mapping_workbook_sha256": _sha256(WORKBOOK_PATH),
         "mapping_generation": generation_manifest,
+        "registry_provenance": build_registry_provenance(),
         "chunk_value_application": chunk_value_application,
         "timings_seconds": {},
         "validation": {},

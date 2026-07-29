@@ -8,6 +8,7 @@ import codebase.run_mapping_pipeline as pipeline
 from codebase.run_mapping_pipeline import (
     _ALL_STAGES,
     _stage3_completion_status,
+    build_registry_provenance,
     expand_requested_stages,
     load_active_mapping_generation_manifest,
 )
@@ -117,3 +118,30 @@ def test_stale_mapping_generation_manifest_fails_closed(
 
     with pytest.raises(ValueError, match="does not match"):
         load_active_mapping_generation_manifest()
+
+
+def test_registry_provenance_records_all_contract_files_and_policies() -> None:
+    provenance = build_registry_provenance()
+
+    assert set(provenance["files"]) == {
+        "dataset_registry",
+        "value_adapter_registry",
+        "mapping_sheet_registry",
+        "rollup_sheet_registry",
+        "diagnostic_adapter_registry",
+        "comparison_scope_registry",
+    }
+    assert set(provenance["enabled_dataset_policies"]) == {
+        "ESTO",
+        "ESTO_EXTENDED",
+        "NINTH",
+        "LEAP",
+        "COMMON_ESTO",
+    }
+    assert "SYNTH_BALANCE" not in provenance["enabled_dataset_policies"]
+    assert set(provenance["default_scope_policies"]) == {
+        "esto_leap",
+        "esto_extended_leap",
+        "esto_leap_ninth",
+        "esto_extended_leap_ninth",
+    }
