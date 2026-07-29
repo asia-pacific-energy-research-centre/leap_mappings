@@ -22,6 +22,7 @@ MAPPING_SHEET_REGISTRY_PATH = (
 MAPPING_SHEET_REGISTRY_COLUMNS = [
     "sheet_name",
     "enabled",
+    "input_relative_path",
     "source_dataset_id",
     "target_dataset_id",
     "source_axis_1_candidates",
@@ -166,8 +167,9 @@ def build_mapping_sheet_configs(
         dataset_registry_path=dataset_registry_path,
         known_use_cases=known_use_cases,
     )
-    return [
-        {
+    configs = []
+    for row in frame[frame["enabled"]].itertuples(index=False):
+        config = {
             "sheet_name": row.sheet_name,
             "source_system": row.source_dataset_id,
             "target_system": row.target_dataset_id,
@@ -177,8 +179,10 @@ def build_mapping_sheet_configs(
             "target_product_candidates": list(row.target_axis_2_candidates),
             "use_cases": list(row.use_cases),
         }
-        for row in frame[frame["enabled"]].itertuples(index=False)
-    ]
+        if row.input_relative_path:
+            config["input_relative_path"] = row.input_relative_path
+        configs.append(config)
+    return configs
 
 
 #%%

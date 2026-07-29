@@ -362,14 +362,14 @@ flowchart TD
 
 | Area | Reusable foundation | Remaining hard-coding |
 |---|---|---|
-| Relationship model | Generic source/target system and pair columns; stable relationship IDs; registered sheet direction and column candidates | Current workbook row schemas, use-case catalogue, QA names, and current-dataset summaries |
+| Relationship model | Generic source/target system and pair columns; stable relationship IDs; registered workbook-sheet or CSV-table direction and column candidates | QA names and several current-dataset summaries |
 | Rollups | Rules compile into effective relationships | Separate LEAP, ESTO, and 9th loaders and code paths |
-| Common structure | Graph partitioning operates on canonical ESTO components and source aggregate constraints | Comparison-scope dictionaries explicitly list current systems and use cases |
-| Value application | ESTO-shaped tables can be concatenated by `source_system` | Relevance policy and several review routes explicitly recognize ESTO, ESTO Extended, 9th, and LEAP |
-| Hierarchy contract | Core consumes a list of normalized dataset adapters | Current registry explicitly constructs the known adapters and paths |
-| Pipeline orchestration | Stages have clear boundaries | Separate LEAP and 9th converters; Stage 3 explicitly assembles known inputs and validation trees |
+| Common structure | Graph partitioning operates on canonical ESTO components and registry-defined source aggregate constraints | Some structural and validation helpers retain current-source assumptions |
+| Value application | Registered Stage 3 source tables are concatenated by `source_system`; normalized PJ tables can use the generic passthrough adapter | Relevance policy and several review routes explicitly recognize ESTO, ESTO Extended, 9th, and LEAP |
+| Hierarchy contract | Core consumes normalized dataset adapters; reviewed CSV hierarchies use a generic adapter | Optimized current-source adapters and paths remain explicit registrations |
+| Pipeline orchestration | Stages have clear boundaries and registered value execution/source discovery | Separate optimized native converters and current-source validation trees remain |
 | Output contract | Long output retains `source_system` and provenance | Current allowed scopes and consumer expectations are based on the known systems |
-| Tests | Strong focused coverage for current semantics | No fourth-dataset onboarding or registry-driven end-to-end test |
+| Tests | Strong current-semantics coverage plus a disabled synthetic fourth-dataset acceptance fixture | A fresh full Stage 3 run with the fourth dataset enabled remains pending |
 
 Relevant implementation entry points:
 
@@ -446,7 +446,9 @@ Acceptance criteria:
 3. its hierarchy adapter appears in the contract manifest;
 4. structural parenthood follows declared ordinary edges;
 5. its mappings compile from configured sheet/table metadata;
-6. its rollup compiles through the generic rule schema;
+6. any new rollup it requires compiles through the generic rule schema (the
+   first-level fixture deliberately requires none because existing detailed
+   hub relationships already resolve its coarse boundary);
 7. a configured comparison scope admits it explicitly;
 8. Common-row construction does not split its source aggregate;
 9. Stage 3 publishes its `source_system` rows with lineage;
@@ -575,11 +577,25 @@ equivalent.
 
 Implementation status (2026-07-29): `SYNTH_BALANCE` is present in the dataset,
 scope, mapping-sheet, and value-adapter registries but disabled by default. Its
-maintained fixture uses first-level ESTO categories. An end-to-end Common-build
-and value-application test proves that a 100 PJ coarse synthetic row compares
-with two detailed ESTO rows of 60 PJ and 40 PJ in one conserved Common row,
-without allocation or missing mappings. Registry enable/disable, hierarchy
-manifest, and full orchestration acceptance checks remain to complete M6.
+maintained fixture uses first-level ESTO categories, two economies, two
+independently named scenarios, and three years. Generic reviewed-CSV hierarchy,
+reviewed-CSV mapping-table, and normalized-PJ value adapters allow it to be
+enabled through copied registries without a dataset-name branch. Tests prove
+that:
+
+- a 100 PJ coarse synthetic row compares with detailed ESTO rows of 60 PJ and
+  40 PJ in one conserved Common row without coarse-to-detailed allocation;
+- the source aggregate is not split;
+- mapped Stage 3-style rows retain source and aggregate-group lineage;
+- the deliberately unmapped first-level pair produces a bounded review set;
+- missing child observations remain `children_incomplete` value-conformance
+  evidence without changing structural parenthood;
+- disabling the registry rows preserves the production Stage 1 relationship
+  output byte-for-byte at 17,076 rows and SHA-256
+  `cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`.
+
+A fresh full Stage 3 orchestration run with the fixture enabled remains after
+M5 removes the remaining fixed-source validator routes.
 
 ### M7 — Onboard the first real additional dataset
 

@@ -1,0 +1,3 @@
+source_system,economy,scenario,year,esto_flow,esto_product,value
+ESTO,00_TEST,detail,2030,09.01 Electricity plants,01.01 Hard coal,60.0
+ESTO,00_TEST,detail,2030,09.02 Autoproducers,01.02 Brown coal,40.0

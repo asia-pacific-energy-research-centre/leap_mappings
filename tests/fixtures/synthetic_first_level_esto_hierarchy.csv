@@ -1,0 +1,9 @@
+axis_id,axis_role,node_id,node_label,parent_node_id,depth
+first_level_flows,flow,09 Total transformation,09 Total transformation,,1
+first_level_flows,flow,09.01 Electricity plants,09.01 Electricity plants,09 Total transformation,2
+first_level_flows,flow,09.02 Autoproducers,09.02 Autoproducers,09 Total transformation,2
+first_level_flows,flow,01 Production,01 Production,,1
+first_level_products,product,01 Coal,01 Coal,,1
+first_level_products,product,01.01 Hard coal,01.01 Hard coal,01 Coal,2
+first_level_products,product,01.02 Brown coal,01.02 Brown coal,01 Coal,2
+first_level_products,product,02 Crude oil,02 Crude oil,,1

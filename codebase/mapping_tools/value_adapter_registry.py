@@ -32,6 +32,16 @@ VALUE_ADAPTER_REGISTRY_COLUMNS = [
     "owner",
     "notes",
 ]
+NORMALIZED_VALUE_COLUMNS = [
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "esto_flow",
+    "esto_product",
+    "value",
+]
+GENERIC_NORMALIZED_ADAPTER = "normalized_long_passthrough"
 
 
 def _boolean(value: object, field: str, dataset_id: str) -> bool:
@@ -128,6 +138,7 @@ def run_registered_value_adapters(
     adapter_runners: dict[str, Callable[[], None]],
     registry_path: Path = VALUE_ADAPTER_REGISTRY_PATH,
     dataset_registry_path: Path = DATASET_REGISTRY_PATH,
+    repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Run each enabled native adapter once in configured order."""
     registry = load_value_adapter_registry(
@@ -135,14 +146,57 @@ def run_registered_value_adapters(
         dataset_registry_path,
     )
     enabled = registry[registry["enabled"]]
-    missing = sorted(set(enabled["adapter_name"]) - set(adapter_runners))
+    supported_adapters = set(adapter_runners) | {GENERIC_NORMALIZED_ADAPTER}
+    missing = sorted(set(enabled["adapter_name"]) - supported_adapters)
     if missing:
         raise ValueError(f"Missing registered value-adapter runners: {missing}")
+    datasets = load_dataset_registry(dataset_registry_path).set_index("dataset_id")
     executed: list[str] = []
     for row in enabled.itertuples(index=False):
-        adapter_runners[row.adapter_name]()
+        if row.adapter_name == GENERIC_NORMALIZED_ADAPTER:
+            _run_normalized_long_passthrough(
+                row=row,
+                dataset_row=datasets.loc[row.dataset_id],
+                repo_root=Path(repo_root),
+            )
+        else:
+            adapter_runners[row.adapter_name]()
         executed.append(row.dataset_id)
     return executed
+
+
+def _run_normalized_long_passthrough(
+    row: object,
+    dataset_row: pd.Series,
+    repo_root: Path,
+) -> None:
+    """Validate and publish an already-normalized PJ dataset."""
+    if str(dataset_row["native_unit"]).strip().upper() != "PJ":
+        raise ValueError(
+            f"{row.dataset_id}: normalized passthrough requires native_unit=PJ."
+        )
+    input_path = repo_root / row.input_relative_path
+    output_path = repo_root / row.output_relative_path
+    values = pd.read_csv(input_path, dtype=object)
+    missing_columns = sorted(set(NORMALIZED_VALUE_COLUMNS) - set(values.columns))
+    if missing_columns:
+        raise ValueError(
+            f"{row.dataset_id}: normalized input is missing columns: "
+            f"{missing_columns}"
+        )
+    values = values[NORMALIZED_VALUE_COLUMNS].copy()
+    source_systems = set(
+        values["source_system"].dropna().astype(str).str.strip()
+    )
+    if source_systems != {row.dataset_id}:
+        raise ValueError(
+            f"{row.dataset_id}: normalized input must contain only its own "
+            f"source_system; found {sorted(source_systems)}."
+        )
+    values["year"] = pd.to_numeric(values["year"], errors="raise").astype(int)
+    values["value"] = pd.to_numeric(values["value"], errors="raise")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    values.to_csv(output_path, index=False)
 
 
 #%%

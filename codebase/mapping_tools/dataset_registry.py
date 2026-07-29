@@ -29,6 +29,7 @@ DATASET_REGISTRY_COLUMNS = [
     "source_version",
     "value_adapter",
     "hierarchy_adapter",
+    "hierarchy_input_relative_path",
     "axis_1_id",
     "axis_1_role",
     "axis_2_id",
