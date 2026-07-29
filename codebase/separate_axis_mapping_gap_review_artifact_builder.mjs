@@ -290,6 +290,7 @@ async function buildWorkbook() {
 
   const output = await SpreadsheetFile.exportXlsx(workbook);
   await output.save(outputPath);
+  await fs.rm(`${outputPath}.inspect.ndjson`, { force: true });
   return outputPath;
 }
 

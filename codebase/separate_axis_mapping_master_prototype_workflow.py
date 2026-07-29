@@ -38,6 +38,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     compare_compiled_relationships,
     compile_axis_relationships,
     derive_axis_mappings,
+    expand_pair_universe_with_rollups,
     load_active_mapping_contract,
 )
 from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
@@ -159,6 +160,56 @@ def _load_pair_universes(
         force_refresh=force_leap_registry_refresh,
     )
     universes["LEAP"] = leap_registry
+    rollup_specs = {
+        "LEAP": {
+            "sheet": "leap_rollup_rules",
+            "input_flow": "input_leap_sector_name_full_path",
+            "input_product": "input_raw_leap_fuel_name",
+            "rolled_flow": "rolled_leap_sector_name_full_path",
+            "rolled_product": "rolled_raw_leap_fuel_name",
+            "scope": None,
+        },
+        "ESTO": {
+            "sheet": "esto_rollup_rules",
+            "input_flow": "input_esto_flow",
+            "input_product": "input_esto_product",
+            "rolled_flow": "rolled_esto_flow",
+            "rolled_product": "rolled_esto_product",
+            "scope": "ESTO",
+        },
+        "ESTO_EXTENDED": {
+            "sheet": "esto_rollup_rules",
+            "input_flow": "input_esto_flow",
+            "input_product": "input_esto_product",
+            "rolled_flow": "rolled_esto_flow",
+            "rolled_product": "rolled_esto_product",
+            "scope": "ESTO_EXTENDED",
+        },
+        "NINTH": {
+            "sheet": "ninth_rollup_rules",
+            "input_flow": "input_ninth_sector",
+            "input_product": "input_ninth_fuel",
+            "rolled_flow": "rolled_ninth_sector",
+            "rolled_product": "rolled_ninth_fuel",
+            "scope": None,
+        },
+    }
+    rollup_counts: dict[str, int] = {}
+    for dataset, spec in rollup_specs.items():
+        raw_count = len(universes[dataset])
+        rules = pd.read_excel(WORKBOOK_PATH, sheet_name=spec["sheet"])
+        universes[dataset] = expand_pair_universe_with_rollups(
+            universes[dataset],
+            rules,
+            input_flow_column=spec["input_flow"],
+            input_product_column=spec["input_product"],
+            rolled_flow_column=spec["rolled_flow"],
+            rolled_product_column=spec["rolled_product"],
+            dataset_scope=spec["scope"],
+        )
+        rollup_counts[dataset] = len(universes[dataset]) - raw_count
+    leap_manifest = dict(leap_manifest)
+    leap_manifest["rollup_pair_counts"] = rollup_counts
     return universes, leap_manifest
 
 
@@ -214,6 +265,7 @@ def _pair_universe_workbook_view(registry: pd.DataFrame) -> pd.DataFrame:
         "scenario_scope",
         "scenarios_observed",
         "pair_universe_authority",
+        "pair_origin",
         "authority_layer",
         "source_kind",
         "template_support_count",
@@ -917,7 +969,7 @@ def run_single_axis_master_prototype(
             "generated_from_model_branches_and_balance_report_contract"
         ),
         "leap_pair_registry_manifest": leap_registry_manifest,
-        "rollup_sheets_included": False,
+        "rollup_sheets_included": True,
         "compiled_compatibility_policy": (
             "ESTO final-year nonzero; Ninth any post-ESTO-year nonzero"
         ),

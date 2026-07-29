@@ -22,6 +22,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     compare_registry_snapshots,
     compile_axis_relationships,
     derive_axis_mappings,
+    expand_pair_universe_with_rollups,
     select_alias_candidate,
 )
 from codebase.mapping_tools.leap_pair_registry import (
@@ -160,6 +161,124 @@ def test_leap_source_manifest_detects_content_and_timestamp_updates(
     changed, reason = source_manifest_changed(second, first)
     assert changed
     assert reason == "source_workbook_set_or_fingerprint_changed"
+
+
+def test_pair_universe_rollups_add_nested_pairs_and_one_origin_column() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "dataset": "NINTH",
+                "flow": "leaf_a",
+                "product": "fuel_1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_member": True,
+                "pair_is_subtotal": False,
+                "projection_future_active": True,
+                "pair_status": "data_valid",
+                "temporal_evidence_status": "projection_future_active",
+            },
+            {
+                "dataset": "NINTH",
+                "flow": "aggregate_1",
+                "product": "fuel_1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_member": True,
+                "pair_is_subtotal": True,
+                "projection_future_active": False,
+                "pair_status": "zero_only",
+                "temporal_evidence_status": "structural_zero_only",
+            },
+        ]
+    )
+    rules = pd.DataFrame(
+        [
+            {
+                "input_flow": "leaf_a",
+                "input_product": "",
+                "rolled_flow": "aggregate_1",
+                "rolled_product": "",
+                "include": True,
+                "Subtotal": True,
+            },
+            {
+                "input_flow": "aggregate_1",
+                "input_product": "",
+                "rolled_flow": "aggregate_2",
+                "rolled_product": "",
+                "include": True,
+                "Subtotal": "MIXED",
+            },
+        ]
+    )
+
+    result = expand_pair_universe_with_rollups(
+        registry,
+        rules,
+        input_flow_column="input_flow",
+        input_product_column="input_product",
+        rolled_flow_column="rolled_flow",
+        rolled_product_column="rolled_product",
+    ).set_index(["flow", "product"])
+
+    assert result.loc[("leaf_a", "fuel_1"), "pair_origin"] == "raw"
+    assert (
+        result.loc[("aggregate_1", "fuel_1"), "pair_origin"]
+        == "raw_and_rollup"
+    )
+    assert (
+        result.loc[("aggregate_1", "fuel_1"), "temporal_evidence_status"]
+        == "projection_future_active"
+    )
+    assert result.loc[("aggregate_2", "fuel_1"), "pair_origin"] == "rollup"
+    assert bool(
+        result.loc[("aggregate_2", "fuel_1"), "projection_future_active"]
+    )
+
+
+def test_pair_universe_rollup_activity_combines_all_contributors() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "flow": "inactive_leaf",
+                "product": "fuel",
+                "projection_future_active": False,
+                "pair_is_subtotal": False,
+            },
+            {
+                "flow": "active_leaf",
+                "product": "fuel",
+                "projection_future_active": True,
+                "pair_is_subtotal": False,
+            },
+        ]
+    )
+    rules = pd.DataFrame(
+        [
+            {
+                "input_flow": "inactive_leaf",
+                "rolled_flow": "combined",
+                "include": True,
+                "Subtotal": True,
+            },
+            {
+                "input_flow": "active_leaf",
+                "rolled_flow": "combined",
+                "include": True,
+                "Subtotal": True,
+            },
+        ]
+    )
+
+    result = expand_pair_universe_with_rollups(
+        registry,
+        rules,
+        input_flow_column="input_flow",
+        input_product_column="input_product",
+        rolled_flow_column="rolled_flow",
+        rolled_product_column="rolled_product",
+    ).set_index(["flow", "product"])
+
+    assert bool(result.loc[("combined", "fuel"), "projection_future_active"])
 
 
 def test_est_o_registry_distinguishes_data_valid_and_zero_only(tmp_path: Path) -> None:

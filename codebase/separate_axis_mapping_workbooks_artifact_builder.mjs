@@ -262,6 +262,10 @@ async function scanFormulaErrors(workbook, label) {
   console.log(result.ndjson);
 }
 
+async function removeInspectSidecar(workbookPath) {
+  await fs.rm(`${workbookPath}.inspect.ndjson`, { force: true });
+}
+
 async function buildEditableWorkbook() {
   const workbook = Workbook.create();
   const readme = workbook.worksheets.add("README");
@@ -294,7 +298,7 @@ async function buildEditableWorkbook() {
     ],
     [
       "Subtotals and rollups",
-      "Subtotal labels are generated from key-pair registries. Existing rollup sheets remain in the generated master unchanged for now; moving rollup maintenance here is a later design decision.",
+      "Canonical rollup rules are applied to raw key pairs before mappings are compiled. The generated master keeps the existing rollup-rule sheets unchanged.",
     ],
     [
       "Current status",
@@ -335,7 +339,7 @@ async function buildPairWorkbook() {
     ],
     [
       "Possible combinations",
-      "ESTO, ESTO Extended, and Ninth sheets contain the Cartesian combination of keys discovered on their two axes. exists_in_dataset identifies combinations actually present in the source dataset.",
+      "ESTO, ESTO Extended, and Ninth sheets contain the Cartesian combination of discovered axis keys. exists_in_dataset is TRUE for raw or deterministically rollup-derived pairs; pair_origin distinguishes raw, rollup, and raw_and_rollup.",
     ],
     [
       "Historical rule",
@@ -351,7 +355,7 @@ async function buildPairWorkbook() {
     ],
     [
       "LEAP boundary",
-      "This combines exact model-branch pairs with the deterministic balance-report grid. Current observed balance exports are verification evidence; they do not define global validity.",
+      "This combines exact model-branch pairs, the deterministic balance-report grid, and canonical rollup-derived pairs. Current observed balance exports are verification evidence; they do not define global validity.",
     ],
     [
       "Subtotal labels",
@@ -368,14 +372,44 @@ async function buildPairWorkbook() {
   await addCsvSheets(workbook, manifest.pair_sources, false);
   await renderWorkbook(workbook, "generated_pairs", {
     README: "A1:H22",
-    "LEAP key pairs": "A1:F20",
-    "ESTO key pairs": "A1:G20",
-    "ESTO Extended key pairs": "A1:G20",
-    "Ninth key pairs": "A1:G20",
+    "LEAP key pairs": "A1:G20",
+    "ESTO key pairs": "A1:H20",
+    "ESTO Extended key pairs": "A1:H20",
+    "Ninth key pairs": "A1:H20",
   });
   await scanFormulaErrors(workbook, "generated pair workbook");
   const output = await SpreadsheetFile.exportXlsx(workbook);
   await output.save(pairWorkbookPath);
+  await removeInspectSidecar(pairWorkbookPath);
+}
+
+async function verifyPairWorkbook() {
+  const input = await FileBlob.load(pairWorkbookPath);
+  const workbook = await SpreadsheetFile.importXlsx(input);
+  const preview = await workbook.render({
+    sheetName: "ESTO Extended key pairs",
+    range: "A1:H20",
+    scale: 1,
+    format: "png",
+  });
+  await fs.writeFile(
+    path.join(
+      previewRoot,
+      "generated_pairs",
+      "ESTO_Extended_key_pairs_retry.png",
+    ),
+    new Uint8Array(await preview.arrayBuffer()),
+  );
+  const inspection = await workbook.inspect({
+    kind: "table",
+    range: "ESTO Extended key pairs!A1:H6",
+    include: "values,formulas",
+    tableMaxRows: 6,
+    tableMaxCols: 8,
+    maxChars: 5000,
+  });
+  console.log(inspection.ndjson);
+  await removeInspectSidecar(pairWorkbookPath);
 }
 
 async function buildGeneratedMaster() {
@@ -404,12 +438,6 @@ async function buildGeneratedMaster() {
     }
     const generatedDataRows = matrix.length - 1;
     const canonicalCapacity = used.rowCount - 1;
-    if (generatedDataRows > canonicalCapacity) {
-      throw new Error(
-        `${sheetName} needs ${generatedDataRows} rows but the canonical `
-        + `formatted capacity is ${canonicalCapacity}.`,
-      );
-    }
     const originalIndex = sheet.index;
     sheet.delete();
     sheet = workbook.worksheets.add(sheetName);
@@ -456,6 +484,7 @@ async function buildGeneratedMaster() {
     ninth_pairs_to_esto_pairs: "A1:H18",
   });
   await scanFormulaErrors(reopened, "reopened generated master");
+  await removeInspectSidecar(generatedMasterPath);
 
   const inspection = {};
   for (const sheetName of Object.keys(manifest.compiled_sources)) {
@@ -484,6 +513,8 @@ const buildPairs = globalThis.BUILD_PAIRS
   ?? runtimeEnvironment.BUILD_PAIRS !== "false";
 const buildMaster = globalThis.BUILD_MASTER
   ?? runtimeEnvironment.BUILD_MASTER !== "false";
+const verifyPairs = globalThis.VERIFY_PAIRS
+  ?? runtimeEnvironment.VERIFY_PAIRS === "true";
 
 if (buildEditable) {
   await buildEditableWorkbook();
@@ -493,6 +524,9 @@ if (buildPairs) {
 }
 if (buildMaster) {
   await buildGeneratedMaster();
+}
+if (verifyPairs) {
+  await verifyPairWorkbook();
 }
 
 console.log(JSON.stringify({

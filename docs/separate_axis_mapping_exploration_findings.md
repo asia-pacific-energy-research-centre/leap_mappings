@@ -609,12 +609,12 @@ It produces:
 
 | Metric | Count |
 |---|---:|
-| compiled relationships | 4,480 |
-| rows remaining after the within-axis cardinality gate | 2,779 |
-| exact current relationships reproduced | 3,276 |
-| current relationships not compiled | 4,373 |
-| extra targets on a current source pair | 689 |
-| candidates for source pairs absent from the current contract | 515 |
+| compiled relationships | 6,290 |
+| rows remaining after the within-axis cardinality gate | 3,587 |
+| exact current relationships reproduced | 4,468 |
+| current relationships not compiled | 3,181 |
+| extra targets on a current source pair | 1,084 |
+| candidates for source pairs absent from the current contract | 738 |
 
 The temporal rule materially reduces ambiguous extras, but excludes many
 currently accepted mappings. Those missing rows are not automatically errors:
@@ -622,18 +622,18 @@ they can represent reserved/future mappings, current mappings unsupported at
 the selected boundary, subtotal/hierarchy relationships, or relationships that
 need a different temporal rule.
 
-Generated compatibility-sheet row counts are:
+Rollup-aware generated compatibility-sheet row counts are:
 
-- `leap_combined_esto`: 1,751;
-- `leap_combined_ninth`: 1,534; and
-- `ninth_pairs_to_esto_pairs`: 1,195.
+- `leap_combined_esto`: 2,824;
+- `leap_combined_ninth`: 2,011; and
+- `ninth_pairs_to_esto_pairs`: 1,455.
 
 They preserve the maintained sheet column names and generated subtotal flags,
 so downstream consumers can technically use the same interface. They are not
 production-ready while the axis and disagreement gates fail.
 
-A read-only Stage 1 compatibility run accepted all 4,480 temporal compiled
-relationships through the current structural boundary and produced 8,960
+A read-only Stage 1 compatibility run accepted all 6,290 temporal compiled
+relationships through the current structural boundary and produced 12,580
 Stage 1 rows, eight ESTO override rows, and 122 non-expanding catalogue rows
 without an interface error. This proves schema compatibility, not semantic
 correctness.
@@ -645,7 +645,7 @@ particular, `absent` can mean that the compiler never formed a candidate
 because its source pair was missing from the generated source registry; it
 does not always mean that the target pair is absent from the target dataset.
 The review workbook under
-`outputs/separate_axis_mapping_gap_review_20260729/` now contains all 4,373
+`outputs/separate_axis_mapping_gap_review_20260729/` now contains all 3,181
 missing maintained relationships with direct exact-pair evidence for base
 ESTO, ESTO Extended, and Ninth.
 
@@ -653,18 +653,26 @@ The more useful first-pass classification is:
 
 | Primary diagnostic | Rows |
 |---|---:|
-| source pair absent from generated registry | 1,698 |
-| ESTO pair missing from base or Extended structural scope | 600 |
-| Ninth target pair not structurally present | 146 |
-| ESTO pair structural but zero across every available year in both scopes | 822 |
-| Ninth pair structural but zero across every available year | 296 |
-| ESTO non-zero in another year but not accepted at the final-year boundary | 500 |
-| Ninth non-zero in another year but not after the ESTO boundary | 311 |
+| source pair absent from generated registry | 786 |
+| ESTO pair missing from base or Extended structural scope | 52 |
+| Ninth target pair not structurally present | 32 |
+| ESTO pair structural but zero across every available year in both scopes | 969 |
+| Ninth pair structural but zero across every available year | 318 |
+| ESTO non-zero in another year but not accepted at the final-year boundary | 649 |
+| Ninth non-zero in another year but not after the ESTO boundary | 375 |
 
-Only 811 rows are therefore straightforward boundary-window policy questions.
-The other 3,562 need source-authority, structural-pair, zero-all-years, or
-original-mapping review. This supports reviewing the maintained mappings
-before weakening the temporal rule globally.
+The rollup layer restored 333 of the 758 current LEAP source pairs previously
+missing from the raw registry and 206 current Ninth source pairs. The remaining
+source-authority queue contains 425 unique LEAP pairs and 40 unique Ninth
+pairs. These residuals include older path aliases, component-path naming
+differences, and rolled flow/fuel combinations that no current contributing
+pair can derive; they must not be promoted merely because their flow label is
+a recognised rollup.
+
+There are now 1,024 boundary-window policy rows. The other 2,157 missing rows
+need source-authority, structural-pair, zero-all-years, or original-mapping
+review. This still supports reviewing maintained mappings before weakening the
+temporal rule globally.
 
 Subtotal metadata also needs a dedicated cleanup:
 
@@ -778,17 +786,25 @@ This workbook is labelled **GENERATED — DO NOT EDIT**. It contains:
 
 | Sheet | Rows | Interpretation |
 |---|---:|---|
-| `LEAP key pairs` | 33,637 | layered direct-branch and deterministic balance-grid authority |
-| `ESTO key pairs` | 9,396 | Cartesian discovered keys plus final-year evidence |
-| `ESTO Extended key pairs` | 17,901 | Cartesian discovered keys plus final-year evidence |
-| `Ninth key pairs` | 18,980 | Cartesian discovered keys plus post-boundary evidence |
+| `LEAP key pairs` | 34,337 | raw structural authority plus 700 rollup-derived pairs |
+| `ESTO key pairs` | 10,692 | Cartesian discovered keys plus 1,258 rollup-derived exact pairs |
+| `ESTO Extended key pairs` | 18,792 | Cartesian discovered keys plus 861 rollup-derived exact pairs |
+| `Ninth key pairs` | 19,630 | Cartesian discovered keys plus 554 rollup-derived exact pairs |
 
 The ESTO and Ninth sheets deliberately retain combinations that are not
 observed. `exists_in_dataset` and the temporal columns distinguish them from
-eligible compiler pairs. LEAP contains only explicitly generated direct or
-balance pairs and includes authority-layer and provenance columns for source
-kind, template files, detailed-row sheets, and support counts. The workbook
-contains 79,914 rows across its four generated pair sheets.
+eligible compiler pairs. Active canonical rollup rules are applied after raw
+pair discovery and before axis compilation. Blank rollup products preserve the
+input product, and repeated application supports nested rollups. The generated
+workbook exposes only one provenance field, `pair_origin`, with values `raw`,
+`rollup`, or `raw_and_rollup`. It contains 83,451 rows across its four
+generated pair sheets.
+
+Rollup-derived temporal eligibility is propagated from contributing exact
+pairs. It is not inferred by taking a Cartesian product of a rolled flow with
+every fuel. Consequently, a rolled flow/fuel combination appears as an exact
+pair only when at least one active rule can derive it from a contributing
+source pair.
 
 ### 3. Generated compatibility master
 
@@ -804,15 +820,15 @@ This workbook is the proposed no-consumer-code-change boundary:
   `FALSE` presentation rather than in-cell checkboxes; and
 - the canonical `config/outlook_mappings_master.xlsx` remains untouched.
 
-The three generated pair sheets contain 4,480 rows in total. A strict
+The three generated pair sheets contain 6,290 rows in total. A strict
 compatibility validation read them through the current loader with zero
 incomplete rows and ran the current Stage 1 transformation without a code
 change:
 
 | Check | Result |
 |---|---:|
-| generated active relationships | 4,480 |
-| Stage 1 rows | 8,960 |
+| generated active relationships | 6,290 |
+| Stage 1 rows | 12,580 |
 | ESTO override rows | 8 |
 | non-expanding rollup catalogue rows | 122 |
 
@@ -907,9 +923,9 @@ Command:
 C:\Users\Work\miniconda3\python.exe -m pytest tests\test_separate_axis_mapping_exploration.py -q
 ```
 
-Result after the layered-registry and workbook additions: `40 passed` across
-the focused separate-axis, Common ESTO structure, and mapping-maintenance test
-files.
+Result after adding rollup-derived pair authority: `82 passed` across the
+focused separate-axis, source-rollup, non-expanding-rollup, and Stage 1
+relationship test files.
 
 The canonical workbook hash was unchanged, and no sibling production files
 were edited.

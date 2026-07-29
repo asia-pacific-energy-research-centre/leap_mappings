@@ -196,6 +196,250 @@ def _ninth_parent_nodes(frame: pd.DataFrame) -> tuple[set[str], set[str]]:
 
 # --- Valid-pair registries --------------------------------------------------
 
+def expand_pair_universe_with_rollups(
+    registry: pd.DataFrame,
+    rules_df: pd.DataFrame,
+    *,
+    input_flow_column: str,
+    input_product_column: str,
+    rolled_flow_column: str,
+    rolled_product_column: str,
+    dataset_scope: str | None = None,
+) -> pd.DataFrame:
+    """Add every pair deterministically derivable from active rollup rules.
+
+    Blank input products match every product and blank rolled products preserve
+    the matched product. Rules are applied repeatedly so a rolled pair can feed
+    a later rollup. ``pair_origin`` is the only public provenance field needed:
+    raw pairs remain ``raw``, derived pairs are ``rollup``, and exact overlaps
+    are labelled ``raw_and_rollup``.
+    """
+    required_registry = {"flow", "product"}
+    missing_registry = required_registry - set(registry.columns)
+    if missing_registry:
+        raise ValueError(
+            "Pair registry is missing required columns: "
+            f"{sorted(missing_registry)}"
+        )
+    required_rules = {input_flow_column, rolled_flow_column}
+    missing_rules = required_rules - set(rules_df.columns)
+    if missing_rules:
+        raise ValueError(
+            "Rollup rules are missing required columns: "
+            f"{sorted(missing_rules)}"
+        )
+
+    result = registry.copy()
+    result["flow"] = result["flow"].map(_clean)
+    result["product"] = result["product"].map(_clean)
+    result = result[
+        result["flow"].ne("") & result["product"].ne("")
+    ].drop_duplicates(["flow", "product"], keep="first")
+    if "pair_origin" not in result.columns:
+        result["pair_origin"] = "raw"
+    else:
+        result["pair_origin"] = (
+            result["pair_origin"].map(_clean).replace("", "raw")
+        )
+
+    rules = rules_df.copy()
+    if "include" in rules.columns:
+        rules = rules[rules["include"].map(_truthy)].copy()
+    if dataset_scope and "esto_dataset_scope" in rules.columns:
+        scopes = rules["esto_dataset_scope"].map(_clean).str.upper()
+        rules = rules[
+            scopes.isin({"", "BOTH", dataset_scope.upper()})
+        ].copy()
+    for column in [
+        input_flow_column,
+        input_product_column,
+        rolled_flow_column,
+        rolled_product_column,
+    ]:
+        if column not in rules.columns:
+            rules[column] = ""
+        rules[column] = rules[column].map(_clean)
+    rules = rules[
+        rules[input_flow_column].ne("")
+        & rules[rolled_flow_column].ne("")
+    ].drop_duplicates(
+        [
+            input_flow_column,
+            input_product_column,
+            rolled_flow_column,
+            rolled_product_column,
+        ]
+    )
+
+    boolean_columns = [
+        column
+        for column in result.columns
+        if column
+        in {
+            "flow_is_parent",
+            "product_is_parent",
+            "pair_is_subtotal",
+            "pair_exists_in_dataset",
+            "pair_universe_member",
+            "historical_boundary_active",
+            "projection_future_active",
+            "active_before_or_at_boundary",
+        }
+    ]
+    first_year_column = (
+        "first_observed_year"
+        if "first_observed_year" in result.columns
+        else None
+    )
+    last_year_column = (
+        "last_observed_year"
+        if "last_observed_year" in result.columns
+        else None
+    )
+
+    # A finite rule set reaches closure quickly. The explicit bound protects
+    # against accidental cycles while still allowing nested rollups.
+    for _ in range(max(len(rules), 1) + 1):
+        derived_records: list[dict[str, Any]] = []
+        for rule in rules.to_dict("records"):
+            matched = result[
+                result["flow"].eq(rule[input_flow_column])
+            ].copy()
+            input_product = rule[input_product_column]
+            if input_product:
+                matched = matched[
+                    matched["product"].eq(input_product)
+                ]
+            if matched.empty:
+                continue
+
+            rolled_product = rule[rolled_product_column]
+            subtotal_setting = _clean(rule.get("Subtotal")).casefold()
+            grouped = matched.groupby("product", sort=False, dropna=False)
+            for product, group in grouped:
+                record = group.iloc[0].to_dict()
+                record["flow"] = rule[rolled_flow_column]
+                record["product"] = rolled_product or _clean(product)
+                record["pair_origin"] = "rollup"
+                for column in boolean_columns:
+                    record[column] = bool(
+                        group[column].fillna(False).astype(bool).any()
+                    )
+                if "pair_exists_in_dataset" in record:
+                    record["pair_exists_in_dataset"] = True
+                if "pair_universe_member" in record:
+                    record["pair_universe_member"] = True
+                if "pair_is_subtotal" in record:
+                    if subtotal_setting in {"true", "1", "yes"}:
+                        record["pair_is_subtotal"] = True
+                    elif subtotal_setting in {"false", "0", "no"}:
+                        record["pair_is_subtotal"] = False
+                if first_year_column:
+                    record[first_year_column] = pd.to_numeric(
+                        group[first_year_column],
+                        errors="coerce",
+                    ).min()
+                if last_year_column:
+                    record[last_year_column] = pd.to_numeric(
+                        group[last_year_column],
+                        errors="coerce",
+                    ).max()
+                record["pair_universe_authority"] = (
+                    "generated_from_active_rollup_rules"
+                )
+                if "authority_layer" in record:
+                    record["authority_layer"] = "rollup_rule"
+                if "source_kind" in record:
+                    record["source_kind"] = "rollup_rule"
+                derived_records.append(record)
+
+        if not derived_records:
+            break
+        derived_raw = pd.DataFrame(derived_records)
+        combined_records: list[dict[str, Any]] = []
+        for _, group in derived_raw.groupby(
+            ["flow", "product"],
+            sort=False,
+            dropna=False,
+        ):
+            record = group.iloc[0].to_dict()
+            for column in boolean_columns:
+                record[column] = bool(
+                    group[column].fillna(False).astype(bool).any()
+                )
+            if first_year_column:
+                record[first_year_column] = pd.to_numeric(
+                    group[first_year_column],
+                    errors="coerce",
+                ).min()
+            if last_year_column:
+                record[last_year_column] = pd.to_numeric(
+                    group[last_year_column],
+                    errors="coerce",
+                ).max()
+            combined_records.append(record)
+        derived = pd.DataFrame(combined_records)
+        existing_index = result.set_index(["flow", "product"]).index
+        new_mask = ~pd.MultiIndex.from_frame(
+            derived[["flow", "product"]]
+        ).isin(existing_index)
+        new_rows = derived.loc[new_mask].copy()
+
+        overlap = derived.loc[~new_mask].set_index(["flow", "product"])
+        if not overlap.empty:
+            keyed = result.set_index(["flow", "product"])
+            for key in overlap.index.unique():
+                current_origin = _clean(keyed.at[key, "pair_origin"])
+                if current_origin == "raw":
+                    keyed.at[key, "pair_origin"] = "raw_and_rollup"
+                for column in boolean_columns:
+                    keyed.at[key, column] = bool(
+                        _truthy(keyed.at[key, column])
+                        or _truthy(overlap.at[key, column])
+                    )
+            result = keyed.reset_index()
+
+        if new_rows.empty:
+            break
+        result = pd.concat([result, new_rows], ignore_index=True)
+
+    active_historical = result.get(
+        "historical_boundary_active",
+        pd.Series(False, index=result.index),
+    ).fillna(False).astype(bool)
+    active_projection = result.get(
+        "projection_future_active",
+        pd.Series(False, index=result.index),
+    ).fillna(False).astype(bool)
+    rollup_only = result["pair_origin"].eq("rollup")
+    rollup_involved = result["pair_origin"].isin(
+        {"rollup", "raw_and_rollup"}
+    )
+    if "pair_status" in result.columns:
+        result.loc[rollup_only, "pair_status"] = "rollup_derived_pair"
+        result.loc[
+            rollup_involved & (active_historical | active_projection),
+            "pair_status",
+        ] = "data_valid"
+    if "temporal_evidence_status" in result.columns:
+        result.loc[
+            rollup_only,
+            "temporal_evidence_status",
+        ] = "structural_rollup_pair"
+        result.loc[
+            rollup_involved & active_historical,
+            "temporal_evidence_status",
+        ] = "historical_boundary_active"
+        result.loc[
+            rollup_involved & active_projection,
+            "temporal_evidence_status",
+        ] = "projection_future_active"
+
+    return result.sort_values(
+        ["flow", "product"],
+        kind="stable",
+    ).reset_index(drop=True)
+
 def build_valid_pair_registry(
     source_path: Path,
     dataset: str,

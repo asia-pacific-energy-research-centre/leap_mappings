@@ -227,6 +227,7 @@ def _build_cartesian_registry(
         "product",
         "pair_is_subtotal",
         active_column,
+        "pair_origin",
     ]
     evidence = (
         exact_pairs[evidence_columns]
@@ -270,6 +271,7 @@ def _build_cartesian_registry(
         [
             flow_name,
             product_name,
+            "pair_origin",
             "exists_in_dataset",
             active_output_name,
             "eligible_for_compilation",
@@ -293,13 +295,7 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
                 "pair_exists_in_dataset",
                 "pair_is_subtotal",
                 "temporal_evidence_status",
-                "authority_layer",
-                "source_kind",
-                "template_support_count",
-                "template_files",
-                "new_rows_sheet_count",
-                "new_rows_sheets",
-                "source_path_count",
+                "pair_origin",
             ]
         ]
         .drop_duplicates(["flow", "product"])
@@ -321,17 +317,11 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
         [
             "leap_sector",
             "leap_fuel",
+            "pair_origin",
             "exists_in_dataset",
             "eligible_for_compilation",
             "pair_is_subtotal",
             "registry_status",
-            "authority_layer",
-            "source_kind",
-            "template_support_count",
-            "template_files",
-            "new_rows_sheet_count",
-            "new_rows_sheets",
-            "source_path_count",
         ]
     ]
 
@@ -428,7 +418,8 @@ def prepare_split_workbook_sources() -> dict[str, object]:
             "the deterministic LEAP balance-report grid. Report flows come "
             "from all current economy templates plus detailed demand/power "
             "rows; the 70 balance products come from the template fuel "
-            "catalogue. Source fingerprints control automatic refresh."
+            "catalogue. Active canonical rollup rules then add deterministic "
+            "rolled pairs. Source fingerprints control automatic refresh."
         ),
         "generated_master_contract": (
             "Copy every canonical sheet unchanged, then replace only the "
