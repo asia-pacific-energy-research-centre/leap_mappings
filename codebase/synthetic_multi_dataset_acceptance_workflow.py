@@ -23,6 +23,7 @@ from codebase.mapping_tools.dataset_registry import (
     COMPARISON_SCOPE_REGISTRY_PATH,
     DATASET_REGISTRY_PATH,
     build_comparison_scope_configs,
+    get_comparison_scope_systems,
 )
 from codebase.mapping_tools.hierarchy_subtotal_adapters import (
     ADAPTER_VERSION,
@@ -445,6 +446,10 @@ def run_synthetic_multi_dataset_acceptance(
         registry_path=registry_paths["value"],
         dataset_registry_path=registry_paths["dataset"],
     )
+    comparison_scope_systems = get_comparison_scope_systems(
+        registry_path=registry_paths["scope"],
+        dataset_registry_path=registry_paths["dataset"],
+    )
     stage3_output_dir = output_dir / "stage3"
     comparison, _, missing = run_apply_common_esto_structure(
         source_paths=source_paths,
@@ -454,6 +459,7 @@ def run_synthetic_multi_dataset_acceptance(
         broad_common_row_component_limit=50,
         active_component_abs_tolerance=0.0,
         relevance_policies=relevance_policies,
+        comparison_scope_systems=comparison_scope_systems,
         run_id="synthetic_multi_dataset_acceptance_v1",
         run_timestamp_utc=datetime.now(timezone.utc).isoformat(),
     )

@@ -663,7 +663,9 @@ The fixture now has a notebook-safe end-to-end runner at
 criteria plus a mapped-value conservation invariant:
 
 - the copied registries enabled the dataset, scope, mapping table, value
-  adapter, and hierarchy adapter without changing production configuration;
+  adapter, and hierarchy adapter without changing production configuration,
+  and the value-application/check paths consumed that copied scope membership
+  explicitly rather than admitting an unknown scope by fallback;
 - the reviewed mapping CSV compiled to 6 relationship/use-case rows;
 - the declared hierarchy published 4 ordinary edges and retained
   `children_incomplete` as value-conformance evidence;

@@ -813,8 +813,14 @@ def apply_common_structure(
     source_df: pd.DataFrame,
     common_rows_df: pd.DataFrame,
     return_lineage: bool = False,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Join ESTO-shaped source rows to common rows and aggregate values."""
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     if source_df.empty:
         comparison_df = pd.DataFrame(columns=OUTPUT_COLUMNS)
         missing_map_df = pd.DataFrame()
@@ -892,7 +898,7 @@ def apply_common_structure(
         expanded_frames: list[pd.DataFrame] = []
         for _, scope_row in scopes_df.iterrows():
             comparison_scope = str(scope_row["comparison_scope"])
-            allowed_systems = COMPARISON_SCOPE_SYSTEMS.get(comparison_scope)
+            allowed_systems = scope_systems.get(comparison_scope)
             if allowed_systems is None:
                 scoped_source_df = source_df.copy()
             else:
@@ -906,7 +912,10 @@ def apply_common_structure(
     else:
         source_df = source_df.copy()
         valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in COMPARISON_SCOPE_SYSTEMS.get(str(row["comparison_scope"]), {row["source_system"]}),
+            lambda row: row["source_system"] in scope_systems.get(
+                str(row["comparison_scope"]),
+                {row["source_system"]},
+            ),
             axis=1,
         )
         source_df = source_df[valid_scope_mask].copy()
@@ -1158,8 +1167,17 @@ def intersecting_axis_group_error_message(
     )
 
 
-def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
+def build_total_check(
+    source_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> pd.DataFrame:
     """Check before/after total preservation by source/economy/scenario/year."""
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     if source_df.empty:
         return pd.DataFrame(columns=TOTAL_GROUP_COLUMNS + ["source_total", "common_total", "difference"])
     source_df = source_df.copy()
@@ -1171,7 +1189,7 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
             expanded_frames: list[pd.DataFrame] = []
             for _, scope_row in scopes_df.iterrows():
                 comparison_scope = str(scope_row["comparison_scope"])
-                allowed_systems = COMPARISON_SCOPE_SYSTEMS.get(comparison_scope)
+                allowed_systems = scope_systems.get(comparison_scope)
                 if allowed_systems is None:
                     scoped_source_df = source_df.copy()
                 else:
@@ -1184,7 +1202,10 @@ def build_total_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> p
             del expanded_frames
     else:
         valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in COMPARISON_SCOPE_SYSTEMS.get(str(row["comparison_scope"]), {row["source_system"]}),
+            lambda row: row["source_system"] in scope_systems.get(
+                str(row["comparison_scope"]),
+                {row["source_system"]},
+            ),
             axis=1,
         )
         source_df = source_df[valid_scope_mask].copy()
@@ -1208,7 +1229,11 @@ SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS = [
 ]
 
 
-def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataFrame) -> pd.DataFrame:
+def build_source_coverage_check(
+    source_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> pd.DataFrame:
     """Build a limited whole-source total diagnostic.
 
     This is not hierarchy coverage. It compares full source totals with scope-expanded
@@ -1219,12 +1244,17 @@ def build_source_coverage_check(source_df: pd.DataFrame, comparison_df: pd.DataF
     empty_cols = SOURCE_COVERAGE_GROUP_COLUMNS + ["source_total", "common_total", "difference"]
     if source_df.empty:
         return pd.DataFrame(columns=empty_cols)
+    scope_systems = (
+        COMPARISON_SCOPE_SYSTEMS
+        if comparison_scope_systems is None
+        else comparison_scope_systems
+    )
     source_df = source_df.copy()
     if "comparison_scope" not in source_df.columns:
         scopes = comparison_df[["comparison_scope"]].drop_duplicates() if not comparison_df.empty else pd.DataFrame()
         expanded = []
         for comparison_scope in scopes.get("comparison_scope", pd.Series(dtype=object)):
-            allowed = COMPARISON_SCOPE_SYSTEMS.get(str(comparison_scope))
+            allowed = scope_systems.get(str(comparison_scope))
             scoped = source_df if allowed is None else source_df[source_df["source_system"].isin(allowed)]
             if scoped.empty:
                 continue
@@ -1581,6 +1611,7 @@ def run_common_esto_comparison_fast_path(
     economies: list[str] | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -1628,7 +1659,11 @@ def run_common_esto_comparison_fast_path(
         relevance_df=relevance_df,
         common_rows_df=common_rows_df,
     )
-    comparison_df, missing_map_df, _ = apply_common_structure(active_source_df, adjusted_common_rows_df)
+    comparison_df, missing_map_df, _ = apply_common_structure(
+        active_source_df,
+        adjusted_common_rows_df,
+        comparison_scope_systems=comparison_scope_systems,
+    )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
     save_fast_path_outputs(
@@ -1672,6 +1707,7 @@ def run_apply_common_esto_structure(
         DIAGNOSTIC_ADAPTER_REGISTRY_PATH
     ),
     relevance_policies: list[dict[str, object]] | None = None,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(source_paths, default_economy=default_economy)
@@ -1875,7 +1911,12 @@ def run_apply_common_esto_structure(
         missing_map_df,
         mapped_source_df,
         esto_component_lineage_df,
-    ) = apply_common_structure(active_source_df, adjusted_common_rows_df, return_lineage=True)
+    ) = apply_common_structure(
+        active_source_df,
+        adjusted_common_rows_df,
+        return_lineage=True,
+        comparison_scope_systems=comparison_scope_systems,
+    )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     comparison_df = unfiltered_comparison_df.copy()
     broad_diagnostics = build_broad_common_row_diagnostics(
@@ -1903,8 +1944,16 @@ def run_apply_common_esto_structure(
             else OUTLOOK_MAPPINGS_PATH
         ),
     )
-    total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
-    source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
+    total_check_df = build_total_check(
+        mapped_source_df,
+        unfiltered_comparison_df,
+        comparison_scope_systems=comparison_scope_systems,
+    )
+    source_coverage_check_df = build_source_coverage_check(
+        source_totals_df,
+        unfiltered_comparison_df,
+        comparison_scope_systems=comparison_scope_systems,
+    )
     save_outputs(
         comparison_df,
         wide_year_df,
