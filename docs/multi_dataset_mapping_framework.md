@@ -478,8 +478,18 @@ Implementation status (2026-07-29): reproducible baseline-capture tooling is
 implemented. Fresh Stage 1 and Stage 2 evidence can be captured in the isolated
 worktree. The latest available Stage 3 artifacts are retained as explicitly
 historical reference evidence because they predate this branch and include
-known failed validations. A fresh QA-reviewed Stage 3 run remains required
-before the M0 release gate is complete.
+known failed validations.
+
+A fresh Stage 3 application and Common hierarchy-validation pass has now been
+run in the isolated worktree. The application contract passed, but the deep
+flow hierarchy check remains semantically non-clean: 1,622 eligible checks
+produced 479 mismatches (ESTO 78, ESTO Extended 97, LEAP 0, and NINTH 304).
+The declared-rollup pass performed 163,674 checks, with 19,624 passed, 4
+failed, 101,991 incomplete-contributor results, and 42,055 cases with no
+contributors available. Product hierarchy checks had no eligible parents and
+were explicitly skipped. The source-parent anchor phase has not been rerun.
+M0 therefore remains a failed/incomplete release gate rather than being
+promoted on the strength of the clean application contract.
 
 ### M1 — Introduce registries without changing behavior
 
@@ -608,9 +618,9 @@ converted ESTO, ESTO Extended, LEAP, and 9th artifacts. The isolated run:
   `8524184927a161637c45a04dd48b5f0dc4cea96fe5e757ce411e8f65891d77b5`.
 
 This was an application/output-contract smoke run, not the separate deep
-hierarchy and source-parent validation suite. M0 therefore still requires a
-fresh reviewed deep-validation run before its release gate can be marked
-complete.
+source-parent validation suite. A subsequent fresh Common hierarchy pass
+completed and retained the semantic failures summarized under M0; the
+source-parent anchor phase remains outstanding.
 
 ### M6 — Add the synthetic fourth dataset
 
