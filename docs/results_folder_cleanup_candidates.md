@@ -55,7 +55,7 @@ repo's actual current files before acting, not just this list.
 | `results/maintenance/display_names_qa copy.csv`, `display_names_qa_new.csv` | Same pattern — manual duplicates of `display_names_qa.csv`. |
 | `results/logs/mapping_pipeline_<timestamp>*.log`, `mapping_pipeline_codex_*`, `mapping_pipeline_rollup_tree_nodes_*`, `mapping_pipeline_stage*_codex_*`, `*.pid`, `*.pid.txt`, `run_mapping_pipeline_*.ps1`, `stdin_pipe_test.*`, `stage_runs/*` | **Archived 2026-07-23** to `results/logs/_archive_2026-07-23/` (gitignored, so not recoverable via git — moved rather than deleted for exactly that reason). Only `results/logs/mapping_pipeline.log` (no timestamp) is written by current code (`run_mapping_pipeline.py`'s `_PIPELINE_LOG_PATH`); the rest were manually redirected output from ad hoc terminal sessions during earlier development. |
 | `results/maintenance/logs/*` (`anchor_validation_yearslice_*`, `compile_structural_*`, `inverted_conservation_rerun_*`, `pipeline_1_2_dataconvert_3_*`, `stage0_maintenance_*`) | **Archived 2026-07-23** to `results/maintenance/_archive_2026-07-23/logs/` — same category as above, manual run logs. |
-| `results/common_esto/common_esto_comparison_wide_rebuilt.csv`, `qa_common_esto_partial_coverage_mapping_candidates_rebuilt.csv` | Still present, not actioned. "`_rebuilt`" variants of files that already exist without that suffix — likely from a manual rebuild/comparison run, not a distinct current output name. Left for the diagnostic-consolidation design task. |
+| `results/common_esto/common_esto_comparison_wide_rebuilt.csv`, `qa_common_esto_partial_coverage_mapping_candidates_rebuilt.csv` | Still present, not actioned. Current code automatically writes a `_rebuilt` fallback when the canonical CSV is locked. Check `common_esto_output_status.csv`, timestamps, and the canonical file before classifying either fallback as stale; the suffix alone is not evidence of a manual copy. |
 | `results/common_esto/configurable_scopes_stage2.std{out,err}.log`, `configurable_scopes_stage3.std{out,err}.log` | **Archived 2026-07-23** to `results/common_esto/_archive_2026-07-23/` — ad hoc redirected output from a manual run with custom comparison scopes, not a named pipeline output. |
 | `config/archive/*.xlsx` (~80 files: `outlook_mappings_master.before_*`, `.maintenance_run_*`, `outlook_mappings_master - Copy.xlsx`, `... backup.xlsx`, `... backuip 207.xlsx`, etc.) | Still present, not actioned. Legitimate backups (each is written by an `ARCHIVE_DIR.mkdir(...)` + `shutil.copy2(...)` call before a workbook edit), but they accumulate indefinitely with no pruning. Worth a retention policy (e.g. keep last N, or keep one per month) rather than deleting outright — these are the one category here that's a genuine safety net, not clutter, so treat with more caution than the rest of this list. |
 | `config/E0E85740`, `config/E2F1A260`, `config/6AC9DA10`, `config/FDC59700` | Still present, not actioned. Orphaned binary blobs with hex filenames (zip/xlsx signature) — Office crash-recovery temp files. Not referenced anywhere, but `docs/guide_outlook_mappings_master.md` already documents these as safe to ignore, and moving them doesn't reduce clutter since Excel regenerates them on next open — left in place deliberately, not an oversight. |
@@ -180,8 +180,7 @@ classification discipline, not its `parallel_economy_merge.py` implementation.
    path (if any), producing script, known consumers, size, classification, and action. Update
    this document and `docs/archive_log.md` in the same commit as an actual move.
 3. **Conservative quarantine batch.** After rechecking the path list, move only the
-   evidence-backed orphaned tree artifacts and the stale top-level
-   `missing_mapped_esto_rows/` duplicate into a dated, clearly ignored quarantine location,
+   evidence-backed orphaned tree artifacts into a dated, clearly ignored quarantine location,
    such as `results/_quarantine_YYYY-MM-DD/`. Do not use a recursive glob; resolve and verify
    every absolute source and destination path first. Do not hard-delete in this batch.
 4. **Diagnostic-file design.** Build a producer/consumer inventory for the approximately 103
@@ -222,3 +221,48 @@ old and new paths and reason, no active workflow was disturbed, and the generate
 still has a clear current path for each routine diagnostic. The wider consolidation is complete
 only when its supported output set is documented, consumers are updated or deliberately retained,
 and a relevant current run verifies the new contract.
+
+## 2026-07-27 verification pass — ready-to-quarantine vs. one blocked item
+
+Re-checked the three tree-artifact candidates from the "conservative quarantine batch" (step 3
+above) against current `codebase/` and `tests/`, and confirmed `results/common_esto/
+anchor_reconciliation/` exists as the documented replacement. **These three are confirmed safe to
+quarantine mechanically, no further comparison needed:**
+
+- `results/tree_structure/anchor_diagnostics/` (10 files)
+- `results/tree_structure/source_parent_anchor_MISSING_children.csv` and
+  `_MISSING_parent_pairs.csv`
+- `results/tree_structure/source_parent_anchor_validation_SLICE.csv` and `_SLICE_summary.csv`
+
+### The top-level `results/missing_mapped_esto_rows/` item is NOT a clean duplicate — needs a human call
+
+The doc above (and the "confirmed orphaned" table) classifies the top-level
+`results/missing_mapped_esto_rows/` as a stale duplicate of `results/maintenance/
+missing_mapped_esto_rows/`. A byte-for-byte diff of all 15 files against the maintenance/ version
+shows that's only true for 6 of them — **9 files differ substantially**, e.g.:
+
+| File | Top-level (2026-06-29) | `maintenance/` (2026-07-27, this morning) |
+|---|---:|---:|
+| `00APEC_2024_low_with_subtotals_missing_mapped_rows.csv` | 307,888 bytes | 201 bytes |
+| `00APEC_2024_low_with_subtotals_missing_mapped_rows_audit.csv` | 528,599 bytes | 145 bytes |
+| `00APEC_2025_low_with_subtotals_missing_mapped_rows.csv` | 315,811 bytes | 206 bytes |
+| `00APEC_2025_low_with_subtotals_missing_mapped_rows_audit.csv` | 528,599 bytes | 145 bytes |
+
+(plus smaller diffs in the `_commercial_services_unallocated_validation.csv`,
+`_ninth_nonzero_filter_audit.csv`, and `missing_mapped_esto_rows_summary.csv` files — same
+pattern, maintenance/ version much smaller/near-empty).
+
+The `maintenance/` files are current — written by today's run of
+`codebase/mapping_tools/build_missing_mapped_esto_rows.py` — while the top-level files are from a
+run nearly a month prior and hold real data the current run doesn't. This means either:
+
+1. Today's run legitimately found far fewer missing-mapped rows than the June run (a genuine
+   improvement) — in which case the top-level copy really is obsolete and safe to quarantine, or
+2. Something is wrong with the current run producing near-empty `missing_mapped_rows`/`_audit`
+   output — in which case the top-level copy is the last good reference and should be kept, and
+   the near-empty current output investigated as a possible regression.
+
+**Do not quarantine the top-level `results/missing_mapped_esto_rows/` folder as part of the
+mechanical batch above until a human (or an agent with access to explain what changed in the
+pipeline between 2026-06-29 and 2026-07-27) resolves which of these two explanations is correct.**
+The other three candidates in this section are unaffected by this and can proceed independently.
