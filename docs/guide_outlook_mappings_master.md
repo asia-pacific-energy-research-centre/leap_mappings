@@ -14,38 +14,14 @@ Ground rules:
   file on disk — unsaved buffers have burned us (a "fixed" sheet that was never saved).
 - `config/E0E85740`-style files and `~$outlook_mappings_master.xlsx` are Excel lock artifacts;
   ignore them.
-- Boolean control columns must contain real Boolean values and display them as
-  Excel in-cell checkboxes throughout the populated table. This includes
+- Boolean control columns must contain real Boolean values. This includes
   `*_is_subtotal`, `duplicate_to_remove`, rollup `include`, and any other
-  maintained true/false control column. Complete active rows must contain
-  `True` or `False`, not blanks. The checkbox is the only intended special
-  presentation: Boolean cells must otherwise use the ordinary unfilled style
-  of the surrounding table.
-
-### Checkbox preservation when adding rows
-
-Writing a Boolean value is not enough to create the workbook's checkbox
-representation. When adding or inserting mapping rows:
-
-1. identify an existing, correctly formatted row on the same sheet;
-2. copy the checkbox capability from a clean Boolean cell without copying
-   accidental fills, font colours, hidden-value number formats, or unrelated
-   conditional formatting;
-3. set the copied cell to an actual Boolean value, not the strings `"True"` or
-   `"False"` and not a checkbox glyph;
-4. save and reopen the workbook;
-5. visually verify the edited area and confirm that every populated Boolean
-   cell renders as a checkbox on the same ordinary, unfilled background as its
-   neighbours.
-
-Do not assume that copying values, number formats, data validation, or ordinary
-cell styles alone preserves an in-cell checkbox. Copy the proven checkbox
-capability used by the workbook, then explicitly confirm that the resulting
-fill, font, and number format match a clean neighbouring Boolean cell. If the
-selected spreadsheet library cannot preserve or create it, stop before editing
-the maintained workbook and use Excel or another lossless route. Mixed literal
-Booleans and checkboxes, blank Boolean cells on complete active rows, black
-fills, or masked values are incomplete workbook edits.
+  maintained true/false control column. Complete active rows must contain the
+  Boolean values `TRUE` or `FALSE`, not text strings, numbers, blanks, checkbox
+  controls, or checkbox glyphs.
+- Boolean cells must use the ordinary unfilled style of the surrounding table.
+  Do not add special fills, hidden-value number formats, font masking,
+  conditional formatting, data validation, or Excel in-cell checkboxes.
 
 ## 1. The sheets at a glance
 
@@ -289,9 +265,10 @@ Restrictions:
      equals the sum of the components from the ESTO balance.
    - `results/tree_structure/esto_tree.csv` and `results/tree_structure/common_esto_tree.csv`
      include the rolled label when `parent_flow_label` / `child_flow_labels` are populated.
-   - all populated Boolean control cells in the edited rows display as
-     checkboxes after save and reopen, with no black/solid fills or other extra
-     formatting and no required Boolean cell left blank.
+   - all populated Boolean control cells in the edited rows contain actual
+     Boolean values displayed as ordinary `TRUE` or `FALSE` after save and
+     reopen, with no checkbox controls, black/solid fills, other special
+     formatting, text substitutes, or required blanks.
 
 ### 6a. Reviewed mapping-change lifecycle
 

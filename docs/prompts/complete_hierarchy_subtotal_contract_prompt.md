@@ -453,17 +453,13 @@ changes only after explicit approval, using exact row identities and a
 formatting-preserving workbook path. Physically remove rejected mappings;
 do not retain incorrect relationships as inactive guardrails.
 
-All Boolean mapping columns must remain actual Boolean values displayed as
-Excel in-cell checkboxes. When a reviewed write adds rows or changes Boolean
-cells, copy only the checkbox capability from a clean cell on the same sheet
-before setting the value; do not copy accidental fills or masking formats.
-Every required cell must contain `True` or `False`, not a blank. After saving,
-reopen and visually inspect every edited Boolean column. Literal displayed
-Booleans mixed with checkboxes, black or solid-filled Boolean cells,
-hidden-value number formats, font masking, or blanks on complete active rows
-are failed workbook writes. If the editing library cannot preserve the
-checkbox representation without extra formatting, stop and use a proven
-lossless Excel editing route.
+All Boolean mapping columns must contain actual Boolean `TRUE` or `FALSE`
+values. Text strings, numbers, blanks on complete active rows, checkbox
+controls, and checkbox glyphs are failed workbook writes. Boolean cells must
+retain the ordinary unfilled style of surrounding cells. Do not add Excel
+in-cell checkboxes, black or solid fills, hidden-value number formats, font
+masking, conditional formatting, data validation, or other special formatting.
+After saving, reopen and inspect every edited Boolean column.
 
 ### Phase 6 — Audit and redesign subtotal exceptions
 
@@ -627,9 +623,10 @@ The work is complete only when:
   unexplained regression;
 - approved workbook edits preserve layout, formatting, formulas, validations,
   filters, and exact mapping identity;
-- every populated maintained Boolean cell in edited mapping rows displays as
-  an in-cell checkbox after save and reopen, with no black/solid fills, masked
-  values, literal Boolean text, or required Boolean blanks;
+- every populated maintained Boolean cell in edited mapping rows contains an
+  actual Boolean value displayed as ordinary `TRUE` or `FALSE` after save and
+  reopen, with no checkbox controls, black/solid fills, masked values, text
+  substitutes, or required Boolean blanks;
 - all targeted tests and agreed end-to-end checks pass, with pre-existing
   failures documented separately.
 

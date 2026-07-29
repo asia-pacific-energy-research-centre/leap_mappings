@@ -72,6 +72,14 @@ _DROP_FUEL_COLS = {
     "Municipal solid waste non and renewable DO NOT USE",
 }
 
+# LEAP balance exports do not always use the semantic branch labels maintained
+# in the canonical mapping workbook. Normalize these aliases at the parser
+# boundary so every downstream mapping stage sees one stable source key.
+_FLOW_NAME_MAP = {
+    "from stocks": "Stock Changes",
+    "statistical discrepancy": "Statistical Differences",
+}
+
 # ---------------------------------------------------------------------------
 # Header parsing
 # ---------------------------------------------------------------------------
@@ -142,6 +150,12 @@ def _indentation(s: str) -> int:
     return len(s) - len(s.lstrip(" "))
 
 
+def _normalize_flow_name(name: object) -> str:
+    """Return the canonical mapping label for one LEAP balance-flow segment."""
+    cleaned = " ".join(str(name or "").strip().split())
+    return _FLOW_NAME_MAP.get(cleaned.casefold(), cleaned)
+
+
 def _reconstruct_transformation_paths(
     sector_col: pd.Series,
     start: int,
@@ -164,7 +178,7 @@ def _reconstruct_transformation_paths(
 
         s      = str(raw_val)
         indent = _indentation(s)
-        name   = s.strip()
+        name   = _normalize_flow_name(s)
 
         if indent == 0:
             # Assign this row as parent to all pending children
@@ -203,7 +217,7 @@ def _reconstruct_demand_paths(
         s      = str(raw_val)
         indent = _indentation(s)
         level  = indent // 2
-        name   = s.strip()
+        name   = _normalize_flow_name(s)
 
         stack[level] = name
         # Drop deeper levels from previous branches

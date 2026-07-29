@@ -281,6 +281,27 @@ A small lookup table normalises known LEAP export column name variations (e.g.
 → `"Black liquor"`). Aggregate or placeholder columns (`"Total"`, `"Biomass"`,
 `"Coal Bituminous DO NOT USE"`, etc.) are dropped before output.
 
+### Stock-change and statistical-discrepancy source names
+
+The canonical LEAP mapping keys are `Stock Changes` and
+`Statistical Differences`. LEAP balance exports label the corresponding rows
+`From Stocks` and `Statistical Differences`; the balance parser normalizes
+`From Stocks` to `Stock Changes` and preserves `Statistical Differences` before
+Stage 1 joins the rows to `leap_combined_esto`. It also accepts the singular
+`Statistical discrepancy` spelling as an alias for the maintained LEAP key.
+
+The corresponding editable LEAP controls are structurally different from the
+flat balance rows. They live beneath their own top-level roots as
+`Stock Changes/Primary|Secondary/<fuel>` and
+`Statistical Differences/Primary|Secondary/<fuel>`. Their
+Primary-versus-Secondary classification mirrors
+`Resources/Primary|Secondary/<fuel>` for Production, Imports, and Exports; the
+controls are not children of `Resources`. That location is an
+initialisation/import concern and must not be encoded as two mapping
+relationships. The mapping workbook retains one semantic balance source pair;
+the initialisation workflow resolves the economy template's actual
+Primary-or-Secondary branch when it writes a control value.
+
 ### Economy code
 
 The model name embedded in the file header is a long internal LEAP string. The
