@@ -77,9 +77,11 @@ The current ESTO/Common ESTO design is the practical starting hub:
 - a future abstract component registry can replace ESTO-shaped identifiers
   only if a real limitation justifies that migration.
 
-Direct mappings such as LEAP-to-9th may remain useful for special workflows,
-but they are optional secondary views. They must not become a second source of
-truth for hub membership.
+Direct LEAP-to-9th mappings are transitional secondary diagnostics, not a
+source of truth for hub membership. They may remain while the 9th Outlook is an
+active comparison source, but the architecture must allow them to be removed
+cleanly when that dataset becomes obsolete. No new core capability should
+depend on the direct LEAP-to-9th surface.
 
 ## Terminology
 
@@ -185,6 +187,10 @@ Every native value adapter must emit:
 
 Adapters may retain extra native metadata in a separate lineage table. Core
 mapping and validation functions must depend only on the normalized contract.
+The mapping core accepts values in PJ. If a native dataset uses another unit,
+its ingestion/adaptation boundary must convert it to PJ before emitting this
+contract; the mapping, Common-row, and validation engines do not perform
+implicit unit conversion.
 
 ### Normalized hierarchy-adapter output
 
@@ -280,6 +286,17 @@ Each scope declares:
 
 Unknown datasets must not be silently included. A scope admits only its
 declared sources.
+
+Scenario and period alignment are also scope configuration:
+
+- scenario labels do not have to match between datasets;
+- a scope may explicitly pair any scenario from one dataset with any scenario
+  from another dataset;
+- pairings must be declared rather than inferred from equal names or emitted as
+  an uncontrolled Cartesian product;
+- period rules are scope-specific because base years, projection starts, and
+  comparison horizons can change between builds;
+- manifests record the applied scenario and period policy versions.
 
 ## Target pipeline
 
@@ -377,7 +394,10 @@ workbook.
 The generalization is not complete until a fourth dataset passes an end-to-end
 test without dataset-specific branches in core engines.
 
-Use a small synthetic fixture, for example `SYNTH_BALANCE`, containing:
+Use a small synthetic fixture, for example `SYNTH_BALANCE`, that demonstrates
+how a less detailed energy-balance system can still participate safely. Its
+fuel vocabulary should largely use ESTO parent fuel categories and its flow
+vocabulary should be deliberately simpler than ESTO. It contains:
 
 - two economies;
 - two scenarios;
@@ -385,10 +405,11 @@ Use a small synthetic fixture, for example `SYNTH_BALANCE`, containing:
 - a flow hierarchy with one parent and two children;
 - a product hierarchy with one parent and two children;
 - one direct mapping;
-- one coarse source aggregate requiring a Common-row rollup;
+- one coarse source aggregate mapped to a coarse hub/Common-row boundary;
 - one intentionally unmapped pair;
 - one value-conformance failure;
-- one allocation-required mapping that remains blocked.
+- one attempted coarse-to-detailed mapping that remains blocked because no
+  reviewed allocation shares were supplied.
 
 Acceptance criteria:
 
@@ -506,21 +527,42 @@ equivalent.
 - Partial dataset support is declared explicitly. A dataset is not “supported”
   merely because its values can be concatenated into Stage 3.
 
-## Human decisions required before core refactoring
+## Confirmed human decisions
 
-1. Confirm that ESTO-shaped canonical components remain the hub for the first
-   generalization.
-2. Decide whether direct non-hub mappings remain maintained comparison views or
-   become generated diagnostics.
-3. Approve the registry storage format and ownership.
-4. Define scenario-alignment policy when datasets have different scenarios.
-5. Define time-alignment policy for historical, projection, and irregular
-   periods.
-6. Define the allowed allocation methods and evidence threshold.
-7. Decide whether unit normalization occurs inside every adapter or through a
-   shared unit service after adaptation.
-8. Select the first real fourth dataset only after the synthetic acceptance
-   test passes.
+The following decisions were confirmed on 2026-07-29:
+
+1. **Canonical hub:** ESTO-shaped components, including reviewed ESTO Extended
+   categories where required by a scope, remain the first canonical hub.
+2. **Direct LEAP-to-9th status:** direct mappings are secondary diagnostics.
+   The hub route is authoritative, and direct 9th mappings may eventually be
+   removed when the 9th Outlook becomes obsolete.
+3. **Scenario alignment:** the framework must support an explicitly configured
+   pairing between any scenario and any other scenario. It must not require
+   matching scenario names.
+4. **Time alignment:** base years and projection periods are governed by
+   versioned, scope-specific rules rather than one global year intersection or
+   a fixed projection boundary.
+5. **Allocation:** coarse-to-detailed allocation is prohibited by default.
+   It requires reviewed shares, provenance, and conservation evidence. Mapping
+   a simple dataset to an appropriate coarse hub/Common row is not an
+   allocation and is preferred over false detail.
+6. **Units:** the normalized mapping-system input is PJ. Non-PJ native data must
+   be converted at the ingestion/adaptation boundary before it enters mapping,
+   Common-row, or validation logic.
+7. **Synthetic additional dataset:** the acceptance example should demonstrate
+   a simpler balance system using ESTO parent fuel categories and heavily
+   simplified flows.
+
+## Remaining human decisions
+
+1. **Registry stewardship:** confirm who reviews and approves changes to
+   `config/datasets/`. This means governance responsibility, not filesystem
+   ownership. The provisional recommendation is the `leap_mappings` mapping
+   maintainers, with dataset-specific semantic changes also reviewed by the
+   relevant dataset owner.
+2. **First real additional dataset:** select it only after the synthetic
+   acceptance test passes, then provide a representative extract and a reviewer
+   familiar with its balance semantics.
 
 ## Out of scope
 
