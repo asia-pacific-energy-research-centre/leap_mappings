@@ -108,7 +108,9 @@ These rules apply regardless of how many datasets are registered:
 3. **Raw source identity is preserved.** Conversion creates an effective view;
    it does not overwrite native rows.
 4. **No false precision.** A source aggregate is not split across finer target
-   rows without a reviewed allocation method and conservation evidence.
+   rows by `leap_mappings`. Detailed datasets are rolled up to a safe shared
+   comparison grain; reconstructing detail from a coarse source belongs to a
+   downstream application.
 5. **Rollups are context-specific.** A rule safe for one comparison is not
    silently applied to every use case.
 6. **Structural parenthood is stable.** A node with declared ordinary children
@@ -224,9 +226,9 @@ The compiled relationship surface should be dataset-neutral:
 | `target_axis_1_node_id` | Target flow/sector |
 | `target_axis_2_node_id` | Target product/fuel |
 | `include_in_use_case` | Reviewed inclusion boolean |
-| `relationship_type` | Direct, rollup-derived, replacement, alias, or allocation |
-| `allocation_method` | Blank unless one-to-many allocation is intentional |
-| `allocation_share` | Reviewed or generated share with provenance |
+| `relationship_type` | Direct, rollup-derived, replacement, or alias |
+| `allocation_method` | Optional downstream metadata; not executed by the mapping core |
+| `allocation_share` | Optional downstream metadata with provenance; never inferred or applied by the mapping core |
 | `relationship_status` | Maintained review state |
 | `source_mapping_file` | Workbook/config provenance |
 | `source_sheet` | Human editing surface |
@@ -237,40 +239,28 @@ Existing human-friendly workbook sheets can remain during migration. A registry
 should describe how each sheet maps into this normalized schema so the core
 compiler does not know sheet-specific column names.
 
-### Coarse-to-detailed allocation contract
+### Comparison grain and downstream disaggregation
 
-A coarse source pair may map to several finer hub pairs only when an explicit
-allocation rule turns the otherwise ambiguous relationship into a conserved
-transformation. This is separate from ordinary semantic mapping.
+When a newly registered dataset is coarser than ESTO, LEAP, or another source,
+`leap_mappings` does not attempt to expand its values. Instead:
 
-For example, a 100 PJ parent-fuel row could be emitted as 60 PJ and 40 PJ for
-two detailed child fuels only if the applicable allocation rule supplies the
-reviewed shares `0.60` and `0.40`. The relationship becomes executable when:
+1. each coarse native pair maps to an appropriate coarse hub component or
+   reviewed Common row;
+2. the more detailed datasets roll up to that same comparison boundary;
+3. the coarse source value remains unchanged;
+4. detailed source identity remains available through lineage; and
+5. totals are checked before and after the detailed-to-coarse rollup.
 
-1. the complete target child set is declared;
-2. shares are defined for the applicable scope and necessary context, such as
-   economy, scenario, and period;
-3. shares sum to one within tolerance for every allocated source value;
-4. the evidence source, method, version, reviewer or responsible operator, and
-   review status are recorded;
-5. allocation preserves the source value's unit and sign;
-6. the coarse parent value is replaced by its allocated children for that
-   output, rather than being added alongside them;
-7. missing, stale, negative, or non-conserving shares fail closed; and
-8. lineage connects every allocated child value back to the original coarse
-   source row and allocation rule.
+This is the expected behavior for the synthetic simpler dataset. Its ESTO
+parent fuels and simplified flows define the comparison grain, so the other
+datasets are rolled up substantially to match it.
 
-Permitted methods can include fixed reviewed shares, context-specific shares
-derived from an authoritative detailed dataset, or reviewed driver-based
-shares. Label similarity alone is not allocation evidence. If both axes are
-split at once, the rule needs a reviewed joint allocation matrix; multiplying
-independent flow and fuel shares is not assumed to be valid.
-
-The synthetic simpler dataset should normally map to coarse hub/Common rows.
-Its deliberately blocked case can be made to pass by adding a small reviewed
-allocation table satisfying this contract, which proves that the framework
-supports coarse-to-detailed conversion without enabling uncontrolled automatic
-splitting.
+A downstream consumer may choose to reverse that relationship and distribute a
+coarse value over detailed categories. That operation needs allocation shares,
+context, evidence, conservation checks, and double-counting protection, but it
+is not performed by `leap_mappings`. The mapping outputs may expose the
+parent/child relationships and lineage needed by such an application without
+claiming that the reverse allocation is unique or approved.
 
 ### Generic rollup rules
 
@@ -398,7 +388,7 @@ flowchart LR
     REGISTER["Add registry entry and policies"]
     ADAPTERS["Implement or configure value + hierarchy adapters"]
     MAPS["Create reviewed native-to-hub mappings"]
-    RULES["Add necessary rollup/allocation rules"]
+    RULES["Add necessary rollup and comparison-boundary rules"]
     SCOPE["Add dataset to explicit comparison scope"]
     TEST["Run onboarding contract tests"]
     REVIEW{"Human mapping and validation review"}
@@ -417,7 +407,8 @@ The dataset owner must provide:
 - economy, scenario, and time coverage;
 - subtotal evidence and source flags;
 - reviewed mappings or a bounded mapping review queue;
-- allocation evidence for any source-to-many-target relationship;
+- enough hierarchy and mapping evidence to identify the safe shared comparison
+  grain;
 - named exclusions for deliberately out-of-scope rows.
 
 Generated mapping candidates remain review-only. Registration does not grant
@@ -443,8 +434,8 @@ vocabulary should be deliberately simpler than ESTO. It contains:
 - one coarse source aggregate mapped to a coarse hub/Common-row boundary;
 - one intentionally unmapped pair;
 - one value-conformance failure;
-- one attempted coarse-to-detailed mapping that remains blocked because no
-  reviewed allocation shares were supplied.
+- detailed hub pairs that must roll up to the synthetic dataset's coarse
+  comparison boundary.
 
 Acceptance criteria:
 
@@ -577,10 +568,11 @@ The following decisions were confirmed on 2026-07-29:
 4. **Time alignment:** base years and projection periods are governed by
    versioned, scope-specific rules rather than one global year intersection or
    a fixed projection boundary.
-5. **Allocation:** coarse-to-detailed allocation is prohibited by default.
-   It requires reviewed shares, provenance, and conservation evidence. Mapping
-   a simple dataset to an appropriate coarse hub/Common row is not an
-   allocation and is preferred over false detail.
+5. **Comparison direction:** `leap_mappings` rolls detailed datasets up to the
+   safe grain of a coarse comparison dataset. It does not disaggregate the
+   coarse dataset. Any downstream coarse-to-detailed allocation is a separate
+   consumer responsibility requiring its own shares, provenance, and
+   conservation evidence.
 6. **Units:** the normalized mapping-system input is PJ. Non-PJ native data must
    be converted at the ingestion/adaptation boundary before it enters mapping,
    Common-row, or validation logic.
