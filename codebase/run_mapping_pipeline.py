@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import gzip
 import json
 import sys
 import tempfile
@@ -345,8 +346,10 @@ def run_ninth_to_esto() -> None:
         prepare_ninth_long_format,
         load_ninth_to_esto_relationships,
         load_non_expanding_ninth_rollup_rules,
-        convert_ninth_results_to_esto,
+        iter_ninth_results_to_esto_by_economy,
         relationships_need_target_dataset_share,
+        GROUP_COLUMNS,
+        SOURCE_LINEAGE_COLUMNS,
     )
     from codebase.mapping_tools.target_share_allocation import (
         target_dataset_share_target_flows,
@@ -388,21 +391,80 @@ def run_ninth_to_esto() -> None:
                 f"  Target-dataset-share basis: added {len(subtotal_basis_df):,} "
                 f"ESTO subtotal rows for {len(needed_flows):,} aggregate flow(s)"
             )
-    converted_df, lineage_df = convert_ninth_results_to_esto(
-        ninth_long,
-        relationships_df,
-        target_values_df,
-        return_lineage=True,
-        rollup_rules_df=ninth_rollup_rules_df,
-    )
-
     NINTH_ESTO_PATH.parent.mkdir(parents=True, exist_ok=True)
-    converted_df.to_csv(NINTH_ESTO_PATH, index=False)
     NINTH_SOURCE_LINEAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lineage_df.to_csv(NINTH_SOURCE_LINEAGE_PATH, index=False)
+    converted_temp_path = NINTH_ESTO_PATH.with_name(
+        f"{NINTH_ESTO_PATH.name}.tmp"
+    )
+    lineage_temp_path = NINTH_SOURCE_LINEAGE_PATH.with_name(
+        f"{NINTH_SOURCE_LINEAGE_PATH.name}.tmp"
+    )
+    converted_row_count = 0
+    lineage_row_count = 0
+    chunk_count = 0
+    try:
+        with (
+            gzip.open(
+                converted_temp_path,
+                mode="wt",
+                encoding="utf-8",
+                newline="",
+            ) as converted_handle,
+            gzip.open(
+                lineage_temp_path,
+                mode="wt",
+                encoding="utf-8",
+                newline="",
+            ) as lineage_handle,
+        ):
+            for economy, converted_df, lineage_df in (
+                iter_ninth_results_to_esto_by_economy(
+                    ninth_long,
+                    relationships_df,
+                    target_values_df=target_values_df,
+                    rollup_rules_df=ninth_rollup_rules_df,
+                )
+            ):
+                converted_df.to_csv(
+                    converted_handle,
+                    index=False,
+                    header=chunk_count == 0,
+                )
+                lineage_df.to_csv(
+                    lineage_handle,
+                    index=False,
+                    header=chunk_count == 0,
+                )
+                converted_row_count += len(converted_df)
+                lineage_row_count += len(lineage_df)
+                chunk_count += 1
+                print(
+                    f"  Converted Ninth economy chunk {economy}: "
+                    f"{len(converted_df):,} rows, "
+                    f"{len(lineage_df):,} lineage rows"
+                )
+                del converted_df, lineage_df
+                gc.collect()
+
+            if chunk_count == 0:
+                pd.DataFrame(columns=GROUP_COLUMNS).to_csv(
+                    converted_handle,
+                    index=False,
+                )
+                pd.DataFrame(columns=SOURCE_LINEAGE_COLUMNS).to_csv(
+                    lineage_handle,
+                    index=False,
+                )
+        converted_temp_path.replace(NINTH_ESTO_PATH)
+        lineage_temp_path.replace(NINTH_SOURCE_LINEAGE_PATH)
+    except Exception:
+        converted_temp_path.unlink(missing_ok=True)
+        lineage_temp_path.unlink(missing_ok=True)
+        raise
     print(f"  Conversion relationships used: {len(relationships_df):,}")
-    print(f"  Converted ESTO rows written: {len(converted_df):,}")
-    print(f"  Source-to-ESTO lineage rows written: {len(lineage_df):,}")
+    print(f"  Economy chunks written: {chunk_count:,}")
+    print(f"  Converted ESTO rows written: {converted_row_count:,}")
+    print(f"  Source-to-ESTO lineage rows written: {lineage_row_count:,}")
     print(f"  Wrote: {NINTH_ESTO_PATH.relative_to(REPO_ROOT)}")
     print(f"  Wrote lineage: {NINTH_SOURCE_LINEAGE_PATH.relative_to(REPO_ROOT)}")
 
@@ -630,6 +692,7 @@ def run_data_convert(write_esto_extended_delta: bool = False) -> None:
 def run_stage_3(
     skip_deep_validation: bool = False,
     use_esto_extended_delta: bool = False,
+    chunk_value_application: bool = False,
 ) -> None:
     import time
     from codebase.mapping_tools.esto_extended_delta import (
@@ -757,6 +820,7 @@ def run_stage_3(
         ninth_source_data_path=NINTH_CSV_PATH,
         ninth_projection_start_year=2023,
         esto_component_lineage_output_path=ESTO_COMPONENT_LINEAGE_PATH,
+        chunk_by_source_economy=chunk_value_application,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )

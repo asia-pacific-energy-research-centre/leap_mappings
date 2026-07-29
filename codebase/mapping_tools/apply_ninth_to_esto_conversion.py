@@ -7,6 +7,7 @@ ninth_to_esto_balance_conversion use case and writes grouped ESTO rows.
 """
 
 #%%
+from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,7 @@ import pandas as pd
 from codebase.mapping_tools.source_rollups import apply_source_rollups
 from codebase.mapping_tools.target_share_allocation import (
     apply_target_dataset_allocation,
+    normalize_economy_code,
     target_dataset_share_target_flows,
 )
 
@@ -302,6 +304,61 @@ def convert_ninth_results_to_esto(
     if return_lineage:
         return converted_df, lineage_df
     return converted_df
+
+
+def iter_ninth_results_to_esto_by_economy(
+    ninth_results_df: pd.DataFrame,
+    relationships_df: pd.DataFrame,
+    target_values_df: pd.DataFrame | None = None,
+    rollup_rules_df: pd.DataFrame | None = None,
+) -> Iterator[tuple[str, pd.DataFrame, pd.DataFrame]]:
+    """Yield bounded conversion and lineage frames one economy at a time.
+
+    Economy is already part of every conversion and lineage fact key, so
+    chunks never need to be regrouped across boundaries. This keeps the large
+    one-to-many relationship join and lineage materialisation bounded without
+    changing allocation or rollup semantics.
+    """
+    if "economy" not in ninth_results_df.columns:
+        converted_df, lineage_df = convert_ninth_results_to_esto(
+            ninth_results_df,
+            relationships_df,
+            target_values_df=target_values_df,
+            return_lineage=True,
+            rollup_rules_df=rollup_rules_df,
+        )
+        yield "all_economies", converted_df, lineage_df
+        return
+
+    target_economy_keys = None
+    if (
+        target_values_df is not None
+        and not target_values_df.empty
+        and "economy" in target_values_df.columns
+    ):
+        target_economy_keys = target_values_df["economy"].map(
+            normalize_economy_code
+        )
+
+    for economy, economy_df in ninth_results_df.groupby(
+        "economy",
+        dropna=False,
+        sort=True,
+    ):
+        economy_target_values = target_values_df
+        if target_economy_keys is not None:
+            economy_key = normalize_economy_code(economy)
+            economy_target_values = target_values_df.loc[
+                target_economy_keys.eq(economy_key)
+            ].copy()
+        converted_df, lineage_df = convert_ninth_results_to_esto(
+            economy_df.copy(),
+            relationships_df,
+            target_values_df=economy_target_values,
+            return_lineage=True,
+            rollup_rules_df=rollup_rules_df,
+        )
+        yield str(economy), converted_df, lineage_df
 
 
 def relationships_need_target_dataset_share(relationships_df: pd.DataFrame) -> bool:

@@ -1,6 +1,12 @@
 # Separate-axis mapping contract exploration
 
-**Status:** isolated split-workbook prototype with layered LEAP authority built; semantic review pending
+**Status:** isolated split-workbook feature implemented and end-to-end shadow
+validated; canonical promotion remains a separate review decision
+
+**Archived:** 2026-07-29 after the exploration became a tested opt-in feature.
+The maintained operating guide is
+`docs/separate_axis_mapping_pipeline.md`; future promotion work remains in
+MAPQ-033.
 
 **Exploration branch:** `codex/separate-axis-mapping-exploration`
 
@@ -966,28 +972,57 @@ The generated Stage 2 pass took about 14 minutes 37 seconds. The complete
 canonical Stage 1-2 pass took about 7 minutes 6 seconds. This is a material
 performance and semantic difference, not an interface problem.
 
-The structural Stage 3 source-once precheck is blocking:
+The initial structural precheck over-counted direct subtotal mappings as
+unrelated fan-outs. That diagnostic was corrected by distinguishing declared
+non-expanding parent/detail alternatives and by allowing direct reviewed
+subtotal targets to form aggregate edges on the generated shadow path. The
+canonical default remains unchanged, and rollup-derived targets remain
+suppressed.
 
-- canonical structure: 177 source-pair/scope groups reach more than one common
-  row;
-- generated structure: 3,007 groups reach more than one common row;
-- 2,830 unsafe groups are new and none of the 177 existing groups is resolved;
-  and
-- the maximum fan-out is eight common rows per source pair.
+The final structural result is:
 
-The full generated value run was also stopped during Ninth conversion after
-the process reached approximately 9 GB RAM while another validation used about
-3.8 GB. At that point the workstation had less than 3 GB free. This is a
-performance stop, but the structural source-once failure already proves the
-current 3,501 provisional relationships cannot safely enter conversion use
-cases as ordinary mappings.
+| Source-once measure | Canonical | Generated |
+|---|---:|---:|
+| source-pair/scope groups reaching multiple Common rows | 177 | 54 |
+| protected parent/detail alternatives | 74 | 54 |
+| unexplained unsafe groups | 103 | 0 |
+| maximum Common rows reached by one source pair | 8 | 2 |
 
-The correct current boundary is therefore:
+All 54 generated two-row groups are the 27 declared Ninth
+agriculture/fishing parent/detail alternatives in each three-source scope.
+They match the Stage 2 source-aggregate split QA and do not represent duplicate
+value delivery.
 
-- mergeable as an isolated compiler, workbook, QA, and documentation feature;
-- not promotion-ready as the canonical mapping workbook; and
-- provisional relationships may remain accepted for review, but require
-  source-once resolution or allocation before value application.
+The full generated value gate then completed with economy-bounded Ninth
+conversion and source-system/economy-bounded Common application:
+
+- 18,657,595 source rows read after configured exclusions;
+- 2,579,778 non-zero relevant source rows applied;
+- 1,658,315 Common fact rows and 2,365 metadata rows published;
+- a 259,058,883-byte atomic component-lineage gzip;
+- 100% mapped-row value coverage in all ten scope/source combinations;
+- maximum absolute before/after difference
+  `1.1641532182693481e-10`; and
+- ten Stage 3 output-status records passed with none failed.
+
+The 520,964 rows in the missing-Common-map diagnostic are outside the generated
+exact-component contract. The largest ESTO/ESTO Extended groups are source
+parents, combined flows, and subtotals; other out-of-contract pairs remain
+reviewable. Another 598 rows are one Extended-only Ninth target seen in the
+base-ESTO scope. This is a coverage diagnostic rather than a source-once
+failure, and it remains visible so whole-source coverage is not confused with
+mapped-universe preservation.
+
+The current boundary is therefore:
+
+- mergeable as an isolated compiler, workbook, QA, documentation, and bounded
+  shadow-execution feature;
+- source-once delivery, lineage, and mapped value preservation pass;
+- not approved to replace the canonical mapping workbook without an explicit
+  promotion decision; and
+- the 3,501 provisional relationships, eight within-axis many-to-many
+  components, 29 broad Common rows, and remaining partial-coverage findings
+  are visible semantic review debt rather than hidden execution failures.
 
 The reproducible comparison is
 `codebase/separate_axis_mapping_shadow_validation_workflow.py`; its compact
@@ -1070,9 +1105,11 @@ relationship test files.
 The canonical workbook hash was unchanged, and no sibling production files
 were edited.
 
-## Questions to resolve before advancing
+## Questions remaining before canonical promotion
 
-Before any shadow or production implementation, a reviewer must decide:
+These questions no longer block merging the opt-in feature or running its
+shadow path, but they should be resolved before the generated workbook becomes
+the production master:
 
 1. Should flow-qualified product meaning be represented by narrow reviewed
    pair overrides, or by an explicit optional flow-context key on product
@@ -1084,6 +1121,6 @@ Before any shadow or production implementation, a reviewer must decide:
 4. What exact hierarchy-frontier rule rejects a conflicting parent-to-child
    mapping without rejecting legitimate coarse mappings between datasets?
 
-MAPQ-033 remains an isolated exploration. Treat every generated axis, registry,
-candidate, compatibility sheet, and override as review-only evidence until the
-questions above and the prototype QA gates are resolved.
+MAPQ-033 remains isolated from the production filename. Treat every generated
+axis, registry, candidate, compatibility sheet, and override as reviewable
+compiler output until the promotion questions above are resolved explicitly.

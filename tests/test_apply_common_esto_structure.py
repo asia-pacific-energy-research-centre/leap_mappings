@@ -5,12 +5,16 @@ import pytest
 
 from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
+    apply_common_structure_by_source_economy,
     build_component_relevance,
     build_source_coverage_check,
+    build_total_check,
     build_unmapped_leap_branch_evidence,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
+    filter_source_to_relevant_pairs,
     normalise_source_columns,
+    read_source_tables,
     should_ignore_missing_common_map_flow,
     tagged_output_path,
 )
@@ -41,6 +45,104 @@ def test_normalise_source_columns_uses_one_economy_code_for_compact_and_undersco
     )
 
     assert result["economy"].tolist() == ["20_USA", "20_USA"]
+
+
+def test_compact_source_tables_preserve_rows_and_shared_categories(
+    tmp_path,
+) -> None:
+    first_path = tmp_path / "first.csv"
+    second_path = tmp_path / "second.csv"
+    pd.DataFrame(
+        [
+            {
+                "source_system": "esto",
+                "economy": "20USA",
+                "scenario": "historical",
+                "year": 2023,
+                "esto_flow": "F1",
+                "esto_product": "P1",
+                "value": 1.0,
+            },
+            {
+                "source_system": "esto",
+                "economy": "20USA",
+                "scenario": "historical",
+                "year": 2023,
+                "esto_flow": "06 Stock changes",
+                "esto_product": "P1",
+                "value": 99.0,
+            },
+        ]
+    ).to_csv(first_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "source_system": "ninth",
+                "economy": "01AUS",
+                "scenario": "reference",
+                "year": 2030,
+                "esto_flow": "F2",
+                "esto_product": "P2",
+                "value": 2.0,
+            }
+        ]
+    ).to_csv(second_path, index=False)
+
+    ordinary = read_source_tables(
+        {"ESTO": first_path, "NINTH": second_path},
+        default_economy="20USA",
+    )
+    compact = read_source_tables(
+        {"ESTO": first_path, "NINTH": second_path},
+        default_economy="20USA",
+        compact_dtypes=True,
+    )
+
+    pd.testing.assert_frame_equal(
+        compact.astype(
+            {
+                column: "object"
+                for column in [
+                    "source_system",
+                    "economy",
+                    "scenario",
+                    "esto_flow",
+                    "esto_product",
+                ]
+            }
+        ),
+        ordinary,
+        check_dtype=False,
+    )
+    assert compact["source_system"].dtype.name == "category"
+    assert compact["source_system"].tolist() == ["ESTO", "NINTH"]
+
+
+def test_relevant_pair_filter_preserves_categorical_source_dtypes() -> None:
+    source_df = pd.DataFrame(
+        [
+            {"esto_flow": "F1", "esto_product": "P1", "value": 1.0},
+            {"esto_flow": "F2", "esto_product": "P2", "value": 2.0},
+        ]
+    )
+    source_df["esto_flow"] = source_df["esto_flow"].astype("category")
+    source_df["esto_product"] = source_df["esto_product"].astype(
+        "category"
+    )
+    relevance_df = pd.DataFrame(
+        [
+            {
+                "component_esto_flow": "F2",
+                "component_esto_product": "P2",
+            }
+        ]
+    )
+
+    filtered = filter_source_to_relevant_pairs(source_df, relevance_df)
+
+    assert filtered["value"].tolist() == [2.0]
+    assert filtered["esto_flow"].dtype.name == "category"
+    assert filtered["esto_product"].dtype.name == "category"
 
 
 def test_source_coverage_check_expands_preaggregated_source_totals_by_scope() -> None:
@@ -231,6 +333,104 @@ def test_apply_common_structure_lineage_sums_to_comparison_and_keeps_fan_in_rows
     assert comparison_df.loc[0, "value"] == 5.0
     assert lineage_df["value"].sum() == comparison_df.loc[0, "value"]
     assert lineage_df.set_index("esto_flow")["value"].to_dict() == {"F1": 10.0, "F2": -5.0}
+
+
+def test_chunked_common_application_matches_single_pass(tmp_path) -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": source_system,
+                "economy": economy,
+                "scenario": scenario,
+                "year": 2023,
+                "esto_flow": "F",
+                "esto_product": "P",
+                "value": value,
+            }
+            for source_system, economy, scenario, value in (
+                [
+                    (
+                        "ESTO",
+                        f"{index:02d}_TST",
+                        "historical",
+                        float(index),
+                    )
+                    for index in range(1, 7)
+                ]
+                + [("LEAP", "20_USA", "Reference", 25.0)]
+            )
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_leap",
+                "component_esto_flow": "F",
+                "component_esto_product": "P",
+                "common_row_id": "common_f",
+                "common_flow_code": "F",
+                "common_flow_name": "Flow",
+                "common_flow_label": "F Flow",
+                "common_product_code": "P",
+                "common_product_name": "Product",
+                "common_product_label": "P Product",
+                "component_sign": 1,
+            }
+        ]
+    )
+    (
+        expected_comparison,
+        expected_missing,
+        expected_mapped,
+        expected_lineage,
+    ) = apply_common_structure(
+        source_df,
+        common_rows_df,
+        return_lineage=True,
+    )
+    expected_total_check = build_total_check(
+        expected_mapped,
+        expected_comparison,
+    )
+    lineage_path = tmp_path / "lineage.csv.gz"
+
+    comparison, missing, total_check = (
+        apply_common_structure_by_source_economy(
+            source_df,
+            common_rows_df,
+            lineage_path,
+        )
+    )
+    lineage = pd.read_csv(lineage_path).fillna("")
+
+    comparison_sort = [
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "common_row_id",
+    ]
+    lineage_sort = [
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "esto_flow",
+        "esto_product",
+    ]
+    pd.testing.assert_frame_equal(
+        comparison.sort_values(comparison_sort).reset_index(drop=True),
+        expected_comparison.sort_values(comparison_sort).reset_index(
+            drop=True
+        ),
+    )
+    pd.testing.assert_frame_equal(missing, expected_missing)
+    pd.testing.assert_frame_equal(total_check, expected_total_check)
+    pd.testing.assert_frame_equal(
+        lineage.sort_values(lineage_sort).reset_index(drop=True),
+        expected_lineage.sort_values(lineage_sort).reset_index(drop=True),
+        check_dtype=False,
+    )
 
 
 def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> None:

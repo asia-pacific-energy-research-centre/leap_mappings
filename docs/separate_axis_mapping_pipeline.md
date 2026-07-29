@@ -1,7 +1,8 @@
 # Separate-axis mapping generation
 
-**Status:** implemented as a review-only shadow pipeline on
-`codex/separate-axis-mapping-exploration`.
+**Status:** implemented and end-to-end shadow validated on
+`codex/separate-axis-mapping-exploration`; ready for merge review as an
+opt-in further-development feature.
 
 **Promotion boundary:** the generated compatibility master is not yet
 `config/outlook_mappings_master.xlsx`. Promotion requires review of the shadow
@@ -182,18 +183,31 @@ registry recognizing aggregate source pairs that the old workbook labelled as
 non-subtotals; they still require review because subtotal metadata affects graph
 construction.
 
-The provisional additions materially enlarge Stage 2:
+The initial generated graph exposed a source-once defect because direct target
+pairs labelled as subtotals were excluded from aggregate edges. The
+separate-axis shadow path now enables an opt-in rule that:
 
-- LEAP-defined aggregate groups rise from zero to 1,021 in every enabled scope;
-- `esto_leap` and `esto_extended_leap` change from entirely exact rows to 127
-  rolled common rows each;
-- the two three-source scopes change from 170 to 230 rolled common rows;
-- source-aggregate split issues rise to 48 in the LEAP scopes and 110 in the
-  three-source scopes;
-- the generated Stage 2 pass took about 14 minutes 37 seconds, compared with
-  about 7 minutes 6 seconds for the complete canonical Stage 1-2 pass; and
-- generated Stage 2 QA includes an approximately 62 MB resolved-product-
-  intersection file and approximately 23 MB row/component CSVs.
+- allows direct reviewed subtotal targets to form source aggregate edges;
+- continues to suppress every `is_rollup_derived=TRUE` target;
+- keeps a protected subtotal flow separate from its declared child flows; and
+- permits product aggregation within that same protected subtotal flow.
+
+The option is default-off in the ordinary pipeline. Merging this feature
+therefore does not change the canonical-master graph unless the generated
+compatibility path is selected explicitly.
+
+The refined generated Stage 2 result is:
+
+- 10,562 exact component-to-Common-row map memberships;
+- 1,019 `esto_leap`, 1,020 `esto_extended_leap`, and 1,035 rows in each
+  three-source scope;
+- zero missing or duplicate components;
+- zero unresolved partial-coverage rows in LEAP-only scopes and 14 in each
+  three-source scope;
+- zero source-aggregate splits in LEAP-only scopes and 27 in each three-source
+  scope, all protected parent/detail alternatives; and
+- all 30 non-expanding subtotals pass the rule that no parent shares a Common
+  row with its declared children.
 
 This proves interface compatibility, but not semantic equivalence. The
 3,501-row provisional policy changes Common ESTO partitioning far beyond 518
@@ -205,39 +219,89 @@ canonical filename changes.
 
 A bounded structural Stage 3 precheck joins each included conversion source
 pair to the Common ESTO rows reached by all of its generated target components.
-A source pair reaching more than one common row would deliver its value more
-than once unless an allocation rule exists.
+A source pair reaching more than one unrelated common row would deliver its
+value more than once unless an allocation rule exists. A declared
+non-expanding parent row and its detail frontier are alternative,
+non-additive views and are classified separately.
 
 | Source-once measure | Canonical | Generated |
 |---|---:|---:|
-| source-pair/scope groups reaching multiple common rows | 177 | 3,007 |
-| new unsafe groups introduced by generated mappings | — | 2,830 |
-| maximum common rows reached by one source pair | 8 | 8 |
+| source-pair/scope groups reaching multiple common rows | 177 | 54 |
+| protected parent/detail alternatives | 74 | 54 |
+| unexplained unsafe groups | 103 | 0 |
+| maximum common rows reached by one source pair | 8 | 2 |
 
-The 177 existing cases remain visible technical debt. The generated master
-does not resolve any of them and introduces 2,830 more, mainly through LEAP
-one-to-many fan-out. Therefore the value-delivery gate fails even though the
-schema and Stage 1 inclusion gates pass.
+The structural source-once gate therefore passes for the generated path. The
+54 two-row groups are the 27 Ninth agriculture/fishing parent/detail
+alternatives in each three-source scope; all match Stage 2's explicit
+non-expanding split QA.
 
-A full value run was attempted after the structural build. During Ninth
-conversion the generated path reached approximately 9 GB of RAM while another
-existing validation used about 3.8 GB, leaving less than 3 GB free on the
-workstation. The shadow process was stopped before Stage 3 application to avoid
-making Codex Desktop or the machine unresponsive. The full workflow remains in
-`codebase/separate_axis_mapping_stage3_shadow_workflow.py`, disabled by
-default. It should not be re-enabled until the structural source-once failures
-are reduced; more RAM would allow the run to continue but would not make the
-fan-out semantically correct.
+The original full value attempt exposed a separate performance problem:
+single-pass Ninth conversion materialised more than 10 GB while building
+lineage. Conversion now runs and writes atomically one economy at a time. A
+two-economy regression test proves chunked converted values and lineage are
+identical to the former single-pass result.
+
+Stage 3 now also applies the Common structure in source-system/economy
+batches, streams component lineage to an atomic gzip file, and dictionary
+encodes repeated source labels during the relevance pass. The ordinary
+canonical code path keeps its existing default; batching is selected
+explicitly by the separate-axis shadow workflow.
+
+The final full-data shadow gate completed on 2026-07-29:
+
+| Stage 3 measure | Result |
+|---|---:|
+| source rows read after configured exclusions | 18,657,595 |
+| non-zero relevant source rows applied | 2,579,778 |
+| Common comparison fact rows | 1,658,315 |
+| Common metadata rows | 2,365 |
+| component-lineage gzip size | 259,058,883 bytes |
+| mapped scope/source combinations checked | 10 |
+| maximum absolute mapped-row total difference | `1.1641532182693481e-10` |
+| mapped value coverage | 100% in all 10 combinations |
+| Stage 3 elapsed time | 2,064.814 seconds |
+| published output-status records | 10 passed, 0 failed |
+
+The additive fact/metadata contract was published atomically and its hashes
+were verified. The generated path produced zero unsafe structural fan-outs,
+and every mapped source value is delivered exactly once within each selected
+comparison scope.
+
+Stage 3 also reported 520,964 source rows without an exact Common component
+map. Of these, 520,366 are ESTO/ESTO Extended rows; the largest groups are
+parent, subtotal, and combined transformation/demand flows, but the file also
+contains other out-of-contract pairs that remain reviewable. The other 598
+rows are one ESTO-Extended-only Ninth pair correctly absent from the base-ESTO
+scope. This is a coverage diagnostic, not a source-once failure. These rows are
+outside the mapped-universe preservation test and must remain visible for
+review before canonical promotion.
+
+The remaining review diagnostics are semantic rather than value-delivery
+failures:
+
+- 29 broad Common rows, with at most 126 exact components;
+- 14 partial-coverage rows in each three-source scope;
+- 178 non-zero LEAP branches without direct ESTO mappings;
+- eight within-axis many-to-many components; and
+- 3,501 provisionally accepted Cartesian relationships.
+
+The shadow run used `skip_deep_validation=True` after the structure,
+source-once, lineage, contract, and value-preservation gates. The recursive
+source-tree and parent-anchor suite is unchanged canonical validation and was
+not repeated during this RAM-constrained feature gate.
 
 This makes the current decision precise:
 
 - the separate-axis compiler, workbooks, and review QA are suitable to merge as
   an exploration/further-development feature;
-- the generated compatibility master is not suitable to replace the canonical
-  master yet; and
-- provisional acceptance can remain the review label, but provisional
-  relationships must not enter value-conversion use cases until each source
-  reaches one common row or has an explicit allocation.
+- the chunked Stage 3 value totals, lineage, and output contract pass;
+- the generated compatibility master still must not replace the canonical
+  master without explicit promotion approval and review of the semantic debt;
+  and
+- the 3,501 provisional relationships can remain enabled for continued
+  end-to-end work, while the eight within-axis many-to-many components and
+  broad Common rows remain explicit semantic review debt.
 
 ## Running the refresh from Jupyter
 
@@ -248,6 +312,7 @@ Run their bottom cells in this order:
 2. `codebase/separate_axis_mapping_split_workbooks_workflow.py`
 3. the artifact builder for the generated workbook files
 4. `codebase/separate_axis_mapping_shadow_validation_workflow.py`
+5. `codebase/separate_axis_mapping_stage3_shadow_workflow.py`
 
 The artifact builder is
 `codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`. It must use

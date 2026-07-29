@@ -168,6 +168,8 @@ def _functional_relationship_rows(frame: pd.DataFrame) -> pd.DataFrame:
 def _run_stage_1_and_2_variant(
     label: str,
     workbook_path: Path,
+    *,
+    allow_direct_subtotal_edges: bool = False,
 ) -> dict[str, Any]:
     """Run Stages 1 and 2 into an isolated variant directory."""
     variant_root = OUTPUT_ROOT / label
@@ -204,6 +206,7 @@ def _run_stage_1_and_2_variant(
             outlook_mappings_path=workbook_path,
             output_dir=common_dir,
             enabled_scopes=DEFAULT_ENABLED_COMPARISON_SCOPES,
+            allow_direct_subtotal_edges=allow_direct_subtotal_edges,
         )
     )
     return {
@@ -247,6 +250,73 @@ def _load_stage_1_and_2_variant(label: str) -> dict[str, Any]:
     }
 
 
+def _stage_2_qa_frame(
+    variant: dict[str, Any],
+    qa_name: str,
+) -> pd.DataFrame:
+    """Read one Stage 2 QA frame from memory or its isolated CSV."""
+    in_memory = variant.get("stage_2_qa", {}).get(qa_name)
+    if in_memory is not None:
+        return in_memory
+    qa_path = variant["common_dir"] / f"{qa_name}.csv"
+    if not qa_path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(qa_path, low_memory=False)
+
+
+def run_stage_2_from_existing_relationships(
+    *,
+    relationship_variant_label: str,
+    output_variant_label: str,
+    workbook_path: Path,
+) -> dict[str, Any]:
+    """Rerun Stage 2 without paying the cost of rebuilding Stage 1.
+
+    This is useful for testing graph and rollup rules against an already
+    generated relationship catalogue. The new outputs are kept in a separate
+    variant directory so earlier shadow evidence remains unchanged.
+    """
+    relationship_dir = (
+        OUTPUT_ROOT / relationship_variant_label / "mapping_relationships"
+    )
+    relationships_path = (
+        relationship_dir / "energy_balance_relationships.csv"
+    )
+    if not relationships_path.exists():
+        raise FileNotFoundError(
+            "Stage 1 relationship catalogue does not exist: "
+            f"{relationships_path}"
+        )
+
+    common_dir = OUTPUT_ROOT / output_variant_label / "common_esto"
+    common_dir.mkdir(parents=True, exist_ok=True)
+    common_rows, common_map, stage_2_qa = (
+        run_common_esto_structure_workflow(
+            relationships_path=relationships_path,
+            coverage_exclusions_path=(
+                relationship_dir / "coverage_exclusions.csv"
+            ),
+            common_esto_overrides_path=(
+                relationship_dir / "common_esto_overrides.csv"
+            ),
+            common_esto_label_overrides_path=(
+                COMMON_ESTO_LABEL_OVERRIDES_PATH
+            ),
+            outlook_mappings_path=workbook_path,
+            output_dir=common_dir,
+            enabled_scopes=DEFAULT_ENABLED_COMPARISON_SCOPES,
+            allow_direct_subtotal_edges=True,
+        )
+    )
+    return {
+        "common_rows": common_rows,
+        "common_map": common_map,
+        "stage_2_qa": stage_2_qa,
+        "relationship_dir": relationship_dir,
+        "common_dir": common_dir,
+    }
+
+
 def _subtotal_flag_difference() -> pd.DataFrame:
     """Compare subtotal metadata for relationships shared by both masters."""
     canonical, _ = load_active_mapping_contract(CANONICAL_WORKBOOK_PATH)
@@ -276,8 +346,15 @@ def _build_structural_source_once_diagnostic(
     relationships: pd.DataFrame,
     common_map: pd.DataFrame,
     variant: str,
+    expected_split_groups: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Count common rows reached by each conversion source pair and scope."""
+    """Count common rows reached by each conversion source pair and scope.
+
+    A split explicitly reported by Stage 2 after isolating a non-expanding
+    subtotal frontier is an alternative parent/detail view, not an unrelated
+    double delivery. It remains visible but is classified separately from
+    unsafe fan-out.
+    """
     conversion_use_cases = {
         "leap_to_esto_balance_conversion",
         "ninth_to_esto_balance_conversion",
@@ -341,10 +418,45 @@ def _build_structural_source_once_diagnostic(
     )
     diagnostic.insert(0, "variant", variant)
     diagnostic["source_once_status"] = "one_common_row"
+    expected_keys: set[tuple[Any, ...]] = set()
+    if expected_split_groups is not None and not expected_split_groups.empty:
+        expected_keys = {
+            tuple(row)
+            for row in (
+                expected_split_groups[
+                    [
+                        "source_system",
+                        "source_flow",
+                        "source_product",
+                        "comparison_scope",
+                    ]
+                ]
+                .drop_duplicates()
+                .itertuples(index=False, name=None)
+            )
+        }
+    diagnostic_keys = diagnostic[
+        [
+            "source_system",
+            "source_flow",
+            "source_product",
+            "comparison_scope",
+        ]
+    ].itertuples(index=False, name=None)
+    diagnostic["is_protected_parent_detail_alternative"] = [
+        tuple(key) in expected_keys
+        for key in diagnostic_keys
+    ]
     diagnostic.loc[
-        diagnostic["common_row_count"].gt(1),
+        diagnostic["common_row_count"].gt(1)
+        & diagnostic["is_protected_parent_detail_alternative"],
         "source_once_status",
-    ] = "source_pair_reaches_multiple_common_rows"
+    ] = "protected_parent_detail_alternative"
+    diagnostic.loc[
+        diagnostic["common_row_count"].gt(1)
+        & ~diagnostic["is_protected_parent_detail_alternative"],
+        "source_once_status",
+    ] = "unsafe_multiple_common_rows"
     return diagnostic
 
 
@@ -362,10 +474,12 @@ def run_separate_axis_shadow_validation(
         canonical = _run_stage_1_and_2_variant(
             "canonical",
             CANONICAL_WORKBOOK_PATH,
+            allow_direct_subtotal_edges=False,
         )
         generated = _run_stage_1_and_2_variant(
             "generated",
             GENERATED_WORKBOOK_PATH,
+            allow_direct_subtotal_edges=True,
         )
     else:
         canonical = _load_stage_1_and_2_variant("canonical")
@@ -450,11 +564,19 @@ def run_separate_axis_shadow_validation(
         canonical["relationships"],
         canonical["common_map"],
         "canonical",
+        _stage_2_qa_frame(
+            canonical,
+            "qa_common_esto_source_aggregates_split",
+        ),
     )
     generated_source_once = _build_structural_source_once_diagnostic(
         generated["relationships"],
         generated["common_map"],
         "generated",
+        _stage_2_qa_frame(
+            generated,
+            "qa_common_esto_source_aggregates_split",
+        ),
     )
     source_once_diagnostic = pd.concat(
         [canonical_source_once, generated_source_once],
@@ -467,11 +589,15 @@ def run_separate_axis_shadow_validation(
         "comparison_scope",
     ]
     canonical_unsafe = canonical_source_once.loc[
-        canonical_source_once["common_row_count"].gt(1),
+        canonical_source_once["source_once_status"].eq(
+            "unsafe_multiple_common_rows"
+        ),
         unsafe_key_columns,
     ]
     generated_unsafe = generated_source_once.loc[
-        generated_source_once["common_row_count"].gt(1),
+        generated_source_once["source_once_status"].eq(
+            "unsafe_multiple_common_rows"
+        ),
         unsafe_key_columns,
     ]
     unsafe_difference = canonical_unsafe.merge(
@@ -587,6 +713,26 @@ def run_separate_axis_shadow_validation(
         "generated_source_pairs_reaching_multiple_common_rows": int(
             generated_source_once["common_row_count"].gt(1).sum()
         ),
+        "canonical_protected_parent_detail_alternatives": int(
+            canonical_source_once["source_once_status"].eq(
+                "protected_parent_detail_alternative"
+            ).sum()
+        ),
+        "generated_protected_parent_detail_alternatives": int(
+            generated_source_once["source_once_status"].eq(
+                "protected_parent_detail_alternative"
+            ).sum()
+        ),
+        "canonical_unsafe_source_once_failures": int(
+            canonical_source_once["source_once_status"].eq(
+                "unsafe_multiple_common_rows"
+            ).sum()
+        ),
+        "generated_unsafe_source_once_failures": int(
+            generated_source_once["source_once_status"].eq(
+                "unsafe_multiple_common_rows"
+            ).sum()
+        ),
         "new_generated_source_once_failures": int(
             unsafe_difference["shadow_status"].eq(
                 "new_in_generated"
@@ -599,9 +745,10 @@ def run_separate_axis_shadow_validation(
             DEFAULT_ENABLED_COMPARISON_SCOPES
         ),
         "stage3_status": (
-            "blocked_before_application: full generated conversion reached "
-            "about 9 GB RAM while another validation was active; structural "
-            "source-once gate already identifies new unsafe fan-out"
+            "run separately with "
+            "separate_axis_mapping_stage3_shadow_workflow.py against the "
+            "selected Stage 2 variant; this manifest records structural "
+            "source-once evidence only"
         ),
     }
     manifest_path = OUTPUT_ROOT / "shadow_validation_manifest.json"
@@ -615,13 +762,41 @@ def run_separate_axis_shadow_validation(
 
 # --- Frequently changed run flag ------------------------------------------
 
-RUN_SEPARATE_AXIS_SHADOW_VALIDATION = True
+RUN_STAGE_2_EXISTING_RELATIONSHIPS = (
+    os.environ.get("SEPARATE_AXIS_STAGE2_ONLY", "false")
+    .strip()
+    .casefold()
+    in {"true", "1", "yes"}
+)
+RUN_SEPARATE_AXIS_SHADOW_VALIDATION = not RUN_STAGE_2_EXISTING_RELATIONSHIPS
 RUN_VARIANT_PIPELINES = (
     os.environ.get("SEPARATE_AXIS_RUN_VARIANTS", "true")
     .strip()
     .casefold()
     not in {"false", "0", "no"}
 )
+
+
+#%%
+if __name__ == "__main__" and RUN_STAGE_2_EXISTING_RELATIONSHIPS:
+    try:
+        STAGE_2_EXISTING_RELATIONSHIPS_RESULT = (
+            run_stage_2_from_existing_relationships(
+                relationship_variant_label=os.environ.get(
+                    "SEPARATE_AXIS_STAGE2_RELATIONSHIP_LABEL",
+                    "generated",
+                ),
+                output_variant_label=os.environ.get(
+                    "SEPARATE_AXIS_STAGE2_OUTPUT_LABEL",
+                    "generated_stage2_experiment",
+                ),
+                workbook_path=GENERATED_WORKBOOK_PATH,
+            )
+        )
+    except Exception:
+        print("Separate-axis Stage 2-only shadow validation failed.")
+        traceback.print_exc()
+        raise
 
 
 #%%

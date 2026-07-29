@@ -8,6 +8,7 @@ economy, scenario, year, ESTO flow/product, and value columns.
 
 #%%
 from pathlib import Path
+import gzip
 import sys
 import re
 from datetime import datetime, timezone
@@ -75,6 +76,13 @@ COMPARISON_INTERNAL_COLUMNS = [
 WIDE_OUTPUT_ID_COLUMNS = ["comparison_scope", "economy", "scenario", "product", "flow"]
 SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "value"]
 SOURCE_VALUE_SCOPE_COLUMNS = ["comparison_scope"] + SOURCE_VALUE_COLUMNS
+SOURCE_CATEGORY_COLUMNS = [
+    "source_system",
+    "economy",
+    "scenario",
+    "esto_flow",
+    "esto_product",
+]
 TOTAL_GROUP_COLUMNS = ["comparison_scope", "source_system", "economy", "scenario", "year"]
 AGGREGATE_LABEL_KEYWORDS = ["total", "subtotal"]
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
@@ -131,7 +139,10 @@ def read_table_if_exists(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
     if path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
         return pd.read_excel(path)
-    return pd.read_csv(path)
+    return pd.read_csv(
+        path,
+        dtype={"non_expanding_rollup_id": "string"},
+    )
 
 
 def normalise_label(value: object) -> str:
@@ -188,6 +199,13 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
     if "economy" not in working_df.columns:
         working_df["economy"] = default_economy
     working_df["economy"] = working_df["economy"].map(normalise_economy_code)
+    working_df["source_system"] = (
+        working_df["source_system"]
+        .fillna(default_source_system)
+        .astype(str)
+        .str.upper()
+        .str.strip()
+    )
     for column in ["scenario", "year"]:
         if column not in working_df.columns:
             working_df[column] = ""
@@ -204,24 +222,80 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
     return working_df[SOURCE_VALUE_COLUMNS].copy()
 
 
-def read_source_tables(source_paths: dict[str, Path], default_economy: str) -> pd.DataFrame:
+def _compact_source_frames(
+    frames: list[pd.DataFrame],
+) -> list[pd.DataFrame]:
+    """Dictionary-encode repeated source labels with shared categories.
+
+    The converted Ninth table has millions of rows but only a small number of
+    distinct systems, economies, scenarios, flows, and products. Sharing the
+    category dictionaries across input frames keeps concatenation categorical
+    instead of silently expanding those columns back to Python objects.
+    """
+    if not frames:
+        return frames
+    category_columns = [
+        column
+        for column in SOURCE_CATEGORY_COLUMNS
+        if all(column in frame.columns for frame in frames)
+    ]
+    for frame in frames:
+        for column in category_columns:
+            frame[column] = (
+                frame[column].fillna("").astype(str).astype("category")
+            )
+        frame["year"] = pd.to_numeric(frame["year"], errors="coerce")
+
+    for column in category_columns:
+        shared_categories = pd.Index(
+            [
+                category
+                for frame in frames
+                for category in frame[column].cat.categories
+            ]
+        ).drop_duplicates()
+        for frame in frames:
+            frame[column] = frame[column].cat.set_categories(
+                shared_categories
+            )
+    return frames
+
+
+def read_source_tables(
+    source_paths: dict[str, Path],
+    default_economy: str,
+    compact_dtypes: bool = False,
+) -> pd.DataFrame:
     """Read and concatenate available ESTO-shaped source tables."""
     frames: list[pd.DataFrame] = []
+    filtered_count = 0
     for source_system, path in source_paths.items():
         source_df = read_table_if_exists(path)
         if source_df.empty:
             print(f"Skipped missing or empty {source_system} source data: {path}")
             continue
-        frames.append(normalise_source_columns(source_df, default_source_system=source_system, default_economy=default_economy))
-        print(f"{source_system} ESTO-shaped rows read: {len(source_df):,}")
+        input_row_count = len(source_df)
+        normalised_df = normalise_source_columns(
+            source_df,
+            default_source_system=source_system,
+            default_economy=default_economy,
+        )
+        del source_df
+        filtered_df = filter_unmodelled_source_rows(normalised_df)
+        filtered_count += len(normalised_df) - len(filtered_df)
+        del normalised_df
+        if compact_dtypes:
+            filtered_df = _compact_source_frames([filtered_df])[0]
+        frames.append(filtered_df)
+        print(f"{source_system} ESTO-shaped rows read: {input_row_count:,}")
     if not frames:
         return pd.DataFrame(columns=SOURCE_VALUE_COLUMNS)
+    if compact_dtypes:
+        frames = _compact_source_frames(frames)
     source_df = pd.concat(frames, ignore_index=True)
-    filtered_source_df = filter_unmodelled_source_rows(source_df)
-    filtered_count = len(source_df) - len(filtered_source_df)
     if filtered_count:
         print(f"Unmodelled source rows excluded from Common ESTO comparison: {filtered_count:,}")
-    return filtered_source_df
+    return source_df
 
 
 def split_code_name(label: object) -> tuple[str, str]:
@@ -295,6 +369,28 @@ def nonzero_source_rows(source_df: pd.DataFrame, active_component_abs_tolerance:
     return source_df[value_abs > active_component_abs_tolerance].copy()
 
 
+def filter_source_to_relevant_pairs(
+    source_df: pd.DataFrame,
+    relevance_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Keep relevant ESTO pairs without materialising a large merge copy."""
+    if source_df.empty or relevance_df.empty:
+        return source_df.copy()
+    relevant_index = pd.MultiIndex.from_frame(
+        relevance_df[
+            ["component_esto_flow", "component_esto_product"]
+        ].drop_duplicates()
+    )
+    source_index = pd.MultiIndex.from_arrays(
+        [
+            source_df["esto_flow"],
+            source_df["esto_product"],
+        ],
+        names=["component_esto_flow", "component_esto_product"],
+    )
+    return source_df.loc[source_index.isin(relevant_index)].copy()
+
+
 def build_component_relevance(
     source_df: pd.DataFrame,
     active_component_abs_tolerance: float,
@@ -314,7 +410,28 @@ def build_component_relevance(
     working_df = source_df.copy()
     working_df["year"] = pd.to_numeric(working_df["year"], errors="coerce")
     working_df["value"] = pd.to_numeric(working_df["value"], errors="coerce").fillna(0)
-    working_df["source_system"] = working_df["source_system"].astype(str).str.upper().str.strip()
+    if isinstance(working_df["source_system"].dtype, pd.CategoricalDtype):
+        normalised_categories = [
+            str(value).upper().strip()
+            for value in working_df["source_system"].cat.categories
+        ]
+        if len(set(normalised_categories)) == len(normalised_categories):
+            working_df["source_system"] = (
+                working_df["source_system"].cat.rename_categories(
+                    normalised_categories
+                )
+            )
+        else:
+            working_df["source_system"] = (
+                working_df["source_system"]
+                .astype(str)
+                .str.upper()
+                .str.strip()
+            )
+    else:
+        working_df["source_system"] = (
+            working_df["source_system"].astype(str).str.upper().str.strip()
+        )
     if "economy" not in working_df.columns:
         working_df["economy"] = ""
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
@@ -405,7 +522,11 @@ def build_component_relevance(
         evidence_df = working_df.loc[evidence_masks[evidence_column]].copy()
         if evidence_df.empty:
             continue
-        stats_df = evidence_df.groupby(pair_columns, as_index=False).agg(**aggregation_spec).rename(
+        stats_df = evidence_df.groupby(
+            pair_columns,
+            as_index=False,
+            observed=True,
+        ).agg(**aggregation_spec).rename(
             columns={
                 "esto_flow": "component_esto_flow",
                 "esto_product": "component_esto_product",
@@ -880,6 +1001,150 @@ def apply_common_structure(
     return comparison_df, missing_map_df, mapped_source_df
 
 
+def apply_common_structure_by_source_economy(
+    source_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    lineage_output_path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Apply the common map in disjoint fact-key chunks.
+
+    ``source_system`` and ``economy`` are part of every comparison, lineage,
+    and total-check key, so no aggregation crosses chunk boundaries. Lineage
+    is streamed to an atomic gzip file while only the much smaller aggregated
+    comparison frames remain in memory.
+    """
+    comparison_frames: list[pd.DataFrame] = []
+    missing_frames: list[pd.DataFrame] = []
+    total_check_frames: list[pd.DataFrame] = []
+    lineage_temp_path = lineage_output_path.with_name(
+        f"{lineage_output_path.name}.tmp"
+    )
+    chunk_count = 0
+    try:
+        lineage_output_path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(
+            lineage_temp_path,
+            mode="wt",
+            encoding="utf-8",
+            newline="",
+        ) as lineage_handle:
+            source_systems = (
+                sorted(source_df["source_system"].dropna().unique())
+                if "source_system" in source_df.columns
+                else ["all_sources"]
+            )
+            for source_system in source_systems:
+                system_mask = (
+                    source_df["source_system"].eq(source_system)
+                    if "source_system" in source_df.columns
+                    else pd.Series(True, index=source_df.index)
+                )
+                economies = (
+                    sorted(
+                        source_df.loc[system_mask, "economy"]
+                        .dropna()
+                        .unique()
+                    )
+                    if "economy" in source_df.columns
+                    else ["all_economies"]
+                )
+                if source_system == "NINTH":
+                    economy_batch_size = 1
+                elif source_system in {"ESTO", "ESTO_EXTENDED"}:
+                    economy_batch_size = 5
+                else:
+                    economy_batch_size = max(len(economies), 1)
+                economy_batches = [
+                    economies[index:index + economy_batch_size]
+                    for index in range(0, len(economies), economy_batch_size)
+                ] or [["all_economies"]]
+
+                for economy_batch in economy_batches:
+                    chunk_mask = system_mask.copy()
+                    if "economy" in source_df.columns:
+                        chunk_mask &= source_df["economy"].isin(
+                            economy_batch
+                        )
+                    source_chunk_df = source_df.loc[chunk_mask].copy()
+                    group_key = (
+                        source_system,
+                        "|".join(str(value) for value in economy_batch),
+                    )
+                    (
+                        comparison_chunk_df,
+                        missing_chunk_df,
+                        mapped_source_chunk_df,
+                        lineage_chunk_df,
+                    ) = apply_common_structure(
+                        source_chunk_df,
+                        common_rows_df,
+                        return_lineage=True,
+                    )
+                    lineage_chunk_df.to_csv(
+                        lineage_handle,
+                        index=False,
+                        header=chunk_count == 0,
+                    )
+                    comparison_frames.append(comparison_chunk_df)
+                    missing_frames.append(
+                        filter_missing_common_map_diagnostics(
+                            missing_chunk_df
+                        )
+                    )
+                    total_check_frames.append(
+                        build_total_check(
+                            mapped_source_chunk_df,
+                            comparison_chunk_df,
+                        )
+                    )
+                    chunk_count += 1
+                    print(
+                        "  Applied Common ESTO chunk "
+                        f"{group_key}: "
+                        f"{len(comparison_chunk_df):,} comparison rows, "
+                        f"{len(lineage_chunk_df):,} lineage rows"
+                    )
+                    del (
+                        source_chunk_df,
+                        comparison_chunk_df,
+                        missing_chunk_df,
+                        mapped_source_chunk_df,
+                        lineage_chunk_df,
+                    )
+                    gc.collect()
+
+            if chunk_count == 0:
+                pd.DataFrame(
+                    columns=ESTO_COMPONENT_LINEAGE_COLUMNS
+                ).to_csv(lineage_handle, index=False)
+        lineage_temp_path.replace(lineage_output_path)
+    except Exception:
+        lineage_temp_path.unlink(missing_ok=True)
+        raise
+
+    comparison_df = (
+        pd.concat(comparison_frames, ignore_index=True)
+        if comparison_frames
+        else pd.DataFrame(columns=OUTPUT_COLUMNS)
+    )
+    missing_map_df = (
+        pd.concat(missing_frames, ignore_index=True)
+        if missing_frames
+        else pd.DataFrame()
+    )
+    total_check_df = (
+        pd.concat(total_check_frames, ignore_index=True)
+        .sort_values(TOTAL_GROUP_COLUMNS)
+        .reset_index(drop=True)
+        if total_check_frames
+        else pd.DataFrame(
+            columns=TOTAL_GROUP_COLUMNS
+            + ["source_total", "common_total", "difference"]
+        )
+    )
+    return comparison_df, missing_map_df, total_check_df
+
+
 def build_broad_common_row_diagnostics(
     common_rows_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
@@ -1349,6 +1614,11 @@ def save_outputs(
             esto_component_lineage_df,
             error_tagged_path(esto_component_lineage_output_path, error_occurred),
         ))
+    elif (
+        esto_component_lineage_output_path is not None
+        and esto_component_lineage_output_path.exists()
+    ):
+        written_paths.append(esto_component_lineage_output_path)
     # This legacy output was produced by an unreliable label-based subtotal
     # filter. Remove it so a stale file cannot be mistaken for current QA.
     legacy_filtered_path = output_dir / "common_esto_subtotal_rows_filtered.csv"
@@ -1523,7 +1793,10 @@ def run_common_esto_comparison_fast_path(
         missing_text = "\n".join(str(path) for path in missing_paths)
         raise FileNotFoundError(f"Fast-path Common ESTO regen is missing cached input files:\n{missing_text}")
 
-    source_df = read_source_tables(source_paths, default_economy=default_economy)
+    source_df = read_source_tables(
+        source_paths,
+        default_economy=default_economy,
+    )
     if economies is not None:
         economy_aliases = economy_filter_aliases(economies)
         if not economy_aliases:
@@ -1600,11 +1873,16 @@ def run_apply_common_esto_structure(
     ninth_projection_start_year: int = NINTH_PROJECTION_START_YEAR,
     esto_base_year: int | None = None,
     esto_component_lineage_output_path: Path | None = None,
+    chunk_by_source_economy: bool = False,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
-    source_df = read_source_tables(source_paths, default_economy=default_economy)
+    source_df = read_source_tables(
+        source_paths,
+        default_economy=default_economy,
+        compact_dtypes=chunk_by_source_economy,
+    )
     common_rows_df = pd.read_csv(common_rows_path, dtype=str).fillna("")
     for column in ["component_esto_flow", "component_esto_product"]:
         if column in common_rows_df.columns:
@@ -1643,21 +1921,19 @@ def run_apply_common_esto_structure(
     active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
     source_row_count = len(source_df)
     source_totals_df = (
-        source_df.groupby(SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+        source_df.groupby(
+            SOURCE_COVERAGE_SOURCE_GROUP_COLUMNS,
+            dropna=False,
+            as_index=False,
+            observed=True,
+        )["value"]
         .sum()
     )
     del source_df
     if not relevance_df.empty:
-        relevant_pairs_df = relevance_df[["component_esto_flow", "component_esto_product"]].rename(
-            columns={
-                "component_esto_flow": "esto_flow",
-                "component_esto_product": "esto_product",
-            }
-        )
-        active_source_df = active_source_df.merge(
-            relevant_pairs_df.drop_duplicates(),
-            on=["esto_flow", "esto_product"],
-            how="inner",
+        active_source_df = filter_source_to_relevant_pairs(
+            active_source_df,
+            relevance_df,
         )
     adjusted_common_rows_df, pruned_components_df = relabel_common_rows_for_active_components(
         relevance_df=relevance_df,
@@ -1715,14 +1991,42 @@ def run_apply_common_esto_structure(
         highly_recommended_mapping_candidates_df=highly_recommended_mapping_candidates_df,
         output_dir=output_dir,
     )
-    (
-        unfiltered_comparison_df,
-        missing_map_df,
-        mapped_source_df,
-        esto_component_lineage_df,
-    ) = apply_common_structure(active_source_df, adjusted_common_rows_df, return_lineage=True)
-    missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
-    comparison_df = unfiltered_comparison_df.copy()
+    esto_component_lineage_df = None
+    if (
+        chunk_by_source_economy
+        and esto_component_lineage_output_path is not None
+    ):
+        (
+            unfiltered_comparison_df,
+            missing_map_df,
+            total_check_df,
+        ) = apply_common_structure_by_source_economy(
+            active_source_df,
+            adjusted_common_rows_df,
+            esto_component_lineage_output_path,
+        )
+    else:
+        (
+            unfiltered_comparison_df,
+            missing_map_df,
+            mapped_source_df,
+            esto_component_lineage_df,
+        ) = apply_common_structure(
+            active_source_df,
+            adjusted_common_rows_df,
+            return_lineage=True,
+        )
+        missing_map_df = filter_missing_common_map_diagnostics(
+            missing_map_df
+        )
+        total_check_df = build_total_check(
+            mapped_source_df,
+            unfiltered_comparison_df,
+        )
+    # The comparison can exceed a million rows. The remaining helpers treat it
+    # as read-only, so retain the existing frame instead of doubling its memory
+    # immediately before broad-row, wide-output, and contract publication.
+    comparison_df = unfiltered_comparison_df
     broad_diagnostics = build_broad_common_row_diagnostics(
         common_rows_df=adjusted_common_rows_df,
         comparison_df=comparison_df,
@@ -1740,7 +2044,6 @@ def run_apply_common_esto_structure(
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
     wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
-    total_check_df = build_total_check(mapped_source_df, unfiltered_comparison_df)
     source_coverage_check_df = build_source_coverage_check(source_totals_df, unfiltered_comparison_df)
     save_outputs(
         comparison_df,

@@ -1074,12 +1074,26 @@ See
 [Separate-axis mapping generation](separate_axis_mapping_pipeline.md)
 for authority rules, workbook ownership, QA, and promotion gates.
 
-The current 11,150-relationship shadow build is not promotion-ready. Although
-it preserves every complete retained Stage 1 relationship and passes the
-pair-sheet schema gate, it changes 4,012 canonical Common ESTO memberships and
-introduces 2,830 source-pair/scope groups that reach multiple common rows.
-Those are source-once failures unless explicit allocation is added. Keep using
-the canonical master for production value runs.
+The current 11,150-relationship shadow build is end-to-end executable but has
+not been approved for canonical promotion. It preserves every complete
+retained Stage 1 relationship and passes the pair-sheet schema gate. Its
+Common ESTO partition differs materially: 4,012 canonical memberships are
+replaced and 4,530 generated memberships appear.
+
+The refined source-once diagnostic reports zero unsafe generated fan-outs.
+Fifty-four source-pair/scope groups reach two Common rows, but every one is an
+explicit non-expanding parent/detail alternative. The full bounded Stage 3
+shadow run preserves 100% of mapped values in all ten scope/source
+combinations, with maximum absolute difference
+`1.1641532182693481e-10`, and publishes certified fact, metadata, and lineage
+outputs.
+
+Keep using the canonical master for production until a reviewer explicitly
+accepts the changed Common partition and the remaining semantic review debt:
+3,501 provisional relationships, eight within-axis many-to-many components,
+29 broad Common rows, and the recorded partial-coverage findings. Merging the
+feature does not switch production because the direct-subtotal graph rule and
+chunked execution are opt-in and the canonical workbook filename is unchanged.
 
 ### Stage 0 - Mapping maintenance
 
