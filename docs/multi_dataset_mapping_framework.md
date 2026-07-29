@@ -487,9 +487,16 @@ produced 479 mismatches (ESTO 78, ESTO Extended 97, LEAP 0, and NINTH 304).
 The declared-rollup pass performed 163,674 checks, with 19,624 passed, 4
 failed, 101,991 incomplete-contributor results, and 42,055 cases with no
 contributors available. Product hierarchy checks had no eligible parents and
-were explicitly skipped. The source-parent anchor phase has not been rerun.
-M0 therefore remains a failed/incomplete release gate rather than being
-promoted on the strength of the clean application contract.
+were explicitly skipped. The source-parent anchor phase has now also been
+rerun against the fresh compressed Stage 3 fact artifact using the
+base-year-plus-decade validation slice. It produced 217,099 eligible checks:
+209,837 passed and 7,262 failed, with 1,137,515 explicitly skipped contexts.
+Ten of twelve axis/scope/source summaries remain failed; both ESTO product
+summaries now pass. The compact reviewer output contains 11,384 rows (7,262
+failed and 4,122 skipped review records). Its summary SHA-256 is
+`f02b9fa4ebc74216608acb6db66b9c8ab609d97a5a0526cd1b44ccddcc454319`.
+M0 therefore remains a failed/incomplete semantic release gate rather than
+being promoted on the strength of the clean application contract.
 
 ### M1 — Introduce registries without changing behavior
 
@@ -605,11 +612,13 @@ the three mapping surfaces from registry fields rather than embedding their
 sheet names in orchestration. Disabling its registry row suppresses the
 diagnostic without a Python edit.
 
-M5 registry migration is implemented, but its release verification remains
-open until the source-parent anchor pass is rerun against the fresh Stage 3
-output. Dataset-specific semantics inside registered adapters are expected;
-the remaining release question is whether the new registered execution retains
-the same validation status and ownership on real data.
+M5 registry migration and real-data execution verification are complete. The
+fresh source-parent run retained the established failure ownership: LEAP and
+NINTH flow anchors and NINTH product anchors remain failed, while ESTO product
+anchors pass. Counts changed from the historical run because the fresh Common
+structure and current rollup fixes admit more eligible contexts; this is not
+reported as byte equivalence. The current semantic release gate remains failed
+and belongs to mapping/hierarchy review, not to the registry refactor.
 
 A fresh real-data Stage 3 application smoke run completed after this refactor
 using the current 10,044-row Common structure and the latest available
@@ -626,10 +635,10 @@ converted ESTO, ESTO Extended, LEAP, and 9th artifacts. The isolated run:
 - published a passed output contract whose compressed fact SHA-256 is
   `8524184927a161637c45a04dd48b5f0dc4cea96fe5e757ce411e8f65891d77b5`.
 
-This was an application/output-contract smoke run, not the separate deep
-source-parent validation suite. A subsequent fresh Common hierarchy pass
-completed and retained the semantic failures summarized under M0; the
-source-parent anchor phase remains outstanding.
+This application/output-contract smoke run was followed by both the fresh
+Common hierarchy pass and the source-parent anchor run summarized under M0.
+The complete current evidence therefore distinguishes a clean application
+contract from known non-clean hierarchy and anchor semantics.
 
 ### M6 — Add the synthetic fourth dataset
 
