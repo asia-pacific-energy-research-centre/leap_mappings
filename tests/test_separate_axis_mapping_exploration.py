@@ -1,5 +1,6 @@
 """Focused tests for the isolated separate-axis mapping prototype."""
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,11 @@ from codebase.separate_axis_mapping_exploration_functions import (
     derive_axis_mappings,
     select_alias_candidate,
 )
+from codebase.mapping_tools.leap_pair_registry import (
+    build_source_manifest,
+    parse_leap_branch_paths_to_pairs,
+    source_manifest_changed,
+)
 
 
 def _relationship(
@@ -44,6 +50,75 @@ def _relationship(
         "target_pair_is_subtotal": False,
         "notes": "",
     }
+
+
+def test_leap_pair_parser_uses_demand_leaves_and_transformation_fuel_roles() -> None:
+    paths = [
+        r"Demand\Industry",
+        r"Demand\Industry\Iron and steel",
+        r"Demand\Industry\Iron and steel\Natural gas",
+        r"Transformation\Electricity Generation",
+        r"Transformation\Electricity Generation\Output Fuels",
+        r"Transformation\Electricity Generation\Output Fuels\Electricity",
+        r"Transformation\Electricity Generation\Processes",
+        r"Transformation\Electricity Generation\Processes\Coal",
+        r"Transformation\Electricity Generation\Processes\Coal\Feedstock Fuels",
+        r"Transformation\Electricity Generation\Processes\Coal\Feedstock Fuels\Coal",
+        r"Transformation\Electricity Generation\Processes\Battery",
+        r"Transformation\Electricity Generation\Processes\Old_do not use",
+        r"Transformation\Electricity Generation\Processes\Old_do not use\Feedstock Fuels\Coal",
+    ]
+
+    pairs, diagnostics = parse_leap_branch_paths_to_pairs(
+        paths,
+        source_kind="test",
+        source_id="test.xlsx",
+        source_sheet="Export",
+    )
+
+    assert set(pairs[["flow", "product"]].itertuples(index=False, name=None)) == {
+        ("Industry/Iron and steel", "Natural gas"),
+        ("Electricity Generation", "Electricity"),
+        ("Electricity Generation/Processes/Coal", "Coal"),
+    }
+    diagnostic_statuses = set(diagnostics["status"])
+    assert "excluded_non_energy_or_unrecognised_leaf" in diagnostic_statuses
+    assert "excluded_legacy_do_not_use" in diagnostic_statuses
+
+
+def test_leap_source_manifest_detects_content_and_timestamp_updates(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "template.xlsx"
+    source.write_bytes(b"first")
+    source_definition = [
+        {
+            "source_kind": "export_template",
+            "source_id": source.name,
+            "path": source,
+        }
+    ]
+    first = build_source_manifest(source_definition)
+    unchanged = build_source_manifest(source_definition)
+    changed, reason = source_manifest_changed(unchanged, first)
+    assert not changed
+    assert reason == "source_workbooks_unchanged"
+
+    stat = source.stat()
+    os.utime(
+        source,
+        ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000),
+    )
+    timestamp_only = build_source_manifest(source_definition)
+    changed, reason = source_manifest_changed(timestamp_only, first)
+    assert changed
+    assert reason == "source_workbook_set_or_fingerprint_changed"
+
+    source.write_bytes(b"second")
+    second = build_source_manifest(source_definition)
+    changed, reason = source_manifest_changed(second, first)
+    assert changed
+    assert reason == "source_workbook_set_or_fingerprint_changed"
 
 
 def test_est_o_registry_distinguishes_data_valid_and_zero_only(tmp_path: Path) -> None:

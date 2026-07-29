@@ -55,7 +55,7 @@ AXIS_SOURCE_FILES = {
 }
 PAIR_SOURCE_FILES = {
     "LEAP key pairs": (
-        PROTOTYPE_SOURCE_ROOT / "pair_universe_leap_bootstrap.csv"
+        PROTOTYPE_SOURCE_ROOT / "pair_universe_leap.csv"
     ),
     "ESTO key pairs": (
         PROTOTYPE_SOURCE_ROOT / "pair_universe_esto.csv"
@@ -292,6 +292,12 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
                 "product",
                 "pair_exists_in_dataset",
                 "pair_is_subtotal",
+                "source_kind",
+                "template_support_count",
+                "template_files",
+                "new_rows_sheet_count",
+                "new_rows_sheets",
+                "source_path_count",
             ]
         ]
         .drop_duplicates(["flow", "product"])
@@ -309,7 +315,7 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
         leap_result["exists_in_dataset"].fillna(False).astype(bool)
     )
     leap_result["registry_status"] = (
-        "bootstrap_from_current_pair_mappings"
+        "structurally_eligible_from_current_model_rows"
     )
     leap_result = leap_result[
         [
@@ -319,6 +325,12 @@ def build_generated_pair_sheets() -> dict[str, pd.DataFrame]:
             "eligible_for_compilation",
             "pair_is_subtotal",
             "registry_status",
+            "source_kind",
+            "template_support_count",
+            "template_files",
+            "new_rows_sheet_count",
+            "new_rows_sheets",
+            "source_path_count",
         ]
     ]
 
@@ -411,8 +423,9 @@ def prepare_split_workbook_sources() -> dict[str, object]:
         "compiled_counts": compiled_counts,
         "compiled_columns": compiled_columns,
         "leap_registry_authority": (
-            "Temporary bootstrap from the current reviewed pair mappings. "
-            "Replace with parsed LEAP branch key pairs when supplied."
+            "Generated from the union of all current top-level economy export "
+            "templates and the demand/power detailed model row inventories. "
+            "Source workbook fingerprints control automatic refresh."
         ),
         "generated_master_contract": (
             "Copy every canonical sheet unchanged, then replace only the "

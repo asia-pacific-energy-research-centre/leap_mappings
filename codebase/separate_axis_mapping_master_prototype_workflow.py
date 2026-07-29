@@ -7,8 +7,8 @@ only across exact source and target pair universes, and emits compatibility
 views shaped like the three maintained pair sheets.
 
 It never edits ``config/outlook_mappings_master.xlsx``. LEAP exact-pair
-authority is deliberately isolated behind ``build_bootstrap_leap_pair_universe``
-until the model-branch parser is supplied.
+authority is generated from all current economy export templates plus the
+temporary detailed demand/power branch inventory.
 """
 
 #%%
@@ -33,13 +33,15 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     RELATIONSHIP_KEY_COLUMNS,
     analyse_axis_components,
     annotate_pair_universe_temporal_evidence,
-    build_bootstrap_leap_pair_universe,
     build_compiled_mapping_sheet_frames,
     build_registry_scope_lookups,
     compare_compiled_relationships,
     compile_axis_relationships,
     derive_axis_mappings,
     load_active_mapping_contract,
+)
+from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
+    load_or_refresh_leap_pair_registry,
 )
 
 WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
@@ -64,6 +66,41 @@ REGISTRY_PATHS = {
 }
 
 
+def _github_checkout(repo_name: str) -> Path:
+    """Resolve a main checkout from either a main repo or repo worktree."""
+    candidates = [
+        REPO_ROOT.parent / repo_name,
+        REPO_ROOT.parent.parent / repo_name,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+LEAP_INITIALISATION_ROOT = _github_checkout("leap_initialisation")
+LEAP_MAPPINGS_MAIN_ROOT = _github_checkout("leap_mappings")
+LEAP_TEMPLATE_DIR = (
+    LEAP_INITIALISATION_ROOT / "data" / "leap_export_templates"
+)
+NEW_LEAP_ROWS_WORKBOOK_PATH = (
+    LEAP_MAPPINGS_MAIN_ROOT / "data" / "temp" / "new leap rows.xlsx"
+)
+LEAP_REGISTRY_PATH = (
+    EXPLORATION_RESULTS_ROOT / "valid_pairs" / "leap_structural.csv"
+)
+LEAP_REGISTRY_MANIFEST_PATH = (
+    EXPLORATION_RESULTS_ROOT
+    / "valid_pairs"
+    / "leap_structural_manifest.json"
+)
+LEAP_REGISTRY_DIAGNOSTICS_PATH = (
+    EXPLORATION_RESULTS_ROOT
+    / "valid_pairs"
+    / "leap_structural_excluded_leaves.csv"
+)
+
+
 # --- Helpers ----------------------------------------------------------------
 
 def _write_csv(frame: pd.DataFrame, filename: str) -> Path:
@@ -81,7 +118,12 @@ def _relative_output_path(path: Path) -> str:
 
 def _assert_inputs() -> None:
     """Fail with every missing prerequisite rather than one at a time."""
-    required = [WORKBOOK_PATH, *REGISTRY_PATHS.values()]
+    required = [
+        WORKBOOK_PATH,
+        LEAP_TEMPLATE_DIR,
+        NEW_LEAP_ROWS_WORKBOOK_PATH,
+        *REGISTRY_PATHS.values(),
+    ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise FileNotFoundError(
@@ -93,7 +135,8 @@ def _assert_inputs() -> None:
 
 def _load_pair_universes(
     historical_boundary_year: int,
-) -> dict[str, pd.DataFrame]:
+    force_leap_registry_refresh: bool,
+) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     """Load and annotate exact generated pair universes."""
     universes: dict[str, pd.DataFrame] = {}
     for dataset, path in REGISTRY_PATHS.items():
@@ -102,7 +145,16 @@ def _load_pair_universes(
             registry,
             historical_boundary_year,
         )
-    return universes
+    leap_registry, leap_manifest = load_or_refresh_leap_pair_registry(
+        template_dir=LEAP_TEMPLATE_DIR,
+        new_rows_workbook_path=NEW_LEAP_ROWS_WORKBOOK_PATH,
+        registry_path=LEAP_REGISTRY_PATH,
+        manifest_path=LEAP_REGISTRY_MANIFEST_PATH,
+        diagnostics_path=LEAP_REGISTRY_DIAGNOSTICS_PATH,
+        force_refresh=force_leap_registry_refresh,
+    )
+    universes["LEAP"] = leap_registry
+    return universes, leap_manifest
 
 
 def _build_both_esto_registry(
@@ -157,10 +209,68 @@ def _pair_universe_workbook_view(registry: pd.DataFrame) -> pd.DataFrame:
         "scenario_scope",
         "scenarios_observed",
         "pair_universe_authority",
+        "source_kind",
+        "template_support_count",
+        "template_files",
+        "new_rows_sheet_count",
+        "new_rows_sheets",
+        "source_path_count",
     ]
     return registry[
         [column for column in preferred_columns if column in registry.columns]
     ].copy()
+
+
+def _compare_leap_registry_to_current_contract(
+    registry: pd.DataFrame,
+    current: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compare structural model pairs with current LEAP mapping source keys."""
+    current_pairs = (
+        current.loc[
+            current["source_system"].eq("LEAP"),
+            ["source_flow", "source_product"],
+        ]
+        .drop_duplicates()
+        .rename(
+            columns={
+                "source_flow": "flow",
+                "source_product": "product",
+            }
+        )
+    )
+    registry_pairs = registry[["flow", "product"]].drop_duplicates()
+    comparison = current_pairs.merge(
+        registry_pairs.assign(in_structural_registry=True),
+        on=["flow", "product"],
+        how="outer",
+    )
+    comparison = comparison.merge(
+        current_pairs.assign(in_current_mapping_contract=True),
+        on=["flow", "product"],
+        how="left",
+    )
+    comparison["in_structural_registry"] = (
+        comparison["in_structural_registry"].fillna(False).astype(bool)
+    )
+    comparison["in_current_mapping_contract"] = (
+        comparison["in_current_mapping_contract"].fillna(False).astype(bool)
+    )
+    comparison["comparison_status"] = "present_in_both"
+    comparison.loc[
+        comparison["in_current_mapping_contract"]
+        & ~comparison["in_structural_registry"],
+        "comparison_status",
+    ] = "current_balance_or_rollup_key_absent_from_branch_registry"
+    comparison.loc[
+        comparison["in_structural_registry"]
+        & ~comparison["in_current_mapping_contract"],
+        "comparison_status",
+    ] = "structural_pair_not_in_current_mapping_contract"
+    return comparison.sort_values(
+        ["comparison_status", "flow", "product"],
+        kind="stable",
+    ).reset_index(drop=True)
 
 
 def _attach_axis_contract_status(
@@ -442,6 +552,7 @@ def _summary_rows(
 def run_single_axis_master_prototype(
     *,
     historical_boundary_year: int = 2023,
+    force_leap_registry_refresh: bool = False,
 ) -> dict[str, Any]:
     """Generate workbook-source tables for the single-axis master prototype."""
     _assert_inputs()
@@ -462,9 +573,10 @@ def run_single_axis_master_prototype(
         ignore_index=True,
     )
 
-    pair_universes = _load_pair_universes(historical_boundary_year)
-    leap_universe = build_bootstrap_leap_pair_universe(current)
-    pair_universes["LEAP"] = leap_universe
+    pair_universes, leap_registry_manifest = _load_pair_universes(
+        historical_boundary_year,
+        force_leap_registry_refresh,
+    )
     both_esto = _build_both_esto_registry(
         pair_universes["ESTO"],
         pair_universes["ESTO_EXTENDED"],
@@ -578,6 +690,61 @@ def run_single_axis_master_prototype(
         temporal_relationship_comparison,
         generated_overrides,
     )
+    leap_contract_comparison = _compare_leap_registry_to_current_contract(
+        pair_universes["LEAP"],
+        current,
+    )
+    leap_comparison_counts = (
+        leap_contract_comparison["comparison_status"].value_counts()
+    )
+    summary = pd.concat(
+        [
+            summary,
+            pd.DataFrame(
+                [
+                    (
+                        "leap_structural_registry_pair_rows",
+                        len(pair_universes["LEAP"]),
+                    ),
+                    (
+                        "leap_current_source_pairs_present_in_registry",
+                        int(
+                            leap_comparison_counts.get(
+                                "present_in_both",
+                                0,
+                            )
+                        ),
+                    ),
+                    (
+                        "leap_current_balance_or_rollup_keys_absent_from_registry",
+                        int(
+                            leap_comparison_counts.get(
+                                (
+                                    "current_balance_or_rollup_key_absent_"
+                                    "from_branch_registry"
+                                ),
+                                0,
+                            )
+                        ),
+                    ),
+                    (
+                        "leap_structural_pairs_not_in_current_mapping_contract",
+                        int(
+                            leap_comparison_counts.get(
+                                (
+                                    "structural_pair_not_in_current_"
+                                    "mapping_contract"
+                                ),
+                                0,
+                            )
+                        ),
+                    ),
+                ],
+                columns=["metric", "value"],
+            ),
+        ],
+        ignore_index=True,
+    )
 
     sheet_sources: dict[str, Path] = {}
     detail_sources: dict[str, Path] = {}
@@ -590,9 +757,9 @@ def run_single_axis_master_prototype(
         product_axis,
         "fuel_product_axis_mappings.csv",
     )
-    sheet_sources["Pairs LEAP bootstrap"] = _write_csv(
+    sheet_sources["Pairs LEAP"] = _write_csv(
         _pair_universe_workbook_view(pair_universes["LEAP"]),
-        "pair_universe_leap_bootstrap.csv",
+        "pair_universe_leap.csv",
     )
     sheet_sources["Pairs ESTO"] = _write_csv(
         _pair_universe_workbook_view(pair_universes["ESTO"]),
@@ -650,6 +817,10 @@ def run_single_axis_master_prototype(
         generated_overrides,
         "qa_generated_overrides_review_only.csv",
     )
+    detail_sources["QA LEAP structural coverage"] = _write_csv(
+        leap_contract_comparison,
+        "qa_leap_structural_registry_vs_current_contract.csv",
+    )
     sheet_sources["QA incomplete current"] = _write_csv(
         incomplete,
         "qa_incomplete_current_rows.csv",
@@ -671,8 +842,9 @@ def run_single_axis_master_prototype(
         "canonical_workbook_was_modified": False,
         "canonical_workbook_path": str(WORKBOOK_PATH),
         "leap_pair_authority": (
-            "bootstrap_from_current_reviewed_pair_contract_pending_branch_parser"
+            "generated_from_all_current_export_templates_and_detailed_rows"
         ),
+        "leap_pair_registry_manifest": leap_registry_manifest,
         "rollup_sheets_included": False,
         "compiled_compatibility_policy": (
             "ESTO final-year nonzero; Ninth any post-ESTO-year nonzero"
@@ -703,6 +875,7 @@ def run_single_axis_master_prototype(
 
 RUN_SINGLE_AXIS_MASTER_PROTOTYPE = True
 HISTORICAL_BOUNDARY_YEAR = 2023
+FORCE_LEAP_REGISTRY_REFRESH = False
 
 
 #%%
@@ -710,6 +883,7 @@ if RUN_SINGLE_AXIS_MASTER_PROTOTYPE:
     try:
         PROTOTYPE_MANIFEST = run_single_axis_master_prototype(
             historical_boundary_year=HISTORICAL_BOUNDARY_YEAR,
+            force_leap_registry_refresh=FORCE_LEAP_REGISTRY_REFRESH,
         )
     except Exception:
         print("Single-axis master prototype failed.")

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   FileBlob,
   SpreadsheetFile,
@@ -10,7 +11,10 @@ import {
 // separate_axis_mapping_split_workbooks_workflow.py. Run from the repository
 // root with @oai/artifact-tool available to Node module resolution.
 
-const repoRoot = path.resolve(".");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const outputRoot = path.join(
   repoRoot,
   "outputs",
@@ -349,6 +353,10 @@ async function buildPairWorkbook() {
       manifest.leap_registry_authority,
     ],
     [
+      "LEAP boundary",
+      "This is the literal model-branch pair layer. Standard balance-report totals, supply rows, and generated rollup keys require a separate deterministic layer before this can replace the complete current LEAP source-key contract.",
+    ],
+    [
       "Subtotal labels",
       "pair_is_subtotal is generated from the source registry and is passed into the final compatibility sheets.",
     ],
@@ -472,13 +480,21 @@ async function buildGeneratedMaster() {
   );
 }
 
-if (process.env.BUILD_EDITABLE !== "false") {
+const runtimeEnvironment = globalThis.process?.env ?? {};
+const buildEditable = globalThis.BUILD_EDITABLE
+  ?? runtimeEnvironment.BUILD_EDITABLE !== "false";
+const buildPairs = globalThis.BUILD_PAIRS
+  ?? runtimeEnvironment.BUILD_PAIRS !== "false";
+const buildMaster = globalThis.BUILD_MASTER
+  ?? runtimeEnvironment.BUILD_MASTER !== "false";
+
+if (buildEditable) {
   await buildEditableWorkbook();
 }
-if (process.env.BUILD_PAIRS !== "false") {
+if (buildPairs) {
   await buildPairWorkbook();
 }
-if (process.env.BUILD_MASTER !== "false") {
+if (buildMaster) {
   await buildGeneratedMaster();
 }
 
