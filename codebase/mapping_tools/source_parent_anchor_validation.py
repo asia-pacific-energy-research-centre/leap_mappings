@@ -23,16 +23,10 @@ from codebase.mapping_issue_exceptions import (
     load_exception_sheet,
     matching_exception_row,
 )
+from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
 
 
-COMPARISON_SCOPE_SYSTEMS = {
-    "esto_leap": {"LEAP", "ESTO"},
-    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
-    "leap_vs_ninth": {"LEAP", "NINTH"},
-    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
-    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
-    "esto_only": {"ESTO"},
-}
+COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 NONZERO_SOURCE_EVIDENCE_TOLERANCE = 1e-12
 
 

@@ -204,6 +204,9 @@ cython_debug/
 # Track files directly under config, but keep generated data and output trees out of git.
 !config/*
 config/*/
+!config/datasets/
+!config/datasets/*.csv
+!config/datasets/README.md
 
 # Repository outputs and large source data are restored from shared archives.
 data/*

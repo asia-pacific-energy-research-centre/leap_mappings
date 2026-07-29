@@ -16,6 +16,10 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.dataset_registry import (
+    build_comparison_scope_configs,
+    get_default_enabled_comparison_scopes,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -25,46 +29,10 @@ CONVERSION_USE_CASES = [
     "leap_to_esto_balance_conversion",
     "ninth_to_esto_balance_conversion",
 ]
-_ALL_USE_CASES = ["leap_to_esto_balance_conversion", "ninth_to_esto_balance_conversion"]
-_ALL_AGGREGATE_SOURCE_SYSTEMS = ["LEAP", "NINTH"]
-COMPARISON_SCOPES = {
-    "esto_leap_ninth": {
-        "systems": ["ESTO", "LEAP", "NINTH"],
-        "use_cases": _ALL_USE_CASES,
-        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
-    },
-    "esto_leap": {
-        "systems": ["ESTO", "LEAP"],
-        "use_cases": ["leap_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["LEAP"],
-    },
-    "esto_extended_leap": {
-        "systems": ["ESTO_EXTENDED", "LEAP"],
-        "use_cases": ["leap_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["LEAP"],
-    },
-    "leap_vs_ninth": {
-        "systems": ["LEAP", "NINTH"],
-        "use_cases": ["ninth_to_esto_balance_conversion"],
-        "aggregate_source_systems": ["NINTH"],
-    },
-    "esto_only": {
-        "systems": ["ESTO"],
-        "use_cases": _ALL_USE_CASES,
-        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
-    },
-    "esto_extended_leap_ninth": {
-        "systems": ["ESTO_EXTENDED", "LEAP", "NINTH"],
-        "use_cases": _ALL_USE_CASES,
-        "aggregate_source_systems": _ALL_AGGREGATE_SOURCE_SYSTEMS,
-    },
-}
-# The pipeline builds only the scopes used by current downstream comparisons.
-# Other definitions remain available for a deliberate future selection.
-DEFAULT_ENABLED_COMPARISON_SCOPES = [
-    "esto_leap", "esto_extended_leap",
-    "esto_leap_ninth", "esto_extended_leap_ninth",
-]
+COMPARISON_SCOPES = build_comparison_scope_configs()
+# Retain the existing public constants and execution functions. Their reviewed
+# membership and ordering now come from config/datasets/comparison_scopes.csv.
+DEFAULT_ENABLED_COMPARISON_SCOPES = get_default_enabled_comparison_scopes()
 COMMON_ROW_COLUMNS = [
     "comparison_scope",
     "common_structure_version",

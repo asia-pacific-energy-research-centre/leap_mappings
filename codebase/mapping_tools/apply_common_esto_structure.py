@@ -41,6 +41,7 @@ from codebase.mapping_tools.mapping_candidate_generation import (
     summarise_nonzero_ninth_projection_pairs,
 )
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
 
 #%%
 OUTPUT_COLUMNS = LEGACY_COMPARISON_COLUMNS
@@ -110,14 +111,7 @@ COMPONENT_RELEVANCE_COLUMNS = [
     "unmapped_leap_branch_count",
     "relevance_reasons",
 ]
-COMPARISON_SCOPE_SYSTEMS = {
-    "esto_leap": {"LEAP", "ESTO"},
-    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
-    "leap_vs_ninth": {"LEAP", "NINTH"},
-    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
-    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
-    "esto_only": {"ESTO"},
-}
+COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:

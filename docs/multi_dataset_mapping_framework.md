@@ -267,7 +267,9 @@ Each scope declares:
 | Field | Meaning |
 |---|---|
 | `comparison_scope` | Stable scope identifier |
-| `enabled` | Included in the selected build |
+| `enabled` | Available to the current build |
+| `default_enabled` | Selected by the standard pipeline run |
+| `default_order` | Stable standard-build order for enabled defaults |
 | `canonical_component_dataset_id` | Hub component vocabulary |
 | `included_dataset_ids` | Registered sources admitted to the scope |
 | `use_cases` | Relationship purposes used to build membership |
@@ -430,6 +432,14 @@ pipeline behavior in one change.
 
 Verification: existing outputs remain equivalent.
 
+Implementation status (2026-07-29): the dataset and comparison-scope
+registries, fail-closed loaders, legacy comparison-scope views, and
+registry-filtered hierarchy-adapter list are implemented. Focused equivalence
+tests preserve all six scope definitions, the four-scope standard build order,
+and the established hierarchy-adapter order. Representative Stage 1–3 output
+hash capture remains the M0 release gate; until that evidence is recorded, M1
+is implemented but not declared release-complete.
+
 ### M2 — Normalize mapping-sheet configuration
 
 - move `SHEET_CONFIGS` and sheet-column interpretations into configuration;
@@ -458,10 +468,11 @@ equivalent.
 
 Verification: normalized source values and lineage remain equivalent.
 
-### M5 — Make scopes and validators registry-driven
+### M5 — Complete registry-driven validators
 
-- replace fixed comparison-scope dictionaries;
-- iterate registered hierarchy and value adapters;
+- remove remaining fixed dataset lists and source-name branches from
+  validators;
+- consume the registered value adapters added in M4 throughout validation;
 - route mapping-review findings through registry metadata rather than
   source-name conditionals.
 

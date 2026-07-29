@@ -22,6 +22,7 @@ from codebase.mapping_tools.hierarchy_subtotal_contract import (
     empty_observations,
     normalize_adapter_tables,
 )
+from codebase.mapping_tools.dataset_registry import load_dataset_registry
 
 
 ADAPTER_VERSION = "1.0.0"
@@ -620,37 +621,87 @@ def current_adapter_registry(
     leap_inventory = repo_root / "data" / "temp" / "new leap rows.xlsx"
     extended_tree = repo_root / "results" / "tree_structure" / "esto_extended_tree.csv"
     common_rows = repo_root / "results" / "common_esto" / "common_esto_rows.csv"
-    return [
-        CallableDatasetAdapter(
-            "esto",
-            ADAPTER_VERSION,
-            lambda: build_esto_adapter(esto_path, workbook_path),
-        ),
-        CallableDatasetAdapter(
-            "ninth",
-            ADAPTER_VERSION,
-            lambda: build_ninth_adapter(ninth_path, workbook_path),
-        ),
-        CallableDatasetAdapter(
-            "leap",
-            ADAPTER_VERSION,
-            lambda: build_leap_adapter(workbook_path, leap_inventory),
-        ),
-        CallableDatasetAdapter(
-            "esto_extended",
-            ADAPTER_VERSION,
-            lambda: build_tree_artifact_adapter(
-                "esto_extended",
-                extended_tree,
-                workbook_path,
-                "derived_extended_source",
+    registered_adapters = [
+        (
+            "ESTO",
+            CallableDatasetAdapter(
+                "esto",
+                ADAPTER_VERSION,
+                lambda: build_esto_adapter(esto_path, workbook_path),
             ),
         ),
-        CallableDatasetAdapter(
-            "common_esto",
-            ADAPTER_VERSION,
-            lambda: build_common_esto_adapter(common_rows, workbook_path),
+        (
+            "NINTH",
+            CallableDatasetAdapter(
+                "ninth",
+                ADAPTER_VERSION,
+                lambda: build_ninth_adapter(ninth_path, workbook_path),
+            ),
         ),
+        (
+            "LEAP",
+            CallableDatasetAdapter(
+                "leap",
+                ADAPTER_VERSION,
+                lambda: build_leap_adapter(workbook_path, leap_inventory),
+            ),
+        ),
+        (
+            "ESTO_EXTENDED",
+            CallableDatasetAdapter(
+                "esto_extended",
+                ADAPTER_VERSION,
+                lambda: build_tree_artifact_adapter(
+                    "esto_extended",
+                    extended_tree,
+                    workbook_path,
+                    "derived_extended_source",
+                ),
+            ),
+        ),
+        (
+            "COMMON_ESTO",
+            CallableDatasetAdapter(
+                "common_esto",
+                ADAPTER_VERSION,
+                lambda: build_common_esto_adapter(common_rows, workbook_path),
+            ),
+        ),
+    ]
+    dataset_registry = load_dataset_registry(
+        repo_root / "config" / "datasets" / "dataset_registry.csv"
+    )
+    enabled_rows = dataset_registry[dataset_registry["enabled"]]
+    enabled_ids = set(enabled_rows["dataset_id"])
+    available_ids = {dataset_id for dataset_id, _ in registered_adapters}
+
+    missing_adapters = sorted(enabled_ids - available_ids)
+    if missing_adapters:
+        raise ValueError(
+            "Enabled datasets have no current hierarchy adapter: "
+            f"{missing_adapters}"
+        )
+
+    expected_adapter_names = {
+        dataset_id: adapter.dataset_id
+        for dataset_id, adapter in registered_adapters
+    }
+    mismatches = [
+        f"{row.dataset_id}={row.hierarchy_adapter!r}"
+        for row in enabled_rows.itertuples(index=False)
+        if row.hierarchy_adapter != expected_adapter_names[row.dataset_id]
+    ]
+    if mismatches:
+        raise ValueError(
+            "Configured hierarchy_adapter does not match the current adapter: "
+            f"{mismatches}"
+        )
+
+    # Preserve the established adapter execution order for output equivalence.
+    return [
+        adapter
+        for dataset_id, adapter in registered_adapters
+        if dataset_id in enabled_ids
     ]
 
 
