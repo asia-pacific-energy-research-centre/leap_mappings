@@ -548,6 +548,13 @@ byte-identical to the M0 baseline SHA-256
 
 Verification: normalized source values and lineage remain equivalent.
 
+Implementation status (2026-07-29): the four current native value preparations
+are registered in `config/datasets/value_adapter_registry.csv`. The registry
+controls adapter execution order and Stage 3 source-artifact discovery while
+the existing optimized ESTO, ESTO Extended, LEAP, and 9th converter functions
+remain the adapter implementations. Pipeline imports also resolve the canonical
+LEAP-export directory correctly from an isolated Git worktree.
+
 ### M5 — Complete registry-driven validators
 
 - remove remaining fixed dataset lists and source-name branches from

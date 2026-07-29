@@ -11,6 +11,8 @@ comparison membership:
   sheets compile into the current normalized relationship surface.
 - `rollup_sheet_registry.csv` declares how dataset-specific rollup columns
   compile into the normalized rollup-rule surface.
+- `value_adapter_registry.csv` declares native adapter execution order and the
+  normalized artifacts admitted to Stage 3.
 
 Pipe (`|`) separates ordered values inside list fields. `default_order`
 preserves the current pipeline build order independently from the order of all

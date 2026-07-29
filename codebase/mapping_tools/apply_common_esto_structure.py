@@ -42,6 +42,9 @@ from codebase.mapping_tools.mapping_candidate_generation import (
 )
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
+from codebase.mapping_tools.value_adapter_registry import (
+    get_registered_stage3_source_paths,
+)
 
 #%%
 OUTPUT_COLUMNS = LEGACY_COMPARISON_COLUMNS
@@ -1836,15 +1839,7 @@ OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 NINTH_SOURCE_DATA_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 
-SOURCE_PATHS = {
-    "LEAP": RELATIONSHIP_DIR / "leap_results_converted_to_esto.csv",
-    "NINTH": RELATIONSHIP_DIR / "ninth_results_converted_to_esto.csv.gz",
-    "ESTO": RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz",
-}
-SOURCE_PATHS = {
-    system: prefer_compressed_csv_path(path)
-    for system, path in SOURCE_PATHS.items()
-}
+SOURCE_PATHS = get_registered_stage3_source_paths(REPO_ROOT)
 DEFAULT_ECONOMY = "20_USA"
 BROAD_COMMON_ROW_COMPONENT_LIMIT = 50
 ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0

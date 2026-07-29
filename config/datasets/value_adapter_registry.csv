@@ -1,0 +1,5 @@
+dataset_id,enabled,adapter_name,execution_order,input_relative_path,output_relative_path,stage3_source,lineage_relative_path,owner,notes
+ESTO,true,esto_exact_rows,1,data/00APEC_2025_low_with_subtotals.csv,results/mapping_relationships/esto_results_exact_rows.csv.gz,true,,system_user,Observed ESTO exact-row preparation
+ESTO_EXTENDED,true,esto_extended_exact_rows,2,data/esto_extended.csv,results/mapping_relationships/esto_extended_results_exact_rows.csv.gz,true,,system_user,ESTO Extended exact-row preparation
+LEAP,true,leap_to_esto,3,results/mapping_relationships/raw_leap_results.csv,results/mapping_relationships/leap_results_converted_to_esto.csv,true,results/mapping_relationships/leap_source_to_esto_component_lineage.csv.gz,system_user,LEAP conversion to canonical components
+NINTH,true,ninth_to_esto,4,data/merged_file_energy_ALL_20251106.csv,results/mapping_relationships/ninth_results_converted_to_esto.csv.gz,true,results/mapping_relationships/ninth_source_to_esto_component_lineage.csv.gz,system_user,9th conversion to canonical components
