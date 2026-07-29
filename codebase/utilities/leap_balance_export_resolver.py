@@ -28,6 +28,10 @@ BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
     r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
     re.IGNORECASE,
 )
+BALANCE_EXPORT_PREFIX_FILENAME_PATTERN = re.compile(
+    r"^(?P<scenario>REF|TGT)\s+(?P<date_id>\d{4,8})(?:\s+[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
 
 # LEAP sometimes exports a "...REF.xlsx" balance workbook whose sheets'
 # internal "Scenario: X, Year: Y, Units: Z" subtitle still says "Target" (a
@@ -42,13 +46,21 @@ BALANCE_EXPORT_TRUST_FILENAME_SCENARIO = True
 
 def scenario_code_from_balance_export_filename(path: Path) -> str:
     """Return the REF/TGT scenario code implied by a balance-export filename, or "" if unrecognized."""
-    match = BALANCE_EXPORT_FILENAME_PATTERN.match(Path(path).name)
+    match = _match_balance_export_filename(Path(path).name)
     if not match:
         return ""
     try:
         return normalize_balance_scenario_code(match.group("scenario"))
     except ValueError:
         return ""
+
+
+def _match_balance_export_filename(filename: str) -> re.Match[str] | None:
+    """Match either maintained LEAP balance-export filename convention."""
+    return (
+        BALANCE_EXPORT_FILENAME_PATTERN.match(filename)
+        or BALANCE_EXPORT_PREFIX_FILENAME_PATTERN.match(filename)
+    )
 
 
 @dataclass(frozen=True)
@@ -161,7 +173,7 @@ def _iter_balance_export_workbooks(
     for path in export_dir.glob("*.xlsx"):
         if path.name.startswith("~$"):
             continue
-        match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
+        match = _match_balance_export_filename(path.name)
         if not match:
             continue
         if normalize_balance_scenario_code(match.group("scenario")) != scenario_code:
@@ -223,7 +235,7 @@ def discover_available_economies(
         if not entry.is_dir():
             continue
         has_workbook = any(
-            BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
+            _match_balance_export_filename(path.name)
             for path in entry.glob("*.xlsx")
             if not path.name.startswith("~$")
         )
