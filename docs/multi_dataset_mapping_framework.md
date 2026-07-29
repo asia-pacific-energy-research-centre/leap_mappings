@@ -470,6 +470,13 @@ pipeline behavior in one change.
   validation summaries;
 - identify current use-case and comparison-scope owners.
 
+Implementation status (2026-07-29): reproducible baseline-capture tooling is
+implemented. Fresh Stage 1 and Stage 2 evidence can be captured in the isolated
+worktree. The latest available Stage 3 artifacts are retained as explicitly
+historical reference evidence because they predate this branch and include
+known failed validations. A fresh QA-reviewed Stage 3 run remains required
+before the M0 release gate is complete.
+
 ### M1 — Introduce registries without changing behavior
 
 - register ESTO, ESTO Extended, 9th, LEAP, and Common ESTO;
