@@ -592,6 +592,26 @@ candidate diagnostic is intentionally source-specific and should be exposed as
 a registered diagnostic adapter before the core Stage 3 orchestration can be
 described as having no current-source branches.
 
+A fresh real-data Stage 3 application smoke run completed after this refactor
+using the current 10,044-row Common structure and the latest available
+converted ESTO, ESTO Extended, LEAP, and 9th artifacts. The isolated run:
+
+- read 17,855,594 normalized source rows after configured unmodelled-row
+  exclusions;
+- published 3,952,646 fact rows and 6,173 Common-row metadata rows;
+- retained all four production source systems and all four default comparison
+  scopes;
+- reported 100% mapped-row aggregation preservation for every scope/source
+  combination, with maximum absolute floating-point difference
+  `1.1641532182693481e-10`;
+- published a passed output contract whose compressed fact SHA-256 is
+  `8524184927a161637c45a04dd48b5f0dc4cea96fe5e757ce411e8f65891d77b5`.
+
+This was an application/output-contract smoke run, not the separate deep
+hierarchy and source-parent validation suite. M0 therefore still requires a
+fresh reviewed deep-validation run before its release gate can be marked
+complete.
+
 ### M6 — Add the synthetic fourth dataset
 
 - implement the acceptance fixture above;
