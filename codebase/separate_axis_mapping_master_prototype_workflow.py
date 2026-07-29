@@ -755,7 +755,10 @@ def _summary_rows(
                 )
             ),
         ),
-        ("generated_review_override_rows", len(generated_overrides)),
+        (
+            "generated_relationship_governance_rows",
+            len(generated_overrides),
+        ),
     ]
     return pd.DataFrame(rows, columns=["metric", "value"])
 
@@ -1062,10 +1065,15 @@ def run_single_axis_master_prototype(
         universe_source_reproduction,
         "qa_source_pair_reproduction_pair_universe.csv",
     )
-    detail_sources["QA generated overrides"] = _write_csv(
+    detail_sources["QA relationship governance"] = _write_csv(
         generated_overrides,
-        "qa_generated_overrides_review_only.csv",
+        "qa_generated_relationship_governance.csv",
     )
+    legacy_override_path = (
+        OUTPUT_DATA_ROOT / "qa_generated_overrides_review_only.csv"
+    )
+    if legacy_override_path.exists():
+        legacy_override_path.unlink()
     detail_sources["QA LEAP layered coverage"] = _write_csv(
         leap_contract_comparison,
         "qa_leap_layered_registry_vs_current_contract.csv",

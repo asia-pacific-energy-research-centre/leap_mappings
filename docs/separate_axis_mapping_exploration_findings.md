@@ -672,10 +672,13 @@ relationships not compiled.
 Broad pair acceptance also exposes the remaining factorisation problem rather
 than hiding it. Independent-axis compilation now emits 11,150 relationships:
 7,649 maintained relationships and 3,501 additional Cartesian relationships.
-All 3,501 current compatibility overrides are exclusions with reason
-`cartesian_pair_not_reviewed`; 1,772 are extra targets on current source pairs
-and 1,729 are candidates on newly generated source pairs. These extras are not
-caused by missing pair authority. They remain a separate axis-semantics and
+All 3,501 governance rows now use action `retain`, reason
+`provisionally_accepted_cartesian_relationship`, and review status
+`provisionally_accepted`. Of these, 1,772 are extra targets on current source
+pairs and 1,729 are candidates on newly generated source pairs. The generated
+master already includes them; a later explicit `exclude` action can remove an
+individual relationship without changing the axes. These extras are not caused
+by missing pair authority. They remain a separate axis-semantics and
 within-axis-many-to-many review problem.
 
 ### Temporal-gap and subtotal evidence review

@@ -472,7 +472,7 @@ def test_registry_delta_retains_one_vintage_disappearance() -> None:
     assert by_pair.loc[("C", "Z"), "delta_status"] == "added"
 
 
-def test_axis_compiler_filters_cartesian_pairs_and_overrides_restore_exact_set() -> None:
+def test_axis_compiler_provisionally_accepts_cartesian_pairs() -> None:
     current = pd.DataFrame(
         [
             _relationship("F1", "P1", "T1", "Q1"),
@@ -495,14 +495,26 @@ def test_axis_compiler_filters_cartesian_pairs_and_overrides_restore_exact_set()
         current,
         candidates,
     )
-    restored = apply_generated_overrides(candidates, overrides)
+    retained = apply_generated_overrides(candidates, overrides)
 
+    assert comparison["relationship_status"].eq("extra_factorised_relationship").sum() == 1
+    assert source_summary["extra_target_count"].sum() == 1
+    assert overrides["override_action"].eq("retain").sum() == 1
+    assert overrides["review_status"].eq("provisionally_accepted").all()
+    assert set(retained.itertuples(index=False, name=None)) == set(
+        candidates.loc[
+            candidates["registry_allowed"],
+            RELATIONSHIP_KEY_COLUMNS,
+        ].itertuples(index=False, name=None)
+    )
+
+    # A later reviewed exclusion remains possible without changing the axes.
+    explicit_exclusion = overrides.copy()
+    explicit_exclusion["override_action"] = "exclude"
+    restored = apply_generated_overrides(candidates, explicit_exclusion)
     assert set(restored.itertuples(index=False, name=None)) == set(
         current[RELATIONSHIP_KEY_COLUMNS].itertuples(index=False, name=None)
     )
-    assert comparison["relationship_status"].eq("extra_factorised_relationship").sum() == 1
-    assert source_summary["extra_target_count"].sum() == 1
-    assert overrides["override_action"].eq("exclude").sum() == 1
 
 
 def test_axis_component_contract_rejects_only_connected_many_to_many() -> None:

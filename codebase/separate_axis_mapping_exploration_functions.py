@@ -1747,7 +1747,7 @@ def compare_compiled_relationships(
     missing = comparison["relationship_status"].eq("current_relationship_not_compiled")
     comparison.loc[missing & comparison["target_pair_registry_status"].isna(), "target_pair_registry_status"] = "absent"
 
-    overrides: list[dict[str, Any]] = []
+    governance_rows: list[dict[str, Any]] = []
     for row in comparison.itertuples(index=False):
         if row.relationship_status == "current_relationship_not_compiled":
             status = _clean(row.target_pair_registry_status) or "absent"
@@ -1757,31 +1757,40 @@ def compare_compiled_relationships(
                 else "reserved_target_pair_absent_from_registry"
             )
             action = "include"
+            human_note = (
+                "Generated review-only override candidate. Confirm semantics "
+                "before acceptance."
+            )
+            review_status = "unreviewed"
         elif row.relationship_status == "extra_factorised_relationship":
-            reason = "cartesian_pair_not_reviewed"
-            action = "exclude"
+            reason = "provisionally_accepted_cartesian_relationship"
+            action = "retain"
+            human_note = (
+                "Provisionally accepted to continue process development. "
+                "Retain in the generated master until a later review removes "
+                "or context-qualifies this relationship."
+            )
+            review_status = "provisionally_accepted"
         else:
             continue
-        overrides.append(
+        governance_rows.append(
             {
                 **{column: getattr(row, column) for column in RELATIONSHIP_KEY_COLUMNS},
                 "override_action": action,
                 "reason_code": reason,
-                "human_note": (
-                    "Generated review-only override candidate. Confirm semantics before acceptance."
-                ),
-                "review_status": "unreviewed",
+                "human_note": human_note,
+                "review_status": review_status,
             }
         )
-    override_frame = pd.DataFrame(overrides)
-    return comparison, source_summary, override_frame
+    governance_frame = pd.DataFrame(governance_rows)
+    return comparison, source_summary, governance_frame
 
 
 def apply_generated_overrides(
     compiled_candidates: pd.DataFrame,
     overrides: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Apply review-only include/exclude overrides for lossless-set proof."""
+    """Apply explicit include/exclude actions; retain actions are no-ops."""
     compiled = compiled_candidates.loc[
         compiled_candidates["registry_allowed"], RELATIONSHIP_KEY_COLUMNS
     ].drop_duplicates()
