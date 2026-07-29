@@ -1,5 +1,10 @@
 # Explore a separate-axis mapping contract across the three LEAP repositories
 
+> **Status 2026-07-29:** Exploration complete and parked as a suggestion for
+> future development. Do not begin shadow implementation unless a future
+> maintainer deliberately resumes MAPQ-033 after reviewing the findings and
+> the recorded user direction.
+
 ## Objective
 
 Test whether the maintained pair mappings can be factorised into:

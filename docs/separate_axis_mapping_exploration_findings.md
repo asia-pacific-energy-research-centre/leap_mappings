@@ -413,7 +413,48 @@ The correctness-first registry scan is not production-fast:
 Production implementation should cache normalized evidence and vectorize
 rollup expansion and source-edge enumeration before enabling routine refresh.
 
-## Staged implementation plan
+## User direction after the exploration
+
+Recorded on 2026-07-29:
+
+1. **Park the proposal.** Treat separate-axis mappings as a suggestion for
+   future development, not as an active implementation task.
+2. **Axes are relations, not functions.** Sector/flow and fuel/product mappings
+   may each be one-to-many or many-to-one between datasets. The design must not
+   assume one global target per sector or fuel.
+3. **Temporal pair evidence should bridge the datasets.** Use non-zero ESTO
+   evidence in the final available ESTO year to describe combinations active
+   at the historical boundary. Use non-zero Ninth evidence in years after that
+   boundary to describe combinations possible in projections.
+4. **The projection quantifier remains open.** Before implementation, decide
+   whether a Ninth pair qualifies when it is non-zero in any post-ESTO year or
+   must be non-zero in every relevant post-ESTO year. The former admits
+   technologies introduced later; the latter describes continuous activity.
+   The registry should probably retain both facts rather than discard one.
+5. **Avoid conflicting cross-level mappings.** In general, do not map a source
+   parent to a target child when a source child or sibling relationship already
+   maps into children of that target parent in a way that crosses the active
+   hierarchy frontier. This needs a precise graph rule and counterexample tests
+   before it can be enforced.
+6. **The size of a legitimate exception layer is unknown.** The current 3,773
+   generated compatibility overrides must not be treated as the desired future
+   design.
+7. **Desired benefits:** easier auditing, fewer maintained rows, and clearer
+   semantics.
+
+The first practical future use should therefore be an audit and suggestion
+view over the reviewed pair mappings. Replacement of the pair sheets is a
+separate, later possibility that would need to prove a genuinely smaller and
+better-understood contract.
+
+One distinction remains important: allowing one-to-many and many-to-one axis
+relations does not by itself resolve conditional meaning. A fuel can map to
+products A and B globally, or it can map to A only under one flow and B only
+under another. The 46 detected product-context groups should be used to decide
+whether target-pair validity is sufficient to express that condition or
+whether explicit flow context is still needed.
+
+## Possible staged implementation plan if resumed
 
 ### Stage A — decide the two blocked policies
 
@@ -495,15 +536,20 @@ rewrite the stale assertion.
 The canonical workbook hash was unchanged, and no sibling production files
 were edited.
 
-## Decisions required
+## Questions to resolve if resumed
 
-Before this prompt can be archived, a reviewer must decide:
+Before any future shadow implementation, a reviewer must decide:
 
 1. Should flow-qualified product meaning be represented by narrow reviewed
    pair overrides, or by an explicit optional flow-context key on product
    mappings?
 2. Should an accepted pair become dormant after two consecutive absent or
    zero-only vintages, or use another threshold?
+3. Does post-ESTO projection validity mean non-zero in any later Ninth year,
+   every later Ninth year, or two separately reported evidence states?
+4. What exact hierarchy-frontier rule rejects a conflicting parent-to-child
+   mapping without rejecting legitimate coarse mappings between datasets?
 
-Until then, keep this prompt active and treat every generated axis, registry,
-candidate, and override as review-only.
+MAPQ-033 is parked as a future-development suggestion. Until it is deliberately
+resumed, treat every generated axis, registry, candidate, and override as
+review-only evidence.
