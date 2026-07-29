@@ -145,7 +145,12 @@ def test_esto_leap_scope_excludes_ninth_relationships_and_aggregate_edges() -> N
         scope_config["aggregate_source_systems"],
     )
 
-    assert DEFAULT_ENABLED_COMPARISON_SCOPES == ["esto_leap_ninth", "esto_leap"]
+    assert DEFAULT_ENABLED_COMPARISON_SCOPES == [
+        "esto_leap",
+        "esto_extended_leap",
+        "esto_leap_ninth",
+        "esto_extended_leap_ninth",
+    ]
     assert included_df["source_system"].tolist() == ["LEAP"]
     assert excluded_df.empty
     assert edges == []
