@@ -54,6 +54,12 @@ CURRENT_ARTIFACT_SPECS = [
         "required": True,
     },
     {
+        "stage": "input",
+        "relative_path": "config/datasets/rollup_sheet_registry.csv",
+        "format": "csv",
+        "required": True,
+    },
+    {
         "stage": "stage_1",
         "relative_path": (
             "results/mapping_relationships/energy_balance_relationships.csv"
@@ -75,6 +81,12 @@ CURRENT_ARTIFACT_SPECS = [
             "results/mapping_relationships/"
             "one_to_many_mappings_without_allocation_or_combined_target.csv"
         ),
+        "format": "csv",
+        "required": True,
+    },
+    {
+        "stage": "stage_1",
+        "relative_path": "results/mapping_relationships/normalized_rollup_rules.csv",
         "format": "csv",
         "required": True,
     },

@@ -27,6 +27,10 @@ from codebase.mapping_tools.non_expanding_rollups import (
 from codebase.mapping_tools.mapping_sheet_registry import (
     build_mapping_sheet_configs,
 )
+from codebase.mapping_tools.rollup_sheet_registry import (
+    compile_normalized_rollup_rules,
+    load_active_rollup_rules,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -1609,13 +1613,12 @@ def build_unknown_ninth_target_qa(relationship_df: pd.DataFrame, known_ninth_sec
 
 def load_rollup_rules(workbook_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load the three rollup rule sheets from outlook_mappings_master.xlsx."""
-    def _load(sheet: str) -> pd.DataFrame:
-        try:
-            df = pd.read_excel(workbook_path, sheet_name=sheet, dtype=object).fillna("")
-            return df[df["include"].astype(str).str.lower().isin(["true", "1", "yes"])].reset_index(drop=True)
-        except Exception:
-            return pd.DataFrame()
-    return _load("leap_rollup_rules"), _load("esto_rollup_rules"), _load("ninth_rollup_rules")
+    rules = load_active_rollup_rules(workbook_path)
+    return (
+        rules.get("leap_rollup_rules", pd.DataFrame()),
+        rules.get("esto_rollup_rules", pd.DataFrame()),
+        rules.get("ninth_rollup_rules", pd.DataFrame()),
+    )
 
 
 def _apply_leap_rollup_rules(
@@ -1942,6 +1945,10 @@ def run_relationship_workflow(
         "esto_rollup_rules": esto_rules,
         "ninth_rollup_rules": ninth_rules,
     }).to_csv(qa_dir / "rollup_edges.csv", index=False)
+    compile_normalized_rollup_rules(mapping_workbook_path).to_csv(
+        qa_dir / "normalized_rollup_rules.csv",
+        index=False,
+    )
     non_expanding_unresolved_df.to_csv(qa_dir / "qa_non_expanding_rollup_unresolved.csv", index=False)
     print(
         f"Non-expanding rollup rules: {len(non_expanding_catalogue_df):,} contributor rows across "

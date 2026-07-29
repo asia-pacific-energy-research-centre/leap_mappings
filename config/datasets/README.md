@@ -9,6 +9,8 @@ comparison membership:
   four the pipeline builds by default.
 - `mapping_sheet_registry.csv` declares how the three maintained workbook
   sheets compile into the current normalized relationship surface.
+- `rollup_sheet_registry.csv` declares how dataset-specific rollup columns
+  compile into the normalized rollup-rule surface.
 
 Pipe (`|`) separates ordered values inside list fields. `default_order`
 preserves the current pipeline build order independently from the order of all

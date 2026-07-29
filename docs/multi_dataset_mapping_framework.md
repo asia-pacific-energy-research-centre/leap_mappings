@@ -529,6 +529,15 @@ The legacy `SHEET_CONFIGS` public shape remains available for existing callers.
 Verification: rolled relationships and Common-row membership remain
 equivalent.
 
+Implementation status (2026-07-29): the three current rollup sheets are
+declared in `config/datasets/rollup_sheet_registry.csv` and compile to one
+normalized rule schema. Stage 1 emitted 133 active normalized contributor
+rules: 68 LEAP, 38 ESTO, and 27 9th rows across expanding, non-expanding, and
+detached modes. Existing rollup consumers retain their prior raw DataFrame
+views during migration. The complete 17,076-row relationship output remained
+byte-identical to the M0 baseline SHA-256
+`cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`.
+
 ### M4 — Register value converters
 
 - wrap current LEAP, 9th, ESTO, and ESTO Extended preparation as registered
