@@ -160,7 +160,7 @@ Required fields:
 | `scenario_policy_id` | Named scenario-normalization policy |
 | `period_policy_id` | Named year/period-normalization policy |
 | `subtotal_authority` | Where structural hierarchy truth comes from |
-| `owner` | Dataset or mapping maintainer |
+| `owner` | Optional responsible operator, user, or role for the current entry |
 | `notes` | Human context, not executable logic |
 
 Paths, column mappings, and parser options should live in a small
@@ -236,6 +236,41 @@ The compiled relationship surface should be dataset-neutral:
 Existing human-friendly workbook sheets can remain during migration. A registry
 should describe how each sheet maps into this normalized schema so the core
 compiler does not know sheet-specific column names.
+
+### Coarse-to-detailed allocation contract
+
+A coarse source pair may map to several finer hub pairs only when an explicit
+allocation rule turns the otherwise ambiguous relationship into a conserved
+transformation. This is separate from ordinary semantic mapping.
+
+For example, a 100 PJ parent-fuel row could be emitted as 60 PJ and 40 PJ for
+two detailed child fuels only if the applicable allocation rule supplies the
+reviewed shares `0.60` and `0.40`. The relationship becomes executable when:
+
+1. the complete target child set is declared;
+2. shares are defined for the applicable scope and necessary context, such as
+   economy, scenario, and period;
+3. shares sum to one within tolerance for every allocated source value;
+4. the evidence source, method, version, reviewer or responsible operator, and
+   review status are recorded;
+5. allocation preserves the source value's unit and sign;
+6. the coarse parent value is replaced by its allocated children for that
+   output, rather than being added alongside them;
+7. missing, stale, negative, or non-conserving shares fail closed; and
+8. lineage connects every allocated child value back to the original coarse
+   source row and allocation rule.
+
+Permitted methods can include fixed reviewed shares, context-specific shares
+derived from an authoritative detailed dataset, or reviewed driver-based
+shares. Label similarity alone is not allocation evidence. If both axes are
+split at once, the rule needs a reviewed joint allocation matrix; multiplying
+independent flow and fuel shares is not assumed to be valid.
+
+The synthetic simpler dataset should normally map to coarse hub/Common rows.
+Its deliberately blocked case can be made to pass by adding a small reviewed
+allocation table satisfying this contract, which proves that the framework
+supports coarse-to-detailed conversion without enabling uncontrolled automatic
+splitting.
 
 ### Generic rollup rules
 
@@ -552,15 +587,14 @@ The following decisions were confirmed on 2026-07-29:
 7. **Synthetic additional dataset:** the acceptance example should demonstrate
    a simpler balance system using ESTO parent fuel categories and heavily
    simplified flows.
+8. **Registry format and stewardship:** maintained dataset and scope registries
+   use CSV files under `config/datasets/`. They do not require one permanent
+   named owner. The owner or user operating the system is responsible for their
+   changes, with Git history and review metadata preserving provenance.
 
 ## Remaining human decisions
 
-1. **Registry stewardship:** confirm who reviews and approves changes to
-   `config/datasets/`. This means governance responsibility, not filesystem
-   ownership. The provisional recommendation is the `leap_mappings` mapping
-   maintainers, with dataset-specific semantic changes also reviewed by the
-   relevant dataset owner.
-2. **First real additional dataset:** select it only after the synthetic
+1. **First real additional dataset:** select it only after the synthetic
    acceptance test passes, then provide a representative extract and a reviewer
    familiar with its balance semantics.
 

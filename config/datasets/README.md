@@ -25,6 +25,12 @@ by:
 & 'C:\Users\Work\miniconda3\python.exe' -m pytest tests/test_dataset_registry.py -q
 ```
 
+Registry stewardship is deliberately lightweight. A permanent named owner is
+not required: the owner or user operating the system is responsible for the
+entries they change, and Git history plus review metadata supplies provenance.
+The `owner` column may identify a useful person or role but is not an approval
+gate.
+
 M1 intentionally does not move mapping-sheet interpretation, dataset parsing,
 or rollup rules into these files. Those are separate migration milestones in
 `docs/multi_dataset_mapping_framework.md`.
