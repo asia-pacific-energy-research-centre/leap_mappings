@@ -1,13 +1,13 @@
 # Multi-dataset energy-balance mapping framework
 
-**Status:** target architecture and migration contract; not yet an end-to-end
-capability claim
+**Status:** registry-driven four-source production capability plus remaining
+N-dataset migration contract
 
 **Audience:** mapping maintainers, dataset owners, reviewers, and agents
 
 **Owner:** `leap_mappings`
 
-**Last implementation review:** 2026-07-29
+**Last implementation review:** 2026-07-30
 
 ## Purpose
 
@@ -24,7 +24,9 @@ can do today.
 
 ## Current conclusion
 
-The repository is **partly generalized but not yet plug-in ready**.
+The repository is **production-capable for the registered ESTO, ESTO Extended,
+LEAP, and Ninth sources, but not yet plug-in ready for an arbitrary new
+dataset**.
 
 - The hierarchy/subtotal contract has a genuine adapter interface and a
   dataset-neutral classifier.
@@ -32,6 +34,14 @@ The repository is **partly generalized but not yet plug-in ready**.
   `target_system`, flow, and product fields.
 - Common ESTO application can concatenate multiple inputs after they have been
   converted into a common ESTO-shaped value schema.
+- The separate-axis refresh is now the production first step. People maintain
+  six single-axis relation sheets and four accepted-extra-pair sheets in
+  `config/outlook_mappings_single_axis.xlsx`; the pipeline generates exact-pair
+  authority and the compatibility `outlook_mappings_master.xlsx` consumed by
+  existing stages.
+- The 2026-07-30 full production run rebuilt all four default comparison
+  scopes, preserved mapped value in every scope/source combination, and
+  delivered every mapped source pair to at most one additive Common row.
 - Workbook row schemas, the use-case catalogue, rollup loaders, converters,
   orchestration, and several validators still explicitly name the current
   datasets. Dataset identity, comparison scopes, hierarchy-adapter selection,
