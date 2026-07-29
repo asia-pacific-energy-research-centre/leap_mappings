@@ -13,6 +13,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     annotate_pair_universe_temporal_evidence,
     apply_generated_overrides,
     apply_source_once_fixture,
+    build_axis_mappings_from_editable_sheets,
     build_compiled_mapping_sheet_frames,
     build_ninth_valid_pair_registry_bundle,
     build_common_graph_membership_in_memory,
@@ -515,6 +516,139 @@ def test_axis_compiler_provisionally_accepts_cartesian_pairs() -> None:
     assert set(restored.itertuples(index=False, name=None)) == set(
         current[RELATIONSHIP_KEY_COLUMNS].itertuples(index=False, name=None)
     )
+
+
+def test_editable_axis_rows_are_the_compiler_authority() -> None:
+    sheets = {
+        "leap_sector_to_esto": pd.DataFrame(
+            [
+                {
+                    "leap_sector": "S1",
+                    "esto_flow": "T1",
+                    "esto_dataset_scope": "ESTO",
+                }
+            ]
+        ),
+        "leap_fuel_to_esto": pd.DataFrame(
+            [
+                {
+                    "leap_fuel": "P1",
+                    "esto_product": "Q1",
+                    "esto_dataset_scope": "ESTO",
+                }
+            ]
+        ),
+        "leap_sector_to_ninth": pd.DataFrame(
+            [{"leap_sector": "S1", "ninth_sector": "N1"}]
+        ),
+        "leap_fuel_to_ninth": pd.DataFrame(
+            [{"leap_fuel": "P1", "ninth_fuel": "R1"}]
+        ),
+        "ninth_sector_to_esto": pd.DataFrame(
+            [
+                {
+                    "ninth_sector": "N1",
+                    "esto_flow": "T1",
+                    "esto_dataset_scope": "ESTO",
+                }
+            ]
+        ),
+        "ninth_fuel_to_esto": pd.DataFrame(
+            [
+                {
+                    "ninth_fuel": "R1",
+                    "esto_product": "Q1",
+                    "esto_dataset_scope": "ESTO",
+                }
+            ]
+        ),
+    }
+    flow, product = build_axis_mappings_from_editable_sheets(sheets)
+    current = pd.DataFrame([_relationship("S1", "P1", "T1", "Q1")])
+    source_universe = pd.DataFrame(
+        [
+            {
+                "flow": "S1",
+                "product": "P1",
+                "pair_exists_in_dataset": True,
+                "pair_universe_authority": "fixture",
+            }
+        ]
+    )
+    target_registry = pd.DataFrame(
+        [
+            {"flow": "T1", "product": "Q1", "pair_status": "data_valid"},
+            {"flow": "T2", "product": "Q1", "pair_status": "data_valid"},
+        ]
+    )
+
+    baseline = compile_axis_relationships(
+        current,
+        flow,
+        product,
+        build_registry_scope_lookups(target_registry, pd.DataFrame()),
+        source_pair_universes={"LEAP": source_universe},
+    )
+    assert set(
+        baseline.loc[
+            baseline["mapping_name"].eq("leap_to_esto"),
+            "target_flow",
+        ]
+    ) == {"T1"}
+
+    sheets["leap_sector_to_esto"] = pd.concat(
+        [
+            sheets["leap_sector_to_esto"],
+            pd.DataFrame(
+                [
+                    {
+                        "leap_sector": "S1",
+                        "esto_flow": "T2",
+                        "esto_dataset_scope": "ESTO",
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    flow_with_addition, product_with_addition = (
+        build_axis_mappings_from_editable_sheets(sheets)
+    )
+    with_addition = compile_axis_relationships(
+        current,
+        flow_with_addition,
+        product_with_addition,
+        build_registry_scope_lookups(target_registry, pd.DataFrame()),
+        source_pair_universes={"LEAP": source_universe},
+    )
+    assert set(
+        with_addition.loc[
+            with_addition["mapping_name"].eq("leap_to_esto"),
+            "target_flow",
+        ]
+    ) == {"T1", "T2"}
+
+    sheets["leap_sector_to_esto"] = sheets[
+        "leap_sector_to_esto"
+    ].loc[
+        sheets["leap_sector_to_esto"]["esto_flow"].ne("T1")
+    ]
+    flow_after_deletion, product_after_deletion = (
+        build_axis_mappings_from_editable_sheets(sheets)
+    )
+    after_deletion = compile_axis_relationships(
+        current,
+        flow_after_deletion,
+        product_after_deletion,
+        build_registry_scope_lookups(target_registry, pd.DataFrame()),
+        source_pair_universes={"LEAP": source_universe},
+    )
+    assert set(
+        after_deletion.loc[
+            after_deletion["mapping_name"].eq("leap_to_esto"),
+            "target_flow",
+        ]
+    ) == {"T2"}
 
 
 def test_axis_component_contract_rejects_only_connected_many_to_many() -> None:

@@ -62,6 +62,61 @@ MAPPING_SPECS: dict[str, dict[str, str]] = {
     },
 }
 
+EDITABLE_AXIS_SHEET_SPECS: dict[str, dict[str, str]] = {
+    "leap_sector_to_esto": {
+        "axis": "flow",
+        "mapping_name": "leap_to_esto",
+        "source_system": "LEAP",
+        "target_system": "ESTO",
+        "source_column": "leap_sector",
+        "target_column": "esto_flow",
+        "scope_column": "esto_dataset_scope",
+    },
+    "leap_fuel_to_esto": {
+        "axis": "product",
+        "mapping_name": "leap_to_esto",
+        "source_system": "LEAP",
+        "target_system": "ESTO",
+        "source_column": "leap_fuel",
+        "target_column": "esto_product",
+        "scope_column": "esto_dataset_scope",
+    },
+    "leap_sector_to_ninth": {
+        "axis": "flow",
+        "mapping_name": "leap_to_ninth",
+        "source_system": "LEAP",
+        "target_system": "NINTH",
+        "source_column": "leap_sector",
+        "target_column": "ninth_sector",
+    },
+    "leap_fuel_to_ninth": {
+        "axis": "product",
+        "mapping_name": "leap_to_ninth",
+        "source_system": "LEAP",
+        "target_system": "NINTH",
+        "source_column": "leap_fuel",
+        "target_column": "ninth_fuel",
+    },
+    "ninth_sector_to_esto": {
+        "axis": "flow",
+        "mapping_name": "ninth_to_esto",
+        "source_system": "NINTH",
+        "target_system": "ESTO",
+        "source_column": "ninth_sector",
+        "target_column": "esto_flow",
+        "scope_column": "esto_dataset_scope",
+    },
+    "ninth_fuel_to_esto": {
+        "axis": "product",
+        "mapping_name": "ninth_to_esto",
+        "source_system": "NINTH",
+        "target_system": "ESTO",
+        "source_column": "ninth_fuel",
+        "target_column": "esto_product",
+        "scope_column": "esto_dataset_scope",
+    },
+}
+
 RELATIONSHIP_KEY_COLUMNS = [
     "mapping_name",
     "comparison_scope",
@@ -1213,6 +1268,152 @@ def derive_axis_mappings(
     flow["notes"] = "Derived from active reviewed pair mappings; prototype only."
     product["notes"] = "Derived from active reviewed pair mappings; prototype only."
     return flow, product
+
+
+def build_axis_mappings_from_editable_sheets(
+    sheet_frames: dict[str, pd.DataFrame],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build compiler-ready axes from the six user-editable sheet frames.
+
+    Every nonblank row is an accepted relation. Deleting a row therefore
+    withdraws that relation from the next compilation.
+    """
+    required_sheets = set(EDITABLE_AXIS_SHEET_SPECS)
+    present_sheets = required_sheets & set(sheet_frames)
+    if present_sheets != required_sheets:
+        missing = sorted(required_sheets - present_sheets)
+        raise ValueError(
+            "Editable single-axis contract is incomplete. Missing sheets: "
+            f"{missing}"
+        )
+
+    axis_frames: dict[str, list[pd.DataFrame]] = {
+        "flow": [],
+        "product": [],
+    }
+    for sheet_name, spec in EDITABLE_AXIS_SHEET_SPECS.items():
+        source_column = spec["source_column"]
+        target_column = spec["target_column"]
+        required_columns = {source_column, target_column}
+        scope_column = spec.get("scope_column")
+        if scope_column:
+            required_columns.add(scope_column)
+
+        frame = sheet_frames[sheet_name].copy()
+        frame.columns = [str(column).strip() for column in frame.columns]
+        missing_columns = sorted(required_columns - set(frame.columns))
+        if missing_columns:
+            raise ValueError(
+                f"{sheet_name} is missing columns: {missing_columns}"
+            )
+
+        source_values = frame[source_column].map(_clean)
+        target_values = frame[target_column].map(_clean)
+        populated = source_values.ne("") | target_values.ne("")
+        incomplete = populated & (source_values.eq("") | target_values.eq(""))
+        if incomplete.any():
+            workbook_rows = (frame.index[incomplete] + 2).tolist()
+            raise ValueError(
+                f"{sheet_name} has partially blank axis rows at workbook "
+                f"rows {workbook_rows[:20]}"
+            )
+
+        frame = frame.loc[populated].copy()
+        source_values = source_values.loc[populated]
+        target_values = target_values.loc[populated]
+        if scope_column:
+            raw_scopes = frame[scope_column].map(_clean)
+            invalid_scope = ~raw_scopes.str.upper().isin(
+                {"ESTO", "ESTO_EXTENDED", "BOTH"}
+            )
+            if invalid_scope.any():
+                workbook_rows = (frame.index[invalid_scope] + 2).tolist()
+                raise ValueError(
+                    f"{sheet_name} has invalid esto_dataset_scope values at "
+                    f"workbook rows {workbook_rows[:20]}"
+                )
+            scopes = raw_scopes.map(
+                lambda value: _normalise_scope(value, spec["target_system"])
+            )
+        else:
+            scopes = pd.Series("NINTH", index=frame.index)
+
+        axis_name = spec["axis"]
+        normalised = pd.DataFrame(
+            {
+                "mapping_name": spec["mapping_name"],
+                "comparison_scope": scopes,
+                "source_system": spec["source_system"],
+                f"source_{axis_name}": source_values,
+                "target_system": spec["target_system"],
+                f"target_{axis_name}": target_values,
+            }
+        )
+        axis_frames[axis_name].append(normalised)
+
+    results: dict[str, pd.DataFrame] = {}
+    for axis_name, frames in axis_frames.items():
+        source_column = f"source_{axis_name}"
+        target_column = f"target_{axis_name}"
+        result = (
+            pd.concat(frames, ignore_index=True)
+            .drop_duplicates()
+            .sort_values(
+                [
+                    "mapping_name",
+                    "comparison_scope",
+                    source_column,
+                    target_column,
+                ],
+                kind="stable",
+            )
+            .reset_index(drop=True)
+        )
+        result["relationship_semantics"] = _axis_cardinality(
+            result,
+            source_column,
+            target_column,
+        )
+        result["notes"] = "Accepted in editable single-axis contract."
+        results[axis_name] = result
+    return results["flow"], results["product"]
+
+
+def load_or_bootstrap_editable_axis_contract(
+    workbook_path: Path,
+    bootstrap_relationships: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    """Load the editable axes, deriving them only when no axis sheets exist."""
+    workbook_path = Path(workbook_path)
+    existing_sheets: set[str] = set()
+    if workbook_path.exists():
+        with pd.ExcelFile(workbook_path) as workbook:
+            existing_sheets = set(workbook.sheet_names)
+
+    required_sheets = set(EDITABLE_AXIS_SHEET_SPECS)
+    present_sheets = required_sheets & existing_sheets
+    if present_sheets and present_sheets != required_sheets:
+        missing = sorted(required_sheets - present_sheets)
+        raise ValueError(
+            "Editable single-axis contract is incomplete. Missing sheets: "
+            f"{missing}"
+        )
+    if present_sheets == required_sheets:
+        sheet_frames = {
+            sheet_name: pd.read_excel(
+                workbook_path,
+                sheet_name=sheet_name,
+                dtype=object,
+            )
+            for sheet_name in EDITABLE_AXIS_SHEET_SPECS
+        }
+        flow_axis, product_axis = build_axis_mappings_from_editable_sheets(
+            sheet_frames
+        )
+        return flow_axis, product_axis, False
+
+    flow_axis, product_axis = derive_axis_mappings(bootstrap_relationships)
+    return flow_axis, product_axis, True
 
 
 def analyse_axis_components(

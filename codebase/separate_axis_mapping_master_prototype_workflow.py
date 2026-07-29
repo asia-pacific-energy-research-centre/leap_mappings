@@ -37,10 +37,10 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     build_registry_scope_lookups,
     compare_compiled_relationships,
     compile_axis_relationships,
-    derive_axis_mappings,
     derive_required_reviewed_extra_pairs,
     expand_pair_universe_with_rollups,
     load_active_mapping_contract,
+    load_or_bootstrap_editable_axis_contract,
     merge_reviewed_extra_pairs,
 )
 from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
@@ -775,7 +775,14 @@ def run_single_axis_master_prototype(
     OUTPUT_DATA_ROOT.mkdir(parents=True, exist_ok=True)
 
     current, incomplete = load_active_mapping_contract(WORKBOOK_PATH)
-    flow_axis_raw, product_axis_raw = derive_axis_mappings(current)
+    (
+        flow_axis_raw,
+        product_axis_raw,
+        axis_contract_bootstrapped_this_run,
+    ) = load_or_bootstrap_editable_axis_contract(
+        EDITABLE_AXIS_WORKBOOK_PATH,
+        current,
+    )
     flow_axis, flow_components = analyse_axis_components(
         flow_axis_raw,
         "flow",
@@ -1102,6 +1109,11 @@ def run_single_axis_master_prototype(
         "historical_boundary_year": int(historical_boundary_year),
         "canonical_workbook_was_modified": False,
         "canonical_workbook_path": str(WORKBOOK_PATH),
+        "editable_axis_workbook_path": str(EDITABLE_AXIS_WORKBOOK_PATH),
+        "axis_contract_authority": "editable_single_axis_workbook",
+        "axis_contract_bootstrapped_this_run": (
+            axis_contract_bootstrapped_this_run
+        ),
         "leap_pair_authority": (
             "generated_from_model_branches_and_balance_report_contract"
         ),
