@@ -26,6 +26,7 @@ data/.cache/
 *.html
 *.json
 !config/*.json
+!docs/baselines/*.json
 *.pkl
 *.dll
 *.code-workspace
