@@ -695,6 +695,47 @@ Stage 2 QA, and the Stage 3 output contract. M6 is complete for the deliberately
 small acceptance fixture; a production-scale real additional dataset belongs
 to M7 rather than being a hidden extra condition on M6.
 
+#### What the synthetic acceptance establishes
+
+The successful `SYNTH_BALANCE` run is sufficient evidence for the framework
+claim it was designed to test: a fourth, coarse, two-axis energy-balance
+dataset can be registered, mapped through the ESTO-shaped hub, combined with
+more detailed datasets at a conserved Common grain, and reported through the
+existing pipeline without adding dataset-name branches to the core engines.
+The fixture need not contain every first-level ESTO flow/product combination
+to establish that architectural capability.
+
+This is not a claim that every future dataset will onboard without semantic
+work. The remaining risks are primarily decisions at the dataset boundary:
+
+- **Choosing the comparison boundary.** A maintainer must understand whether a
+  source row is an exact category, a hierarchy parent, a subtotal, or a
+  dataset-specific aggregate before deciding where it belongs.
+- **Placing rollups correctly.** A reviewed, manually specified rollup is
+  appropriate when the required semantic boundary is known but is not already
+  represented by the maintained hierarchy and mappings. Stage 2's automatic
+  Common ESTO graph partitioning is different: it derives a safe shared grain
+  from existing mapping constraints. It should not be used as a substitute for
+  missing semantic knowledge.
+- **Knowing when to leave a row unmapped.** An uncertain row should remain in a
+  bounded review output when mapping it would invent meaning, cross a scope
+  boundary, or imply a coarse-to-detailed allocation. Forced coverage is more
+  dangerous than an explicit gap.
+- **Hierarchy and subtotal interpretation.** A new source may use labels that
+  resemble ESTO while applying different parent/child, subtotal, sign, or
+  accounting rules. Those semantics require a knowledgeable reviewer.
+- **Scope, scenario, and time alignment.** Successful ingestion does not decide
+  which scenario pairs or year rules are meaningful. Those remain explicit,
+  versioned scope configuration.
+- **Scale.** The fixture validates behavior and conservation, not the runtime,
+  memory use, or review burden of an arbitrarily large new dataset.
+
+The operational distinction between manual rollup rules and automatic Common
+ESTO aggregation is defined in
+[mappings_system.md](mappings_system.md#manual-rollup-rules-vs-automatic-common-esto-aggregation).
+Both mechanisms aggregate detailed values towards a safe coarse comparison
+grain; neither disaggregates a coarse source value.
+
 The broad regression run produced 397 passed and 1 skipped tests, with the same
 two known failures seen before this work: one pre-existing LEAP
 `source_context_status` expectation and one test whose ignored ESTO data file

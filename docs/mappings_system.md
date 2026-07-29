@@ -405,12 +405,56 @@ for rolled ESTO targets that do not yet have a declared hierarchy position.
 
 Detailed outputs and rolled comparison outputs are separate views. Do not show both original detailed rows and the rolled row in the same additive total unless that is explicitly intended.
 
-### Normal graph rollups vs named non-expanding subtotals
+### Manual rollup rules vs automatic Common ESTO aggregation
+
+Two operations are often described informally as "rollups", but they have
+different sources of authority and should not be edited in the same way.
+
+| Operation | How it is created | What it means | When to use it |
+| --- | --- | --- | --- |
+| **Manually specified rollup** | A reviewed rule in `leap_rollup_rules`, `esto_rollup_rules`, or `ninth_rollup_rules` | A maintainer knows that one or more source categories must be presented at a particular comparison boundary | The correct boundary follows from energy-balance semantics, a source hierarchy mismatch, an interim-placeholder rule, or another reviewed design decision |
+| **Automatic Common ESTO aggregation** | Stage 2 graph partitioning derives connected ESTO components from the active mapping relationships and comparison scope | The system finds the most detailed shared grain that does not split any mapped source aggregate | Mapped datasets overlap at different grains and their existing relationships already provide enough evidence to derive a safe common category |
+
+A manual rollup is therefore an input to the mapping system. An automatic
+Common ESTO aggregate is a generated consequence of the mappings, enabled
+manual rollups, and active comparison scope. Do not add a manual rule merely
+to reproduce a Common ESTO group that the graph already derives. Conversely,
+do not expect graph partitioning to invent a semantic boundary that is absent
+from the mappings and hierarchy configuration.
+
+This distinction is especially important when onboarding a coarse dataset.
+The normal direction is detailed-to-coarse: existing detailed datasets are
+summed to a grain that the coarse source can support. Neither manual rollups
+nor automatic Common ESTO aggregation split a coarse source value across
+detailed categories. Such a split is an allocation task outside
+`leap_mappings` and requires reviewed shares, provenance, and conservation
+checks in the consuming application.
+
+Use this decision rule:
+
+1. Map an exact source pair when its meaning is clear.
+2. Use an existing hierarchy parent where that parent is the honest comparison
+   level.
+3. Add a manual rollup only when the required comparison boundary is known but
+   is not represented adequately by the maintained hierarchy and mappings.
+4. Let Common ESTO graph partitioning combine mapped components when their
+   overlapping aggregate constraints establish the safe shared grain.
+5. Leave the row unmapped when its meaning or boundary is uncertain, or when a
+   mapping would imply an unsupported coarse-to-detailed allocation. Record it
+   in bounded QA for review instead of forcing coverage.
+
+An unmapped row is not automatically a framework failure. It is often the
+correct auditable result until a reviewer can establish the source semantics,
+the intended scope, and the appropriate hierarchy or rollup rule. It becomes a
+coverage problem when the row is required by an approved comparison scope and
+remains unresolved.
+
+### Graph-generated Common rows vs named non-expanding subtotals
 
 There are two different kinds of "rolled" comparison row, and they must not be
 confused:
 
-- **A normal graph rollup** participates in the Common ESTO graph. Its mapped
+- **A graph-generated Common row** participates in the Common ESTO graph. Its mapped
   ESTO components form graph edges, so graph partitioning merges them into one
   indivisible common comparison row. Use this only when the mapping itself
   proves the components are one common comparison category (a genuinely
