@@ -473,6 +473,31 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   canonical guide treats either retired workbook filename as current; and
   subtotal/path QA passes on the reviewed template census.
 
+### MAPQ-033 — Onboard the first real additional energy-balance dataset
+
+- **Priority / status / week:** P2 · `blocked_pending_dataset_selection` · W3
+- **Owner repo:** `leap_mappings` · **Depends on:** the multi-dataset M1–M6
+  migration in `codex/multi-dataset-registry-m1`
+- **Evidence (2026-07-29):** The disabled `SYNTH_BALANCE` fixture now proves
+  registry-only scope admission, reviewed CSV mappings, declared CSV hierarchy,
+  normalized PJ ingestion, coarse-boundary conservation, bounded unmapped-row
+  review, and Stage 3-style lineage. A real four-source Stage 3 application
+  smoke run also published a passed 3,952,646-row output contract after the
+  validator registry refactor.
+- **Input needed from the user:** Select the first real additional dataset,
+  provide a representative extract that includes its axis columns, economy,
+  scenario, period, unit, and values, and identify someone who understands its
+  balance/subtotal semantics well enough to review mappings.
+- **Next action after input:** Register the dataset disabled, implement or
+  configure its adapters, generate a bounded review table against the
+  ESTO/ESTO Extended hub, record every manual semantic decision, and enable
+  only a dedicated comparison scope for the first reviewed run.
+- **Completion criteria:** The real dataset passes the same acceptance gates as
+  `SYNTH_BALANCE`; no core Python edit is needed solely to name it; its
+  scenarios and periods align through explicit scope rules; all non-PJ values
+  are converted before mapping; and a reviewer accepts its mappings,
+  exclusions, hierarchy status, and conservation evidence.
+
 ---
 
 ## Four-week handover sequence
