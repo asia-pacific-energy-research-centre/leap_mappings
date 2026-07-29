@@ -32,9 +32,10 @@ The repository is **partly generalized but not yet plug-in ready**.
   `target_system`, flow, and product fields.
 - Common ESTO application can concatenate multiple inputs after they have been
   converted into a common ESTO-shaped value schema.
-- The workbook, use cases, rollup loaders, converters, comparison scopes,
+- Workbook row schemas, the use-case catalogue, rollup loaders, converters,
   orchestration, and several validators still explicitly name the current
-  datasets.
+  datasets. Dataset identity, comparison scopes, hierarchy-adapter selection,
+  and mapping-sheet column interpretation now come from validated registries.
 
 Adding a fourth dataset today would require coordinated Python and workbook
 changes. It is therefore inaccurate to describe the whole pipeline as
@@ -361,7 +362,7 @@ flowchart TD
 
 | Area | Reusable foundation | Remaining hard-coding |
 |---|---|---|
-| Relationship model | Generic source/target system and pair columns; stable relationship IDs | Fixed mapping sheets, use cases, column candidates, QA names, and current-dataset summaries |
+| Relationship model | Generic source/target system and pair columns; stable relationship IDs; registered sheet direction and column candidates | Current workbook row schemas, use-case catalogue, QA names, and current-dataset summaries |
 | Rollups | Rules compile into effective relationships | Separate LEAP, ESTO, and 9th loaders and code paths |
 | Common structure | Graph partitioning operates on canonical ESTO components and source aggregate constraints | Comparison-scope dictionaries explicitly list current systems and use cases |
 | Value application | ESTO-shaped tables can be concatenated by `source_system` | Relevance policy and several review routes explicitly recognize ESTO, ESTO Extended, 9th, and LEAP |
@@ -503,6 +504,21 @@ is implemented but not declared release-complete.
 
 Verification: relationship IDs, use-case inclusion, and QA outputs remain
 equivalent.
+
+Implementation status (2026-07-29): the three maintained workbook sheets now
+compile through `config/datasets/mapping_sheet_registry.csv`. The registry
+declares source/target datasets, ordered column candidates, enablement, and
+use-case membership while preserving the workbook as the human editing
+surface. Stage 1 equivalence is byte-exact:
+
+- `energy_balance_relationships.csv`: 17,076 rows,
+  SHA-256 `cb720326e793e4ced916df2c7c72607ede68821a6c18a8c2e007a27979ad35c4`;
+- `relationship_catalogue_6_col.csv`: 6,466 rows,
+  SHA-256 `1b8ff4b29c3eea31befc89c9f2b001b24d075c4d9ce5c5a5f117293d2d1710ef`;
+- one-to-many allocation/combined-target QA: zero rows,
+  SHA-256 `7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6`.
+
+The legacy `SHEET_CONFIGS` public shape remains available for existing callers.
 
 ### M3 — Normalize rollup configuration
 

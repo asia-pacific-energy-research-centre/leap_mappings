@@ -7,6 +7,8 @@ comparison membership:
   the mapping framework.
 - `comparison_scopes.csv` declares every existing comparison scope and which
   four the pipeline builds by default.
+- `mapping_sheet_registry.csv` declares how the three maintained workbook
+  sheets compile into the current normalized relationship surface.
 
 Pipe (`|`) separates ordered values inside list fields. `default_order`
 preserves the current pipeline build order independently from the order of all
@@ -34,3 +36,8 @@ gate.
 M1 intentionally does not move mapping-sheet interpretation, dataset parsing,
 or rollup rules into these files. Those are separate migration milestones in
 `docs/multi_dataset_mapping_framework.md`.
+
+M2 moves mapping-sheet identity, dataset direction, ordered source/target
+column candidates, and use-case membership into `mapping_sheet_registry.csv`.
+The workbook remains the human editing surface and is never rewritten by the
+registry loader.

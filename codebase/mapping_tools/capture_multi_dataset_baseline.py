@@ -48,6 +48,12 @@ CURRENT_ARTIFACT_SPECS = [
         "required": True,
     },
     {
+        "stage": "input",
+        "relative_path": "config/datasets/mapping_sheet_registry.csv",
+        "format": "csv",
+        "required": True,
+    },
+    {
         "stage": "stage_1",
         "relative_path": (
             "results/mapping_relationships/energy_balance_relationships.csv"

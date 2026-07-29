@@ -24,6 +24,9 @@ from codebase.mapping_tools.non_expanding_rollups import (
     split_rollup_rules,
     split_non_expanding_rules,
 )
+from codebase.mapping_tools.mapping_sheet_registry import (
+    build_mapping_sheet_configs,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -35,38 +38,7 @@ USE_CASES = [
     "mapping_review",
 ]
 
-SHEET_CONFIGS = [
-    {
-        "sheet_name": "leap_combined_esto",
-        "source_system": "LEAP",
-        "target_system": "ESTO",
-        "source_flow_candidates": ["leap_sector_name_full_path"],
-        "source_product_candidates": ["raw_leap_fuel_name"],
-        "target_flow_candidates": ["esto_flow"],
-        "target_product_candidates": ["esto_product"],
-        "use_cases": ["leap_to_esto_balance_conversion", "mapping_review"],
-    },
-    {
-        "sheet_name": "ninth_pairs_to_esto_pairs",
-        "source_system": "NINTH",
-        "target_system": "ESTO",
-        "source_flow_candidates": ["ninth_sector", "ninth_sector"],
-        "source_product_candidates": ["ninth_fuel", "ninth_fuel"],
-        "target_flow_candidates": ["esto_flow"],
-        "target_product_candidates": ["esto_product"],
-        "use_cases": ["ninth_to_esto_balance_conversion", "mapping_review"],
-    },
-    {
-        "sheet_name": "leap_combined_ninth",
-        "source_system": "LEAP",
-        "target_system": "NINTH",
-        "source_flow_candidates": ["leap_sector_name_full_path"],
-        "source_product_candidates": ["raw_leap_fuel_name"],
-        "target_flow_candidates": ["ninth_sector"],
-        "target_product_candidates": ["ninth_fuel"],
-        "use_cases": ["leap_to_ninth_comparison", "mapping_review"],
-    },
-]
+SHEET_CONFIGS = build_mapping_sheet_configs(known_use_cases=USE_CASES)
 
 RELATIONSHIP_COLUMNS = [
     "relationship_id",
