@@ -24,49 +24,38 @@ from codebase.mapping_tools.non_expanding_rollups import (
     split_rollup_rules,
     split_non_expanding_rules,
 )
+from codebase.mapping_tools.mapping_sheet_registry import (
+    build_mapping_sheet_configs,
+)
+from codebase.mapping_tools.rollup_sheet_registry import (
+    compile_normalized_rollup_rules,
+    load_active_rollup_rules,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
-USE_CASES = [
+_LEGACY_USE_CASE_ORDER = [
     "leap_to_esto_balance_conversion",
     "ninth_to_esto_balance_conversion",
     "leap_to_ninth_comparison",
     "ninth_to_leap_initialisation",
     "mapping_review",
 ]
-
-SHEET_CONFIGS = [
-    {
-        "sheet_name": "leap_combined_esto",
-        "source_system": "LEAP",
-        "target_system": "ESTO",
-        "source_flow_candidates": ["leap_sector_name_full_path"],
-        "source_product_candidates": ["raw_leap_fuel_name"],
-        "target_flow_candidates": ["esto_flow"],
-        "target_product_candidates": ["esto_product"],
-        "use_cases": ["leap_to_esto_balance_conversion", "mapping_review"],
-    },
-    {
-        "sheet_name": "ninth_pairs_to_esto_pairs",
-        "source_system": "NINTH",
-        "target_system": "ESTO",
-        "source_flow_candidates": ["ninth_sector", "ninth_sector"],
-        "source_product_candidates": ["ninth_fuel", "ninth_fuel"],
-        "target_flow_candidates": ["esto_flow"],
-        "target_product_candidates": ["esto_product"],
-        "use_cases": ["ninth_to_esto_balance_conversion", "mapping_review"],
-    },
-    {
-        "sheet_name": "leap_combined_ninth",
-        "source_system": "LEAP",
-        "target_system": "NINTH",
-        "source_flow_candidates": ["leap_sector_name_full_path"],
-        "source_product_candidates": ["raw_leap_fuel_name"],
-        "target_flow_candidates": ["ninth_sector"],
-        "target_product_candidates": ["ninth_fuel"],
-        "use_cases": ["leap_to_ninth_comparison", "mapping_review"],
-    },
+SHEET_CONFIGS = build_mapping_sheet_configs()
+_registered_mapping_use_cases = {
+    use_case
+    for config in SHEET_CONFIGS
+    for use_case in config["use_cases"]
+}
+USE_CASES = [
+    use_case
+    for use_case in _LEGACY_USE_CASE_ORDER
+    if (
+        use_case in _registered_mapping_use_cases
+        or use_case == "ninth_to_leap_initialisation"
+    )
 ]
+USE_CASES.extend(sorted(_registered_mapping_use_cases - set(USE_CASES)))
 
 RELATIONSHIP_COLUMNS = [
     "relationship_id",
@@ -1637,13 +1626,12 @@ def build_unknown_ninth_target_qa(relationship_df: pd.DataFrame, known_ninth_sec
 
 def load_rollup_rules(workbook_path: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Load the three rollup rule sheets from outlook_mappings_master.xlsx."""
-    def _load(sheet: str) -> pd.DataFrame:
-        try:
-            df = pd.read_excel(workbook_path, sheet_name=sheet, dtype=object).fillna("")
-            return df[df["include"].astype(str).str.lower().isin(["true", "1", "yes"])].reset_index(drop=True)
-        except Exception:
-            return pd.DataFrame()
-    return _load("leap_rollup_rules"), _load("esto_rollup_rules"), _load("ninth_rollup_rules")
+    rules = load_active_rollup_rules(workbook_path)
+    return (
+        rules.get("leap_rollup_rules", pd.DataFrame()),
+        rules.get("esto_rollup_rules", pd.DataFrame()),
+        rules.get("ninth_rollup_rules", pd.DataFrame()),
+    )
 
 
 def _apply_leap_rollup_rules(
@@ -1857,13 +1845,24 @@ def run_relationship_workflow(
     source_row_counts: dict[str, int] = {}
     for sheet_config in sheet_configs:
         sheet_name = sheet_config["sheet_name"]
-        source_df, source_path = read_configured_sheet(
-            primary_workbook_path=mapping_workbook_path,
-            fallback_workbook_path=fallback_workbook_path,
-            sheet_name=sheet_name,
-        )
+        input_relative_path = str(
+            sheet_config.get("input_relative_path", "")
+        ).strip()
+        if input_relative_path:
+            source_path = REPO_ROOT / input_relative_path
+            source_df = (
+                pd.read_csv(source_path, dtype=object)
+                if source_path.exists()
+                else None
+            )
+        else:
+            source_df, source_path = read_configured_sheet(
+                primary_workbook_path=mapping_workbook_path,
+                fallback_workbook_path=fallback_workbook_path,
+                sheet_name=sheet_name,
+            )
         if source_df is None or source_path is None:
-            print(f"Skipped missing sheet: {sheet_name}")
+            print(f"Skipped missing mapping input: {sheet_name}")
             continue
         source_row_counts[sheet_name] = len(source_df)
         relationship_frames.append(
@@ -1970,6 +1969,10 @@ def run_relationship_workflow(
         "esto_rollup_rules": esto_rules,
         "ninth_rollup_rules": ninth_rules,
     }).to_csv(qa_dir / "rollup_edges.csv", index=False)
+    compile_normalized_rollup_rules(mapping_workbook_path).to_csv(
+        qa_dir / "normalized_rollup_rules.csv",
+        index=False,
+    )
     non_expanding_unresolved_df.to_csv(qa_dir / "qa_non_expanding_rollup_unresolved.csv", index=False)
     print(
         f"Non-expanding rollup rules: {len(non_expanding_catalogue_df):,} contributor rows across "

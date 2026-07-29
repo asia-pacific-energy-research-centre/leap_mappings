@@ -22,6 +22,10 @@ from codebase.mapping_tools.hierarchy_subtotal_contract import (
     empty_observations,
     normalize_adapter_tables,
 )
+from codebase.mapping_tools.dataset_registry import load_dataset_registry
+from codebase.mapping_tools.value_adapter_registry import (
+    load_value_adapter_registry,
+)
 
 
 ADAPTER_VERSION = "1.0.0"
@@ -608,55 +612,296 @@ def build_common_esto_pair_classification(
     return classify_pairs(tables.nodes, tables.pairs, tables.edges)
 
 
+def build_declared_csv_hierarchy_adapter(
+    dataset_id: str,
+    source_version: str,
+    hierarchy_path: Path,
+    values_path: Path,
+) -> AdapterTables:
+    """Adapt a reviewed two-axis CSV hierarchy and normalized PJ value table."""
+    contract_dataset_id = dataset_id.strip().lower()
+    hierarchy_path = Path(hierarchy_path)
+    values_path = Path(values_path)
+    hierarchy = pd.read_csv(hierarchy_path, dtype=object, keep_default_na=False)
+    required_hierarchy_columns = {
+        "axis_id",
+        "axis_role",
+        "node_id",
+        "node_label",
+        "parent_node_id",
+        "depth",
+    }
+    missing_hierarchy_columns = sorted(
+        required_hierarchy_columns - set(hierarchy.columns)
+    )
+    if missing_hierarchy_columns:
+        raise ValueError(
+            f"{hierarchy_path.name} is missing hierarchy columns: "
+            f"{missing_hierarchy_columns}"
+        )
+
+    provenance = str(hierarchy_path.resolve())
+    nodes = hierarchy.copy()
+    nodes.insert(0, "dataset_id", contract_dataset_id)
+    nodes["hierarchy_status"] = "complete_declared_schema"
+    nodes["source_subtotal_layout"] = pd.NA
+    nodes["source_subtotal_results"] = pd.NA
+    nodes["source_subtotal_other"] = pd.NA
+    nodes["classification_rule"] = "declared ordinary child_count > 0"
+    nodes["evidence"] = nodes["node_id"].map(
+        lambda node_id: f"declared node={_text(node_id)}"
+    )
+    nodes["provenance"] = provenance
+
+    edge_records = []
+    for row_number, row in hierarchy.iterrows():
+        parent = _text(row.get("parent_node_id"))
+        child = _text(row.get("node_id"))
+        if not parent:
+            continue
+        edge_records.append({
+            "dataset_id": contract_dataset_id,
+            "axis_id": _text(row.get("axis_id")),
+            "parent_node_id": parent,
+            "child_node_id": child,
+            "relationship_type": "ordinary_hierarchy",
+            "direction": "parent_to_child",
+            "is_additive": True,
+            "source_rule_id": f"{hierarchy_path.name}:{row_number + 2}",
+            "review_status": "declared",
+            "provenance": provenance,
+        })
+    edges = pd.DataFrame(edge_records, columns=[
+        "dataset_id",
+        "axis_id",
+        "parent_node_id",
+        "child_node_id",
+        "relationship_type",
+        "direction",
+        "is_additive",
+        "source_rule_id",
+        "review_status",
+        "provenance",
+    ])
+
+    values = pd.read_csv(values_path, dtype=object)
+    required_value_columns = {
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "esto_flow",
+        "esto_product",
+        "value",
+    }
+    missing_value_columns = sorted(required_value_columns - set(values.columns))
+    if missing_value_columns:
+        raise ValueError(
+            f"{values_path.name} is missing normalized value columns: "
+            f"{missing_value_columns}"
+        )
+    values = values[
+        values["source_system"].astype(str).str.strip().eq(dataset_id)
+    ].copy()
+    if values.empty:
+        raise ValueError(
+            f"{values_path.name} has no rows for source_system={dataset_id!r}."
+        )
+
+    axis_ids = (
+        hierarchy[["axis_id", "axis_role"]]
+        .drop_duplicates()
+        .set_index("axis_role")["axis_id"]
+        .to_dict()
+    )
+    if "flow" not in axis_ids or "product" not in axis_ids:
+        raise ValueError(
+            f"{hierarchy_path.name} must declare flow and product axes."
+        )
+    pair_values = values[["esto_flow", "esto_product"]].drop_duplicates()
+    pairs = pd.DataFrame({
+        "dataset_id": contract_dataset_id,
+        "axis_1_id": axis_ids["flow"],
+        "axis_1_node_id": pair_values["esto_flow"],
+        "axis_2_id": axis_ids["product"],
+        "axis_2_node_id": pair_values["esto_product"],
+        "pair_provenance": str(values_path.resolve()),
+    })
+    observations = pd.DataFrame({
+        "dataset_id": contract_dataset_id,
+        "source_version": source_version,
+        "economy": values["economy"],
+        "scenario": values["scenario"],
+        "year_or_period": values["year"],
+        "axis_1_node_id": values["esto_flow"],
+        "axis_2_node_id": values["esto_product"],
+        "value": pd.to_numeric(values["value"], errors="raise"),
+        "source_row_id": values.index.map(
+            lambda row_number: f"{values_path.name}:{row_number + 2}"
+        ),
+        "provenance": str(values_path.resolve()),
+    })
+    return AdapterTables(
+        dataset_id=contract_dataset_id,
+        source_version=source_version,
+        adapter_version=ADAPTER_VERSION,
+        dataset_kind="declared_source",
+        nodes=nodes,
+        edges=edges,
+        pairs=pairs,
+        observations=observations,
+        provenance={
+            "hierarchy": provenance,
+            "values": str(values_path.resolve()),
+        },
+    )
+
+
 def current_adapter_registry(
     repo_root: Path,
     workbook_path: Path,
+    dataset_registry_path: Path | None = None,
+    value_adapter_registry_path: Path | None = None,
     include_common_esto: bool = True,
 ) -> list[CallableDatasetAdapter]:
     """Return the current explicit adapter registry without core dataset branches."""
     repo_root = Path(repo_root)
     workbook_path = Path(workbook_path)
+    dataset_registry_path = (
+        Path(dataset_registry_path)
+        if dataset_registry_path is not None
+        else repo_root / "config" / "datasets" / "dataset_registry.csv"
+    )
+    value_adapter_registry_path = (
+        Path(value_adapter_registry_path)
+        if value_adapter_registry_path is not None
+        else repo_root / "config" / "datasets" / "value_adapter_registry.csv"
+    )
     ninth_path = repo_root / "data" / "merged_file_energy_ALL_20251106.csv"
     esto_path = repo_root / "data" / "00APEC_2025_low_with_subtotals.csv"
     leap_inventory = repo_root / "data" / "temp" / "new leap rows.xlsx"
     extended_tree = repo_root / "results" / "tree_structure" / "esto_extended_tree.csv"
     common_rows = repo_root / "results" / "common_esto" / "common_esto_rows.csv"
-    adapters = [
-        CallableDatasetAdapter(
+    dataset_registry = load_dataset_registry(dataset_registry_path)
+    value_registry = load_value_adapter_registry(
+        value_adapter_registry_path,
+        dataset_registry_path,
+    )
+    registered_adapters = [
+        (
+            "ESTO",
             "esto",
-            ADAPTER_VERSION,
-            lambda: build_esto_adapter(esto_path, workbook_path),
-        ),
-        CallableDatasetAdapter(
-            "ninth",
-            ADAPTER_VERSION,
-            lambda: build_ninth_adapter(ninth_path, workbook_path),
-        ),
-        CallableDatasetAdapter(
-            "leap",
-            ADAPTER_VERSION,
-            lambda: build_leap_adapter(workbook_path, leap_inventory),
-        ),
-        CallableDatasetAdapter(
-            "esto_extended",
-            ADAPTER_VERSION,
-            lambda: build_tree_artifact_adapter(
-                "esto_extended",
-                extended_tree,
-                workbook_path,
-                "derived_extended_source",
+            CallableDatasetAdapter(
+                "esto",
+                ADAPTER_VERSION,
+                lambda: build_esto_adapter(esto_path, workbook_path),
             ),
         ),
-    ]
-    if include_common_esto:
-        adapters.append(
+        (
+            "NINTH",
+            "ninth",
+            CallableDatasetAdapter(
+                "ninth",
+                ADAPTER_VERSION,
+                lambda: build_ninth_adapter(ninth_path, workbook_path),
+            ),
+        ),
+        (
+            "LEAP",
+            "leap",
+            CallableDatasetAdapter(
+                "leap",
+                ADAPTER_VERSION,
+                lambda: build_leap_adapter(workbook_path, leap_inventory),
+            ),
+        ),
+        (
+            "ESTO_EXTENDED",
+            "esto_extended",
+            CallableDatasetAdapter(
+                "esto_extended",
+                ADAPTER_VERSION,
+                lambda: build_tree_artifact_adapter(
+                    "esto_extended",
+                    extended_tree,
+                    workbook_path,
+                    "derived_extended_source",
+                ),
+            ),
+        ),
+        (
+            "COMMON_ESTO",
+            "common_esto",
             CallableDatasetAdapter(
                 "common_esto",
                 ADAPTER_VERSION,
                 lambda: build_common_esto_adapter(common_rows, workbook_path),
-            )
+            ),
+        ),
+    ]
+    enabled_rows = dataset_registry[dataset_registry["enabled"]]
+    if not include_common_esto:
+        enabled_rows = enabled_rows[
+            enabled_rows["dataset_id"].ne("COMMON_ESTO")
+        ]
+    enabled_ids = set(enabled_rows["dataset_id"])
+    value_paths = value_registry.set_index("dataset_id")["input_relative_path"].to_dict()
+    for row in enabled_rows.itertuples(index=False):
+        if row.dataset_id in {dataset_id for dataset_id, _, _ in registered_adapters}:
+            continue
+        if row.hierarchy_adapter != "declared_csv_hierarchy":
+            continue
+        hierarchy_path = repo_root / row.hierarchy_input_relative_path
+        values_path = repo_root / value_paths.get(row.dataset_id, "")
+        registered_adapters.append((
+            row.dataset_id,
+            "declared_csv_hierarchy",
+            CallableDatasetAdapter(
+                row.dataset_id.lower(),
+                ADAPTER_VERSION,
+                lambda row=row, hierarchy_path=hierarchy_path, values_path=values_path: (
+                    build_declared_csv_hierarchy_adapter(
+                        dataset_id=row.dataset_id,
+                        source_version=row.source_version,
+                        hierarchy_path=hierarchy_path,
+                        values_path=values_path,
+                    )
+                ),
+            ),
+        ))
+
+    available_ids = {
+        dataset_id for dataset_id, _, _ in registered_adapters
+    }
+
+    missing_adapters = sorted(enabled_ids - available_ids)
+    if missing_adapters:
+        raise ValueError(
+            "Enabled datasets have no current hierarchy adapter: "
+            f"{missing_adapters}"
         )
-    return adapters
+
+    expected_adapter_names = {
+        dataset_id: adapter_name
+        for dataset_id, adapter_name, _ in registered_adapters
+    }
+    mismatches = [
+        f"{row.dataset_id}={row.hierarchy_adapter!r}"
+        for row in enabled_rows.itertuples(index=False)
+        if row.hierarchy_adapter != expected_adapter_names[row.dataset_id]
+    ]
+    if mismatches:
+        raise ValueError(
+            "Configured hierarchy_adapter does not match the current adapter: "
+            f"{mismatches}"
+        )
+
+    # Preserve the established adapter execution order for output equivalence.
+    return [
+        adapter
+        for dataset_id, _, adapter in registered_adapters
+        if dataset_id in enabled_ids
+    ]
 
 
 def build_ninth_family_conformance(

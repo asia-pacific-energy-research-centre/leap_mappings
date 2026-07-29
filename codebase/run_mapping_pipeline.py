@@ -100,7 +100,18 @@ ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_li
 ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 
 # Raw LEAP workbooks are owned by the sibling leap_initialisation repository.
-LEAP_EXPORTS_ROOT = resolve_balance_exports_root()
+LEAP_EXPORTS_ROOT = resolve_balance_exports_root(require_exists=False)
+if not LEAP_EXPORTS_ROOT.is_dir():
+    # A Git worktree lives under github/worktrees/<name>, while the canonical
+    # initialisation repository remains under github/leap_initialisation.
+    worktree_sibling = (
+        REPO_ROOT.parent.parent
+        / "leap_initialisation"
+        / "data"
+        / "leap balances exports"
+    )
+    if worktree_sibling.is_dir():
+        LEAP_EXPORTS_ROOT = worktree_sibling
 
 # ---------------------------------------------------------------------------
 # Output logging
@@ -604,12 +615,17 @@ def run_data_convert(write_esto_extended_delta: bool = False) -> None:
     print("\n" + "=" * 60)
     print("DATA CONVERT  LEAP, 9th, ESTO -> common input format")
     print("=" * 60)
-    run_esto_exact_rows()
-    run_esto_extended_exact_rows()
+    from codebase.mapping_tools.value_adapter_registry import (
+        run_registered_value_adapters,
+    )
+    run_registered_value_adapters({
+        "esto_exact_rows": run_esto_exact_rows,
+        "esto_extended_exact_rows": run_esto_extended_exact_rows,
+        "leap_to_esto": run_leap_to_esto,
+        "ninth_to_esto": run_ninth_to_esto,
+    })
     if write_esto_extended_delta:
         run_esto_extended_delta_contract()
-    run_leap_to_esto()
-    run_ninth_to_esto()
 
 
 # ---------------------------------------------------------------------------
@@ -625,6 +641,9 @@ def run_stage_3(
         prepare_esto_extended_stage3_path,
     )
     from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
+    from codebase.mapping_tools.value_adapter_registry import (
+        get_registered_stage3_source_paths,
+    )
 
     stage3_t0 = time.perf_counter()
     print("\n" + "=" * 60)
@@ -651,13 +670,9 @@ def run_stage_3(
     elif esto_extended_storage["mode"] == "delta":
         print("  ESTO Extended input: verified base-plus-delta reconstruction.")
 
-    stage3_input_paths = [
-        prefer_compressed_csv_path(path)
-        for path in [
-            LEAP_ESTO_PATH, NINTH_ESTO_PATH, ESTO_ROWS_PATH,
-            esto_extended_stage3_path, COMMON_ROWS_PATH,
-        ]
-    ]
+    source_paths = get_registered_stage3_source_paths(REPO_ROOT)
+    source_paths["ESTO_EXTENDED"] = esto_extended_stage3_path
+    stage3_input_paths = [*source_paths.values(), COMMON_ROWS_PATH]
     missing = [path for path in stage3_input_paths if not path.exists()]
     if missing:
         print("  WARNING: Missing input files for Stage 3:")
@@ -703,12 +718,6 @@ def run_stage_3(
     run_timestamp_utc = run_timestamp.isoformat()
     run_id = run_timestamp.strftime("common_esto_%Y%m%dT%H%M%S%fZ")
 
-    source_paths = {
-        "LEAP": prefer_compressed_csv_path(LEAP_ESTO_PATH),
-        "NINTH": prefer_compressed_csv_path(NINTH_ESTO_PATH),
-        "ESTO": prefer_compressed_csv_path(ESTO_ROWS_PATH),
-        "ESTO_EXTENDED": esto_extended_stage3_path,
-    }
     comparison_scopes = sorted(
         pd.read_csv(COMMON_ROWS_PATH, usecols=["comparison_scope"], dtype=object)
         ["comparison_scope"].dropna().astype(str).unique().tolist()

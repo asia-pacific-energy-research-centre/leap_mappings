@@ -166,6 +166,55 @@ def test_apply_common_structure_retains_generated_total_label() -> None:
     assert comparison_df["value"].tolist() == [10.0]
 
 
+def test_apply_common_structure_uses_injected_scope_membership() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": source_system,
+                "economy": "20_USA",
+                "scenario": "scenario",
+                "year": 2030,
+                "esto_flow": "F1",
+                "esto_product": "P1",
+                "value": value,
+            }
+            for source_system, value in [
+                ("LEAP", 10.0),
+                ("ESTO", 20.0),
+            ]
+        ]
+    )
+    common_rows_df = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "registered_custom_scope",
+                "component_esto_flow": "F1",
+                "component_esto_product": "P1",
+                "common_row_id": "common_1",
+                "common_flow_code": "F1",
+                "common_flow_name": "Flow",
+                "common_flow_label": "F1 Flow",
+                "common_product_code": "P1",
+                "common_product_name": "Product",
+                "common_product_label": "P1 Product",
+                "component_sign": 1,
+            }
+        ]
+    )
+
+    comparison, missing, _ = apply_common_structure(
+        source_df,
+        common_rows_df,
+        comparison_scope_systems={
+            "registered_custom_scope": {"LEAP"},
+        },
+    )
+
+    assert missing.empty
+    assert comparison["source_system"].tolist() == ["LEAP"]
+    assert comparison["value"].tolist() == [10.0]
+
+
 def test_apply_common_structure_default_returns_three_tuple() -> None:
     source_df = pd.DataFrame(
         [

@@ -22,16 +22,10 @@ from codebase.mapping_issue_exceptions import (
     EXCEPTION_WORKBOOK_PATH,
     load_exception_sheet,
 )
+from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
 
 
-COMPARISON_SCOPE_SYSTEMS = {
-    "esto_leap": {"LEAP", "ESTO"},
-    "esto_extended_leap": {"LEAP", "ESTO_EXTENDED"},
-    "leap_vs_ninth": {"LEAP", "NINTH"},
-    "esto_leap_ninth": {"LEAP", "NINTH", "ESTO"},
-    "esto_extended_leap_ninth": {"LEAP", "NINTH", "ESTO_EXTENDED"},
-    "esto_only": {"ESTO"},
-}
+COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 NONZERO_SOURCE_EVIDENCE_TOLERANCE = 1e-12
 
 
@@ -1667,6 +1661,44 @@ def _melt_years(
     return df.melt(id_vars=id_columns, value_vars=year_columns, var_name="year", value_name="value")
 
 
+def _read_anchor_wide_source(
+    data_path: Path,
+    id_columns: list[str],
+    target_years: set[int] | None,
+    include_latest_year: bool = False,
+) -> pd.DataFrame:
+    """Read only identifier and selected year columns from a wide source."""
+    available_columns = pd.read_csv(data_path, nrows=0).columns.tolist()
+    missing_ids = sorted(set(id_columns) - set(available_columns))
+    if missing_ids:
+        raise ValueError(
+            f"{Path(data_path).name} is missing anchor identifier columns: "
+            f"{missing_ids}"
+        )
+    available_years = [
+        str(column)
+        for column in available_columns
+        if str(column).isdigit()
+    ]
+    selected_years = available_years
+    if target_years is not None:
+        allowed_years = {str(year) for year in target_years}
+        if include_latest_year and available_years:
+            allowed_years.add(
+                str(max(int(column) for column in available_years))
+            )
+        selected_years = [
+            column
+            for column in available_years
+            if column in allowed_years
+        ]
+    return pd.read_csv(
+        data_path,
+        usecols=[*id_columns, *selected_years],
+        dtype=object,
+    )
+
+
 def _active_mapping_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Keep active workbook mappings when an include flag is present."""
     if "include" not in df.columns:
@@ -1696,7 +1728,12 @@ def load_raw_source_anchor_inputs(
     source_frames: list[pd.DataFrame] = []
     mapping_frames: list[pd.DataFrame] = []
 
-    esto = pd.read_csv(esto_data_path, dtype=object)
+    esto = _read_anchor_wide_source(
+        Path(esto_data_path),
+        ["economy", "flows", "products"],
+        anchor_target_years,
+        include_latest_year=True,
+    )
     esto_long = _melt_years(
         esto, ["economy", "flows", "products"], anchor_target_years, include_latest_year=True,
     )
@@ -1713,7 +1750,12 @@ def load_raw_source_anchor_inputs(
     mapping_frames.append(esto_pairs)
 
     if esto_extended_data_path is not None and Path(esto_extended_data_path).exists():
-        esto_extended = pd.read_csv(esto_extended_data_path, dtype=object)
+        esto_extended = _read_anchor_wide_source(
+            Path(esto_extended_data_path),
+            ["economy", "flows", "products"],
+            anchor_target_years,
+            include_latest_year=True,
+        )
         extended_long = _melt_years(
             esto_extended, ["economy", "flows", "products"], anchor_target_years, include_latest_year=True,
         )
@@ -1730,8 +1772,18 @@ def load_raw_source_anchor_inputs(
         mapping_frames.append(extended_pairs)
 
     ninth_load_start = time.perf_counter()
-    ninth = pd.read_csv(ninth_data_path, dtype=object)
     sector_columns = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
+    ninth = _read_anchor_wide_source(
+        Path(ninth_data_path),
+        [
+            "economy",
+            "scenarios",
+            *sector_columns,
+            "fuels",
+            "subfuels",
+        ],
+        anchor_target_years,
+    )
     source_flow = _join_hierarchy_path(ninth, sector_columns)
     source_product = _join_hierarchy_path(ninth, ["fuels", "subfuels"])
     ninth = ninth.copy()

@@ -1,0 +1,4 @@
+synthetic_flow,synthetic_product,esto_flow,esto_product,esto_pair_is_subtotal,notes
+09 Total transformation,01 Coal,09 Total transformation,01 Coal,false,Coarse first-level identity boundary
+09 Total transformation,01 Coal,09.01 Electricity plants,01.01 Hard coal,false,Detailed ESTO component rolls up to coarse source boundary
+09 Total transformation,01 Coal,09.02 Autoproducers,01.02 Brown coal,false,Detailed ESTO component rolls up to coarse source boundary
