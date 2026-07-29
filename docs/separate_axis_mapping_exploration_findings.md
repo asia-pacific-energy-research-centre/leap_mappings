@@ -454,6 +454,71 @@ under another. The 46 detected product-context groups should be used to decide
 whether target-pair validity is sufficient to express that condition or
 whether explicit flow context is still needed.
 
+### Accepted pair universe clarification
+
+The proposed registry is not the Cartesian product of every sector with every
+fuel. It is a dataset-specific set of exact accepted key pairs:
+
+- exact flow/product pairs structurally present in ESTO, plus any reviewed
+  reserved ESTO pairs;
+- exact most-specific sector/fuel pairs structurally present in Ninth, plus any
+  reviewed reserved projection pairs; and
+- exact LEAP branch/fuel pairs evidenced by models/templates/exports or retained
+  as reviewed accepted pairs.
+
+Each accepted pair then carries evidence fields such as:
+
+- `historical_boundary_active`;
+- `projection_future_active`;
+- first and last active years;
+- supporting scenarios and economies; and
+- generated, reviewed-reserved, or rejected authority.
+
+This keeps zero-only or future pairs available without pretending they are
+currently active. It also gives the compiler a direct membership test that can
+reject unsupported products of many-to-many axes. For ESTO and Ninth, the
+structural pair universe can largely be generated from exact source rows. LEAP
+remains harder because a template can prove branch structure without proving
+every branch/fuel combination; reviewed source pairs may be needed as bootstrap
+authority.
+
+### Feasibility against the original problems
+
+This revised model addresses, but does not automatically eliminate, the
+prototype's failures:
+
+- The 1,367 accepted relationships targeting structurally present zero-only
+  pairs should no longer be rejected merely for lacking non-zero evidence.
+- An accepted-pair membership test should remove many or all of the 1,132
+  unsupported Cartesian relationships, provided the pair universe is complete.
+- The 1,274 accepted relationships absent from the strict source-generated
+  registry still need classification as missing source authority, reviewed
+  reserved pairs, or questionable current mappings.
+- Exact pair membership may resolve some conditional meanings, but cannot
+  resolve a case where products A and B are both accepted under several flows
+  and only the source-flow context selects between them.
+- Pair membership does not enforce the non-crossing hierarchy-frontier rule.
+  That remains a separate compiler validation.
+- Pair membership does not define one-to-many value delivery. Recombination,
+  allocation, and contextual selection remain explicit relationship semantics.
+
+The design is technically realistic as an audit and suggestion system. It is
+not yet proven to reduce maintained rows enough to replace the pair sheets.
+That question can be answered with one bounded follow-up experiment:
+
+1. Generate exact accepted-pair universes for ESTO and Ninth and bootstrap the
+   LEAP universe from the best available exact-pair evidence.
+2. Add boundary-year and post-boundary activity fields without filtering pairs
+   out of the universe.
+3. Recompile the many-to-many axes using exact accepted-pair membership.
+4. Apply a diagnostic version of the non-crossing hierarchy-frontier rule.
+5. Recount missing relationships, extra relationships, conditional-context
+   exceptions, and the genuinely human-maintained rows required.
+
+Proceeding beyond an audit/suggestion role would only be justified if this
+experiment produces a substantially smaller, semantically classified exception
+set while preserving exact current relationships and source-once delivery.
+
 ## Possible staged implementation plan if resumed
 
 ### Stage A — decide the two blocked policies
