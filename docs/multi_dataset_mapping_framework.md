@@ -695,6 +695,14 @@ Stage 2 QA, and the Stage 3 output contract. M6 is complete for the deliberately
 small acceptance fixture; a production-scale real additional dataset belongs
 to M7 rather than being a hidden extra condition on M6.
 
+The broad regression run produced 397 passed and 1 skipped tests, with the same
+two known failures seen before this work: one pre-existing LEAP
+`source_context_status` expectation and one test whose ignored ESTO data file
+is absent from the worktree. Two additional test modules cannot collect in this
+isolated worktree because their import-time resolver requires the missing
+sibling-worktree LEAP export directory. None of these four environment/legacy
+issues exercises the multi-dataset changes.
+
 ### M7 — Onboard the first real additional dataset
 
 - use the same documented procedure;
