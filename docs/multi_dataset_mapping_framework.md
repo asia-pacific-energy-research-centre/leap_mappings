@@ -573,6 +573,14 @@ equivalent.
   validation functions;
 - resolve every failure exposed by the onboarding test.
 
+Implementation status (2026-07-29): `SYNTH_BALANCE` is present in the dataset,
+scope, mapping-sheet, and value-adapter registries but disabled by default. Its
+maintained fixture uses first-level ESTO categories. An end-to-end Common-build
+and value-application test proves that a 100 PJ coarse synthetic row compares
+with two detailed ESTO rows of 60 PJ and 40 PJ in one conserved Common row,
+without allocation or missing mappings. Registry enable/disable, hierarchy
+manifest, and full orchestration acceptance checks remain to complete M6.
+
 ### M7 — Onboard the first real additional dataset
 
 - use the same documented procedure;

@@ -1,0 +1,4 @@
+source_system,economy,scenario,year,esto_flow,esto_product,value
+SYNTH_BALANCE,00_TEST,coarse,2030,09 Total transformation,01 Coal,100.0
+ESTO,00_TEST,detail,2030,09.01 Electricity plants,01.01 Hard coal,60.0
+ESTO,00_TEST,detail,2030,09.02 Autoproducers,01.02 Brown coal,40.0

@@ -146,7 +146,7 @@ def load_mapping_sheet_registry(
                 raise ValueError(
                     f"{row.sheet_name}: {column} must not be empty."
                 )
-        if known_use_cases is not None:
+        if known_use_cases is not None and row.enabled:
             unknown_use_cases = sorted(set(row.use_cases) - allowed_use_cases)
             if unknown_use_cases:
                 raise ValueError(

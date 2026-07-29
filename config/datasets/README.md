@@ -3,8 +3,8 @@
 These files are the reviewed M1 configuration surface for dataset identity and
 comparison membership:
 
-- `dataset_registry.csv` declares the five datasets currently understood by
-  the mapping framework.
+- `dataset_registry.csv` declares the five current datasets plus the
+  disabled-by-default synthetic onboarding dataset.
 - `comparison_scopes.csv` declares every existing comparison scope and which
   four the pipeline builds by default.
 - `mapping_sheet_registry.csv` declares how the three maintained workbook

@@ -69,8 +69,12 @@ def test_bundled_registries_preserve_current_behavior() -> None:
         "NINTH",
         "LEAP",
         "COMMON_ESTO",
+        "SYNTH_BALANCE",
     ]
-    assert datasets["enabled"].all()
+    assert datasets.set_index("dataset_id").loc["SYNTH_BALANCE", "enabled"] == False
+    assert datasets.loc[
+        datasets["dataset_id"].ne("SYNTH_BALANCE"), "enabled"
+    ].all()
     assert build_comparison_scope_configs() == EXPECTED_SCOPE_CONFIGS
     assert get_default_enabled_comparison_scopes() == [
         "esto_leap",
