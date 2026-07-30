@@ -144,6 +144,23 @@ This workbook is the manual source of truth for reviewed QA exceptions. Workflow
 | `source_mismatch_allowed` | Exact user-confirmed raw-source issues that annotate anchor failures without changing their numerical status or reason |
 | `source_mismatch_history` | Preserved legacy source-issue review evidence; never read operationally |
 
+The complete sheet-by-sheet inventory, including sheets retained only for the
+archived maintenance workflow, is maintained in `config/README.md`. In
+particular, `many_to_many_allowed`, `crosswalk_allowed`,
+`leap_source_presence_allowed`, `unmapped_esto_nonzero_allowed`, and
+`unmapped_ninth_nonzero_allowed` are legacy-only allowlists. They are not active
+Stage 0–3 inputs for new findings. `source_mismatch_history` is provenance only;
+operational source-anchor matching uses `source_mismatch_allowed`.
+
+The exception workbook is separate from both mapping workbooks. Maintain mapping
+semantics in `outlook_mappings_single_axis.xlsx`; use the generated pair views in
+`outlook_mappings_master.xlsx` for compatibility and downstream reads. An
+exception row never creates a source-to-target relationship and must not be used
+to repair a missing or incorrect mapping. If a diagnostic is genuinely an
+acceptable reviewed condition, add the exact row to the relevant active exception
+sheet and rerun the affected validation so the generated QA evidence records the
+match.
+
 Most exception sheets use:
 
 - `enabled`
