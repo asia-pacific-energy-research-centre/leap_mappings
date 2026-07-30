@@ -47,6 +47,10 @@ This is the only new workbook people edit. It contains:
   - `extra_esto_key_pairs`;
   - `extra_esto_extended_pairs`; and
   - `extra_ninth_key_pairs`.
+- an `exceptions` sheet. Use `allowed_many_to_many_component` for a reviewed
+  connected component, recording its mapping name, scope, axis, complete
+  source and target key signatures, and a rationale. Exceptions remain visible
+  in QA; they only mark the component as intentionally allowed.
 
 Every populated row is accepted. Add a row to accept a relation or exact pair;
 delete it to withdraw that acceptance. There are no enabled flags or Boolean
@@ -132,8 +136,9 @@ Before pair compilation, the compiler analyses connected components on each
 axis. Every many-to-many component is listed in the generated
 `QA many-to-many axis components` sheet (and
 `qa_many_to_many_axis_components.csv`), including its editable source sheet,
-keys, and edge counts. There is currently no exception list: these are all
-review findings. The compiler stops promotion when a component contains more
+keys, edge counts, and any matching exception. An exception must match the
+complete component signature, so it remains visible but is marked as allowed.
+The compiler stops promotion when a component contains more
 than 12 source-plus-target nodes or when a product component spans more than
 one numbered target fuel family. These are strong signatures of a shifted
 spreadsheet range or an accidental context-specific relation becoming global.

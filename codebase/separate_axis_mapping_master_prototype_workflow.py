@@ -33,6 +33,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     RELATIONSHIP_KEY_COLUMNS,
+    apply_axis_component_exceptions,
     analyse_axis_components,
     annotate_pair_universe_temporal_evidence,
     assert_no_blocking_axis_components,
@@ -43,6 +44,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     derive_required_reviewed_extra_pairs,
     expand_pair_universe_with_rollups,
     load_active_mapping_contract,
+    load_axis_component_exceptions,
     load_or_bootstrap_editable_axis_contract,
     merge_reviewed_extra_pairs,
     remove_exact_duplicate_mapping_rows,
@@ -703,11 +705,23 @@ def _summary_rows(
             ),
         ),
         (
-            "many_to_many_axis_components_for_review",
+            "many_to_many_axis_components",
             int(
                 axis_components["axis_component_cardinality"]
                 .astype(str)
                 .eq("many_to_many")
+                .sum()
+            ),
+        ),
+        (
+            "allowed_many_to_many_component_exceptions",
+            int(axis_components["exception_type"].ne("").sum()),
+        ),
+        (
+            "unresolved_many_to_many_axis_components",
+            int(
+                axis_components["axis_contract_status"]
+                .eq("axis_component_review_required")
                 .sum()
             ),
         ),
@@ -824,6 +838,10 @@ def run_single_axis_master_prototype(
     axis_components = pd.concat(
         [flow_components, product_components],
         ignore_index=True,
+    )
+    axis_components = apply_axis_component_exceptions(
+        axis_components,
+        load_axis_component_exceptions(EDITABLE_AXIS_WORKBOOK_PATH),
     )
     many_to_many_components = axis_components.loc[
         axis_components["axis_component_cardinality"].eq("many_to_many")

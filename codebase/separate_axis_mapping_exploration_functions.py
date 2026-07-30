@@ -26,6 +26,15 @@ import pandas as pd
 ZERO_TOLERANCE = 1e-9
 CSV_CHUNK_SIZE = 20_000
 MAX_AXIS_COMPONENT_NODE_COUNT = 12
+AXIS_COMPONENT_EXCEPTION_COLUMNS = [
+    "exception_type",
+    "mapping_name",
+    "comparison_scope",
+    "axis_name",
+    "source_keys",
+    "target_keys",
+    "notes",
+]
 
 MAPPING_SPECS: dict[str, dict[str, str]] = {
     "leap_to_esto": {
@@ -1669,6 +1678,75 @@ def assert_no_blocking_axis_components(
         "Correct the editable single-axis workbook before compilation. "
         f"Examples: {examples}"
     )
+
+
+def load_axis_component_exceptions(workbook_path: Path) -> pd.DataFrame:
+    """Load explicit allowed many-to-many component exceptions, if present."""
+    workbook_path = Path(workbook_path)
+    if not workbook_path.exists():
+        return pd.DataFrame(columns=AXIS_COMPONENT_EXCEPTION_COLUMNS)
+    with pd.ExcelFile(workbook_path) as workbook:
+        if "exceptions" not in workbook.sheet_names:
+            return pd.DataFrame(columns=AXIS_COMPONENT_EXCEPTION_COLUMNS)
+    exceptions = pd.read_excel(workbook_path, sheet_name="exceptions", dtype=object)
+    exceptions.columns = [str(column).strip() for column in exceptions.columns]
+    missing = sorted(set(AXIS_COMPONENT_EXCEPTION_COLUMNS) - set(exceptions.columns))
+    if missing:
+        raise ValueError(f"exceptions is missing columns: {missing}")
+    exceptions = exceptions[AXIS_COMPONENT_EXCEPTION_COLUMNS].copy()
+    for column in AXIS_COMPONENT_EXCEPTION_COLUMNS:
+        exceptions[column] = exceptions[column].map(_clean)
+    populated = exceptions.drop(columns="notes").ne("").any(axis=1)
+    exceptions = exceptions.loc[populated].reset_index(drop=True)
+    invalid_type = ~exceptions["exception_type"].eq(
+        "allowed_many_to_many_component"
+    )
+    if invalid_type.any():
+        values = exceptions.loc[invalid_type, "exception_type"].tolist()
+        raise ValueError(
+            "exceptions has unsupported exception_type values: "
+            f"{values[:10]}"
+        )
+    required = [column for column in AXIS_COMPONENT_EXCEPTION_COLUMNS if column != "notes"]
+    incomplete = exceptions[required].eq("").any(axis=1)
+    if incomplete.any():
+        rows = (exceptions.index[incomplete] + 2).tolist()
+        raise ValueError(f"exceptions has incomplete rows at workbook rows {rows[:20]}")
+    return exceptions
+
+
+def apply_axis_component_exceptions(
+    component_inventory: pd.DataFrame,
+    exceptions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Mark exact approved many-to-many components without hiding them."""
+    result = component_inventory.copy()
+    result["exception_type"] = ""
+    result["exception_notes"] = ""
+    for exception in exceptions.itertuples(index=False):
+        match_columns = [
+            "mapping_name",
+            "comparison_scope",
+            "axis_name",
+            "source_keys",
+            "target_keys",
+        ]
+        matches = pd.Series(True, index=result.index)
+        for column in match_columns:
+            matches &= result[column].map(_clean).eq(
+                _clean(getattr(exception, column))
+            )
+        if matches.sum() != 1:
+            raise ValueError(
+                "Each exception must match exactly one current axis component. "
+                f"Exception: {exception}; matches: {int(matches.sum())}."
+            )
+        result.loc[matches, "axis_contract_status"] = (
+            "axis_component_exception_allowed"
+        )
+        result.loc[matches, "exception_type"] = exception.exception_type
+        result.loc[matches, "exception_notes"] = exception.notes
+    return result
 
 
 def annotate_pair_universe_temporal_evidence(

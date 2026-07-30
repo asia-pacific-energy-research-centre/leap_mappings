@@ -54,6 +54,25 @@ const editableDuplicateAuditPath = path.join(
   outputRoot,
   "editable_duplicate_cleanup.json",
 );
+const exceptionSheetName = "exceptions";
+const exceptionHeaders = [
+  "exception_type",
+  "mapping_name",
+  "comparison_scope",
+  "axis_name",
+  "source_keys",
+  "target_keys",
+  "notes",
+];
+const initialExceptionRow = [
+  "allowed_many_to_many_component",
+  "leap_to_esto",
+  "BOTH",
+  "flow",
+  "Demand\\All demand aggregated\\Road|Road|Transport non road/Freight non road/Rail|Transport non road/Nonspecified transport|Transport non road/Passenger non road/Rail",
+  "15.02 Road|15.03 Rail|15.06 Non-specified transport",
+  "Approved aggregate road and rail hierarchy bridge.",
+];
 
 const colors = {
   navy: "#17365D",
@@ -314,6 +333,22 @@ function consolidatedScope(scopes) {
   return scopes.values().next().value;
 }
 
+function ensureExceptionSheet(workbook) {
+  const existing = workbook.worksheets.items.find(
+    (sheet) => sheet.name === exceptionSheetName,
+  );
+  if (existing) {
+    return false;
+  }
+  const sheet = workbook.worksheets.add(exceptionSheetName);
+  sheet.getRangeByIndexes(0, 0, 2, exceptionHeaders.length).values = [
+    exceptionHeaders,
+    initialExceptionRow,
+  ];
+  styleDataSheet(sheet, true);
+  return true;
+}
+
 function collectEditableDuplicateAudit(workbook) {
   const sheets = {};
   let duplicateRows = 0;
@@ -400,6 +435,7 @@ function collectEditableDuplicateAudit(workbook) {
 async function cleanEditableWorkbookDuplicates() {
   const input = await FileBlob.load(editableWorkbookPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
+  const exceptionSheetAdded = ensureExceptionSheet(workbook);
   const initial = collectEditableDuplicateAudit(workbook);
   const changedSheets = [];
 
@@ -432,8 +468,9 @@ async function cleanEditableWorkbookDuplicates() {
     workbook_path: editableWorkbookPath,
     checked_sheets: Object.keys(initial.sheets),
     duplicate_rows_removed: initial.duplicateRows,
-    workbook_rewritten: changedSheets.length > 0,
+    workbook_rewritten: changedSheets.length > 0 || exceptionSheetAdded,
     changed_sheets: changedSheets,
+    exception_sheet_added: exceptionSheetAdded,
     sheets: Object.fromEntries(
       Object.entries(initial.sheets).map(([sheetName, sheetAudit]) => [
         sheetName,
@@ -447,7 +484,7 @@ async function cleanEditableWorkbookDuplicates() {
     ),
   };
 
-  if (changedSheets.length > 0) {
+  if (changedSheets.length > 0 || exceptionSheetAdded) {
     await scanFormulaErrors(workbook, "deduplicated editable workbook");
     const tempPath = `${editableWorkbookPath}.deduplicate.tmp.xlsx`;
     const output = await SpreadsheetFile.exportXlsx(workbook);
@@ -461,7 +498,10 @@ async function cleanEditableWorkbookDuplicates() {
         + `${remaining.duplicateRows} duplicate row(s) remain.`,
       );
     }
-    for (const sheetName of changedSheets) {
+    for (const sheetName of [
+      ...changedSheets,
+      ...(exceptionSheetAdded ? [exceptionSheetName] : []),
+    ]) {
       const preview = await reopened.render({
         sheetName,
         range: "A1:C20",
@@ -603,7 +643,7 @@ async function buildEditableWorkbook() {
     ],
     [
       "Allowed cardinality",
-      "One-to-one, one-to-many, and many-to-one relationships are supported. Small many-to-many components remain review items; oversized or cross-family product components block compilation.",
+      "One-to-one, one-to-many, and many-to-one relationships are supported. Many-to-many components are reported for review; record an approved complete component in exceptions. Oversized or cross-family product components block compilation.",
     ],
     [
       "ESTO dataset scope",
