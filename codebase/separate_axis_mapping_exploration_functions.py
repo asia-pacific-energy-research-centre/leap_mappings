@@ -25,6 +25,7 @@ import pandas as pd
 
 ZERO_TOLERANCE = 1e-9
 CSV_CHUNK_SIZE = 20_000
+MAX_AXIS_COMPONENT_NODE_COUNT = 12
 
 MAPPING_SPECS: dict[str, dict[str, str]] = {
     "leap_to_esto": {
@@ -1423,9 +1424,11 @@ def analyse_axis_components(
     """Attach deterministic graph-component cardinality to one axis relation.
 
     The proposed axis contract allows one-to-one, one-to-many, and many-to-one
-    connected components. A component containing multiple source keys and
-    multiple target keys is a genuine within-axis many-to-many relationship and
-    remains a blocking review item.
+    connected components. Small many-to-many components remain visible for
+    semantic review because a few are intentional hierarchy bridges. Oversized
+    components, and product components spanning multiple numbered target
+    families, are blocking because they are characteristic of row shifts or
+    accidental global-axis propagation.
     """
     axis_name = _clean(axis_name).casefold()
     if axis_name not in {"flow", "product"}:
@@ -1489,7 +1492,7 @@ def analyse_axis_components(
 
             if len(source_keys) > 1 and len(target_keys) > 1:
                 component_cardinality = "many_to_many"
-                contract_status = "blocking_many_to_many_axis_component"
+                contract_status = "axis_component_review_required"
             elif len(source_keys) == 1 and len(target_keys) > 1:
                 component_cardinality = "one_to_many"
                 contract_status = "axis_component_allowed"
@@ -1499,6 +1502,31 @@ def analyse_axis_components(
             else:
                 component_cardinality = "one_to_one"
                 contract_status = "axis_component_allowed"
+
+            node_count = len(source_keys) + len(target_keys)
+            target_families = {
+                match.group(1)
+                for target_key in target_keys
+                if (
+                    match := re.match(
+                        r"^(\d{2})(?:[._]|\s|$)",
+                        target_key,
+                    )
+                )
+            }
+            is_cross_family_product_component = (
+                axis_name == "product" and len(target_families) > 1
+            )
+            is_oversized_component = (
+                node_count > MAX_AXIS_COMPONENT_NODE_COUNT
+            )
+            blocking_reasons: list[str] = []
+            if is_cross_family_product_component:
+                blocking_reasons.append("cross_family_product_component")
+            if is_oversized_component:
+                blocking_reasons.append("oversized_axis_component")
+            if blocking_reasons:
+                contract_status = "blocking_suspicious_axis_component"
 
             group_values = dict(zip(group_columns, group_key))
             component_id = (
@@ -1522,9 +1550,14 @@ def analyse_axis_components(
                     "axis_component_id": component_id,
                     "source_key_count": len(source_keys),
                     "target_key_count": len(target_keys),
+                    "node_count": node_count,
                     "edge_count": len(component_edges),
                     "axis_component_cardinality": component_cardinality,
                     "axis_contract_status": contract_status,
+                    "axis_blocking_reason": "|".join(blocking_reasons),
+                    "target_code_families": "|".join(
+                        sorted(target_families)
+                    ),
                     "source_keys": "|".join(sorted(source_keys)),
                     "target_keys": "|".join(sorted(target_keys)),
                 }
@@ -1542,6 +1575,38 @@ def analyse_axis_components(
     )
     inventory = pd.DataFrame(component_records)
     return annotated, inventory
+
+
+def assert_no_blocking_axis_components(
+    component_inventory: pd.DataFrame,
+) -> None:
+    """Stop compilation when an axis component is suspiciously broad."""
+    if component_inventory.empty:
+        return
+    blocking = component_inventory[
+        component_inventory["axis_contract_status"]
+        .astype(str)
+        .str.startswith("blocking_")
+    ]
+    if blocking.empty:
+        return
+    examples = blocking[
+        [
+            "mapping_name",
+            "comparison_scope",
+            "axis_name",
+            "source_key_count",
+            "target_key_count",
+            "axis_blocking_reason",
+            "source_keys",
+            "target_keys",
+        ]
+    ].head(5).to_dict("records")
+    raise ValueError(
+        "Blocking suspicious within-axis connected components were found. "
+        "Correct the editable single-axis workbook before compilation. "
+        f"Examples: {examples}"
+    )
 
 
 def annotate_pair_universe_temporal_evidence(

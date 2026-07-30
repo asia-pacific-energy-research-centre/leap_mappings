@@ -589,3 +589,44 @@ active direct targets from one source pair.
 - 2026-07-28: Recorded the decisions from the read-only review of
   `data/temp/new demand branches remapping plan.xlsx` and
   `data/temp/new leap rows.xlsx`. No mapping workbook changes were made.
+
+## MAP-013: ESTO Extended pair authority is structural, and suspicious global axis components block promotion
+
+**Status:** Decided and implemented
+**Owner:** `leap_mappings`
+**Type:** Mapping authority / compiler safety
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`;
+`codebase/separate_axis_mapping_exploration_functions.py`;
+`codebase/separate_axis_mapping_master_prototype_workflow.py`
+
+### Situation
+
+ESTO Extended categories describe model detail that can legitimately be zero
+in every currently available year. Requiring final-year ESTO non-zero evidence
+therefore removed valid detailed flow mappings. During the same review, a
+one-row shift in the old Buildings subtotal mapping block propagated 36
+incorrect fuel/product relationships into the global fuel axis and collapsed
+37 products into one connected component.
+
+### Decision
+
+- Ordinary ESTO continues to require final-year non-zero evidence or an
+  explicit reviewed-extra pair.
+- ESTO Extended accepts every structurally present exact pair plus reviewed
+  extras, regardless of current values.
+- A product-axis component spanning multiple numbered target fuel families is
+  a blocking compiler error.
+- Any axis component with more than 12 source-plus-target nodes is a blocking
+  compiler error.
+- Small many-to-many hierarchy bridges remain visible for semantic review; they
+  are not silently treated as equivalent to a broad global fuel collapse.
+- A context-specific relationship must stay at pair/context level. It must not
+  be promoted to a global axis merely because it appeared in one sector block.
+
+### Verification
+
+The 2026-07-30 corrective run removed all 36 shifted relationships, restored
+56 Extended flow-axis and 33 Extended product-axis relations, generated 331
+Extended LEAP-to-ESTO rows, and preserved 100% of mapped values in every
+scope/source combination. The former 37-product Common component and its
+20USA dashboard heading are absent.

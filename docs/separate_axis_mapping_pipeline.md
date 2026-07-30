@@ -95,8 +95,12 @@ in the generation evidence; Git restore plus regeneration is the rollback.
 An exact pair can be used by the compiler when either the generated evidence or
 the editable exception layer accepts it.
 
-- ESTO and ESTO Extended historical evidence means non-zero in the final ESTO
-  year, currently 2023.
+- Ordinary ESTO historical evidence means non-zero in the final ESTO year,
+  currently 2023.
+- ESTO Extended uses structural pair presence rather than current non-zero
+  evidence. Detailed model categories are allowed to be zero in the present
+  data and remain eligible for compilation; reviewed extras can also admit a
+  pair absent from the generated structure.
 - Ninth future evidence means non-zero in at least one year after the ESTO
   boundary.
 - LEAP structural authority is generated from current economy export templates
@@ -110,6 +114,13 @@ the editable exception layer accepts it.
 The extra-pair layer is deliberately permissive. It preserves reviewed or
 plausible relationships while the axis model is introduced, and can be reduced
 later by deleting rows after semantic review.
+
+Before pair compilation, the compiler analyses connected components on each
+axis. It stops promotion when a component contains more than 12 source-plus-
+target nodes or when a product component spans more than one numbered target
+fuel family. These are strong signatures of a shifted spreadsheet range or an
+accidental context-specific relation becoming global. Small many-to-many
+hierarchy bridges remain explicit review items.
 
 ## Compilation sequence
 
@@ -301,6 +312,40 @@ The 2026-07-30 promotion decision is:
   end-to-end work, while the eight within-axis many-to-many components and
   broad Common rows remain explicit semantic review debt.
 
+### 2026-07-30 corrective regeneration
+
+A later full run found that the old `Buildings` subtotal block had a one-row
+shift between LEAP fuels and ESTO products. Thirty-six invalid relations had
+entered the global fuel axis and produced a 37-product connected component.
+The repair removed those 36 relations, retained the final correctly aligned
+Bagasse row, and regenerated 37 correctly aligned Buildings subtotal pairs.
+
+The same review restored 56 ESTO Extended flow relations and 33 product
+relations from the prior detailed mapping set. ESTO Extended compilation now
+uses structural pair authority, so currently zero-only detailed categories are
+not discarded. The generated compatibility master contains 331
+`ESTO_EXTENDED` LEAP-to-ESTO rows and no shifted Buildings relation.
+
+The full default pipeline then completed across five LEAP economies:
+
+| Measure | Corrective run |
+|---|---:|
+| ESTO-shaped source rows read | 18,822,031 |
+| non-zero source rows applied | 2,645,140 |
+| Common comparison rows | 3,963,164 |
+| Common metadata rows | 11,536 |
+| maximum absolute mapped-row total difference | `1.1641532182693481e-10` |
+| mapped value coverage | 100% in all mapped scope/source combinations |
+| Ninth sector hierarchy findings | 0 |
+| Ninth fuel hierarchy findings | 0 |
+| actionable partial-coverage rows | 28 |
+| non-zero LEAP branches without direct ESTO mappings | 398 |
+
+The dashboard diagnostic context builder also expands grouped source-axis
+labels such as `fuel A + fuel B` before looking up exact mappings. The repaired
+20USA render contains neither the former 37-product title nor the blank mapped
+detail message.
+
 ## Running the refresh from Jupyter
 
 The production entrypoint is:
@@ -331,6 +376,7 @@ The ordinary mapping run is:
 The generated master must satisfy all of these:
 
 - exact pair-sheet schemas match the canonical workbook;
+- no oversized or cross-family axis component reaches compilation;
 - every maintained relationship is reproduced or deliberately retired;
 - shared relationship subtotal flags do not change unexpectedly;
 - Stage 1 relationship differences are explained by the provisional additions;

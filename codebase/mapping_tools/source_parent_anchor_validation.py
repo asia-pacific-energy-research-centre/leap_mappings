@@ -2057,11 +2057,36 @@ def build_failed_anchor_mapped_component_context_values(
             for detail in axis_failed.itertuples(index=False):
                 parent = str(detail.parent_code)
                 other_value = str(detail.other_axis_value)
+                # Diagnostics can group several fuels/flows into one display
+                # context using " + ". Resolve each constituent against the
+                # exact source mapping while preserving the grouped label.
+                mapping_other_values = [
+                    value.strip()
+                    for value in other_value.split(" + ")
+                    if value.strip()
+                ] or [other_value]
                 for raw_node_role, raw_child in [("parent", parent)] + [("child", child) for child in children.get(parent, [])]:
-                    resolved, missing = _mapped_descendants(
-                        raw_child, other_value, children, direct_index, empty_mapping, cache,
-                        has_data_pairs,
+                    resolved_frames: list[pd.DataFrame] = []
+                    missing: list[str] = []
+                    for mapping_other_value in mapping_other_values:
+                        resolved_part, missing_part = _mapped_descendants(
+                            raw_child,
+                            mapping_other_value,
+                            children,
+                            direct_index,
+                            empty_mapping,
+                            cache,
+                            has_data_pairs,
+                        )
+                        resolved_frames.append(resolved_part)
+                        missing.extend(missing_part)
+                    resolved = (
+                        pd.concat(resolved_frames, ignore_index=True)
+                        .drop_duplicates()
+                        if resolved_frames
+                        else empty_mapping
                     )
+                    missing = sorted(set(missing))
                     for missing_child in missing:
                         rows.append({
                             "validation_axis": validation_axis, "comparison_scope": detail.comparison_scope,

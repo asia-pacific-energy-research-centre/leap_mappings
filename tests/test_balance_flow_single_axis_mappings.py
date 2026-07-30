@@ -63,4 +63,63 @@ def test_generated_balance_registry_uses_canonical_stock_flow_name() -> None:
     assert "From Stocks" not in set(flows["flow"])
 
 
+def test_shifted_buildings_fuel_relations_are_not_global_axis_mappings() -> None:
+    leap_to_esto = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_fuel_to_esto",
+        dtype=str,
+    ).fillna("")
+    rows = set(
+        leap_to_esto[
+            ["leap_fuel", "esto_product", "esto_dataset_scope"]
+        ].itertuples(index=False, name=None)
+    )
+
+    assert ("Natural gas", "08.01 Natural gas", "BOTH") in rows
+    assert ("Natural gas", "07.09 LPG", "BOTH") not in rows
+    assert ("Heat", "18 Heat", "BOTH") in rows
+    assert ("Heat", "17 Electricity", "BOTH") not in rows
+    assert ("Peat", "03 Peat", "BOTH") in rows
+    assert ("Peat", "18 Heat", "BOTH") not in rows
+
+
+def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
+    leap_to_esto_flow = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_esto",
+        dtype=str,
+    ).fillna("")
+    leap_to_esto_product = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_fuel_to_esto",
+        dtype=str,
+    ).fillna("")
+    flow_rows = set(
+        leap_to_esto_flow[
+            ["leap_sector", "esto_flow", "esto_dataset_scope"]
+        ].itertuples(index=False, name=None)
+    )
+    product_rows = set(
+        leap_to_esto_product[
+            ["leap_fuel", "esto_product", "esto_dataset_scope"]
+        ].itertuples(index=False, name=None)
+    )
+
+    assert (
+        "Passenger road/LPVs/BEV small",
+        "15.02.02.02.03 BEV small",
+        "ESTO_EXTENDED",
+    ) in flow_rows
+    assert (
+        "Hydrogen transformation/Processes/SMR with CCS",
+        "09.13.02 SMR with CCS",
+        "ESTO_EXTENDED",
+    ) in flow_rows
+    assert (
+        "Natural gas",
+        "08.01 Natural gas",
+        "ESTO_EXTENDED",
+    ) in product_rows
+
+
 #%%

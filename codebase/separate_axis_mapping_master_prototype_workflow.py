@@ -35,6 +35,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     RELATIONSHIP_KEY_COLUMNS,
     analyse_axis_components,
     annotate_pair_universe_temporal_evidence,
+    assert_no_blocking_axis_components,
     build_compiled_mapping_sheet_frames,
     build_registry_scope_lookups,
     compare_compiled_relationships,
@@ -551,12 +552,12 @@ def _attach_axis_contract_status(
         validate="many_to_one",
     )
     blocking = (
-        result["flow_axis_contract_status"].eq(
-            "blocking_many_to_many_axis_component"
-        )
-        | result["product_axis_contract_status"].eq(
-            "blocking_many_to_many_axis_component"
-        )
+        result["flow_axis_contract_status"]
+        .astype(str)
+        .str.startswith("blocking_")
+        | result["product_axis_contract_status"]
+        .astype(str)
+        .str.startswith("blocking_")
     )
     result["axis_contract_allowed"] = ~blocking
     result["prototype_review_status"] = "compiled_pair_universe_member"
@@ -574,6 +575,7 @@ def _attach_axis_contract_status(
 def _temporal_compiler_registry(
     registry: pd.DataFrame,
     active_column: str,
+    accept_structural_pairs: bool = False,
 ) -> pd.DataFrame:
     """Convert one pair universe into a named temporal compiler view."""
     result = registry.copy()
@@ -585,11 +587,22 @@ def _temporal_compiler_registry(
         "pair_origin",
         pd.Series("", index=result.index),
     ).fillna("").astype(str).eq("reviewed_extra")
+    structural = result.get(
+        "pair_universe_member",
+        pd.Series(False, index=result.index),
+    ).fillna(False).astype(bool)
+    accepted = active | reviewed_extra
+    if accept_structural_pairs:
+        accepted = accepted | structural
     result["pair_status"] = "zero_only"
-    result.loc[active | reviewed_extra, "pair_status"] = "data_valid"
+    result.loc[accepted, "pair_status"] = "data_valid"
     result["compiler_pair_policy"] = (
         active_column + "_or_reviewed_extra"
     )
+    if accept_structural_pairs:
+        result["compiler_pair_policy"] = (
+            "structural_pair_or_reviewed_extra"
+        )
     return result
 
 
@@ -679,7 +692,8 @@ def _summary_rows(
             "blocking_within_axis_many_to_many_components",
             int(
                 axis_components["axis_contract_status"]
-                .eq("blocking_many_to_many_axis_component")
+                .astype(str)
+                .str.startswith("blocking_")
                 .sum()
             ),
         ),
@@ -797,6 +811,7 @@ def run_single_axis_master_prototype(
         [flow_components, product_components],
         ignore_index=True,
     )
+    assert_no_blocking_axis_components(axis_components)
 
     (
         pair_universes,
@@ -841,6 +856,7 @@ def run_single_axis_master_prototype(
     temporal_extended = _temporal_compiler_registry(
         pair_universes["ESTO_EXTENDED"],
         "historical_boundary_active",
+        accept_structural_pairs=True,
     )
     temporal_ninth = _temporal_compiler_registry(
         pair_universes["NINTH"],
@@ -1112,8 +1128,9 @@ def run_single_axis_master_prototype(
         "leap_pair_registry_manifest": leap_registry_manifest,
         "rollup_sheets_included": True,
         "compiled_compatibility_policy": (
-            "ESTO final-year nonzero or reviewed extra; Ninth any "
-            "post-ESTO-year nonzero or reviewed extra"
+            "ESTO final-year nonzero or reviewed extra; ESTO Extended "
+            "structural pair or reviewed extra; Ninth any post-ESTO-year "
+            "nonzero or reviewed extra"
         ),
         "sheet_sources": {
             sheet: _relative_output_path(path)

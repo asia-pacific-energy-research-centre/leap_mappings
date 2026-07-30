@@ -13,6 +13,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     annotate_pair_universe_temporal_evidence,
     apply_generated_overrides,
     apply_source_once_fixture,
+    assert_no_blocking_axis_components,
     build_axis_mappings_from_editable_sheets,
     build_compiled_mapping_sheet_frames,
     build_ninth_valid_pair_registry_bundle,
@@ -33,6 +34,9 @@ from codebase.mapping_tools.leap_pair_registry import (
     derive_leap_balance_structure,
     parse_leap_branch_paths_to_pairs,
     source_manifest_changed,
+)
+from codebase.separate_axis_mapping_master_prototype_workflow import (
+    _temporal_compiler_registry,
 )
 
 
@@ -651,7 +655,7 @@ def test_editable_axis_rows_are_the_compiler_authority() -> None:
     ) == {"T2"}
 
 
-def test_axis_component_contract_rejects_only_connected_many_to_many() -> None:
+def test_axis_component_contract_marks_small_many_to_many_for_review() -> None:
     common = {
         "mapping_name": "leap_to_esto",
         "comparison_scope": "ESTO",
@@ -679,15 +683,47 @@ def test_axis_component_contract_rejects_only_connected_many_to_many() -> None:
         "many_to_one": 1,
         "many_to_many": 1,
     }
-    blocking = inventory[
+    review = inventory[
         inventory["axis_contract_status"].eq(
-            "blocking_many_to_many_axis_component"
+            "axis_component_review_required"
         )
     ]
-    assert len(blocking) == 1
-    assert blocking.iloc[0]["source_keys"] == "D|E"
-    assert blocking.iloc[0]["target_keys"] == "U|V"
+    assert len(review) == 1
+    assert review.iloc[0]["source_keys"] == "D|E"
+    assert review.iloc[0]["target_keys"] == "U|V"
     assert annotated["axis_component_id"].nunique() == 3
+
+
+def test_axis_component_contract_blocks_cross_family_product_collapse() -> None:
+    common = {
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "BOTH",
+        "source_system": "LEAP",
+        "target_system": "ESTO",
+        "relationship_semantics": "",
+        "notes": "",
+    }
+    product_axis = pd.DataFrame(
+        [
+            {**common, "source_product": "Coal", "target_product": "01 Coal"},
+            {**common, "source_product": "Coal", "target_product": "07 Oil"},
+            {**common, "source_product": "Oil", "target_product": "07 Oil"},
+        ]
+    )
+
+    _, inventory = analyse_axis_components(product_axis, "product")
+
+    assert inventory.iloc[0]["axis_contract_status"] == (
+        "blocking_suspicious_axis_component"
+    )
+    assert inventory.iloc[0]["axis_blocking_reason"] == (
+        "cross_family_product_component"
+    )
+    with pytest.raises(
+        ValueError,
+        match="Blocking suspicious within-axis connected components",
+    ):
+        assert_no_blocking_axis_components(inventory)
 
 
 def test_pair_universe_retains_structure_and_labels_temporal_evidence() -> None:
@@ -729,6 +765,33 @@ def test_pair_universe_retains_structure_and_labels_temporal_evidence() -> None:
         == "structural_zero_only"
     )
     assert result["pair_universe_member"].all()
+
+
+def test_esto_extended_temporal_view_accepts_structural_zero_only_pairs() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "dataset": "ESTO_EXTENDED",
+                "flow": "F.ext",
+                "product": "P",
+                "pair_status": "zero_only",
+                "pair_universe_member": True,
+                "historical_boundary_active": False,
+                "pair_origin": "raw",
+            }
+        ]
+    )
+
+    result = _temporal_compiler_registry(
+        registry,
+        "historical_boundary_active",
+        accept_structural_pairs=True,
+    )
+
+    assert result.iloc[0]["pair_status"] == "data_valid"
+    assert result.iloc[0]["compiler_pair_policy"] == (
+        "structural_pair_or_reviewed_extra"
+    )
 
 
 def test_compiler_can_use_exact_source_universe_and_zero_only_target_pairs() -> None:

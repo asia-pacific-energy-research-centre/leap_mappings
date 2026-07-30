@@ -136,6 +136,111 @@ def test_failed_anchor_mapped_component_context_exposes_each_common_component() 
     assert set(components["raw_node_role"]) == {"parent", "child"}
 
 
+def test_failed_anchor_mapped_context_expands_grouped_other_axis_values() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "status": "failed",
+                "validation_axis": "flow",
+                "comparison_scope": "esto_leap_ninth",
+                "source_system": "NINTH",
+                "economy": "E",
+                "scenario": "reference",
+                "year": 2030,
+                "other_axis_value": "Q1 + Q2",
+                "parent_code": "S",
+            }
+        ]
+    )
+    tree = pd.DataFrame(
+        [
+            {
+                "dataset": "ninth",
+                "axis": "sector",
+                "code": "S",
+                "parent_code": "",
+            },
+            {
+                "dataset": "ninth",
+                "axis": "sector",
+                "code": "S.1",
+                "parent_code": "S",
+            },
+        ]
+    )
+    mappings = pd.DataFrame(
+        [
+            {
+                "source_system": "NINTH",
+                "source_flow": "S.1",
+                "source_product": "Q1",
+                "component_esto_flow": "F",
+                "component_esto_product": "P1",
+            },
+            {
+                "source_system": "NINTH",
+                "source_flow": "S.1",
+                "source_product": "Q2",
+                "component_esto_flow": "F",
+                "component_esto_product": "P2",
+            },
+        ]
+    )
+    common = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_leap_ninth",
+                "component_esto_flow": "F",
+                "component_esto_product": "P1",
+                "common_row_id": "c1",
+            },
+            {
+                "comparison_scope": "esto_leap_ninth",
+                "component_esto_flow": "F",
+                "component_esto_product": "P2",
+                "common_row_id": "c2",
+            },
+        ]
+    )
+    comparison = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_leap_ninth",
+                "source_system": "NINTH",
+                "economy": "E",
+                "scenario": "reference",
+                "year": 2030,
+                "common_row_id": "c1",
+                "value": 4,
+            },
+            {
+                "comparison_scope": "esto_leap_ninth",
+                "source_system": "NINTH",
+                "economy": "E",
+                "scenario": "reference",
+                "year": 2030,
+                "common_row_id": "c2",
+                "value": 5,
+            },
+        ]
+    )
+
+    components = build_failed_anchor_mapped_component_context_values(
+        detail,
+        tree,
+        mappings,
+        common,
+        comparison,
+    )
+
+    assert set(components["common_row_id"]) == {"c1", "c2"}
+    assert set(components["component_esto_product"]) == {"P1", "P2"}
+    assert set(components["other_axis_value"]) == {"Q1 + Q2"}
+    assert not components["mapping_status"].str.startswith(
+        "missing_source_mapping"
+    ).any()
+
+
 def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_covers_parent() -> None:
     """A resolved child with no common_row_id anywhere still counts toward
     the frontier via its own raw value, as long as a sibling under the same
