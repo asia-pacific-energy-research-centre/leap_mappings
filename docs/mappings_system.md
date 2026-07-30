@@ -105,12 +105,18 @@ and current consumers need no loader changes. The generation manifest records
 schema, subtotal, graph, Boolean-storage, source fingerprints, workbook hashes,
 and rollback evidence.
 
+`outlook_mappings_single_axis.xlsx` is the only editable mapping contract. It
+holds the six axis sheets, accepted extra-pair sheets, the `exceptions` sheet,
+and the four manual rollup/display sheets. Edit it before a refresh. Do not
+edit generated pair sheets or rollup sheets in the compatibility master.
+
 ### `config/outlook_mappings_master.xlsx`
 
 This is the generated production compatibility workbook. It supplies the three
-compiled pair sheets plus preserved rollup, display, reference, and other
-non-pair sheets. People maintain mapping semantics in
-`outlook_mappings_single_axis.xlsx`, not in these generated pair sheets.
+compiled pair sheets plus copied rollup/display, reference, and other non-pair
+sheets. People maintain mapping semantics and rollups in
+`outlook_mappings_single_axis.xlsx`; refresh overwrites the compatibility
+master's three compiled pair sheets and four rollup/display sheets.
 
 It contains:
 
@@ -120,10 +126,10 @@ It contains:
 | `leap_combined_esto` | LEAP branch+fuel -> ESTO flow+product pair |
 | `ninth_pairs_to_esto_pairs` | 9th Outlook sector+fuel -> ESTO flow+product pair |
 | `leap_combined_ninth` | LEAP branch+fuel -> 9th Outlook sector+fuel pair |
-| `leap_rollup_rules` | LEAP rows rolled to known comparison categories |
-| `esto_rollup_rules` | ESTO rows rolled to known comparison categories |
-| `ninth_rollup_rules` | 9th Outlook rows rolled to known comparison categories |
-| `rollup_label_overrides` | Reserved for display-name overrides for generated or rolled categories |
+| `leap_rollup_rules` | Generated copy of editable LEAP comparison rollups |
+| `esto_rollup_rules` | Generated copy of editable ESTO comparison rollups |
+| `ninth_rollup_rules` | Generated copy of editable 9th Outlook comparison rollups |
+| `rollup_label_overrides` | Generated copy of editable rollup display-label overrides |
 
 ### `config/mapping_issue_exception_sets.xlsx`
 

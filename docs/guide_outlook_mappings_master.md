@@ -1,7 +1,7 @@
 # Guide to `config/outlook_mappings_master.xlsx`
 
 A practical guide to the generated compatibility workbook, with a deep-dive on
-the rollup and reference sheets that remain human-maintained for now.
+the rollup and reference sheets it exposes to existing consumers.
 For the system architecture (pipeline stages, code entry points, output files) see
 [mappings_system.md](mappings_system.md). This guide is about **what to put in the cells and
 why**, and what goes wrong when the rules below are broken — every "common mistake" here is
@@ -12,9 +12,10 @@ Ground rules:
 - Do not edit the three pair-sheet bodies. Maintain pair semantics in
   `config/outlook_mappings_single_axis.xlsx`; the production `generate` stage
   compiles and writes those pair sheets.
-- Rollup, display-name, label-override, and reference sheets remain
-  human-maintained in this workbook until they are migrated to the editable
-  upstream contract. The generator preserves them.
+- Do not edit `leap_rollup_rules`, `esto_rollup_rules`,
+  `ninth_rollup_rules`, or `rollup_label_overrides` here. Maintain those four
+  sheets in `config/outlook_mappings_single_axis.xlsx`; refresh copies them
+  into this compatibility workbook.
 - Rerun `codebase/separate_axis_mapping_refresh_workflow.py` after an editable
   axis, accepted pair, rollup, display, or reference change, then run the
   affected mapping stages.
@@ -38,10 +39,10 @@ Ground rules:
 | `leap_combined_esto` | LEAP (sector path, fuel) → ESTO (flow, product) mappings. The main mapping sheet. |
 | `ninth_pairs_to_esto_pairs` | 9th-edition (sector, fuel) → ESTO (flow, product) mappings. |
 | `leap_combined_ninth` | LEAP (sector path, fuel) → 9th (sector, fuel) mappings. |
-| `leap_rollup_rules` | Rollups applied to **raw LEAP data** before conversion (build synthetic parent rows). |
-| `esto_rollup_rules` | Definitions of **virtual ESTO flows** (e.g. "(including own use)" groups) that mapping sheets may target. |
-| `ninth_rollup_rules` | Rollups applied to raw 9th data (analogue of `leap_rollup_rules`). |
-| `rollup_label_overrides` | Override the auto-generated code/name/label of a rollup group. |
+| `leap_rollup_rules` | Generated copy of editable rollups applied to **raw LEAP data** before conversion (build synthetic parent rows). |
+| `esto_rollup_rules` | Generated copy of editable definitions of **virtual ESTO flows** (e.g. "(including own use)" groups) that mapping sheets may target. |
+| `ninth_rollup_rules` | Generated copy of editable rollups applied to raw 9th data (analogue of `leap_rollup_rules`). |
+| `rollup_label_overrides` | Generated copy of editable rollup code/name/label overrides. |
 | `leap_display_names` | code → LEAP display name (consumed by `leap_initialisation` too; respect `USED_IN_LEAP_INITIALISATION`). |
 | `ESTO unique flows and products`, `NINTH unique sectors and fuels` | Reference lists of *real* labels. Stage 1 uses the ESTO list to detect mapping targets that match no real flow (`qa_unknown_esto_target_flows.csv`). |
 | `ninth fuel to esto product` | Fuel-level crosswalk. |

@@ -57,6 +57,12 @@ WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 EDITABLE_AXIS_WORKBOOK_PATH = (
     REPO_ROOT / "config" / "outlook_mappings_single_axis.xlsx"
 )
+EDITABLE_MANUAL_SHEET_NAMES = [
+    "leap_rollup_rules",
+    "esto_rollup_rules",
+    "ninth_rollup_rules",
+    "rollup_label_overrides",
+]
 EXPLORATION_RESULTS_ROOT = (
     REPO_ROOT / "results" / "separate_axis_mapping_exploration"
 )
@@ -160,6 +166,7 @@ def _assert_inputs() -> None:
     """Fail with every missing prerequisite rather than one at a time."""
     required = [
         WORKBOOK_PATH,
+        EDITABLE_AXIS_WORKBOOK_PATH,
         LEAP_TEMPLATE_DIR,
         NEW_LEAP_ROWS_WORKBOOK_PATH,
         *REGISTRY_PATHS.values(),
@@ -236,7 +243,10 @@ def _load_pair_universes(
     rollup_counts: dict[str, int] = {}
     for dataset, spec in rollup_specs.items():
         raw_count = len(universes[dataset])
-        rules = pd.read_excel(WORKBOOK_PATH, sheet_name=spec["sheet"])
+        rules = pd.read_excel(
+            EDITABLE_AXIS_WORKBOOK_PATH,
+            sheet_name=spec["sheet"],
+        )
         universes[dataset] = expand_pair_universe_with_rollups(
             universes[dataset],
             rules,

@@ -53,6 +53,10 @@ This is the only new workbook people edit. It contains:
   only when the exception is active; `FALSE` rows are safely retained as
   examples or history. Exceptions remain visible in QA; active rows only mark
   the component as intentionally allowed.
+- four manual rollup/display sheets: `leap_rollup_rules`,
+  `esto_rollup_rules`, `ninth_rollup_rules`, and `rollup_label_overrides`.
+  These are the editable source for comparison rollups and their display
+  labels; the refresh copies them into the generated compatibility master.
 
 Every populated row is accepted. Add a row to accept a relation or exact pair;
 delete it to withdraw that acceptance. There are no enabled flags or Boolean

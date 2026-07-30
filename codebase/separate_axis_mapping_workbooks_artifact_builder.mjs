@@ -75,6 +75,12 @@ const initialExceptionRow = [
   "15.02 Road|15.03 Rail|15.06 Non-specified transport",
   "Approved aggregate road and rail hierarchy bridge.",
 ];
+const editableManualSheetNames = [
+  "leap_rollup_rules",
+  "esto_rollup_rules",
+  "ninth_rollup_rules",
+  "rollup_label_overrides",
+];
 
 const colors = {
   navy: "#17365D",
@@ -371,6 +377,38 @@ function ensureExceptionEnabledColumn(workbook) {
   return true;
 }
 
+function copySheetValues(sourceWorkbook, targetWorkbook, sheetName, editable) {
+  const sourceSheet = sourceWorkbook.worksheets.getItem(sheetName);
+  const sourceRange = sourceSheet.getUsedRange(true);
+  if (!sourceRange) {
+    throw new Error(`Source sheet ${sheetName} is empty.`);
+  }
+  const targetSheet = targetWorkbook.worksheets.add(sheetName);
+  targetSheet.getRangeByIndexes(
+    0,
+    0,
+    sourceRange.rowCount,
+    sourceRange.columnCount,
+  ).values = sourceRange.values;
+  styleDataSheet(targetSheet, editable);
+  return targetSheet;
+}
+
+async function ensureEditableManualSheets(workbook) {
+  const missingSheetNames = editableManualSheetNames.filter(
+    (sheetName) => !workbook.worksheets.items.some((sheet) => sheet.name === sheetName),
+  );
+  if (missingSheetNames.length === 0) {
+    return [];
+  }
+  const input = await FileBlob.load(canonicalMasterPath);
+  const canonicalWorkbook = await SpreadsheetFile.importXlsx(input);
+  for (const sheetName of missingSheetNames) {
+    copySheetValues(canonicalWorkbook, workbook, sheetName, true);
+  }
+  return missingSheetNames;
+}
+
 function collectEditableDuplicateAudit(workbook) {
   const sheets = {};
   let duplicateRows = 0;
@@ -459,6 +497,7 @@ async function cleanEditableWorkbookDuplicates() {
   const workbook = await SpreadsheetFile.importXlsx(input);
   const exceptionSheetAdded = ensureExceptionSheet(workbook);
   const exceptionSheetEnabledColumnAdded = ensureExceptionEnabledColumn(workbook);
+  const manualSheetsAdded = await ensureEditableManualSheets(workbook);
   const initial = collectEditableDuplicateAudit(workbook);
   const changedSheets = [];
 
@@ -491,10 +530,11 @@ async function cleanEditableWorkbookDuplicates() {
     workbook_path: editableWorkbookPath,
     checked_sheets: Object.keys(initial.sheets),
     duplicate_rows_removed: initial.duplicateRows,
-    workbook_rewritten: changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded,
+    workbook_rewritten: changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded || manualSheetsAdded.length > 0,
     changed_sheets: changedSheets,
     exception_sheet_added: exceptionSheetAdded,
     exception_sheet_enabled_column_added: exceptionSheetEnabledColumnAdded,
+    manual_sheets_added: manualSheetsAdded,
     sheets: Object.fromEntries(
       Object.entries(initial.sheets).map(([sheetName, sheetAudit]) => [
         sheetName,
@@ -508,7 +548,7 @@ async function cleanEditableWorkbookDuplicates() {
     ),
   };
 
-  if (changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded) {
+  if (changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded || manualSheetsAdded.length > 0) {
     await scanFormulaErrors(workbook, "deduplicated editable workbook");
     const tempPath = `${editableWorkbookPath}.deduplicate.tmp.xlsx`;
     const output = await SpreadsheetFile.exportXlsx(workbook);
@@ -525,6 +565,7 @@ async function cleanEditableWorkbookDuplicates() {
     for (const sheetName of [
       ...changedSheets,
       ...((exceptionSheetAdded || exceptionSheetEnabledColumnAdded) ? [exceptionSheetName] : []),
+      ...manualSheetsAdded,
     ]) {
       const preview = await reopened.render({
         sheetName,
@@ -815,6 +856,8 @@ async function verifyPairWorkbook() {
 async function buildGeneratedMaster() {
   const input = await FileBlob.load(canonicalMasterPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
+  const editableInput = await FileBlob.load(editableWorkbookPath);
+  const editableWorkbook = await SpreadsheetFile.importXlsx(editableInput);
   const expectedSheetNames = workbook.worksheets.items.map(
     (sheet) => sheet.name,
   );
@@ -953,6 +996,22 @@ if (verifyPairs) {
 if (promoteMaster) {
   if (!buildMaster || !masterBuildResult) {
     throw new Error("PROMOTE_MASTER requires BUILD_MASTER.");
+  }
+
+  for (const sheetName of editableManualSheetNames) {
+    const existing = workbook.worksheets.getItem(sheetName);
+    const originalIndex = existing.index;
+    existing.delete();
+    const copiedSheet = copySheetValues(
+      editableWorkbook,
+      workbook,
+      sheetName,
+      false,
+    );
+    copiedSheet.index = originalIndex;
+    replacementSummary[sheetName] = {
+      presentation: "Copied from the editable single-axis workbook.",
+    };
   }
   const compilerManifest = JSON.parse(
     await fs.readFile(compilerManifestPath, "utf8"),
