@@ -49,8 +49,10 @@ This is the only new workbook people edit. It contains:
   - `extra_ninth_key_pairs`.
 - an `exceptions` sheet. Use `allowed_many_to_many_component` for a reviewed
   connected component, recording its mapping name, scope, axis, complete
-  source and target key signatures, and a rationale. Exceptions remain visible
-  in QA; they only mark the component as intentionally allowed.
+  source and target key signatures, and a rationale. Set `enabled` to `TRUE`
+  only when the exception is active; `FALSE` rows are safely retained as
+  examples or history. Exceptions remain visible in QA; active rows only mark
+  the component as intentionally allowed.
 
 Every populated row is accepted. Add a row to accept a relation or exact pair;
 delete it to withdraw that acceptance. There are no enabled flags or Boolean

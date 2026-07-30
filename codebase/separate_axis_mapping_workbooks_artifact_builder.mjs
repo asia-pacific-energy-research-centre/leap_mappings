@@ -57,6 +57,7 @@ const editableDuplicateAuditPath = path.join(
 const exceptionSheetName = "exceptions";
 const exceptionHeaders = [
   "exception_type",
+  "enabled",
   "mapping_name",
   "comparison_scope",
   "axis_name",
@@ -66,6 +67,7 @@ const exceptionHeaders = [
 ];
 const initialExceptionRow = [
   "allowed_many_to_many_component",
+  false,
   "leap_to_esto",
   "BOTH",
   "flow",
@@ -349,6 +351,26 @@ function ensureExceptionSheet(workbook) {
   return true;
 }
 
+function ensureExceptionEnabledColumn(workbook) {
+  const sheet = workbook.worksheets.items.find(
+    (candidate) => candidate.name === exceptionSheetName,
+  );
+  const used = sheet.getUsedRange(true);
+  const headers = used?.getRow(0).values?.[0] ?? [];
+  if (headers.map((header) => String(header ?? "").trim()).includes("enabled")) {
+    return false;
+  }
+  const columnIndex = headers.length;
+  sheet.getRangeByIndexes(0, columnIndex, 1, 1).values = [["enabled"]];
+  if (used && used.rowCount > 1) {
+    sheet.getRangeByIndexes(1, columnIndex, used.rowCount - 1, 1).values = (
+      Array.from({ length: used.rowCount - 1 }, () => [false])
+    );
+  }
+  styleDataSheet(sheet, true);
+  return true;
+}
+
 function collectEditableDuplicateAudit(workbook) {
   const sheets = {};
   let duplicateRows = 0;
@@ -436,6 +458,7 @@ async function cleanEditableWorkbookDuplicates() {
   const input = await FileBlob.load(editableWorkbookPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
   const exceptionSheetAdded = ensureExceptionSheet(workbook);
+  const exceptionSheetEnabledColumnAdded = ensureExceptionEnabledColumn(workbook);
   const initial = collectEditableDuplicateAudit(workbook);
   const changedSheets = [];
 
@@ -468,9 +491,10 @@ async function cleanEditableWorkbookDuplicates() {
     workbook_path: editableWorkbookPath,
     checked_sheets: Object.keys(initial.sheets),
     duplicate_rows_removed: initial.duplicateRows,
-    workbook_rewritten: changedSheets.length > 0 || exceptionSheetAdded,
+    workbook_rewritten: changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded,
     changed_sheets: changedSheets,
     exception_sheet_added: exceptionSheetAdded,
+    exception_sheet_enabled_column_added: exceptionSheetEnabledColumnAdded,
     sheets: Object.fromEntries(
       Object.entries(initial.sheets).map(([sheetName, sheetAudit]) => [
         sheetName,
@@ -484,7 +508,7 @@ async function cleanEditableWorkbookDuplicates() {
     ),
   };
 
-  if (changedSheets.length > 0 || exceptionSheetAdded) {
+  if (changedSheets.length > 0 || exceptionSheetAdded || exceptionSheetEnabledColumnAdded) {
     await scanFormulaErrors(workbook, "deduplicated editable workbook");
     const tempPath = `${editableWorkbookPath}.deduplicate.tmp.xlsx`;
     const output = await SpreadsheetFile.exportXlsx(workbook);
@@ -500,7 +524,7 @@ async function cleanEditableWorkbookDuplicates() {
     }
     for (const sheetName of [
       ...changedSheets,
-      ...(exceptionSheetAdded ? [exceptionSheetName] : []),
+      ...((exceptionSheetAdded || exceptionSheetEnabledColumnAdded) ? [exceptionSheetName] : []),
     ]) {
       const preview = await reopened.render({
         sheetName,

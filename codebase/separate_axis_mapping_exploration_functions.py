@@ -28,6 +28,7 @@ CSV_CHUNK_SIZE = 20_000
 MAX_AXIS_COMPONENT_NODE_COUNT = 12
 AXIS_COMPONENT_EXCEPTION_COLUMNS = [
     "exception_type",
+    "enabled",
     "mapping_name",
     "comparison_scope",
     "axis_name",
@@ -1694,9 +1695,20 @@ def load_axis_component_exceptions(workbook_path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"exceptions is missing columns: {missing}")
     exceptions = exceptions[AXIS_COMPONENT_EXCEPTION_COLUMNS].copy()
+    enabled_values = exceptions["enabled"].map(_clean).str.casefold()
+    invalid_enabled = ~enabled_values.isin({"true", "false"})
+    if invalid_enabled.any():
+        rows = (exceptions.index[invalid_enabled] + 2).tolist()
+        raise ValueError(
+            "exceptions has invalid enabled values at workbook rows "
+            f"{rows[:20]}; use TRUE or FALSE."
+        )
+    exceptions["enabled"] = enabled_values.eq("true")
     for column in AXIS_COMPONENT_EXCEPTION_COLUMNS:
+        if column == "enabled":
+            continue
         exceptions[column] = exceptions[column].map(_clean)
-    populated = exceptions.drop(columns="notes").ne("").any(axis=1)
+    populated = exceptions.drop(columns=["enabled", "notes"]).ne("").any(axis=1)
     exceptions = exceptions.loc[populated].reset_index(drop=True)
     invalid_type = ~exceptions["exception_type"].eq(
         "allowed_many_to_many_component"
@@ -1707,8 +1719,12 @@ def load_axis_component_exceptions(workbook_path: Path) -> pd.DataFrame:
             "exceptions has unsupported exception_type values: "
             f"{values[:10]}"
         )
-    required = [column for column in AXIS_COMPONENT_EXCEPTION_COLUMNS if column != "notes"]
-    incomplete = exceptions[required].eq("").any(axis=1)
+    required = [
+        column
+        for column in AXIS_COMPONENT_EXCEPTION_COLUMNS
+        if column not in {"enabled", "notes"}
+    ]
+    incomplete = exceptions.loc[exceptions["enabled"], required].eq("").any(axis=1)
     if incomplete.any():
         rows = (exceptions.index[incomplete] + 2).tolist()
         raise ValueError(f"exceptions has incomplete rows at workbook rows {rows[:20]}")
@@ -1724,6 +1740,8 @@ def apply_axis_component_exceptions(
     result["exception_type"] = ""
     result["exception_notes"] = ""
     for exception in exceptions.itertuples(index=False):
+        if not exception.enabled:
+            continue
         match_columns = [
             "mapping_name",
             "comparison_scope",
