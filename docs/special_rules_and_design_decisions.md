@@ -630,3 +630,35 @@ The 2026-07-30 corrective run removed all 36 shifted relationships, restored
 Extended LEAP-to-ESTO rows, and preserved 100% of mapped values in every
 scope/source combination. The former 37-product Common component and its
 20USA dashboard heading are absent.
+
+## MAP-014: Keep nonspecified non-road transport on the nonspecified ESTO flow
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Mapping simplification / cardinality control
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`;
+LEAP-to-ESTO transport flow axis
+
+### Situation
+
+The modelling workflow moves some fuels from implausible detailed transport
+flows, and from some other demand flows, into
+`Transport non road/Nonspecified transport` to reduce the number of modelled
+fuel-flow combinations. Mapping that aggregate LEAP flow to all three ESTO
+transport flows (`15.02 Road`, `15.03 Rail`, and
+`15.06 Non-specified transport`) created a many-to-many flow-axis component.
+
+### Decision
+
+Map `Transport non road/Nonspecified transport` only to
+`15.06 Non-specified transport`. Do not restore its former mappings to
+`15.02 Road` or `15.03 Rail` merely to mirror the source-side redistribution.
+
+This deliberately accepts a small residual allocation error in the final
+comparison in exchange for a simpler, interpretable mapping and no artificial
+many-to-many transport-flow relationship.
+
+### History
+
+- 2026-07-30: Removed the Road and Rail mappings from the editable single-axis
+  workbook; retained only the ESTO nonspecified-transport mapping.
