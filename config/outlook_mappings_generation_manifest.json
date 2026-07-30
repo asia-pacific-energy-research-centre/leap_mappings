@@ -1,20 +1,20 @@
 {
   "status": "promoted_and_reopened",
-  "generated_at_utc": "2026-07-29T23:51:16.397Z",
+  "generated_at_utc": "2026-07-30T02:14:55.150Z",
   "contract_version": "separate_axis_mapping_contract_v1",
   "historical_boundary_year": 2023,
   "editable_axis_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
   "generated_pair_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_key_pairs_generated.xlsx",
   "canonical_master_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_master.xlsx",
   "candidate_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\outlook_mappings_master_candidate.xlsx",
-  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_c553fc788434.xlsx",
+  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_fddbf90b4666.xlsx",
   "original_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_b1826a4e7f9d.xlsx",
   "hashes": {
     "original_canonical_master_sha256": "b1826a4e7f9db60e491e0ff04b42de489cfa395eea68d551675cf9df2736079a",
-    "prior_canonical_master_sha256": "c553fc788434dc364b44f96a9224233946fadfee77466b2de4bd2179cf471826",
-    "promoted_master_sha256": "fddbf90b466649bc0d5999feeef37b64f65e063eac61523334d297deb771cfe9",
-    "generated_pair_workbook_sha256": "c7992f9008e21ace238bed5ea9d8441e221ff283591b99f12dedbccef7608d77",
-    "editable_axis_workbook_sha256": "bc530b884b8109a5c98b4f27a7cd7bc90f40738bd64a207b305f4e297455f6cd",
+    "prior_canonical_master_sha256": "fddbf90b466649bc0d5999feeef37b64f65e063eac61523334d297deb771cfe9",
+    "promoted_master_sha256": "fe4bbb35dec76fc06d981b10805a6bf79ffc9b70dd5abe5abce3e009fcd01482",
+    "generated_pair_workbook_sha256": "6e809469475b5480dd50654e92a92837e2fe1d1f0b9211ebda81bbbed46f474e",
+    "editable_axis_workbook_sha256": "29e4b699bb8e1c056d47d0ed2fede592f317a12f09e94fec1ef6d95d0166a58a",
     "compiler_manifest_sha256": "2165a5773c6df320d140a58f703be2ad4714d938fa9e0a5d5e901678e67bd925",
     "split_manifest_sha256": "b40638955c4840e5203d6a32a50a6c7f47a8e6201822ebc86bb25db9536ad236"
   },
@@ -297,6 +297,87 @@
       "ninth_pairs_to_esto_pairs.esto_pair_is_subtotal",
       "ninth_pairs_to_esto_pairs.duplicate_to_remove"
     ]
+  },
+  "editable_duplicate_cleanup": {
+    "checked_at_utc": "2026-07-30T02:09:21.860Z",
+    "workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
+    "checked_sheets": [
+      "leap_sector_to_esto",
+      "leap_fuel_to_esto",
+      "leap_sector_to_ninth",
+      "leap_fuel_to_ninth",
+      "ninth_sector_to_esto",
+      "ninth_fuel_to_esto",
+      "extra_leap_key_pairs",
+      "extra_esto_key_pairs",
+      "extra_esto_extended_pairs",
+      "extra_ninth_key_pairs"
+    ],
+    "duplicate_rows_removed": 0,
+    "workbook_rewritten": false,
+    "changed_sheets": [],
+    "sheets": {
+      "leap_sector_to_esto": {
+        "input_row_count": 155,
+        "retained_row_count": 155,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "leap_fuel_to_esto": {
+        "input_row_count": 103,
+        "retained_row_count": 103,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "leap_sector_to_ninth": {
+        "input_row_count": 137,
+        "retained_row_count": 137,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "leap_fuel_to_ninth": {
+        "input_row_count": 75,
+        "retained_row_count": 75,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "ninth_sector_to_esto": {
+        "input_row_count": 94,
+        "retained_row_count": 94,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "ninth_fuel_to_esto": {
+        "input_row_count": 76,
+        "retained_row_count": 76,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "extra_leap_key_pairs": {
+        "input_row_count": 425,
+        "retained_row_count": 425,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "extra_esto_key_pairs": {
+        "input_row_count": 965,
+        "retained_row_count": 965,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "extra_esto_extended_pairs": {
+        "input_row_count": 965,
+        "retained_row_count": 965,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      },
+      "extra_ninth_key_pairs": {
+        "input_row_count": 917,
+        "retained_row_count": 917,
+        "duplicate_rows_removed": 0,
+        "duplicates": []
+      }
+    }
   },
   "boolean_storage": "literal_boolean_no_checkbox_controls",
   "rollup_boundary": "Manual rollups remain workbook rules; graph-generated Common rows are not written back as manual rollups.",

@@ -42,6 +42,11 @@ REFRESH_OUTPUT_ROOT = (
     REPO_ROOT / "outputs" / "separate_axis_mapping_refresh"
 )
 BUILDER_LOG_PATH = REFRESH_OUTPUT_ROOT / "workbooks" / "artifact_builder.log"
+EDITABLE_DUPLICATE_AUDIT_PATH = (
+    REFRESH_OUTPUT_ROOT
+    / "workbooks"
+    / "editable_duplicate_cleanup.json"
+)
 
 
 # --- Functions --------------------------------------------------------------
@@ -112,6 +117,7 @@ def _run_artifact_builder(
             "BUILD_MASTER": "true",
             "VERIFY_PAIRS": "true",
             "PROMOTE_MASTER": str(bool(promote_master)).lower(),
+            "CLEAN_EDITABLE_DUPLICATES": "true",
         }
     )
     git_head_mapping_hash = _git_head_mapping_hash()
@@ -197,6 +203,9 @@ def run_separate_axis_mapping_refresh(
         "generated_pair_workbook_path": str(GENERATED_PAIR_WORKBOOK_PATH),
         "canonical_master_path": str(CANONICAL_MASTER_PATH),
         "builder_log_path": str(BUILDER_LOG_PATH),
+        "editable_duplicate_audit_path": str(
+            EDITABLE_DUPLICATE_AUDIT_PATH
+        ),
     }
     print(json.dumps(result, indent=2))
     return result

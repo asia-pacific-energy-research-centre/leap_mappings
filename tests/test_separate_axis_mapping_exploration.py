@@ -27,6 +27,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     derive_required_reviewed_extra_pairs,
     expand_pair_universe_with_rollups,
     merge_reviewed_extra_pairs,
+    remove_exact_duplicate_mapping_rows,
     select_alias_candidate,
 )
 from codebase.mapping_tools.leap_pair_registry import (
@@ -653,6 +654,41 @@ def test_editable_axis_rows_are_the_compiler_authority() -> None:
             "target_flow",
         ]
     ) == {"T2"}
+
+
+def test_editable_duplicate_cleanup_keeps_distinct_targets() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "leap_fuel": "Natural gas",
+                "esto_product": "08.01 Natural gas",
+                "esto_dataset_scope": "BOTH",
+            },
+            {
+                "leap_fuel": " Natural gas ",
+                "esto_product": "08.01 Natural gas",
+                "esto_dataset_scope": "both",
+            },
+            {
+                "leap_fuel": "Natural gas",
+                "esto_product": "08.03 Gas works gas",
+                "esto_dataset_scope": "BOTH",
+            },
+        ]
+    )
+
+    cleaned, duplicates = remove_exact_duplicate_mapping_rows(
+        frame,
+        ["leap_fuel", "esto_product", "esto_dataset_scope"],
+    )
+
+    assert len(cleaned) == 2
+    assert len(duplicates) == 1
+    assert duplicates.iloc[0]["workbook_row_number"] == 3
+    assert set(cleaned["esto_product"]) == {
+        "08.01 Natural gas",
+        "08.03 Gas works gas",
+    }
 
 
 def test_axis_component_contract_marks_small_many_to_many_for_review() -> None:

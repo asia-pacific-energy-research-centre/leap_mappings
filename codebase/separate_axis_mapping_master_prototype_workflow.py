@@ -45,6 +45,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     load_active_mapping_contract,
     load_or_bootstrap_editable_axis_contract,
     merge_reviewed_extra_pairs,
+    remove_exact_duplicate_mapping_rows,
 )
 from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
     load_or_refresh_leap_pair_registry,
@@ -303,6 +304,10 @@ def _load_or_bootstrap_reviewed_extra_pairs(
                     f"{spec['sheet']} is missing columns: "
                     f"{sorted(missing_columns)}"
                 )
+            frame, _ = remove_exact_duplicate_mapping_rows(
+                frame,
+                [spec["flow_column"], spec["product_column"]],
+            )
             result[dataset] = frame[
                 [spec["flow_column"], spec["product_column"]]
             ].rename(

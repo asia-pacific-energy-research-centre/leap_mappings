@@ -115,6 +115,16 @@ The extra-pair layer is deliberately permissive. It preserves reviewed or
 plausible relationships while the axis model is introduced, and can be reduced
 later by deleting rows after semantic review.
 
+Every production refresh also checks all ten editable sheets for repeated
+mapping keys. Comparison trims surrounding whitespace and treats
+`esto_dataset_scope` case-insensitively. The first occurrence is retained and
+later exact duplicates are removed from the editable workbook itself.
+Relationships with different targets are not duplicates and remain available
+for legitimate one-to-many or many-to-one mapping. The refresh writes a
+per-sheet audit to
+`outputs/separate_axis_mapping_refresh/workbooks/editable_duplicate_cleanup.json`
+and records the same summary in the generation manifest.
+
 Before pair compilation, the compiler analyses connected components on each
 axis. It stops promotion when a component contains more than 12 source-plus-
 target nodes or when a product component spans more than one numbered target
@@ -376,6 +386,7 @@ The ordinary mapping run is:
 The generated master must satisfy all of these:
 
 - exact pair-sheet schemas match the canonical workbook;
+- the editable duplicate audit reports zero remaining duplicate mapping keys;
 - no oversized or cross-family axis component reaches compilation;
 - every maintained relationship is reproduced or deliberately retired;
 - shared relationship subtotal flags do not change unexpectedly;

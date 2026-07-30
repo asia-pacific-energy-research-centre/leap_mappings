@@ -32,7 +32,9 @@ const manifestPath = path.join(
 );
 const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
 
-const editableWorkbookPath = manifest.editable_axis_workbook_path;
+const editableWorkbookPath = runtimeEnvironment.EDITABLE_WORKBOOK_OVERRIDE
+  ? path.resolve(runtimeEnvironment.EDITABLE_WORKBOOK_OVERRIDE)
+  : manifest.editable_axis_workbook_path;
 const pairWorkbookPath = manifest.generated_pair_workbook_path;
 const generatedMasterPath = manifest.generated_master_workbook_path;
 const canonicalMasterPath = manifest.canonical_master_path;
@@ -47,6 +49,10 @@ const compilerManifestPath = path.join(
   "separate_axis_mapping_refresh",
   "compiler",
   "workbook_manifest.json",
+);
+const editableDuplicateAuditPath = path.join(
+  outputRoot,
+  "editable_duplicate_cleanup.json",
 );
 
 const colors = {
@@ -279,6 +285,160 @@ async function scanFormulaErrors(workbook, label) {
   console.log(result.ndjson);
 }
 
+function normaliseEditableKeyValue(value, header) {
+  const cleaned = String(value ?? "").trim();
+  if (header === "esto_dataset_scope") {
+    return cleaned.toUpperCase();
+  }
+  return cleaned;
+}
+
+function collectEditableDuplicateAudit(workbook) {
+  const sheets = {};
+  let duplicateRows = 0;
+  for (const sheetName of Object.keys(manifest.editable_sources)) {
+    const sheet = workbook.worksheets.getItem(sheetName);
+    const used = sheet.getUsedRange(true);
+    const matrix = used?.values ?? [];
+    const headers = matrix[0] ?? [];
+    const seen = new Map();
+    const duplicates = [];
+    const retainedRows = [];
+    for (let rowIndex = 1; rowIndex < matrix.length; rowIndex += 1) {
+      const row = matrix[rowIndex].slice(0, headers.length);
+      const keyValues = row.map((value, columnIndex) => (
+        normaliseEditableKeyValue(value, String(headers[columnIndex] ?? ""))
+      ));
+      if (keyValues.every((value) => value === "")) {
+        retainedRows.push(row);
+        continue;
+      }
+      const key = JSON.stringify(keyValues);
+      const workbookRowNumber = rowIndex + 1;
+      if (seen.has(key)) {
+        duplicates.push({
+          workbook_row_number: workbookRowNumber,
+          retained_workbook_row_number: seen.get(key),
+          mapping_key: keyValues,
+        });
+        duplicateRows += 1;
+        continue;
+      }
+      seen.set(key, workbookRowNumber);
+      retainedRows.push(row);
+    }
+    sheets[sheetName] = {
+      input_row_count: Math.max(0, matrix.length - 1),
+      retained_row_count: retainedRows.length,
+      duplicate_rows_removed: duplicates.length,
+      duplicates,
+      retainedRows,
+      usedColumnCount: headers.length,
+      usedRowCount: matrix.length,
+    };
+  }
+  return { duplicateRows, sheets };
+}
+
+async function cleanEditableWorkbookDuplicates() {
+  const input = await FileBlob.load(editableWorkbookPath);
+  const workbook = await SpreadsheetFile.importXlsx(input);
+  const initial = collectEditableDuplicateAudit(workbook);
+  const changedSheets = [];
+
+  for (const [sheetName, sheetAudit] of Object.entries(initial.sheets)) {
+    if (sheetAudit.duplicate_rows_removed === 0) {
+      continue;
+    }
+    changedSheets.push(sheetName);
+    const sheet = workbook.worksheets.getItem(sheetName);
+    if (sheetAudit.usedRowCount > 1 && sheetAudit.usedColumnCount > 0) {
+      sheet.getRangeByIndexes(
+        1,
+        0,
+        sheetAudit.usedRowCount - 1,
+        sheetAudit.usedColumnCount,
+      ).clear({ applyTo: "contents" });
+    }
+    if (sheetAudit.retainedRows.length > 0) {
+      sheet.getRangeByIndexes(
+        1,
+        0,
+        sheetAudit.retainedRows.length,
+        sheetAudit.usedColumnCount,
+      ).values = sheetAudit.retainedRows;
+    }
+  }
+
+  const audit = {
+    checked_at_utc: new Date().toISOString(),
+    workbook_path: editableWorkbookPath,
+    checked_sheets: Object.keys(initial.sheets),
+    duplicate_rows_removed: initial.duplicateRows,
+    workbook_rewritten: changedSheets.length > 0,
+    changed_sheets: changedSheets,
+    sheets: Object.fromEntries(
+      Object.entries(initial.sheets).map(([sheetName, sheetAudit]) => [
+        sheetName,
+        {
+          input_row_count: sheetAudit.input_row_count,
+          retained_row_count: sheetAudit.retained_row_count,
+          duplicate_rows_removed: sheetAudit.duplicate_rows_removed,
+          duplicates: sheetAudit.duplicates,
+        },
+      ]),
+    ),
+  };
+
+  if (changedSheets.length > 0) {
+    await scanFormulaErrors(workbook, "deduplicated editable workbook");
+    const tempPath = `${editableWorkbookPath}.deduplicate.tmp.xlsx`;
+    const output = await SpreadsheetFile.exportXlsx(workbook);
+    await output.save(tempPath);
+    const reopenedInput = await FileBlob.load(tempPath);
+    const reopened = await SpreadsheetFile.importXlsx(reopenedInput);
+    const remaining = collectEditableDuplicateAudit(reopened);
+    if (remaining.duplicateRows !== 0) {
+      throw new Error(
+        "Editable workbook duplicate cleanup did not converge: "
+        + `${remaining.duplicateRows} duplicate row(s) remain.`,
+      );
+    }
+    for (const sheetName of changedSheets) {
+      const preview = await reopened.render({
+        sheetName,
+        range: "A1:C20",
+        scale: 1,
+        format: "png",
+      });
+      const safeName = sheetName.replaceAll(/[^A-Za-z0-9]+/g, "_");
+      await fs.mkdir(
+        path.join(previewRoot, "editable_duplicate_cleanup"),
+        { recursive: true },
+      );
+      await fs.writeFile(
+        path.join(
+          previewRoot,
+          "editable_duplicate_cleanup",
+          `${safeName}.png`,
+        ),
+        new Uint8Array(await preview.arrayBuffer()),
+      );
+    }
+    await fs.copyFile(tempPath, editableWorkbookPath);
+    await fs.unlink(tempPath);
+    await removeInspectSidecar(tempPath);
+  }
+
+  await fs.writeFile(
+    editableDuplicateAuditPath,
+    JSON.stringify(audit, null, 2),
+    "utf8",
+  );
+  await removeInspectSidecar(editableWorkbookPath);
+  return audit;
+}
+
 async function removeInspectSidecar(workbookPath) {
   await fs.rm(`${workbookPath}.inspect.ndjson`, { force: true });
 }
@@ -386,7 +546,7 @@ async function buildEditableWorkbook() {
     ],
     [
       "Allowed cardinality",
-      "One-to-one, one-to-many, and many-to-one relationships are supported. A many-to-many connected component within one axis is blocking QA and must be reviewed.",
+      "One-to-one, one-to-many, and many-to-one relationships are supported. Small many-to-many components remain review items; oversized or cross-family product components block compilation.",
     ],
     [
       "ESTO dataset scope",
@@ -399,6 +559,10 @@ async function buildEditableWorkbook() {
     [
       "Extra key pairs",
       "Each row accepts one exact dataset pair that would otherwise be excluded. Presence means accepted; delete the row to withdraw that authority. No checkbox column is used.",
+    ],
+    [
+      "Duplicate rows",
+      "Each refresh keeps the first occurrence of an exact mapping key and removes later duplicates from this workbook. Different targets remain valid one-to-many mappings.",
     ],
     [
       "Subtotals and rollups",
@@ -452,7 +616,7 @@ async function buildPairWorkbook() {
     ],
     [
       "Historical rule",
-      `ESTO and ESTO Extended pairs are eligible when non-zero in the final ESTO year (${manifest.historical_boundary_year}) or accepted in the editable extra-pair sheets.`,
+      `Ordinary ESTO pairs are eligible when non-zero in the final ESTO year (${manifest.historical_boundary_year}) or reviewed. ESTO Extended accepts structurally present pairs because valid detail can currently be zero.`,
     ],
     [
       "Projection rule",
@@ -472,7 +636,7 @@ async function buildPairWorkbook() {
     ],
     [
       "Compilation",
-      "eligible_for_compilation is TRUE for boundary-active or reviewed-extra pairs. Within-axis many-to-many components remain explicit semantic review debt.",
+      "Eligibility follows each dataset's authority rule. Oversized or cross-family product-axis connected components block compilation before mappings are promoted.",
     ],
   ]);
   readme.getRange("A1:H30").format.font.name = "Aptos";
@@ -644,9 +808,15 @@ const verifyPairs = globalThis.VERIFY_PAIRS
   ?? runtimeEnvironment.VERIFY_PAIRS === "true";
 const promoteMaster = globalThis.PROMOTE_MASTER
   ?? runtimeEnvironment.PROMOTE_MASTER === "true";
+const cleanEditableDuplicates = globalThis.CLEAN_EDITABLE_DUPLICATES
+  ?? runtimeEnvironment.CLEAN_EDITABLE_DUPLICATES !== "false";
 
 if (buildEditable) {
   await buildEditableWorkbook();
+}
+let editableDuplicateCleanup = null;
+if (cleanEditableDuplicates) {
+  editableDuplicateCleanup = await cleanEditableWorkbookDuplicates();
 }
 if (buildPairs) {
   await buildPairWorkbook();
@@ -760,6 +930,7 @@ if (promoteMaster) {
         compilerManifest.summary.generated_relationship_governance_rows,
     },
     validation: promotedValidation,
+    editable_duplicate_cleanup: editableDuplicateCleanup,
     boolean_storage: "literal_boolean_no_checkbox_controls",
     rollup_boundary:
       "Manual rollups remain workbook rules; graph-generated Common rows "
@@ -780,5 +951,7 @@ console.log(JSON.stringify({
   pairWorkbookPath,
   generatedMasterPath,
   generationManifestPath,
+  editableDuplicateAuditPath,
+  editableDuplicateCleanup,
   promoted: promoteMaster,
 }, null, 2));

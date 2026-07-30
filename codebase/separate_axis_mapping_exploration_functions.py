@@ -1271,6 +1271,42 @@ def derive_axis_mappings(
     return flow, product
 
 
+def remove_exact_duplicate_mapping_rows(
+    frame: pd.DataFrame,
+    key_columns: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Remove repeated editable mapping keys while retaining the first row.
+
+    Mapping labels are compared after trimming surrounding whitespace. Scope
+    values are also compared case-insensitively because the compiler
+    normalises them to uppercase. Different targets remain distinct, so this
+    does not collapse legitimate one-to-many or many-to-one relationships.
+    """
+    result = frame.copy()
+    result.columns = [str(column).strip() for column in result.columns]
+    missing_columns = sorted(set(key_columns) - set(result.columns))
+    if missing_columns:
+        raise ValueError(
+            f"Editable mapping table is missing columns: {missing_columns}"
+        )
+
+    normalised = pd.DataFrame(index=result.index)
+    for column in key_columns:
+        values = result[column].map(_clean)
+        if column == "esto_dataset_scope":
+            values = values.str.upper()
+        normalised[column] = values
+    populated = normalised.ne("").any(axis=1)
+    duplicate = populated & normalised.duplicated(
+        subset=key_columns,
+        keep="first",
+    )
+    audit = result.loc[duplicate, key_columns].copy()
+    audit.insert(0, "workbook_row_number", audit.index + 2)
+    cleaned = result.loc[~duplicate].reset_index(drop=True)
+    return cleaned, audit.reset_index(drop=True)
+
+
 def build_axis_mappings_from_editable_sheets(
     sheet_frames: dict[str, pd.DataFrame],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1307,6 +1343,13 @@ def build_axis_mappings_from_editable_sheets(
             raise ValueError(
                 f"{sheet_name} is missing columns: {missing_columns}"
             )
+        key_columns = [source_column, target_column]
+        if scope_column:
+            key_columns.append(scope_column)
+        frame, _ = remove_exact_duplicate_mapping_rows(
+            frame,
+            key_columns,
+        )
 
         source_values = frame[source_column].map(_clean)
         target_values = frame[target_column].map(_clean)
