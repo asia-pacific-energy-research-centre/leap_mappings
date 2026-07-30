@@ -703,6 +703,15 @@ def _summary_rows(
             ),
         ),
         (
+            "many_to_many_axis_components_for_review",
+            int(
+                axis_components["axis_component_cardinality"]
+                .astype(str)
+                .eq("many_to_many")
+                .sum()
+            ),
+        ),
+        (
             "universe_compiled_relationship_rows",
             int(universe_allowed.sum()),
         ),
@@ -815,6 +824,25 @@ def run_single_axis_master_prototype(
     axis_components = pd.concat(
         [flow_components, product_components],
         ignore_index=True,
+    )
+    many_to_many_components = axis_components.loc[
+        axis_components["axis_component_cardinality"].eq("many_to_many")
+    ].copy()
+    editable_sheet_names = {
+        ("leap_to_esto", "flow"): "leap_sector_to_esto",
+        ("leap_to_esto", "product"): "leap_fuel_to_esto",
+        ("leap_to_ninth", "flow"): "leap_sector_to_ninth",
+        ("leap_to_ninth", "product"): "leap_fuel_to_ninth",
+        ("ninth_to_esto", "flow"): "ninth_sector_to_esto",
+        ("ninth_to_esto", "product"): "ninth_fuel_to_esto",
+    }
+    many_to_many_components.insert(
+        0,
+        "editable_sheet",
+        [
+            editable_sheet_names[(row.mapping_name, row.axis_name)]
+            for row in many_to_many_components.itertuples(index=False)
+        ],
     )
     assert_no_blocking_axis_components(axis_components)
 
@@ -1070,6 +1098,10 @@ def run_single_axis_master_prototype(
     sheet_sources["QA axis components"] = _write_csv(
         axis_components,
         "qa_axis_components.csv",
+    )
+    sheet_sources["QA many-to-many axis components"] = _write_csv(
+        many_to_many_components,
+        "qa_many_to_many_axis_components.csv",
     )
     detail_sources["QA candidates universe"] = _write_csv(
         universe_compiled,

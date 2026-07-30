@@ -1275,12 +1275,14 @@ def remove_exact_duplicate_mapping_rows(
     frame: pd.DataFrame,
     key_columns: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Remove repeated editable mapping keys while retaining the first row.
+    """Consolidate repeated editable mapping keys while retaining the first row.
 
-    Mapping labels are compared after trimming surrounding whitespace. Scope
-    values are also compared case-insensitively because the compiler
-    normalises them to uppercase. Different targets remain distinct, so this
-    does not collapse legitimate one-to-many or many-to-one relationships.
+    Mapping labels are compared after trimming surrounding whitespace. For
+    ESTO-targeting sheets, the two mapping columns define identity; multiple
+    scope rows are consolidated into one row. ``BOTH`` supersedes either
+    single-dataset scope, and an ``ESTO`` plus ``ESTO_EXTENDED`` pair also
+    becomes ``BOTH``. Different targets remain distinct, so this does not
+    collapse legitimate one-to-many or many-to-one relationships.
     """
     result = frame.copy()
     result.columns = [str(column).strip() for column in result.columns]
@@ -1290,20 +1292,37 @@ def remove_exact_duplicate_mapping_rows(
             f"Editable mapping table is missing columns: {missing_columns}"
         )
 
+    scope_column = "esto_dataset_scope" if "esto_dataset_scope" in key_columns else None
+    mapping_key_columns = [
+        column for column in key_columns if column != "esto_dataset_scope"
+    ]
     normalised = pd.DataFrame(index=result.index)
-    for column in key_columns:
+    for column in mapping_key_columns:
         values = result[column].map(_clean)
-        if column == "esto_dataset_scope":
-            values = values.str.upper()
         normalised[column] = values
     populated = normalised.ne("").any(axis=1)
-    duplicate = populated & normalised.duplicated(
-        subset=key_columns,
-        keep="first",
-    )
+    duplicate = populated & normalised.duplicated(subset=mapping_key_columns, keep="first")
     audit = result.loc[duplicate, key_columns].copy()
     audit.insert(0, "workbook_row_number", audit.index + 2)
-    cleaned = result.loc[~duplicate].reset_index(drop=True)
+
+    cleaned = result.loc[~duplicate].copy()
+    if scope_column:
+        for _, indexes in normalised.loc[populated].groupby(
+            mapping_key_columns,
+            dropna=False,
+        ).groups.items():
+            scopes = {
+                _clean(result.at[index, scope_column]).upper()
+                for index in indexes
+            }
+            consolidated_scope = (
+                "BOTH"
+                if "BOTH" in scopes or {"ESTO", "ESTO_EXTENDED"} <= scopes
+                else next(iter(scopes))
+            )
+            retained_index = min(indexes)
+            cleaned.loc[retained_index, scope_column] = consolidated_scope
+    cleaned = cleaned.reset_index(drop=True)
     return cleaned, audit.reset_index(drop=True)
 
 

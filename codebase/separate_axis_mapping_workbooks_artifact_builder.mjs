@@ -293,6 +293,27 @@ function normaliseEditableKeyValue(value, header) {
   return cleaned;
 }
 
+function editableMappingColumns(sheetName, headers) {
+  const scopedMappingSheets = {
+    leap_sector_to_esto: ["leap_sector", "esto_flow"],
+    leap_fuel_to_esto: ["leap_fuel", "esto_product"],
+    ninth_sector_to_esto: ["ninth_sector", "esto_flow"],
+    ninth_fuel_to_esto: ["ninth_fuel", "esto_product"],
+  };
+  const mappingColumns = scopedMappingSheets[sheetName];
+  if (!mappingColumns) {
+    return headers.map((header) => String(header ?? "").trim());
+  }
+  return mappingColumns;
+}
+
+function consolidatedScope(scopes) {
+  if (scopes.has("BOTH") || (scopes.has("ESTO") && scopes.has("ESTO_EXTENDED"))) {
+    return "BOTH";
+  }
+  return scopes.values().next().value;
+}
+
 function collectEditableDuplicateAudit(workbook) {
   const sheets = {};
   let duplicateRows = 0;
@@ -301,13 +322,25 @@ function collectEditableDuplicateAudit(workbook) {
     const used = sheet.getUsedRange(true);
     const matrix = used?.values ?? [];
     const headers = matrix[0] ?? [];
+    const headerIndexes = new Map(
+      headers.map((header, columnIndex) => [String(header ?? "").trim(), columnIndex]),
+    );
+    const keyHeaders = editableMappingColumns(sheetName, headers);
+    const keyColumnIndexes = keyHeaders.map((header) => {
+      const columnIndex = headerIndexes.get(header);
+      if (columnIndex === undefined) {
+        throw new Error(`${sheetName} is missing editable mapping column: ${header}`);
+      }
+      return columnIndex;
+    });
+    const scopeColumnIndex = headerIndexes.get("esto_dataset_scope");
     const seen = new Map();
     const duplicates = [];
     const retainedRows = [];
     for (let rowIndex = 1; rowIndex < matrix.length; rowIndex += 1) {
       const row = matrix[rowIndex].slice(0, headers.length);
-      const keyValues = row.map((value, columnIndex) => (
-        normaliseEditableKeyValue(value, String(headers[columnIndex] ?? ""))
+      const keyValues = keyColumnIndexes.map((columnIndex) => (
+        normaliseEditableKeyValue(row[columnIndex], String(headers[columnIndex] ?? ""))
       ));
       if (keyValues.every((value) => value === "")) {
         retainedRows.push(row);
@@ -316,16 +349,40 @@ function collectEditableDuplicateAudit(workbook) {
       const key = JSON.stringify(keyValues);
       const workbookRowNumber = rowIndex + 1;
       if (seen.has(key)) {
+        const retained = seen.get(key);
+        if (scopeColumnIndex !== undefined) {
+          retained.scopes.add(normaliseEditableKeyValue(row[scopeColumnIndex], "esto_dataset_scope"));
+        }
         duplicates.push({
           workbook_row_number: workbookRowNumber,
-          retained_workbook_row_number: seen.get(key),
+          retained_workbook_row_number: retained.workbookRowNumber,
           mapping_key: keyValues,
+          scope_consolidated_into: scopeColumnIndex === undefined ? null : "pending",
         });
         duplicateRows += 1;
         continue;
       }
-      seen.set(key, workbookRowNumber);
+      seen.set(key, {
+        workbookRowNumber,
+        retainedRowIndex: retainedRows.length,
+        scopes: new Set(
+          scopeColumnIndex === undefined
+            ? []
+            : [normaliseEditableKeyValue(row[scopeColumnIndex], "esto_dataset_scope")],
+        ),
+      });
       retainedRows.push(row);
+    }
+    if (scopeColumnIndex !== undefined) {
+      for (const retained of seen.values()) {
+        retainedRows[retained.retainedRowIndex][scopeColumnIndex] = consolidatedScope(retained.scopes);
+      }
+      for (const duplicate of duplicates) {
+        const retained = [...seen.values()].find(
+          (candidate) => candidate.workbookRowNumber === duplicate.retained_workbook_row_number,
+        );
+        duplicate.scope_consolidated_into = consolidatedScope(retained.scopes);
+      }
     }
     sheets[sheetName] = {
       input_row_count: Math.max(0, matrix.length - 1),

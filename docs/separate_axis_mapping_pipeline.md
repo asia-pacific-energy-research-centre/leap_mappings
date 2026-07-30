@@ -116,9 +116,12 @@ plausible relationships while the axis model is introduced, and can be reduced
 later by deleting rows after semantic review.
 
 Every production refresh also checks all ten editable sheets for repeated
-mapping keys. Comparison trims surrounding whitespace and treats
-`esto_dataset_scope` case-insensitively. The first occurrence is retained and
-later exact duplicates are removed from the editable workbook itself.
+mapping keys. Comparison trims surrounding whitespace. On ESTO-targeting
+axis sheets, the two mapping columns are the key and
+`esto_dataset_scope` is consolidated: `BOTH` supersedes `ESTO` or
+`ESTO_EXTENDED`, while an `ESTO` plus `ESTO_EXTENDED` pair becomes `BOTH`.
+The first occurrence is retained and later duplicate mapping rows are removed
+from the editable workbook itself.
 Relationships with different targets are not duplicates and remain available
 for legitimate one-to-many or many-to-one mapping. The refresh writes a
 per-sheet audit to
@@ -126,11 +129,14 @@ per-sheet audit to
 and records the same summary in the generation manifest.
 
 Before pair compilation, the compiler analyses connected components on each
-axis. It stops promotion when a component contains more than 12 source-plus-
-target nodes or when a product component spans more than one numbered target
-fuel family. These are strong signatures of a shifted spreadsheet range or an
-accidental context-specific relation becoming global. Small many-to-many
-hierarchy bridges remain explicit review items.
+axis. Every many-to-many component is listed in the generated
+`QA many-to-many axis components` sheet (and
+`qa_many_to_many_axis_components.csv`), including its editable source sheet,
+keys, and edge counts. There is currently no exception list: these are all
+review findings. The compiler stops promotion when a component contains more
+than 12 source-plus-target nodes or when a product component spans more than
+one numbered target fuel family. These are strong signatures of a shifted
+spreadsheet range or an accidental context-specific relation becoming global.
 
 ## Compilation sequence
 
