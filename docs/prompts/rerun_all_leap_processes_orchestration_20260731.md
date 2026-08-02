@@ -1,75 +1,84 @@
-# Master Prompt: Recover Then Rerun All LEAP Processes
+# Reusable Prompt: Run the LEAP Workflows End to End
 
-Coordinate the following work across these repositories:
+Coordinate the LEAP workflows across:
 
 - `C:\Users\Work\github\leap_mappings`
 - `C:\Users\Work\github\leap_initialisation`
 - `C:\Users\Work\github\leap_dashboard`
 
-Use the four detailed prompts in this directory as the process-specific instructions.
+Read the process-specific prompts in this directory and use them for the
+individual workflow commands and validation details.
 
-## Required order
+## Objective
 
-1. Confirm the Codex bundled runtime has rehydrated and `@oai/artifact-tool` imports successfully.
-2. Run the `leap_initialisation` update process and generate PRC, AUS, and USA previews.
-3. Run the full `leap_mappings` pipeline. It is expected to be the most memory-intensive process. Do not run the long baseline-seed process concurrently with it.
-4. Reconfirm the mapping outputs are available to `leap_initialisation`.
-5. Run the 11-economy baseline seeds in `leap_initialisation`, at most three economies in parallel per batch. This is expected to take many hours.
-6. After the baseline seeds finish, run the full `leap_dashboard` process for AUS, PRC, and USA.
+Run the requested LEAP workflows end to end using a new unique run label:
 
-If the user wants the mapping pipeline before the update process for dependency reasons, explain the conflict and follow the safer dependency order: validate/update source previews first, then run the full mapping pipeline, then baseline seeds, then dashboard. Never run memory-intensive mapping and baseline-seed batches together.
+1. Run the full mappings pipeline.
+2. Run the initialisation update/previews for the requested economies,
+   normally PRC, AUS, and USA.
+3. Run baseline seeds for the requested non-provisional economies, in batches
+   of no more than three economies at a time.
+4. Run the dashboard for the requested economies, normally AUS, PRC, and USA.
 
-## Incident safety context
+If a process-specific prompt defines a different dependency order, follow that
+order. Never run the memory-intensive mappings pipeline at the same time as
+baseline-seed batches unless the user explicitly authorizes it.
 
-On July 30, unsafe `git worktree remove` commands traversed Windows directory junctions. One junction pointed from a mapping worktree into the shared Codex runtime and emptied its `node_modules`, removing `@oai/artifact-tool`. Another cleanup path affected LEAP initialization export-template data. No tracked repository source is known to be missing, and the current 29_07 templates were restored, but ignored data and generated artifacts are not protected by Git.
+Do not require smoke tests or other test runs before starting the workflow.
+Run tests only when they are needed to diagnose a failure, verify a simple
+local fix, or when the user explicitly requests them.
 
-Therefore:
+## Before starting
 
-- Do not run worktree cleanup, recursive deletion, or broad output cleanup.
-- Detect and refuse any cleanup involving reparse points/junctions.
-- Preserve and hash restored templates and current balance exports.
-- Do not restore Recycle Bin files automatically.
-- Do not overwrite existing outputs; use unique run labels.
+- Confirm the repositories and requested economies.
+- Check for already-running equivalent processes and do not launch duplicates.
+- Record the working-tree status and preserve unrelated user changes.
+- Create a new unique run label and output location.
+- Confirm required inputs exist when each process reaches them.
 
-## Process monitoring policy
+Do not perform broad cleanup, worktree cleanup, recursive deletion, or
+automatic restoration from the Recycle Bin. Do not overwrite source templates,
+mapping workbooks, or unrelated user changes. Workflow output overwrites are
+allowed only when the user explicitly authorizes them; otherwise use isolated
+outputs.
+
+## Execution and failure handling
+
+- Launch each process with its exact documented entry point and record the
+  command, repository, process ID, run label, and output paths.
+- Keep full stdout and stderr logs on disk.
+- Verify the expected outputs before starting a dependent process.
+- Continue independent economies or workflows after an economy-specific
+  failure when their prerequisites remain valid.
+- Do not launch a dependent process when its required upstream artifact is
+  missing, failed, or invalid.
+- Fix only simple, local, unambiguous issues.
+- For substantive or uncertain issues, preserve outputs and record the
+  repository, stage, economy, command/configuration, traceback, likely cause,
+  and suggested next action.
+- Stop before any external repair, runtime reinstall, template replacement, or
+  modelling/mapping decision that requires user authority.
+
+## Monitoring
 
 - Poll every 30 minutes for the first two hours of each process.
 - Poll hourly after two hours.
-- Keep full logs on disk; report only incremental tails and concise status.
-- At each poll report process identity, elapsed time, current stage, memory/resource concerns, newest output, and failure state.
-- Leave healthy active processes running.
+- At each effective poll, report only incremental log tails and concise status:
+  process identity, elapsed time, current stage, memory/resource concerns,
+  newest output, and failure state.
+- Leave healthy processes running and never launch a duplicate.
 
-## Error policy
+## Completion report
 
-- Fix only simple, local, unambiguous issues.
-- Do not invent mappings, change template IDs, modify semantic rules, or overwrite user changes to make a run pass.
-- If an issue is substantive or uncertain, record it with repository, stage, economy, command/configuration, traceback, likely cause, and suggested next action.
-- Continue to the next independent process/economy when safe.
-- Stop launching new dependent work if a shared runtime, mapping, template, or repository-state blocker affects downstream results.
+Provide a concise status table covering:
 
-## Required handoff artifacts
+- mappings pipeline;
+- update/previews by economy;
+- baseline seed by economy;
+- dashboard by economy;
+- warnings and substantive blockers;
+- exact output and log locations;
+- whether any safe independent work remains.
 
-For each process, preserve:
-
-- exact command/workflow entry point;
-- repository commit and working-tree status;
-- input/template/export hashes where relevant;
-- run label and output paths;
-- start/end times and polling summary;
-- per-economy status;
-- blocking and non-blocking findings;
-- downstream readiness decision.
-
-## Final report
-
-Provide a concise cross-repository table showing:
-
-- runtime status;
-- update/previews status;
-- mapping status;
-- baseline status for all 11 economies;
-- dashboard status for AUS, PRC, and USA;
-- unresolved issues and whether they block further work;
-- exact output locations.
-
-Do not claim overall success if any required economy or dependent process failed or was skipped.
+Do not claim overall success if a required economy or dependent workflow was
+skipped, failed, or produced invalid outputs.
