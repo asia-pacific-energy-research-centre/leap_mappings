@@ -27,6 +27,19 @@ The generated compatibility workbook therefore becomes the input boundary for
 Stages 1–3. Downstream code does not need to understand the separate-axis
 representation. There is no active general Stage 0.
 
+```mermaid
+flowchart LR
+    EDIT["Human edits<br/>single-axis workbook"] --> REFRESH["Separate-axis refresh<br/>preliminary production gate"]
+    REFRESH --> PAIRS["Generated pair registry"]
+    REFRESH --> MASTER["Generated compatibility master"]
+    MASTER --> STAGE1["Stage 1"] --> STAGE2["Stage 2"] --> STAGE3["Conversion + Stage 3"]
+    STAGE3 --> OUTPUTS["Common ESTO, lineage, trees, QA"]
+```
+
+“Preliminary” means upstream of the numbered stages; it does not mean
+provisional or optional. If the editable contract changes, do not run Stage 1
+against the old compatibility master.
+
 ## Workbook responsibilities
 
 ### Human-edited contract

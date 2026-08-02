@@ -83,9 +83,26 @@ Graph partitioning finds the smallest safe common comparison rows when source ag
 The separate-axis generation step compiles user-maintained axis semantics and
 accepted exact-pair authority into a compatibility master.
 
-The maintenance workflow checks that compatibility master.
+Focused maintenance workflows review hierarchy/subtotal or source-row evidence
+only when those inputs changed; there is no general Stage 0.
 
 The compilation pipeline produces the final comparison-ready dataset.
+
+```mermaid
+flowchart LR
+    AXIS["Human-maintained single-axis contract"] --> GENERATE["Separate-axis refresh<br/>preliminary production gate"]
+    GENERATE --> PAIRS["Generated exact-pair evidence"]
+    GENERATE --> MASTER["Generated compatibility master"]
+    MASTER --> REVIEW["Optional focused structural review"]
+    MASTER --> STAGE1["Stage 1 relationships"]
+    REVIEW --> STAGE1
+    STAGE1 --> STAGE2["Stage 2 Common ESTO structure"]
+    STAGE2 --> STAGE3["Conversion + Stage 3 application and validation"]
+    STAGE3 --> OUTPUTS["Common ESTO values, lineage, trees, QA"]
+    MASTER --> INIT["LEAP initialisation"]
+    OUTPUTS --> INIT
+    OUTPUTS --> DASH["Dashboard"]
+```
 
 ---
 
@@ -120,16 +137,26 @@ master's three compiled pair sheets and four rollup/display sheets.
 
 It contains:
 
-| Sheet | Purpose |
-| --- | --- |
-| `Guide` | Human guide and workbook notes |
-| `leap_combined_esto` | LEAP branch+fuel -> ESTO flow+product pair |
-| `ninth_pairs_to_esto_pairs` | 9th Outlook sector+fuel -> ESTO flow+product pair |
-| `leap_combined_ninth` | LEAP branch+fuel -> 9th Outlook sector+fuel pair |
-| `leap_rollup_rules` | Generated copy of editable LEAP comparison rollups |
-| `esto_rollup_rules` | Generated copy of editable ESTO comparison rollups |
-| `ninth_rollup_rules` | Generated copy of editable 9th Outlook comparison rollups |
-| `rollup_label_overrides` | Generated copy of editable rollup display-label overrides |
+| Sheet | Status | Purpose |
+| --- | --- | --- |
+| `Guide` | Keep | Human entry point and production-flow diagram |
+| `leap_combined_esto` | Active, generated | LEAP branch+fuel -> ESTO flow+product pair |
+| `ninth_pairs_to_esto_pairs` | Active, generated | 9th Outlook sector+fuel -> ESTO flow+product pair |
+| `leap_combined_ninth` | Active, generated | LEAP branch+fuel -> 9th Outlook sector+fuel pair |
+| `leap_rollup_rules` | Active, generated copy | Editable LEAP comparison rollups live in the single-axis workbook |
+| `esto_rollup_rules` | Active, generated copy | Editable ESTO comparison rollups live in the single-axis workbook |
+| `ninth_rollup_rules` | Active, generated copy | Editable 9th Outlook comparison rollups live in the single-axis workbook |
+| `rollup_label_overrides` | Reserved, loaded | Schema is loaded by rollup tooling, but preferred-label overrides are not currently applied |
+| `leap_display_names` | Active, preserved | Code-to-display-name authority consumed by mappings and initialisation |
+| `NINTH unique sectors and fuels` | Active reference | Stage 1 source-sector validation |
+| `ESTO unique flows and products` | Active reference | Stage 1 target-flow validation |
+| `ninth fuel to esto product` | Active compatibility | Fuel-level crosswalk used by initialisation |
+| `other branches` | Delete candidate | No executable consumer in the three repositories; retained until a coordinated workbook-contract change |
+| `deleted rows - might regret` | Delete candidate | Historical scratch sheet with no executable consumer; review history belongs in Git or QA evidence |
+
+Do not remove or rename the two deletion candidates during an isolated
+documentation edit. Their removal changes the workbook interface and must be
+coordinated with producer validation and sibling consumers.
 
 ### `config/mapping_issue_exception_sets.xlsx`
 

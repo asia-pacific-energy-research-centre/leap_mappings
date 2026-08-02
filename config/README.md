@@ -1,8 +1,9 @@
 # `config/` — navigation guide
 
-Only files directly under `config/` are git-tracked (see `.gitignore`: `!config/*` then
-`config/*/`, which re-ignores every subfolder). Subfolders like `config/archive/` exist locally
-but are never committed — they're either write targets (backups) or local scratch.
+Most active files are directly under `config/`, but the tracked dataset
+registries under `config/datasets/` and one historical archive CSV are
+exceptions. `config/archive/` is otherwise a local write target for backups,
+and `config/subtotal_labels/` is ignored legacy output.
 
 ## How the configuration files fit together
 
@@ -33,12 +34,16 @@ gap.
 
 | File | Used by |
 |---|---|
-| `outlook_mappings_master.xlsx` | The core editable mapping workbook — read by Stage 0, Stage 1, Stage 3, and most `mapping_tools/*` scripts. |
+| `outlook_mappings_single_axis.xlsx` | Human-maintained mapping contract and preliminary input to the separate-axis refresh. |
+| `outlook_mappings_key_pairs_generated.xlsx` | Generated exact-pair evidence consumed by the refresh/compatibility build; never edit it. |
+| `outlook_mappings_generation_manifest.json` | Hash/schema/provenance gate for the generated workbooks. |
+| `outlook_mappings_master.xlsx` | Generated compatibility workbook read by Stages 1–3 and sibling initialisation consumers. |
 | `master_config.xlsx` | Stage 1's fallback workbook (`FALLBACK_WORKBOOK_PATH`). |
-| `mapping_issue_exception_sets.xlsx` | Reviewed QA exceptions, read by Stage 0 and several `mapping_tools/*` scripts. Also the authority for "ignored, not modelled" sectors/fuels — see `docs/special_rules_and_design_decisions.md` MAP-011. |
+| `mapping_issue_exception_sets.xlsx` | Reviewed QA exceptions read by current validation and focused maintenance workflows. Also the authority for "ignored, not modelled" sectors/fuels — see `docs/special_rules_and_design_decisions.md` MAP-011. |
 | `source_branch_fallback_rules.csv` | Read during LEAP→ESTO conversion (`data_convert` stage). |
 | `all_demand_aggregated_components.json` | Same conversion step. |
 | `common_esto_label_overrides.csv` | Read in Stage 2 (`build_common_esto_structure.py`). |
+| `datasets/*.csv` | Active dataset, scope, mapping-sheet, rollup-sheet, value-adapter, and diagnostic-adapter registries. |
 
 `master_config.xlsx` is a legacy fallback still read by Stage 1 when the active
 mapping workbook does not supply a value. `config/leap_mappings.xlsx` is a legacy
@@ -71,8 +76,9 @@ allowlist.
 | `source_mismatch_allowed` | Active | Exact, reviewer-confirmed raw-source inconsistencies attached to source-anchor validation. These annotate evidence; they do not make a failed check pass or change its numerical result. |
 | `source_mismatch_history` | History | Preserved legacy source-review records; never used for operational matching. |
 
-The five legacy-only allowlists are not inputs to the active Stage 0–3 mapping
-pipeline. They remain because `codebase/archive/outlook_mapping_maintenance_workflow.py`
+The five legacy-only allowlists are not inputs to separate-axis generation or
+the active Stages 1–3 pipeline. They remain because
+`codebase/archive/outlook_mapping_maintenance_workflow.py`
 can still be run for historical comparisons. Do not add new active exceptions to
 those sheets; use the active diagnostic's current exception mechanism instead.
 
@@ -91,24 +97,50 @@ previous version here first (`ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)` th
 `shutil.copy2(...)`). Not read by anything, not required to pre-exist, accumulates indefinitely
 with no automatic pruning (see `docs/results_folder_cleanup_candidates.md`).
 
-## Files present but not required by the pipeline (verified 2026-07-28)
+## Complete file disposition (audited 2026-08-02)
 
-- Extensionless eight-character hexadecimal files such as `config/176BC200`,
-  `config/7EB36010`, `config/9098DA00`, and `config/FDC59700` are Excel
-  lock/crash-recovery artifacts with workbook-like binary content. The exact
-  filenames change as Excel creates new recovery files.
-  `docs/guide_outlook_mappings_master.md` documents these as safe to ignore.
-- `outlook_mappings_master todo.xlsx` is an untracked review workbook, not an
-  active pipeline input. Preserve it until its owner decides how to integrate
-  or retire it.
-- `leap_results_expected_sheets.json` is a review/configuration inventory used
-  by current mapping planning and documentation, but not loaded by the main
-  Stage 0–3 orchestrator. `mapping_coverage_gaps.csv` and
-  `missing_zero_branch_mapping_candidates.xlsx` are review artifacts, not
-  required main-pipeline inputs.
-- `inverted_conservation_target_aliases.json`, `inverted_conservation_target_variants.json` —
-  used only by `inverted_conservation_validation.py`, a standalone QA script not imported by
-  `run_mapping_pipeline.py`. Needed only if you run that check specifically.
+This inventory traces literal paths, registry-driven loaders, tests, and
+sibling-repository consumers across `leap_mappings`, `leap_initialisation`, and
+`leap_dashboard`. “Delete candidate” means no executable consumer was found;
+it is a review marker, not authorization for an uncoordinated deletion.
+
+| File | Disposition | Consumer or reason |
+|---|---|---|
+| `README.md` | Keep — documentation | This inventory and operating guidance. |
+| `outlook_mappings_single_axis.xlsx` | Keep — editable authority | Preliminary source for separate-axis generation. |
+| `outlook_mappings_key_pairs_generated.xlsx` | Keep — generated authority | Exact-pair evidence used by the refresh. |
+| `outlook_mappings_generation_manifest.json` | Keep — generated gate | Hashes, schema, counts, and promotion provenance. |
+| `outlook_mappings_master.xlsx` | Keep — generated compatibility | Stages 1–3 and initialisation loaders. |
+| `mapping_issue_exception_sets.xlsx` | Keep — reviewed QA authority | Active validators and focused maintenance workflows. |
+| `master_config.xlsx` | Keep — legacy fallback | Stage 1 fallback plus legacy readers; not an editing authority. |
+| `all_demand_aggregated_components.json` | Keep — active | LEAP conversion/preflight and dashboard availability logic. |
+| `source_branch_fallback_rules.csv` | Keep — active | LEAP source-branch preflight/conversion. |
+| `common_esto_label_overrides.csv` | Keep — active | Stage 2 display-label construction. |
+| `source_coverage_scopes.json` | Keep — standalone active | Source-coverage audit and candidate generation. |
+| `inverted_conservation_target_aliases.json` | Keep — optional QA | Standalone inverted-conservation validation. |
+| `inverted_conservation_target_variants.json` | Keep — optional QA | Standalone inverted-conservation validation. |
+| `esto_external_definition_authority_working_set.xlsx` | Keep — human research authority | Required review evidence before accepting generated mapping candidates; not machine-loaded. |
+| `datasets/dataset_registry.csv` | Keep — active registry | Dataset registration and orchestration. |
+| `datasets/comparison_scopes.csv` | Keep — active registry | Comparison-scope construction. |
+| `datasets/mapping_sheet_registry.csv` | Keep — active registry | Mapping-sheet routing. |
+| `datasets/rollup_sheet_registry.csv` | Keep — active registry | Rollup-sheet routing. |
+| `datasets/value_adapter_registry.csv` | Keep — active registry | Dataset value adapters. |
+| `datasets/diagnostic_adapter_registry.csv` | Keep — active registry | Diagnostic adapter routing. |
+| `datasets/README.md` | Keep — documentation | Registry schema and maintenance notes. |
+| `outlook_mappings_master_combined_esto.xlsx` | Review, then delete | No executable consumer remains. Repoint the queued review prompt and deliberately recover any still-needed reviewed values first (MAPQ-026/027). |
+| `leap_results_expected_sheets.json` | Delete candidate | The similarly named initialisation config is separate; no code resolves this mappings-repo copy. |
+| `mapping_coverage_gaps.csv` | Delete candidate | Static review output with no executable reader. |
+| `missing_zero_branch_mapping_candidates.xlsx` | Delete candidate | Static candidate output; the sibling scrapbook workflow writes elsewhere and does not read this copy. |
+| `archive/common_esto_flow_tree_parents.csv` | Delete candidate | Tracked historical archive file with no executable reader. |
+| `176BC200`, `6AC9DA10`, `E0E85740`, `E2F1A260` | Delete candidate | Office crash-recovery ZIP/workbook blobs, not project configuration. Add a narrow ignore rule after removal because new names can recur. |
+| `subtotal_labels/subtotal_labels.csv` (ignored/local) | Delete candidate | Legacy output with no current executable reader. |
+| `archive/*.xlsx` (ignored/local) | Keep with retention policy | Safety backups written before workbook edits; prune by an agreed age/count policy rather than a one-off purge. |
+
+The master workbook itself has two sheet-level deletion candidates:
+`other branches` and `deleted rows - might regret`. They have no executable
+consumer in any of the three repositories. They remain in place until a
+coordinated workbook-contract migration; see
+`docs/guide_outlook_mappings_master.md`.
 
 ## Legacy
 

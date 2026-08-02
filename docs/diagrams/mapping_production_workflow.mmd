@@ -1,0 +1,28 @@
+flowchart LR
+    EDIT["1. Edit outlook_mappings_single_axis.xlsx<br/>axes, accepted pairs, exceptions, rollups"]
+    SAVE["2. Save and close Excel"]
+    GENERATE["3. Run separate-axis refresh<br/>preliminary production gate"]
+    PAIRS["Generated key-pair evidence"]
+    MASTER["Generated compatibility master<br/>pair sheets + copied rollups"]
+    REVIEW["Optional focused hierarchy or ESTO-row review<br/>only when structural evidence changed"]
+    PIPELINE["4. Run mapping pipeline<br/>Stages 1–3"]
+    COMMON["Common ESTO values, lineage, trees, and QA"]
+    INITIALISE["LEAP initialisation<br/>reads canonical mappings"]
+    DASHBOARD["Dashboard<br/>reads Common ESTO outputs"]
+
+    EDIT --> SAVE --> GENERATE
+    GENERATE --> PAIRS
+    GENERATE --> MASTER
+    MASTER --> REVIEW --> PIPELINE
+    MASTER --> PIPELINE
+    PIPELINE --> COMMON
+    MASTER --> INITIALISE
+    COMMON --> INITIALISE
+    COMMON --> DASHBOARD
+
+    classDef editable fill:#FFF2CC,stroke:#D6B656,color:#5B4300;
+    classDef generated fill:#D9EAF7,stroke:#1F4E78,color:#17365D;
+    classDef consumer fill:#E2F0D9,stroke:#548235,color:#375623;
+    class EDIT,SAVE editable;
+    class GENERATE,PAIRS,MASTER,REVIEW,PIPELINE,COMMON generated;
+    class INITIALISE,DASHBOARD consumer;

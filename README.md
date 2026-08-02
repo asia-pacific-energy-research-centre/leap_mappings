@@ -29,12 +29,32 @@ notes
 
 Scripts then generate the structured outputs used by comparison tools and dashboards.
 
+The separate-axis refresh is the preliminary production gate, not an optional
+side workflow. Run it before Stage 1 whenever an axis, accepted exact pair,
+exception, or rollup changes.
+
+```mermaid
+flowchart LR
+    EDIT["Edit single-axis workbook"] --> SAVE["Save and close Excel"]
+    SAVE --> GENERATE["Separate-axis refresh<br/>preliminary gate"]
+    GENERATE --> PAIRS["Generated key-pair evidence"]
+    GENERATE --> MASTER["Generated compatibility master"]
+    MASTER --> REVIEW["Focused structural review<br/>when applicable"]
+    MASTER --> STAGES["Mapping pipeline<br/>Stages 1–3"]
+    REVIEW --> STAGES
+    STAGES --> COMMON["Common ESTO + lineage + QA"]
+    MASTER --> INIT["LEAP initialisation"]
+    COMMON --> INIT
+    COMMON --> DASH["Dashboard"]
+```
+
 ## Layered Workflow
 
-1. Maintain pair semantics in
+1. Maintain mapping semantics in
    `config/outlook_mappings_single_axis.xlsx`, then run
    `codebase/separate_axis_mapping_refresh_workflow.py` to regenerate pair
-   authority and the canonical compatibility workbook.
+   authority and the canonical compatibility workbook. This is the first
+   production step after a mapping-contract edit.
 
 2. Review changed structural inputs when needed:
    - `codebase/hierarchy_subtotal_contract_workflow.py` for hierarchy/subtotal
@@ -44,18 +64,18 @@ Scripts then generate the structured outputs used by comparison tools and dashbo
    - both workflows are review-only; the production pipeline starts with the
      separate-axis refresh above, then Stage 1
 
-3. Generate canonical relationship rows from
+3. Run Stage 1 to generate canonical relationship rows from
    `config/outlook_mappings_master.xlsx`:
    - `codebase/mapping_tools/build_energy_balance_relationships.py`
    - output: `results/mapping_relationships/energy_balance_relationships.csv`
    - output: `results/mapping_relationships/energy_balance_relationships.xlsx`
 
-4. Build automatic common ESTO rows:
+4. Run Stage 2 to build automatic common ESTO rows:
    - `codebase/mapping_tools/build_common_esto_structure.py`
    - output: `results/common_esto/common_esto_rows.csv`
    - output: `results/common_esto/esto_to_common_esto_map.csv`
 
-5. Apply the common structure to ESTO-shaped data:
+5. Run conversion and Stage 3 to apply the common structure to ESTO-shaped data:
    - `codebase/mapping_tools/apply_common_esto_structure.py`
    - output: `results/common_esto/common_esto_comparison_data.csv`
    - optional wide output: `results/common_esto/common_esto_comparison_wide.csv`

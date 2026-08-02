@@ -377,6 +377,10 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   required and, if so, recover them deliberately; then (c) repoint the
   MAPQ-010 prompt at the canonical workbook and delete or explicitly retain
   the variant. No runner update is required after `ac33daa`.
+- **2026-08-02 config audit:** No executable consumer remains across the three
+  repositories. The variant is now explicitly marked **review, then delete**
+  in `config/README.md`; the outstanding review-value/prompt steps above still
+  prevent immediate deletion.
 - **Completion criteria:** No script or active prompt references a non-canonical workbook, and either the variant is deleted or its continued existence has a written justification in `docs/special_rules_and_design_decisions.md`.
 
 ### MAPQ-027 — Fill two blank `ninth_fuel` values on `leap_combined_ninth`
@@ -399,6 +403,12 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   - Describe `rollup_label_overrides` as **reserved—not currently applied**.
 - **Evidence:** The existing Guide contains stale/nonexistent names (`leap_dusplay_names`, `display_name_overrides`), omits five live/reference sheets, predates `ROLLUP_MODE` (`EXPANDING` / `NON_EXPANDING` / `DETACHED`), and describes rollup-context and cardinality behaviour that no longer matches the workbook. Cross-repo search found the three current core sheet names hard-coded throughout active `leap_mappings` and `leap_initialisation` readers; `leap_dashboard` mainly receives them as QA/display labels rather than reading the workbook directly.
 - **Why deferred:** All three repositories currently have running work. Do not rename sheets, delete sheets, or change cross-repo loader contracts until those processes have finished and each checkout has a safe implementation window.
+- **Documentation checkpoint (2026-08-02):** The Guide/README documentation
+  and Mermaid production flow were refreshed without renaming or deleting
+  sheets. `other branches` and `deleted rows - might regret` are now marked
+  deletion candidates; `rollup_label_overrides` is documented as
+  reserved/loaded but not currently applied. The compatibility migration,
+  directional renames, physical deletions, and central alias work remain open.
 - **Next action:** First introduce central sheet-name constants plus temporary old-name aliases in the active loaders, then update direct readers and tests. Rename/delete workbook sheets only after both producer and consumer code accepts the new contract; update QA `source_sheet` / `mapping_sheet_to_review` labels and maintained documentation in the same coordinated change.
 - **Completion criteria:** The canonical workbook has the agreed 13-sheet order; the new Guide and Column reference accurately document every sheet and control column; no runtime code depends only on an old name; active tests in all three repositories pass; the formatting-preservation proof is repeated after the workbook edits; and compatibility aliases have an explicit retirement point.
 

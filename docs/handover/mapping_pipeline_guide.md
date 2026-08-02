@@ -24,7 +24,6 @@ It does not own LEAP import IDs or dashboard presentation.
 | `config/outlook_mappings_single_axis.xlsx` | human-maintained axis semantics and accepted extra exact pairs |
 | `config/outlook_mappings_key_pairs_generated.xlsx` | generated exact-pair evidence; do not edit |
 | `config/outlook_mappings_master.xlsx` | generated compatibility master for current consumers; do not edit directly |
-| `config/outlook_mappings_master.xlsx` | current production pair contract plus rollup, name, and reference sheets; bootstrap/comparison baseline during migration |
 | `config/mapping_issue_exception_sets.xlsx` | reviewed QA exceptions; not automatic mappings |
 | `config/source_coverage_scopes.json` | source/scope relevance |
 | `config/all_demand_aggregated_components.json` | declared aggregate-demand membership |
@@ -42,6 +41,17 @@ The separate-axis generate stage is the production first step. It promotes the
 compatibility workbook only after generation, reopen, Boolean, schema, and hash
 validation. See
 [`../separate_axis_mapping_pipeline.md`](../separate_axis_mapping_pipeline.md).
+
+```mermaid
+flowchart LR
+    AXIS["Edit single-axis contract"] --> GENERATE["generate<br/>preliminary production gate"]
+    GENERATE --> EVIDENCE["key-pair evidence"]
+    GENERATE --> MASTER["compatibility master"]
+    MASTER --> ONE["Stage 1 relationships"]
+    ONE --> TWO["Stage 2 Common ESTO structure"]
+    TWO --> CONVERT["parse and convert source values"]
+    CONVERT --> THREE["Stage 3 apply + validate + publish"]
+```
 
 ## Stage flow
 

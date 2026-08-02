@@ -32,22 +32,42 @@ Ground rules:
   Do not add special fills, hidden-value number formats, font masking,
   conditional formatting, data validation, or Excel in-cell checkboxes.
 
+```mermaid
+flowchart LR
+    EDIT["Edit outlook_mappings_single_axis.xlsx"] --> SAVE["Save and close Excel"]
+    SAVE --> GENERATE["Run separate-axis refresh<br/>preliminary production gate"]
+    GENERATE --> PAIRS["Generated key-pair evidence"]
+    GENERATE --> MASTER["Generated outlook_mappings_master.xlsx"]
+    MASTER --> REVIEW["Focused structural review<br/>when applicable"]
+    MASTER --> STAGES["Run mapping Stages 1–3"]
+    REVIEW --> STAGES
+    STAGES --> COMMON["Common ESTO + lineage + QA"]
+```
+
+The word *preliminary* means “before Stage 1,” not “optional.” A contract edit
+is incomplete until the refresh has regenerated and validated this workbook.
+
 ## 1. The sheets at a glance
 
-| Sheet | Role |
-|---|---|
-| `leap_combined_esto` | LEAP (sector path, fuel) → ESTO (flow, product) mappings. The main mapping sheet. |
-| `ninth_pairs_to_esto_pairs` | 9th-edition (sector, fuel) → ESTO (flow, product) mappings. |
-| `leap_combined_ninth` | LEAP (sector path, fuel) → 9th (sector, fuel) mappings. |
-| `leap_rollup_rules` | Generated copy of editable rollups applied to **raw LEAP data** before conversion (build synthetic parent rows). |
-| `esto_rollup_rules` | Generated copy of editable definitions of **virtual ESTO flows** (e.g. "(including own use)" groups) that mapping sheets may target. |
-| `ninth_rollup_rules` | Generated copy of editable rollups applied to raw 9th data (analogue of `leap_rollup_rules`). |
-| `rollup_label_overrides` | Generated copy of editable rollup code/name/label overrides. |
-| `leap_display_names` | code → LEAP display name (consumed by `leap_initialisation` too; respect `USED_IN_LEAP_INITIALISATION`). |
-| `ESTO unique flows and products`, `NINTH unique sectors and fuels` | Reference lists of *real* labels. Stage 1 uses the ESTO list to detect mapping targets that match no real flow (`qa_unknown_esto_target_flows.csv`). |
-| `ninth fuel to esto product` | Fuel-level crosswalk. |
-| `Guide` | In-workbook notes. Keep it short; this file is the maintained guide. |
-| `Sheet1`, `exceptons`, `deleted rows - might regret` | Scratch/leftovers — not read by the pipeline. Don't add new data here. |
+| Sheet | Status | Role |
+|---|---|---|
+| `Guide` | Keep | In-workbook entry point and production-flow diagram. |
+| `leap_combined_esto` | Active, generated | LEAP (sector path, fuel) → ESTO (flow, product). |
+| `ninth_pairs_to_esto_pairs` | Active, generated | 9th Outlook (sector, fuel) → ESTO (flow, product). |
+| `leap_combined_ninth` | Active, generated | LEAP (sector path, fuel) → 9th Outlook (sector, fuel). |
+| `leap_rollup_rules` | Active, generated copy | Rollups applied to raw LEAP data; edit the upstream single-axis copy. |
+| `esto_rollup_rules` | Active, generated copy | Virtual ESTO flow definitions; edit the upstream single-axis copy. |
+| `ninth_rollup_rules` | Active, generated copy | Rollups applied to raw 9th data; edit the upstream single-axis copy. |
+| `rollup_label_overrides` | Reserved, loaded | The schema is loaded, but preferred-label overrides are not currently applied. |
+| `leap_display_names` | Active, preserved | Code → LEAP display name; also consumed by `leap_initialisation`. |
+| `NINTH unique sectors and fuels` | Active reference | Real 9th labels used by Stage 1 validation. |
+| `ESTO unique flows and products` | Active reference | Real ESTO labels used by Stage 1 validation. |
+| `ninth fuel to esto product` | Active compatibility | Fuel-level crosswalk used by initialisation. |
+| `other branches` | Delete candidate | No executable consumer found in `leap_mappings`, `leap_initialisation`, or `leap_dashboard`. |
+| `deleted rows - might regret` | Delete candidate | Historical scratch data; no executable consumer. |
+
+The two deletion candidates remain in the workbook until a coordinated
+producer/consumer contract change removes them. Do not add new data to them.
 
 Validation/QA exceptions do **not** live in this workbook — they live in
 `config/mapping_issue_exception_sets.xlsx` (see mappings_system.md §exception sets).
