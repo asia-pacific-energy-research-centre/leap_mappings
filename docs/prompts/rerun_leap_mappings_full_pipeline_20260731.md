@@ -26,6 +26,11 @@ Run the complete current mapping pipeline using the latest available source data
 
 - Fix only simple, local, unambiguous issues such as a missing output directory, stale non-destructive lock, or incorrect explicitly configured path.
 - Do not make speculative mapping changes, alter semantic mappings, or repair data-quality findings silently.
+- A completed pipeline may report QA findings such as hierarchy mismatches,
+  anchor findings, or unmapped rows. Classify these as non-blocking findings
+  unless required artifacts are missing/corrupt or a documented hard
+  integrity/safety gate fails; downstream workflows may consume structurally
+  valid completed outputs while carrying the findings forward.
 - For non-simple failures, record the economy/stage, traceback, likely cause, and exact next action, then continue with independent safe checks where possible.
 - Do not declare success if the pipeline completed only partially.
 

@@ -132,6 +132,20 @@ validation pipeline (e.g. `codebase/run_mapping_pipeline.py`,
 `codebase/mapping_tools/source_parent_anchor_validation.py`). Keep this
 structure in mind when adding new transformations or debugging data issues.
 
+### QA findings versus workflow blockers
+
+- A completed pipeline with hierarchy mismatches, anchor findings, unmapped
+  rows, or other QA findings is **completed with findings**, not automatically
+  failed or blocked. Preserve the findings and continue downstream workflows
+  when the required artifacts exist and their structural integrity is valid.
+- Treat a workflow as blocked only when a required artifact is missing or
+  unreadable, a generation/promotion gate fails, workbook structure or IDs are
+  invalid, or a documented hard safety gate is violated.
+- Do not infer blocking status from the words `validation`, `failed`, or
+  `mismatch` in a QA report. Classify each finding by whether it prevents the
+  dependent workflow from running, and carry non-blocking findings into the
+  completion report.
+
 ### 9th structure (sector/fuel hierarchy)
 
 - Source file: `data/merged_file_energy_ALL_20251106.csv` (loaded as "9th" in the script).

@@ -75,6 +75,14 @@ outputs.
 - Before initialisation, verify the mappings pipeline completed its frontier,
   relationship, and conservation checks and that no detached subtotal shares
   the same comparison frontier with its contributors.
+- A completed mappings pipeline with QA mismatches, anchor findings, unmapped
+  rows, or reported hierarchy failures is not by itself a blocker. Classify
+  those as findings and continue to initialisation when the required output
+  artifacts exist, are readable, and pass structural/integrity checks. Stop
+  only for missing or corrupt artifacts, failed workbook promotion, invalid
+  workbook structure/IDs, or an explicitly documented hard safety-gate
+  violation. Do not treat the words `validation`, `failed`, or `mismatch` in a
+  QA report as sufficient evidence to stop.
 - Keep full stdout and stderr logs on disk.
 - Verify the expected outputs before starting a dependent process.
 - Continue independent economies or workflows after an economy-specific
