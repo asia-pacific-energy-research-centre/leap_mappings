@@ -169,14 +169,15 @@ This workbook is the manual source of truth for reviewed QA exceptions. Workflow
 | `subtotal_mismatch_allowed` | Reviewed subtotal mismatch diagnostics that are acceptable |
 | `missing_common_map_ignored` | ESTO flows intentionally excluded from missing common-map diagnostics |
 | `source_mismatch_allowed` | Exact user-confirmed raw-source issues that annotate anchor failures without changing their numerical status or reason |
-| `source_mismatch_history` | Preserved legacy source-issue review evidence; never read operationally |
+| `source_mismatch_archive` | Preserved source-issue review history; never read operationally |
 
 The complete sheet-by-sheet inventory, including sheets retained only for the
 archived maintenance workflow, is maintained in `config/README.md`. In
 particular, `many_to_many_allowed`, `crosswalk_allowed`,
 `leap_source_presence_allowed`, `unmapped_esto_nonzero_allowed`, and
-`unmapped_ninth_nonzero_allowed` are legacy-only allowlists. They are not active
-Stage 0–3 inputs for new findings. `source_mismatch_history` is provenance only;
+`unmapped_ninth_nonzero_allowed` are legacy-only allowlists. They are not
+separate-axis or Stages 1–3 inputs for new findings.
+`source_mismatch_archive` is provenance only;
 operational source-anchor matching uses `source_mismatch_allowed`.
 
 The exception workbook is separate from both mapping workbooks. Maintain mapping
@@ -199,11 +200,12 @@ Rows with `enabled` set to true are used for matching. Blank match cells are ign
 `source_mismatch_allowed` deliberately does **not** use that broad matching
 contract. An operational row requires `enabled = true`,
 `review_status = confirmed`, a unique `exception_id`, a nonblank
-`issue_class`, and an exact economy/scenario/year/axis/parent/opposite-axis
-context. `parent_value` matches only across negligible float-serialization
-noise. Blank context fields, duplicate matches, and wildcards fail closed.
-Code may generate candidates, but a user must confirm a row before it becomes
-operational.
+`issue_class`, and an exact axis/parent/opposite-axis context. The
+`economy`, `scenario`, and `year` fields may each be the literal `all`; all
+other identity fields remain exact. `parent_value` matches only across
+negligible float-serialization noise. Blank context fields, duplicate
+matches, and prefix wildcards fail closed. Code may generate candidates, but a
+user must confirm a row before it becomes operational.
 
 Each current base mapping sheet records source-to-target relationships. The
 separate-axis first step replaces repeated pair-row editing with independent

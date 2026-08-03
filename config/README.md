@@ -73,8 +73,8 @@ allowlist.
 | `unmapped_ninth_nonzero_allowed` | Legacy-only | Archived non-zero unmapped 9th-pair review. |
 | `subtotal_label_overrides` | Active | Exact subtotal truth overrides used by subtotal contract/review workflows. |
 | `unmodelled_source_ignored` | Active | The shared authority for source sectors/fuels intentionally outside the model. |
-| `source_mismatch_allowed` | Active | Exact, reviewer-confirmed raw-source inconsistencies attached to source-anchor validation. These annotate evidence; they do not make a failed check pass or change its numerical result. |
-| `source_mismatch_history` | History | Preserved legacy source-review records; never used for operational matching. |
+| `source_mismatch_allowed` | Active | Reviewer-confirmed raw-source inconsistencies attached to source-anchor validation. These annotate evidence; they do not make a failed check pass or change its numerical result. Exact source identity is required; `economy`, `scenario`, and `year` may use `all`. |
+| `source_mismatch_archive` | Archive | Provenance-only records of superseded, migrated, or insufficiently scoped source reviews. Never used for operational matching. |
 
 The five legacy-only allowlists are not inputs to separate-axis generation or
 the active Stages 1–3 pipeline. They remain because
@@ -85,10 +85,16 @@ those sheets; use the active diagnostic's current exception mechanism instead.
 For ordinary exception sheets, `enabled = TRUE` activates a row and blank match
 fields can broaden a match. `missing_common_map_ignored` also supports `*`
 prefix matches. `source_mismatch_allowed` is deliberately stricter: it requires
-an enabled, confirmed row with a unique ID and an exact economy, scenario, year,
-axis, parent, opposite-axis context, and parent value. New source exceptions must
-therefore be copied from an exact reviewed candidate, not written as a broad
-wildcard.
+an enabled, confirmed row with a unique ID, an exact source system/axis/parent/
+opposite-axis context, and an exact `parent_value` apart from floating-point
+serialization noise for economy-specific reviews. The `economy`, `scenario`,
+and `year` fields may be set to the literal `all` when the same reviewed source
+issue applies across that dimension. For `economy = all`, `parent_value` is
+retained as APEC review evidence but is not a match key, because individual
+economies do not equal the APEC aggregate. Do not use `all` in the source
+identity fields or `parent_value`. A matching economy-specific review takes
+precedence over an `economy = all` review; duplicates at the same specificity
+remain invalid.
 
 ## `archive/`
 

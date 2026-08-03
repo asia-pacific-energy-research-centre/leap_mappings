@@ -142,7 +142,7 @@ The right move is to wait.
 
    **Current instruction:** after user review, write only exact contexts using
    the schema listed in item 2. Preserve older or insufficiently scoped
-   evidence in `source_mismatch_history`; do not leave broad rows operational.
+   evidence in `source_mismatch_archive`; do not leave broad rows operational.
 6. **Verify end-to-end** before committing:
    ```python
    from codebase.mapping_tools.source_parent_anchor_validation import _augment_with_data_quality_exceptions

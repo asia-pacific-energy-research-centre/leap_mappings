@@ -63,16 +63,17 @@ source_system + economy + scenario + year + validation_axis
 ```
 
 It must also have a unique `exception_id`, a nonblank `issue_class`,
-`enabled = true`, and `review_status = confirmed`. Wildcards and approximate
-one-percent value matching are not accepted. The small numerical tolerance is
-only for float serialization noise.
+`enabled = true`, and `review_status = confirmed`. The literal `all` may be
+used only in `economy`, `scenario`, or `year` to apply one reviewed issue over
+that dimension. Wildcards and approximate one-percent value matching are not
+accepted. The small numerical tolerance is only for float serialization noise.
 
 `comparison_scope` is intentionally absent from that key because the confirmed
 fact belongs to the raw source and can appear in more than one comparison
 scope. Duplicate operational matches fail closed rather than selecting an
 arbitrary exception.
 
-The adjacent `source_mismatch_history` sheet preserves superseded or
+The adjacent `source_mismatch_archive` sheet preserves superseded or
 insufficiently scoped review evidence. It is not read by the validator.
 
 ## Structural decision
