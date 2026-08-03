@@ -299,6 +299,11 @@ After rerunning the Common ESTO structure build, confirm that `12,13,14,16.01-16
   aggregate while the protected flow parent remains separate from its
   children. The generated shadow result has zero unsafe fan-outs; canonical
   defaults are unchanged.
+- 2026-08-03: Retained published `08 Transfers` parent observations in the
+  ESTO exact-row extract. Some economies, including the United States, report
+  non-zero transfer values on the subtotal parent while its `08.01-08.99`
+  child rows are zero or incomplete; dropping the parent removed all ESTO
+  transfer history from Common ESTO and the dashboard.
 
 ## MAP-008: Commercial services require an unallocated completion child
 

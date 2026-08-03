@@ -27,6 +27,26 @@ chart contains the expected 2023 Reference values for Hydro, Wind, Nuclear,
 Natural gas liquids, and Solar photovoltaics; 54 focused dashboard tests and
 publication readiness passed.
 
+## MAPQ-040 — Commit verified ESTO Transfers history fix
+
+**Status: complete; committed 2026-08-03 separately from the concurrent
+APEC anchor-validation and pair-registry work, as instructed below.**
+
+The ESTO exact-row extractor dropped the subtotal parent `08 Transfers`, even
+though some economies store their published transfer observations on that
+parent while the `08.01-08.99` children are zero or incomplete. The pending
+change retains that parent flow, adds a focused regression test, and documents
+the source-data exception in `mappings_system.md` and
+`special_rules_and_design_decisions.md`.
+
+Real-data verification completed on 2026-08-03: the canonical Common ESTO
+comparison was rebuilt, USA ESTO transfer rows now cover 1990-2023, the
+dashboard chart shows ESTO through 2022 and LEAP from 2023, 42 dashboard tests
+and 3 focused mapping tests passed, publication readiness passed for all 21
+economies, and page-noise analysis reported zero flagged pages. Commit only
+the transfer-retention hunks and their test/documentation changes; do not
+include the concurrent APEC anchor-validation or pair-registry work.
+
 This is the controlling queue for current work and handover preparation. It
 reconciles repository state, worktrees, recent commits, the older
 `improvement_todo.md`, active prompt files, and the documentation audit in

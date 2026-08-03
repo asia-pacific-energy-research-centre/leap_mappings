@@ -1709,7 +1709,7 @@ To include a new LEAP scenario in comparisons:
 
 ### Transfers
 
-On the ESTO side, `08 Transfers` is a real parent category in the hierarchy and requires no rollup rule — the detailed subflows (`08.01 Recycled products`, `08.02 Interproduct transfers`, `08.03 Products transferred`, `08.04 Gas separation`, `08.99 Transfers nonspecified`) aggregate to it naturally via the ESTO code hierarchy.
+On the ESTO side, `08 Transfers` is a real parent category in the hierarchy and requires no rollup rule — the detailed subflows are structurally its children (`08.01 Recycled products`, `08.02 Interproduct transfers`, `08.03 Products transferred`, `08.04 Gas separation`, `08.99 Transfers nonspecified`). Published observations are not always reconstructible from those children, however: some economies report non-zero values on `08 Transfers` while the child rows are zero or incomplete. The exact-row extraction therefore retains the reported `08 Transfers` parent even though it is marked as a subtotal. This is a source-data retention rule, not a new mapping or a sum of parent plus children.
 
 The rollup requirement is on the LEAP side. LEAP has no natural `Transfers` parent. Instead, transfers are modelled as transformation-style processes grouped by fuel function — upstream liquids movements, refinery and blending activity, and an unallocated remainder. This design was chosen to create meaningful economy-specific differentiation within LEAP rather than following ESTO's administrative categorisation, which organises transfers by type of transaction rather than by fuel group. As a result, LEAP transfer categories do not correspond to any individual ESTO `08.xx` subflow and cannot be mapped to them directly.
 

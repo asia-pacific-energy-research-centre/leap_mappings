@@ -113,6 +113,12 @@ ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_li
 # from their reviewed additive frontiers.
 ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 
+# Some ESTO parent flows contain the published observations even though they
+# are structurally marked as subtotals. In particular, 08 Transfers can be
+# non-zero while its 08.01-08.99 detail rows are zero or incomplete, so the
+# parent must survive the ordinary leaf-only extraction for Common ESTO.
+ESTO_RETAINED_SUBTOTAL_FLOW_LABELS = {"08 Transfers"}
+
 # Raw LEAP workbooks are owned by the sibling leap_initialisation repository.
 LEAP_EXPORTS_ROOT = resolve_balance_exports_root(require_exists=False)
 if not LEAP_EXPORTS_ROOT.is_dir():
@@ -741,7 +747,8 @@ def run_esto_exact_rows_for_path(
         [non_expanding_rows_df, expanding_rows_df], ignore_index=True
     )
 
-    df_leaf = select_esto_comparison_rows(df, reference_pairs, detached_esto_flows)
+    retained_esto_flows = detached_esto_flows | ESTO_RETAINED_SUBTOTAL_FLOW_LABELS
+    df_leaf = select_esto_comparison_rows(df, reference_pairs, retained_esto_flows)
     del df
     gc.collect()
 
