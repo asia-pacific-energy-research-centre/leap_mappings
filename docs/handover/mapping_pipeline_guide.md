@@ -28,7 +28,7 @@ It does not own LEAP import IDs or dashboard presentation.
 | `config/source_coverage_scopes.json` | source/scope relevance |
 | `config/all_demand_aggregated_components.json` | declared aggregate-demand membership |
 | `config/source_branch_fallback_rules.csv` | reviewed source fallback alternatives |
-| `data/00APEC_2025_low_with_subtotals.csv` | current ESTO historical source |
+| `data/00APEC_2024_low_with_subtotals.csv` | current ESTO historical source, aligned with `leap_initialisation` and the 9th Outlook base vintage |
 | `data/esto_extended.csv` | ESTO Extended source |
 | `data/merged_file_energy_ALL_20251106.csv` | current 9th Outlook source |
 | sibling LEAP balance-export tree | LEAP values parsed for comparison |

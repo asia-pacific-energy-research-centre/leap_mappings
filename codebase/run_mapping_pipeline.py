@@ -70,7 +70,7 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
 # ---------------------------------------------------------------------------
 
 WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
-ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
+ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv"
 ESTO_EXTENDED_CSV_PATH = REPO_ROOT / "data" / "esto_extended.csv"
 NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 SOURCE_BRANCH_FALLBACK_RULES_PATH = REPO_ROOT / "config" / "source_branch_fallback_rules.csv"

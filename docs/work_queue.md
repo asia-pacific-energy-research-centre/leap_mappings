@@ -50,6 +50,7 @@ task rationale remains preserved below.
 | MAPQ-014/015 | The maintained handover guides and data-contract reference landed in `861dba5`; the older `cross_repository_handover_index.md` is now a dated evidence snapshot. MAPQ-022 is still needed to prove the guides from a clean checkout. |
 | Prompt inventory | Completed and superseded prompt packs were preservation-archived in the exhaustive documentation pass. `docs/prompts/AGENTS.md` is the current active inventory. |
 | MAPQ-026 | `codebase/run_mapping_pipeline_delayed.ps1` was removed by `ac33daa`. The remaining variant-workbook decision concerns review evidence/column recovery and the active MAPQ-010 prompt, not a live delayed runner. |
+| ESTO source alignment | **Complete in the 2026-08-03 source-alignment worktree:** the dashboard-producing ESTO adapter now defaults to `00APEC_2024_low_with_subtotals.csv`, matching `leap_initialisation` and the 9th Outlook historical base vintage. The 2025 table remains an explicit comparison input rather than the dashboard default. |
 
 See
 [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md)
