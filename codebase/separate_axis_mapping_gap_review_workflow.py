@@ -693,15 +693,31 @@ def prepare_gap_review_sources() -> dict[str, object]:
     return manifest
 
 
+def run_gap_review_workflow() -> dict[str, object]:
+    """Prepare review tables and build the formatted workbook in Python."""
+    from codebase.separate_axis_mapping_gap_review_workbook_builder import (
+        build_gap_review_workbook,
+    )
+
+    manifest = prepare_gap_review_sources()
+    workbook_path = build_gap_review_workbook()
+    manifest["workbook_path"] = str(workbook_path)
+    return manifest
+
+
 # --- Frequently changed run flag -------------------------------------------
 
 PREPARE_GAP_REVIEW_SOURCES = True
+BUILD_GAP_REVIEW_WORKBOOK = True
 
 
 #%%
 if PREPARE_GAP_REVIEW_SOURCES:
     try:
-        GAP_REVIEW_MANIFEST = prepare_gap_review_sources()
+        if BUILD_GAP_REVIEW_WORKBOOK:
+            GAP_REVIEW_MANIFEST = run_gap_review_workflow()
+        else:
+            GAP_REVIEW_MANIFEST = prepare_gap_review_sources()
         print(json.dumps(GAP_REVIEW_MANIFEST, indent=2))
     except Exception as error:
         print("Failed to prepare separate-axis gap review sources.")

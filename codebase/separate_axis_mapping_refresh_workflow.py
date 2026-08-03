@@ -3,7 +3,7 @@
 
 The editable single-axis workbook is never rebuilt during an ordinary refresh.
 This workflow compiles fresh evidence, prepares narrow workbook source tables,
-uses the maintained artifact-tool builder, reopens the generated workbooks,
+uses the maintained Python workbook builder, reopens the generated workbooks,
 and promotes the validated compatibility workbook to the canonical filename.
 """
 
@@ -11,7 +11,6 @@ and promotes the validated compatibility workbook to the canonical filename.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import traceback
@@ -23,9 +22,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-ARTIFACT_BUILDER_PATH = (
-    REPO_ROOT / "codebase" / "separate_axis_mapping_workbooks_artifact_builder.mjs"
-)
 EDITABLE_AXIS_WORKBOOK_PATH = (
     REPO_ROOT / "config" / "outlook_mappings_single_axis.xlsx"
 )
@@ -41,7 +37,7 @@ GENERATION_MANIFEST_PATH = (
 REFRESH_OUTPUT_ROOT = (
     REPO_ROOT / "outputs" / "separate_axis_mapping_refresh"
 )
-BUILDER_LOG_PATH = REFRESH_OUTPUT_ROOT / "workbooks" / "artifact_builder.log"
+BUILDER_LOG_PATH = REFRESH_OUTPUT_ROOT / "workbooks" / "python_builder.log"
 EDITABLE_DUPLICATE_AUDIT_PATH = (
     REFRESH_OUTPUT_ROOT
     / "workbooks"
@@ -50,29 +46,6 @@ EDITABLE_DUPLICATE_AUDIT_PATH = (
 
 
 # --- Functions --------------------------------------------------------------
-
-def _resolve_node_executable(node_executable: str | Path | None) -> Path:
-    """Resolve the explicitly supplied artifact-tool Node runtime."""
-    candidate = (
-        Path(node_executable)
-        if node_executable is not None
-        else Path(
-            os.environ.get(
-                "CODEX_ARTIFACT_NODE",
-                (
-                    "C:/Users/Work/.cache/codex-runtimes/"
-                    "codex-primary-runtime/dependencies/node/bin/node.exe"
-                ),
-            )
-        )
-    )
-    if not candidate.exists():
-        raise FileNotFoundError(
-            "Artifact-tool Node executable not found. Pass node_executable "
-            f"explicitly or set CODEX_ARTIFACT_NODE: {candidate}"
-        )
-    return candidate.resolve()
-
 
 def _tail_text(path: Path, line_count: int = 40) -> str:
     """Return a bounded log tail for failures and notebook feedback."""
@@ -101,49 +74,38 @@ def _git_head_mapping_hash() -> str | None:
     return hashlib.sha256(completed.stdout).hexdigest()
 
 
-def _run_artifact_builder(
-    node_executable: Path,
+def _run_python_workbook_builder(
     promote_master: bool,
     rebuild_editable_workbook: bool,
 ) -> None:
     """Build, reopen, validate, and optionally promote the workbooks."""
-    BUILDER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "SEPARATE_AXIS_REPO_ROOT": str(REPO_ROOT),
-            "BUILD_EDITABLE": str(bool(rebuild_editable_workbook)).lower(),
-            "BUILD_PAIRS": "true",
-            "BUILD_MASTER": "true",
-            "VERIFY_PAIRS": "true",
-            "PROMOTE_MASTER": str(bool(promote_master)).lower(),
-            "CLEAN_EDITABLE_DUPLICATES": "true",
-        }
+    from codebase.separate_axis_mapping_workbooks_builder import (
+        build_separate_axis_mapping_workbooks,
     )
+
+    BUILDER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     git_head_mapping_hash = _git_head_mapping_hash()
-    if git_head_mapping_hash is not None:
-        environment["ORIGINAL_CANONICAL_MASTER_SHA256"] = git_head_mapping_hash
-    with BUILDER_LOG_PATH.open("w", encoding="utf-8") as log_file:
-        completed = subprocess.run(
-            [str(node_executable), str(ARTIFACT_BUILDER_PATH)],
-            cwd=REPO_ROOT,
-            env=environment,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            check=False,
-            text=True,
+    try:
+        result = build_separate_axis_mapping_workbooks(
+            promote_master=promote_master,
+            rebuild_editable_workbook=rebuild_editable_workbook,
+            clean_editable_duplicates=True,
+            original_canonical_master_sha256=git_head_mapping_hash,
         )
-    if completed.returncode != 0:
-        print(_tail_text(BUILDER_LOG_PATH))
-        raise RuntimeError(
-            "Separate-axis artifact builder failed with exit code "
-            f"{completed.returncode}. See {BUILDER_LOG_PATH}"
+        BUILDER_LOG_PATH.write_text(
+            json.dumps(result, indent=2, default=str),
+            encoding="utf-8",
         )
+    except Exception as error:
+        BUILDER_LOG_PATH.write_text(
+            f"{type(error).__name__}: {error}\n",
+            encoding="utf-8",
+        )
+        raise
     print(_tail_text(BUILDER_LOG_PATH, line_count=12))
 
 
 def run_separate_axis_mapping_refresh(
-    node_executable: str | Path | None = None,
     historical_boundary_year: int = 2023,
     force_leap_registry_refresh: bool = False,
     promote_master: bool = True,
@@ -169,8 +131,7 @@ def run_separate_axis_mapping_refresh(
         force_leap_registry_refresh=force_leap_registry_refresh,
     )
     split_manifest = prepare_split_workbook_sources()
-    _run_artifact_builder(
-        node_executable=_resolve_node_executable(node_executable),
+    _run_python_workbook_builder(
         promote_master=promote_master,
         rebuild_editable_workbook=rebuild_editable_workbook,
     )
@@ -219,17 +180,12 @@ FORCE_LEAP_REGISTRY_REFRESH = False
 PROMOTE_MASTER = True
 # Use True only for an intentional editable-workbook format/README migration.
 REBUILD_EDITABLE_WORKBOOK = False
-NODE_EXECUTABLE = (
-    "C:/Users/Work/.cache/codex-runtimes/"
-    "codex-primary-runtime/dependencies/node/bin/node.exe"
-)
 
 
 #%%
 if __name__ == "__main__" and RUN_SEPARATE_AXIS_MAPPING_REFRESH:
     try:
         REFRESH_RESULT = run_separate_axis_mapping_refresh(
-            node_executable=NODE_EXECUTABLE,
             historical_boundary_year=HISTORICAL_BOUNDARY_YEAR,
             force_leap_registry_refresh=FORCE_LEAP_REGISTRY_REFRESH,
             promote_master=PROMOTE_MASTER,

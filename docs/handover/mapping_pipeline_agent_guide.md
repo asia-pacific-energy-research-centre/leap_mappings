@@ -10,7 +10,7 @@ Use this runbook only after reading `AGENTS.md`,
 
 | Workflow | Entry point | Supporting modules | Inputs | Outputs | Workbook mutation |
 |---|---|---|---|---|---|
-| Separate-axis generation | `separate_axis_mapping_refresh_workflow.py` | compiler, pair registries, workbook-source workflow, artifact builder | editable axes/extras/exceptions/rollups, data evidence, templates | generated pair evidence, canonical compatibility master, generation manifest | refresh normalizes editable duplicate rows and copies editable rollup sheets into the generated master |
+| Separate-axis generation | `separate_axis_mapping_refresh_workflow.py` | compiler, pair registries, workbook-source workflow, Python/openpyxl workbook builder | editable axes/extras/exceptions/rollups, data evidence, templates | generated pair evidence, canonical compatibility master, generation manifest | refresh normalizes editable duplicate rows and copies editable rollup sheets into the generated master |
 | Stage 1 | relationship builder | rollups, exception/coverage helpers | mapping/rollup sheets | `results/mapping_relationships` | no |
 | Stage 2 | Common structure builder | structural resolver, non-expanding rollups | relationships, overrides/exclusions | `results/common_esto` structure/QA | no |
 | LEAP parse | orchestrator `run_leap_parse` | balance-export resolver/parser | sibling balance exports | raw long LEAP CSV | no |

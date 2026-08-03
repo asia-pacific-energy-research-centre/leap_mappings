@@ -393,16 +393,16 @@ The production entrypoint is:
 `codebase/separate_axis_mapping_refresh_workflow.py`
 
 It uses `#%%` cells and repository-relative paths. Its bottom cell compiles the
-contract, prepares workbook source tables, invokes the artifact builder,
-reopens and validates the outputs, and promotes the canonical compatibility
-workbook.
+contract, prepares workbook source tables, invokes the Python/openpyxl workbook
+builder, reopens and validates the outputs, and promotes the canonical
+compatibility workbook.
 
-The artifact builder is
-`codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`. It must use
-the bundled `@oai/artifact-tool` runtime. Build the editable workbook only for
-an intentional bootstrap or format migration; ordinary refreshes rebuild the
-generated pair workbook and compatibility master while leaving the user-edited
-workbook untouched.
+The workbook builder is
+`codebase/separate_axis_mapping_workbooks_builder.py`. It has no Node or
+Codex-managed JavaScript runtime dependency. Build the editable workbook only
+for an intentional bootstrap or format migration; ordinary refreshes rebuild
+the generated pair workbook and compatibility master while leaving the
+user-edited workbook untouched.
 
 The ordinary mapping run is:
 
