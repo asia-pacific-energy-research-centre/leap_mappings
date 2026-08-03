@@ -8,7 +8,7 @@
 
 ## MAPQ-039 — Restore Energy Balance-only Production products
 
-**Status: registry/compiler fix verified 2026-08-03; workbook promotion pending.**
+**Status: complete and verified end to end 2026-08-03.**
 
 The generated LEAP pair registry previously derived its global Energy Balance
 product catalogue only from fuels below `Demand\All demand aggregated`. This
@@ -17,12 +17,15 @@ Hydro, Natural gas liquids, Nuclear, Solar photovoltaics, and Wind. The USA
 dashboard consequently omitted the latter five from post-base-year production.
 
 Registry version 5 adds these report-only products to the fixed balance
-catalogue. The focused regression test passes, and the refreshed compiler
-outputs contain all six `Production` relationships on both the ESTO and Ninth
-axes. Promote those outputs into `outlook_mappings_master.xlsx`, then complete
-Stages 1–3 and the USA dashboard render once the required bundled
-`@oai/artifact-tool` runtime is available. Finally verify that converted LEAP
-production rows and dashboard totals include all five USA products.
+catalogue. The focused regression test passes, and the refreshed compiler and
+canonical workbook contain all six `Production` relationships on both the ESTO
+and Ninth axes. The canonical workbook was promoted through an explicitly
+user-authorized `openpyxl` fallback after the bundled `@oai/artifact-tool`
+runtime proved unavailable. Stages 1–3 then completed with 100% mapped-value
+preservation in all ten scope/source combinations. The rerendered USA Supply
+chart contains the expected 2023 Reference values for Hydro, Wind, Nuclear,
+Natural gas liquids, and Solar photovoltaics; 54 focused dashboard tests and
+publication readiness passed.
 
 This is the controlling queue for current work and handover preparation. It
 reconciles repository state, worktrees, recent commits, the older
