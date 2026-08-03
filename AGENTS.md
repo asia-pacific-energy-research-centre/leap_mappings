@@ -169,8 +169,10 @@ structure in mind when adding new transformations or debugging data issues.
 ### ESTO (Matt) structure (flow/product table)
 
 - Primary source file:
-  `data/00APEC_2025_low_with_subtotals.csv`. The maintained 2024-with-subtotals
-  file is also checked by Stage 0 where a second ESTO vintage is required.
+  `data/00APEC_2024_low_with_subtotals.csv`, matching the configured
+  `leap_initialisation` base table and the historical vintage embedded in the
+  9th Outlook input. The maintained 2025-with-subtotals file remains available
+  for explicit cross-vintage review.
 - Key columns:
   - `economy`
   - `flows` (balance rows like production, transformation, own use, losses)
