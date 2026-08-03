@@ -50,6 +50,7 @@ valid-pair authority investigation.
 | `review_non_expanding_vs_detached_rollups_prompt.md` | Active review | Review every live manual rollup mode under MAPQ-010. Repoint any absent optional evidence to the canonical workbook before use. |
 | `run_mapping_pipeline_future_prompt.md` | Reusable run procedure | Use for a requested current run. First reconcile it with the maintained agent runbook and verify workbook/process state. |
 | `set_blank_ninth_fuel_mappings_prompt.md` | Active human decision | Review the three blank `ninth_fuel` rows under MAPQ-027; do not write the workbook without approval. |
+| `leap_review_tools_portable_release_implementation_prompt_20260803.md` | Active implementation prompt | Build a developer-linked launcher and reproducible portable-release workflow for dashboard and balance-review tools. |
 
 `AGENTS.md` itself is an instruction/inventory file, not a runnable prompt.
 
