@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.leap_pair_registry import (
+    FIXED_BALANCE_PRODUCTS,
     derive_leap_balance_structure,
 )
 
@@ -61,6 +62,18 @@ def test_generated_balance_registry_uses_canonical_stock_flow_name() -> None:
 
     assert "Stock Changes" in set(flows["flow"])
     assert "From Stocks" not in set(flows["flow"])
+
+
+def test_generated_balance_registry_includes_report_only_products() -> None:
+    _, catalogue = derive_leap_balance_structure(
+        [],
+        source_kind="test",
+        source_id="test",
+        source_sheet="Export",
+        include_fixed_flows=True,
+    )
+
+    assert set(catalogue["product"]) == FIXED_BALANCE_PRODUCTS
 
 
 def test_shifted_buildings_fuel_relations_are_not_global_axis_mappings() -> None:

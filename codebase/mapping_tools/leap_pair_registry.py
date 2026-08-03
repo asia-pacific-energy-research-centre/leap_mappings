@@ -30,7 +30,7 @@ FUEL_ROLE_LABELS = {
     "Output Fuels",
 }
 LEGACY_BRANCH_SUFFIX = "_do not use"
-LEAP_PAIR_REGISTRY_VERSION = 4
+LEAP_PAIR_REGISTRY_VERSION = 5
 FIXED_BALANCE_FLOWS = {
     "Production",
     "Imports",
@@ -41,6 +41,20 @@ FIXED_BALANCE_FLOWS = {
     "Statistical Differences",
     "Total Final Energy Demand",
     "Unmet Requirements",
+}
+
+# LEAP Energy Balance reports contain several primary-energy/product columns
+# that do not appear below ``Demand\All demand aggregated``.  Keep them in the
+# structural report catalogue so fixed rows such as Production can be mapped.
+# The observed-results registry QA confirms that each of these exact products
+# occurs in current LEAP balance exports.
+FIXED_BALANCE_PRODUCTS = {
+    "Additives and oxygenates",
+    "Hydro",
+    "Natural gas liquids",
+    "Nuclear",
+    "Solar photovoltaics",
+    "Wind",
 }
 
 PAIR_COLUMNS = [
@@ -374,6 +388,16 @@ def derive_leap_balance_structure(
     if include_fixed_flows:
         for flow in sorted(FIXED_BALANCE_FLOWS):
             add_flow(flow, "", "fixed_balance_flow")
+        for product in sorted(FIXED_BALANCE_PRODUCTS):
+            fuel_records.append(
+                {
+                    "product": product,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                    "source_sheet": source_sheet,
+                    "branch_path": "",
+                }
+            )
 
     for branch_path in _leaf_paths(paths):
         parts = branch_path.split("\\")
