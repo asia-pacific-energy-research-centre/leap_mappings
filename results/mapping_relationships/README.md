@@ -31,6 +31,8 @@ verified core, not a complete file listing.
 | `leap_source_branch_fallback_audit.csv`, `leap_all_demand_aggregated_overlap_warnings.csv` | From the source-branch fallback preflight — flags interim-branch substitutions and "all demand aggregated" overlaps. |
 | `ninth_results_converted_to_esto.csv`, `ninth_source_to_esto_component_lineage.csv` | Same conversion/lineage pattern for 9th Outlook rows. |
 | `esto_results_exact_rows.csv` | ESTO's own non-subtotal rows prepared as long-format rows (plus derived non-expanding subtotal rows), for comparison alongside the two conversions above. |
+| `esto_extended_results_exact_rows.csv` | The same preparation applied to the ESTO Extended dataset. Rows must carry `source_system = ESTO_EXTENDED`, including the derived rollup rows. |
+| `qa_esto_exact_rows_source_identity.csv` | Row counts per `source_system` per exact-rows output (derived rollup rows split out). Guards against the ESTO/ESTO_EXTENDED double-count: derived rollup rows are generated in-process, and if they keep an `ESTO` identity inside the Extended artifact, Stage 3 counts those flows twice and ordinary-ESTO values double. `matches_expected = False` on any row means the run aborted before writing that artifact. |
 
 ## QA (Stage 1)
 

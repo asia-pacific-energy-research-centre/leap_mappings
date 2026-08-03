@@ -107,6 +107,9 @@ ESTO_EXTENDED_DELTA_MANIFEST_PATH = (
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
 ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv.gz"
+ESTO_EXACT_ROWS_SOURCE_IDENTITY_QA_PATH = (
+    REL_DIR / "qa_esto_exact_rows_source_identity.csv"
+)
 
 # Aggregate comparisons that require the exact ESTO parent alongside the
 # ordinary non-subtotal frontier. Other dashboard totals are currently built
@@ -702,6 +705,7 @@ def run_esto_exact_rows_for_path(
     # plants" that the leaf filter below removes).
     from codebase.mapping_tools.non_expanding_rollups import (
         build_esto_non_expanding_subtotal_rows,
+        guard_esto_exact_rows_source_identity,
         load_non_expanding_rollup_rules,
         split_rollup_rules,
     )
@@ -770,9 +774,25 @@ def run_esto_exact_rows_for_path(
         long_df["non_expanding_rollup_id"] = ""
         long_df = pd.concat([long_df, non_expanding_rows_df], ignore_index=True)
 
+    # Regression guard: derived rollup rows are built here, not read from the
+    # source CSV, so a hard-coded identity would land ESTO rows inside the
+    # Extended artifact and double every affected flow downstream.
+    identity_summary = guard_esto_exact_rows_source_identity(
+        long_df,
+        output_path,
+        source_system,
+        qa_path=ESTO_EXACT_ROWS_SOURCE_IDENTITY_QA_PATH,
+        repo_root=REPO_ROOT,
+    )
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     long_df.to_csv(output_path, index=False)
     print(f"  {source_system} exact rows: {exact_row_count:,} -> {output_path.relative_to(REPO_ROOT)}")
+    for row in identity_summary.itertuples():
+        print(
+            f"  source_system={row.source_system}: {row.row_count:,} rows "
+            f"({row.derived_rollup_row_count:,} derived rollup)"
+        )
     print(f"  Derived non-expanding subtotal rows appended: {len(non_expanding_rows_df):,}")
     print(f"  Configured rollup reference pairs retained: {len(reference_pairs):,}")
 

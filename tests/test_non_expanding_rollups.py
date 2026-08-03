@@ -16,14 +16,17 @@ from codebase.mapping_tools.build_common_esto_structure import (
 )
 from codebase.mapping_tools.build_energy_balance_relationships import build_esto_overrides
 from codebase.mapping_tools.non_expanding_rollups import (
+    EstoExactRowsSourceIdentityError,
     build_esto_non_expanding_subtotal_rows,
     build_non_expanding_rollup_catalogue,
     build_unresolved_non_expanding_qa,
+    guard_esto_exact_rows_source_identity,
     is_non_expanding_rule_row,
     get_rollup_mode,
     load_rollup_source_flow_modes,
     non_expanding_rollup_id,
     split_non_expanding_rules,
+    summarise_esto_exact_rows_source_identity,
 )
 
 
@@ -521,6 +524,154 @@ class TestScenario7SuppressedEdges:
             "15.02.01 Passenger road",
             "15.02.02 Freight road",
         }
+
+
+class TestExactRowsSourceIdentityGuard:
+    """Regression guard for the ESTO/ESTO_EXTENDED double-count (commit eb3a293).
+
+    Derived rollup rows are generated in-process, so a hard-coded identity puts
+    ``ESTO`` rows inside the Extended artifact and Stage 3 counts those flows
+    twice. The guard must fail the run and leave a readable QA artifact.
+    """
+
+    def _long_rows(self, source_systems: list[str], rollup_ids: list[str]) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "economy": ["01AUS"] * len(source_systems),
+                "esto_flow": ["09.01.01,09.02.01 Electricity plants"] * len(source_systems),
+                "esto_product": ["01.05 Lignite"] * len(source_systems),
+                "year": [2023] * len(source_systems),
+                "value": [1.0] * len(source_systems),
+                "source_system": source_systems,
+                "scenario": ["historical"] * len(source_systems),
+                "non_expanding_rollup_id": rollup_ids,
+            }
+        )
+
+    def test_summary_splits_derived_and_exact_rows(self, tmp_path) -> None:
+        long_df = self._long_rows(
+            ["ESTO_EXTENDED", "ESTO_EXTENDED", "ESTO"],
+            ["", "nonexp_09_01_01_09_02_01_electricity_plants", "nonexp_09_01_01_09_02_01_electricity_plants"],
+        )
+
+        summary = summarise_esto_exact_rows_source_identity(
+            long_df,
+            tmp_path / "results" / "esto_extended_results_exact_rows.csv",
+            "ESTO_EXTENDED",
+            repo_root=tmp_path,
+        )
+
+        by_system = summary.set_index("source_system")
+        assert by_system.loc["ESTO_EXTENDED", "row_count"] == 2
+        assert by_system.loc["ESTO_EXTENDED", "derived_rollup_row_count"] == 1
+        assert by_system.loc["ESTO_EXTENDED", "exact_row_count"] == 1
+        assert by_system.loc["ESTO", "row_count"] == 1
+        assert bool(by_system.loc["ESTO_EXTENDED", "matches_expected"])
+        assert not bool(by_system.loc["ESTO", "matches_expected"])
+        # Paths are recorded relative to the repo root so the QA file is portable.
+        assert set(summary["output_file"]) == {"results/esto_extended_results_exact_rows.csv"}
+
+    def test_clean_extended_frame_passes_and_writes_qa(self, tmp_path) -> None:
+        qa_path = tmp_path / "qa_esto_exact_rows_source_identity.csv"
+        long_df = self._long_rows(
+            ["ESTO_EXTENDED", "ESTO_EXTENDED"],
+            ["", "nonexp_09_01_01_09_02_01_electricity_plants"],
+        )
+
+        guard_esto_exact_rows_source_identity(
+            long_df,
+            tmp_path / "esto_extended_results_exact_rows.csv",
+            "ESTO_EXTENDED",
+            qa_path=qa_path,
+            repo_root=tmp_path,
+        )
+
+        written = pd.read_csv(qa_path)
+        assert list(written["source_system"]) == ["ESTO_EXTENDED"]
+        assert written["matches_expected"].all()
+        assert written["row_count"].sum() == 2
+
+    def test_stray_ordinary_esto_rows_fail_the_run(self, tmp_path) -> None:
+        qa_path = tmp_path / "qa_esto_exact_rows_source_identity.csv"
+        long_df = self._long_rows(
+            ["ESTO_EXTENDED", "ESTO"],
+            ["", "nonexp_09_01_01_09_02_01_electricity_plants"],
+        )
+
+        try:
+            guard_esto_exact_rows_source_identity(
+                long_df,
+                tmp_path / "esto_extended_results_exact_rows.csv",
+                "ESTO_EXTENDED",
+                qa_path=qa_path,
+                repo_root=tmp_path,
+            )
+        except EstoExactRowsSourceIdentityError as exc:
+            assert "ESTO" in str(exc)
+        else:  # pragma: no cover - the guard must not stay silent
+            raise AssertionError("expected EstoExactRowsSourceIdentityError")
+
+        # The QA artifact is written before the raise so the failure is inspectable.
+        written = pd.read_csv(qa_path)
+        offenders = written[~written["matches_expected"]]
+        assert list(offenders["source_system"]) == ["ESTO"]
+        assert int(offenders["derived_rollup_row_count"].iloc[0]) == 1
+
+    def test_qa_file_keeps_other_outputs_and_replaces_own_rows(self, tmp_path) -> None:
+        qa_path = tmp_path / "qa_esto_exact_rows_source_identity.csv"
+        guard_esto_exact_rows_source_identity(
+            self._long_rows(["ESTO"], [""]),
+            tmp_path / "esto_results_exact_rows.csv",
+            "ESTO",
+            qa_path=qa_path,
+            repo_root=tmp_path,
+        )
+        guard_esto_exact_rows_source_identity(
+            self._long_rows(["ESTO_EXTENDED"], [""]),
+            tmp_path / "esto_extended_results_exact_rows.csv",
+            "ESTO_EXTENDED",
+            qa_path=qa_path,
+            repo_root=tmp_path,
+        )
+        # Rerunning the ordinary output must replace, not duplicate, its entry.
+        guard_esto_exact_rows_source_identity(
+            self._long_rows(["ESTO", "ESTO"], ["", ""]),
+            tmp_path / "esto_results_exact_rows.csv",
+            "ESTO",
+            qa_path=qa_path,
+            repo_root=tmp_path,
+        )
+
+        written = pd.read_csv(qa_path)
+        assert len(written) == 2
+        by_file = written.set_index("output_file")
+        assert by_file.loc["esto_results_exact_rows.csv", "row_count"] == 2
+        assert by_file.loc["esto_extended_results_exact_rows.csv", "row_count"] == 1
+
+    def test_default_source_system_derived_rows_are_caught_in_extended_output(
+        self, tmp_path
+    ) -> None:
+        """The exact pre-eb3a293 defect: derived rows built without the override."""
+        rules = _esto_rules({"NON_EXPANDING_ROLLUP": "True"})
+        _, non_expanding = split_non_expanding_rules(rules)
+        esto_wide = pd.DataFrame(
+            [{"economy": "01AUS", "flows": "16.03 Agriculture", "products": "07.07 Gas/diesel oil", "2020": 5.0}]
+        )
+        derived = build_esto_non_expanding_subtotal_rows(esto_wide, non_expanding, ["2020"])
+        extended_exact = self._long_rows(["ESTO_EXTENDED"], [""])
+        long_df = pd.concat([extended_exact, derived], ignore_index=True)
+
+        try:
+            guard_esto_exact_rows_source_identity(
+                long_df,
+                tmp_path / "esto_extended_results_exact_rows.csv",
+                "ESTO_EXTENDED",
+                qa_path=tmp_path / "qa.csv",
+                repo_root=tmp_path,
+            )
+        except EstoExactRowsSourceIdentityError:
+            return
+        raise AssertionError("expected the hard-coded ESTO identity to be rejected")
 
 
 class TestUnresolvedQa:
