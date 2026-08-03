@@ -6,6 +6,40 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-041 — Separate ESTO Extended anchor provenance and rebuild review output
+
+**Status: implementation and strict-tolerance real-data rerun complete 2026-08-03; workbook export blocked by missing loader-provided `@oai/artifact-tool`.**
+
+Base ESTO and ESTO Extended trees must retain distinct dataset identities so
+ordinary ESTO anchors cannot expand through Extended-only technology branches.
+The two zero-filled Extended comparison scopes are numerically skipped with an
+explicit reason while their structural checks remain active. A scope-period
+availability guard prevents absent comparison years from becoming numerical
+failures. Acceptance requires the focused validator/APEC tests, a corrected
+APEC-first real-data run, confirmation that the Australia transformation
+example no longer contains Extended-only children, and a regenerated
+`apec_anchor_validation_review.xlsx`.
+
+The strict APEC rerun uses an absolute `0.01 PJ` gate. It recovered every
+previously hidden active-scope LEAP signature and every active-scope Ninth
+signature for which an APEC row exists, while ordinary ESTO remained clean.
+The remaining legacy-only set consists of skipped ESTO Extended scopes, 46
+superseded ESTO findings that pass with the corrected tree, four ESTO
+signatures with no APEC row, and ten Ninth signatures with no APEC row.
+
+**Follow-up completed 2026-08-03:** A directly mapped, literally observed raw
+source parent/children mismatch is now retained as
+`parent_child_source_inconsistency` even when its active Common ESTO boundary
+is unavailable. The validator records the independent raw frontier sum and
+gap, retains shared-source grouping through the maintained direct ESTO target,
+and expands grouped APEC signatures before targeted economy attribution. The
+real-data rerun restores all ten scenario/year checks for Ninth
+`09_total_transformation_sector` with
+`16_09_other_sources + 16_others_unallocated`; `05PRC` is again a failed
+economy example with a zero raw child frontier. Focused verification: 58 tests
+passed. Evidence is in
+`outputs/apec_anchor_validation_raw_source_fix_final/`.
+
 ## MAPQ-039 — Restore Energy Balance-only Production products
 
 **Status: complete and verified end to end 2026-08-03.**

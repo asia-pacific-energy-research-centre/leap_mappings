@@ -27,7 +27,9 @@ from codebase.mapping_tools.source_parent_anchor_validation import (
     select_source_parent_anchor_findings,
     summarise_failed_anchor_raw_child_context_values,
     summarise_source_parent_anchors,
-    validate_source_parent_anchors,
+)
+from codebase.mapping_tools.apec_anchor_validation import (
+    validate_source_parent_anchors_apec_first,
 )
 
 
@@ -162,7 +164,7 @@ def run_anchor_validation_only(
         workbook_path,
         source_branch_fallback_rules_path,
     )
-    detail = validate_source_parent_anchors(
+    anchor_result = validate_source_parent_anchors_apec_first(
         source_df=source_df,
         source_tree_df=validation_tree,
         source_mapping_df=source_mapping,
@@ -172,10 +174,12 @@ def run_anchor_validation_only(
         unmodelled_source_codes=load_unmodelled_source_codes(),
         exclude_parents=excluded_parents,
     )
+    detail = anchor_result["apec_detail"]
+    economy_examples = anchor_result["economy_examples"]
 
     child_context = build_failed_anchor_raw_child_context_values(
         detail,
-        source_df,
+        anchor_result["apec_source"],
         validation_tree,
     )
     child_values = summarise_failed_anchor_raw_child_context_values(
@@ -187,12 +191,26 @@ def run_anchor_validation_only(
             validation_tree,
             source_mapping,
             common_rows,
+            anchor_result["apec_comparison"],
+        )
+    )
+    economy_child_context = build_failed_anchor_raw_child_context_values(
+        economy_examples,
+        source_df,
+        validation_tree,
+    )
+    economy_mapped_component_context = (
+        build_failed_anchor_mapped_component_context_values(
+            economy_examples,
+            validation_tree,
+            source_mapping,
+            common_rows,
             comparison,
         )
     )
     leaf_candidates = build_leaf_reconciliation_exception_candidates(
         detail,
-        source_df,
+        anchor_result["apec_source"],
         validation_tree,
     )
     summary = summarise_source_parent_anchors(detail)
@@ -204,10 +222,15 @@ def run_anchor_validation_only(
         ),
         "source_parent_anchor_validation_full": detail,
         "source_parent_anchor_validation_summary": summary,
+        "source_parent_anchor_economy_examples": economy_examples,
         "source_parent_anchor_child_values": child_values,
         "source_parent_anchor_child_context_values": child_context,
         "source_parent_anchor_mapped_component_context_values": (
             mapped_component_context
+        ),
+        "source_parent_anchor_economy_child_context_values": economy_child_context,
+        "source_parent_anchor_economy_mapped_component_context_values": (
+            economy_mapped_component_context
         ),
         "source_parent_anchor_leaf_reconciliation_candidates": leaf_candidates,
     }

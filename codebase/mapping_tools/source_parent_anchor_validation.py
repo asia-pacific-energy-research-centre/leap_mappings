@@ -27,6 +27,17 @@ from codebase.mapping_tools.dataset_registry import get_comparison_scope_systems
 
 COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 NONZERO_SOURCE_EVIDENCE_TOLERANCE = 1e-12
+SOURCE_TREE_DATASET_BY_SYSTEM = {
+    "ESTO": "esto",
+    "ESTO_EXTENDED": "esto_extended",
+    "NINTH": "ninth",
+    "LEAP": "leap",
+}
+NUMERICALLY_SKIPPED_COMPARISON_SCOPES = {
+    "esto_extended_leap",
+    "esto_extended_leap_ninth",
+}
+ESTO_EXTENDED_SKIP_REASON = "skipped_esto_extended_unpopulated"
 
 
 ANCHOR_COLUMNS = [
@@ -39,6 +50,8 @@ ANCHOR_COLUMNS = [
     "parent_positive_value", "parent_negative_value", "frontier_positive_sum",
     "frontier_negative_sum", "source_non_additivity_observed",
     "source_non_additivity_observation_reason",
+    "raw_source_frontier_sum", "raw_source_difference",
+    "raw_source_frontier_row_count", "raw_source_hierarchy_mismatch",
 ]
 
 ANCHOR_CHILD_VALUE_COLUMNS = [
@@ -72,6 +85,8 @@ ANCHOR_EXCEPTION_COLUMNS = [
 ]
 CONFIRMED_EXCEPTION_REVIEW_STATUS = "confirmed"
 CONFIRMED_EXCEPTION_NUMERIC_TOLERANCE = 1e-9
+CONFIRMED_EXCEPTION_ALL_TOKEN = "all"
+CONFIRMED_EXCEPTION_ALL_COLUMNS = frozenset({"economy", "scenario", "year"})
 
 LEAF_RECONCILIATION_CANDIDATE_COLUMNS = [
     "enabled", "source_system", "validation_axis", "parent_code", "other_axis_value",
@@ -89,6 +104,69 @@ def _normalize_economy(economy: pd.Series) -> pd.Series:
     it so source and comparison rows join on a single code form.
     """
     return economy.astype(str).str.replace("_", "", regex=False)
+
+
+def _source_tree_dataset(source_system: str) -> str:
+    """Return the tree identity for a raw source system without conflating variants."""
+    normalized = str(source_system).strip().upper()
+    return SOURCE_TREE_DATASET_BY_SYSTEM.get(normalized, normalized.casefold())
+
+
+def _build_numerically_skipped_scope_rows(
+    source_systems: set[str],
+    scopes: set[str],
+) -> pd.DataFrame:
+    """Describe intentionally skipped ESTO Extended numerical scopes once."""
+    rows: list[dict[str, object]] = []
+    for scope in sorted(scopes & NUMERICALLY_SKIPPED_COMPARISON_SCOPES):
+        for source_system in sorted(
+            source_systems & COMPARISON_SCOPE_SYSTEMS.get(scope, set())
+        ):
+            for axis in ("flow", "product"):
+                row = {column: "" for column in ANCHOR_COLUMNS}
+                row.update({
+                    "validation_axis": axis,
+                    "comparison_scope": scope,
+                    "source_system": source_system,
+                    "economy": "all",
+                    "scenario": "all",
+                    "status": "skipped",
+                    "reason": ESTO_EXTENDED_SKIP_REASON,
+                    "parent_value": 0.0,
+                    "frontier_sum": 0.0,
+                    "difference": 0.0,
+                    "abs_error": 0.0,
+                    "frontier_row_count": 0,
+                    "missing_expected_child_count": 0,
+                    "missing_nonzero_child_count": 0,
+                    "missing_nonzero_child_abs": 0.0,
+                    "missing_zero_or_absent_child_count": 0,
+                    "parent_positive_value": 0.0,
+                    "parent_negative_value": 0.0,
+                    "frontier_positive_sum": 0.0,
+                    "frontier_negative_sum": 0.0,
+                    "source_non_additivity_observed": False,
+                    "raw_source_frontier_sum": 0.0,
+                    "raw_source_difference": 0.0,
+                    "raw_source_frontier_row_count": 0,
+                    "raw_source_hierarchy_mismatch": False,
+                })
+                rows.append(row)
+    return pd.DataFrame(rows, columns=ANCHOR_COLUMNS)
+
+
+def _normalise_exception_year(year: pd.Series) -> pd.Series:
+    """Normalize exception years while preserving the supported ``all`` token."""
+    values = year.fillna("").astype(str).str.strip()
+    numeric = pd.to_numeric(values, errors="coerce")
+    return pd.Series(
+        np.where(
+            values.str.casefold().eq(CONFIRMED_EXCEPTION_ALL_TOKEN),
+            CONFIRMED_EXCEPTION_ALL_TOKEN,
+            numeric.map(lambda value: "" if pd.isna(value) else str(int(value))),
+        ),
+        index=year.index,
+    )
 
 
 def _children_map(
@@ -343,10 +421,12 @@ def validate_source_parent_anchors(
     common_rows_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
     tolerance: float = 0.01,
+    absolute_tolerance: float | None = None,
     economies: set[str] | None = None,
     years_by_system: dict[str, set[int]] | None = None,
     unmodelled_source_codes: dict[str, set[int]] | None = None,
     exclude_parents: set[str] | None = None,
+    issue_filter: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Return one explicit passed/failed/skipped record per raw source parent group.
 
@@ -428,8 +508,16 @@ def validate_source_parent_anchors(
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison["common_row_id"] = comparison["common_row_id"].astype(str)
 
+    if issue_filter is None:
+        skipped_scope_rows = _build_numerically_skipped_scope_rows(
+            set(source["source_system"].dropna().astype(str)),
+            set(scopes),
+        )
+        if not skipped_scope_rows.empty:
+            records_frames.append(skipped_scope_rows)
+
     for source_system in sorted(source["source_system"].dropna().astype(str).unique()):
-        dataset = source_system.casefold()
+        dataset = _source_tree_dataset(source_system)
         system_source = source[source["source_system"] == source_system]
         system_mappings = mappings[mappings["source_system"] == source_system].copy()
         # Scopes this system participates in, and the comparison rows scoped to
@@ -437,7 +525,10 @@ def validate_source_parent_anchors(
         applicable_scopes = [
             scope for scope in scopes
             if source_system in COMPARISON_SCOPE_SYSTEMS.get(scope, {source_system})
+            and scope not in NUMERICALLY_SKIPPED_COMPARISON_SCOPES
         ]
+        if not applicable_scopes:
+            continue
         system_comparison = comparison[
             (comparison["source_system"] == source_system)
             & (comparison["comparison_scope"].isin(applicable_scopes))
@@ -588,6 +679,10 @@ def validate_source_parent_anchors(
             remapped = [pair_remap[(str(flow), str(product))] for flow, product in axis_source[["source_flow", "source_product"]].itertuples(index=False)]
             axis_source["source_flow"] = [pair[0] for pair in remapped]
             axis_source["source_product"] = [pair[1] for pair in remapped]
+            # This normalized source table is used only for the raw hierarchy
+            # check.  It follows the same other-axis ancestor normalization as
+            # ``parent_value`` but remains independent of Common ESTO row IDs.
+            raw_anchor_pair_values = _build_raw_pair_values(axis_source)
             descendant_cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]] = {}
             # Frontier resolution depends only on (parent_code, other_axis_value),
             # not on economy/scenario/year or scope; cache across groups.
@@ -620,6 +715,51 @@ def validate_source_parent_anchors(
                 .rename(columns={axis_col: "parent_code", other_col: "other_axis_value"})
             )
 
+            # An APEC-first caller can restrict the expensive frontier work to
+            # branch contexts that failed on the aggregate balance.  Source
+            # normalization above intentionally remains unchanged so targeted
+            # economy results use exactly the same arithmetic as a full run.
+            if issue_filter is not None and not issue_filter.empty:
+                relevant = issue_filter[
+                    issue_filter["source_system"].astype(str).eq(source_system)
+                    & issue_filter["validation_axis"].astype(str).eq(axis)
+                ].copy()
+                if relevant.empty:
+                    continue
+                relevant["year"] = pd.to_numeric(relevant["year"], errors="coerce")
+                relevant = relevant.rename(columns={
+                    "parent_code": "_filter_parent_code",
+                    "other_axis_value": "_filter_other_axis_value",
+                    "scenario": "_filter_scenario",
+                    "year": "_filter_year",
+                })
+                # APEC shared-frontier findings use a human-readable
+                # ``member A + member B`` label.  Economy rows are still
+                # individual members at this early filter stage and are only
+                # grouped later, so expand the label before matching or the
+                # exact economies would be silently lost.
+                relevant["_filter_other_axis_value"] = relevant[
+                    "_filter_other_axis_value"
+                ].fillna("").astype(str).str.split(" + ", regex=False)
+                relevant = relevant.explode("_filter_other_axis_value")
+                agg = agg.merge(
+                    relevant[[
+                        "_filter_parent_code", "_filter_other_axis_value",
+                        "_filter_scenario", "_filter_year",
+                    ]].drop_duplicates(),
+                    left_on=["parent_code", "other_axis_value", "scenario", "year"],
+                    right_on=[
+                        "_filter_parent_code", "_filter_other_axis_value",
+                        "_filter_scenario", "_filter_year",
+                    ],
+                    how="inner",
+                ).drop(columns=[
+                    "_filter_parent_code", "_filter_other_axis_value",
+                    "_filter_scenario", "_filter_year",
+                ])
+                if agg.empty:
+                    continue
+
             # Resolve the mapped-descendant frontier and its per-scope
             # common_row_ids for each unique (parent_code, other_axis_value)
             # present — reusing the memo caches. Flatten frontier ids into a
@@ -646,6 +786,11 @@ def validate_source_parent_anchors(
             # can be added into frontier_sum below instead of the resolved
             # component being silently dropped.
             raw_fallback_rows: list[tuple[str, str, str, str, str]] = []
+            # Raw source pairs forming each parent's resolved child frontier.
+            # These remain usable when no Common ESTO boundary exists, which
+            # lets a genuine source hierarchy mismatch survive as a finding
+            # instead of being downgraded to ``no_anchorable...``.
+            raw_source_frontier_rows: list[tuple[str, str, str, str]] = []
             # Every resolved frontier leaf, regardless of how its value gets
             # fetched, is checked below against source_internal_bad_pairs.
             # A raw other-axis contradiction is retained as a separate
@@ -674,6 +819,23 @@ def validate_source_parent_anchors(
                 frontier_components, missing_children = frontier_entry
                 missing_join_map[fk] = "|".join(sorted(set(missing_children)))
                 has_missing_map[fk] = bool(missing_children)
+                raw_frontier_pairs = set(
+                    frontier_components[["source_flow", "source_product"]]
+                    .drop_duplicates()
+                    .itertuples(index=False, name=None)
+                )
+                for missing_child in missing_children:
+                    if axis_col == "source_flow":
+                        raw_frontier_pairs.add((str(missing_child), oas))
+                    else:
+                        raw_frontier_pairs.add((oas, str(missing_child)))
+                raw_frontier_pairs.discard(
+                    (pcode, oas) if axis_col == "source_flow" else (oas, pcode)
+                )
+                for source_flow, source_product in sorted(raw_frontier_pairs):
+                    raw_source_frontier_rows.append(
+                        (pcode, oas, str(source_flow), str(source_product))
+                    )
                 if not source_internal_bad_pairs.empty:
                     for sf, sp in frontier_components[["source_flow", "source_product"]].drop_duplicates().itertuples(index=False):
                         frontier_leaf_rows.append((pcode, oas, sf, sp))
@@ -730,6 +892,52 @@ def validate_source_parent_anchors(
                 pd.DataFrame({"comparison_scope": applicable_scopes}), how="cross"
             )
             base["_oas"] = base["other_axis_value"].astype(str)
+            raw_literal_keys = set(zip(
+                raw_pair_values["source_flow"].astype(str),
+                raw_pair_values["source_product"].astype(str),
+                raw_pair_values["economy"].astype(str),
+                raw_pair_values["scenario"].astype(str),
+                raw_pair_values["year"],
+            ))
+            base["_raw_parent_literal_observed"] = [
+                (
+                    (str(parent_code), str(other_axis_value))
+                    if axis_col == "source_flow"
+                    else (str(other_axis_value), str(parent_code))
+                )
+                + (str(economy), str(scenario), year)
+                in raw_literal_keys
+                for parent_code, other_axis_value, economy, scenario, year in zip(
+                    base["parent_code"], base["_oas"], base["economy"],
+                    base["scenario"], base["year"],
+                )
+            ]
+            base["_raw_parent_directly_mapped"] = [
+                (
+                    (str(parent_code), str(other_axis_value))
+                    if axis_col == "source_flow"
+                    else (str(other_axis_value), str(parent_code))
+                )
+                in mapped_pairs
+                for parent_code, other_axis_value in zip(
+                    base["parent_code"], base["_oas"],
+                )
+            ]
+            scopes_with_any_comparison_rows = set(
+                system_comparison["comparison_scope"].astype(str)
+            )
+            available_comparison_periods = set(zip(
+                system_comparison["comparison_scope"].astype(str),
+                system_comparison["scenario"].astype(str),
+                system_comparison["year"],
+            ))
+            base["_comparable_scope_period"] = [
+                str(scope) not in scopes_with_any_comparison_rows
+                or (str(scope), str(scenario), year) in available_comparison_periods
+                for scope, scenario, year in zip(
+                    base["comparison_scope"], base["scenario"], base["year"],
+                )
+            ]
 
             # Frontier sums via a single explode+merge rather than a per-group
             # .isin() over the comparison frame.
@@ -840,10 +1048,69 @@ def validate_source_parent_anchors(
             base["frontier_negative_sum"] += base["raw_fallback_negative_sum"].fillna(0.0)
             base["frontier_row_count"] += base["raw_fallback_row_count"].fillna(0).astype(int)
             base["_matched"] += base["raw_fallback_row_count"].fillna(0)
+            base["_comparable_scope_period"] |= (
+                base["raw_fallback_row_count"].fillna(0).to_numpy() > 0
+            )
             base = base.drop(columns=[
                 "raw_fallback_sum", "raw_fallback_positive_sum",
                 "raw_fallback_negative_sum", "raw_fallback_row_count",
             ])
+
+            # --- Raw source hierarchy frontier -----------------------------
+            # Calculate the source parent's own child frontier without using
+            # Common ESTO comparison rows.  The resolved source pairs above
+            # still identify the appropriate additive leaves, including
+            # unmapped leaves, but their values come directly from the source
+            # balance.  This is deliberately separate from ``frontier_sum``:
+            # a missing Common ESTO boundary is a mapping limitation, not a
+            # reason to hide a demonstrable raw parent/children disagreement.
+            if raw_source_frontier_rows:
+                raw_source_pairs_df = pd.DataFrame(
+                    raw_source_frontier_rows,
+                    columns=["parent_code", "_oas", "source_flow", "source_product"],
+                ).drop_duplicates()
+                raw_source_exploded = base[
+                    ["parent_code", "_oas", "economy", "scenario", "year"]
+                ].drop_duplicates().merge(
+                    raw_source_pairs_df,
+                    on=["parent_code", "_oas"],
+                    how="inner",
+                )
+                raw_source_matched = raw_source_exploded.merge(
+                    raw_anchor_pair_values,
+                    on=["source_flow", "source_product", "economy", "scenario", "year"],
+                    how="inner",
+                )
+            else:
+                raw_source_matched = base.iloc[0:0].assign(value=pd.Series(dtype=float))
+
+            if not raw_source_matched.empty:
+                raw_source_sums = (
+                    raw_source_matched.groupby(
+                        ["parent_code", "_oas", "economy", "scenario", "year"],
+                        dropna=False,
+                        sort=False,
+                    )
+                    .agg(
+                        raw_source_frontier_sum=("value", "sum"),
+                        raw_source_frontier_row_count=("value", "size"),
+                    )
+                    .reset_index()
+                )
+                base = base.merge(
+                    raw_source_sums,
+                    on=["parent_code", "_oas", "economy", "scenario", "year"],
+                    how="left",
+                )
+            else:
+                base["raw_source_frontier_sum"] = 0.0
+                base["raw_source_frontier_row_count"] = 0
+            base["raw_source_frontier_sum"] = base[
+                "raw_source_frontier_sum"
+            ].fillna(0.0)
+            base["raw_source_frontier_row_count"] = base[
+                "raw_source_frontier_row_count"
+            ].fillna(0).astype(int)
 
             # --- Source-internal rollup inconsistency -------------------------
             # A row whose frontier touches a pair where this source's OWN
@@ -931,20 +1198,54 @@ def validate_source_parent_anchors(
                     uf_parent[ra] = rb
 
             node_ids: dict[tuple[str, str, str], list[str]] = {}
-            for (gpcode, goas, gscope), (ids, _structurally_registered, _fallback_candidates) in frontier_ids_cache.items():
-                if not ids:
-                    continue
-                sig = sorted({str(cid) for cid in ids})
+            node_signatures: dict[tuple[str, str, str], list[str]] = {}
+            for (gpcode, goas, gscope), (ids, structurally_registered, _fallback_candidates) in frontier_ids_cache.items():
                 node = (gpcode, gscope, goas)
-                node_ids[node] = sig
+                id_signature = sorted({str(cid) for cid in ids})
+                if id_signature:
+                    signature = [f"common_row::{cid}" for cid in id_signature]
+                elif not structurally_registered:
+                    # When the Common ESTO boundary is unavailable, preserve
+                    # shared-source grouping using the mapped component pairs
+                    # themselves.  For example Ninth
+                    # ``16_09_other_sources`` and ``16_others_unallocated``
+                    # both target ESTO ``16.09 Other sources`` and must remain
+                    # one diagnostic signature even though neither currently
+                    # has a usable base-scope common row.
+                    frontier_components, _missing = frontier_cache.get(
+                        (gpcode, goas), (empty_mapping, [])
+                    )
+                    signature_components = frontier_components
+                    if signature_components.empty:
+                        # A completely unresolved child frontier can still
+                        # belong to a known shared source aggregate.  Use the
+                        # parent's maintained direct target only as a grouping
+                        # identity (never as a numeric frontier), preserving
+                        # pairs such as Ninth ``16_09_other_sources`` plus
+                        # ``16_others_unallocated`` -> ESTO ``16.09``.
+                        signature_components = direct_index.get(
+                            (gpcode, goas), empty_mapping
+                        )
+                    signature = sorted({
+                        f"component::{flow}\x1f{product}"
+                        for flow, product in signature_components[
+                            ["component_esto_flow", "component_esto_product"]
+                        ].drop_duplicates().itertuples(index=False, name=None)
+                    })
+                else:
+                    signature = []
+                if not signature:
+                    continue
+                node_ids[node] = id_signature
+                node_signatures[node] = signature
                 uf_parent.setdefault(node, node)
-                for cid in sig:
-                    id_node = ("__id__", gpcode, gscope, cid)
-                    uf_parent.setdefault(id_node, id_node)
-                    _uf_union(node, id_node)
+                for signature_token in signature:
+                    signature_node = ("__signature__", gpcode, gscope, signature_token)
+                    uf_parent.setdefault(signature_node, signature_node)
+                    _uf_union(node, signature_node)
 
             component_members: dict[Any, list[tuple[str, str, str]]] = {}
-            for node in node_ids:
+            for node in node_signatures:
                 component_members.setdefault(_uf_find(node), []).append(node)
 
 
@@ -993,7 +1294,10 @@ def validate_source_parent_anchors(
                     is_primary = grouped_mask & (
                         base["_oas"] == base["_shared_group_id"].map(lambda gid: primary_of.get(gid, ""))
                     )
-                    combine_cols = ["parent_value", "parent_positive_value", "parent_negative_value"]
+                    combine_cols = [
+                        "parent_value", "parent_positive_value", "parent_negative_value",
+                        "raw_source_frontier_sum", "raw_source_frontier_row_count",
+                    ]
                     group_sums = (
                         base.loc[grouped_mask]
                         .groupby(["_shared_group_id", "economy", "scenario", "year"])[combine_cols]
@@ -1130,10 +1434,31 @@ def validate_source_parent_anchors(
 
             base["difference"] = base["parent_value"] - base["frontier_sum"]
             base["abs_error"] = base["difference"].abs()
+            base["raw_source_difference"] = (
+                base["parent_value"] - base["raw_source_frontier_sum"]
+            )
             rows_empty = (base["_matched"].to_numpy() == 0)
-            tol_exceeded = (
-                base["abs_error"].to_numpy()
-                > tolerance * np.maximum(base["parent_value"].abs().to_numpy(), 1.0)
+            if absolute_tolerance is None:
+                tolerance_threshold = (
+                    tolerance
+                    * np.maximum(base["parent_value"].abs().to_numpy(), 1.0)
+                )
+            else:
+                tolerance_threshold = np.full(
+                    len(base),
+                    float(absolute_tolerance),
+                )
+            tol_exceeded = base["abs_error"].to_numpy() > tolerance_threshold
+            raw_source_hierarchy_mismatch = (
+                base["raw_source_difference"].abs().to_numpy() > tolerance_threshold
+            )
+            base["raw_source_hierarchy_mismatch"] = raw_source_hierarchy_mismatch
+            raw_source_boundary_failure = (
+                raw_source_hierarchy_mismatch
+                & fids_empty
+                & base["_comparable_scope_period"].to_numpy()
+                & base["_raw_parent_literal_observed"].to_numpy()
+                & base["_raw_parent_directly_mapped"].to_numpy()
             )
             # Priority mirrors the original if/elif chain, with two refinements:
             # an incomplete frontier (some leaf child unmapped) that still
@@ -1165,6 +1490,8 @@ def validate_source_parent_anchors(
                 "",
             )
             conditions = [
+                raw_source_boundary_failure,
+                ~base["_comparable_scope_period"].to_numpy(),
                 fids_empty,
                 zero_parent_without_rows,
                 incomplete_reconciles & nonzero_missing,
@@ -1176,18 +1503,23 @@ def validate_source_parent_anchors(
             ]
             base["status"] = np.select(
                 conditions,
-                ["skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
+                ["failed", "skipped", "skipped", "skipped", "passed", "passed", "failed", "failed", "failed", "failed"],
                 default="passed",
             )
             base["reason"] = np.select(
                 conditions,
-                ["no_anchorable_common_esto_boundary", "no_observed_source_frontier",
+                ["parent_child_source_inconsistency",
+                 "skipped_no_comparable_scope_period",
+                 "no_anchorable_common_esto_boundary", "no_observed_source_frontier",
                  "within_tolerance_incomplete_frontier", "within_tolerance_zero_only_missing_children",
                  "parent_child_source_inconsistency", "incomplete_frontier",
                  "frontier_rows_absent", "difference_exceeds_tolerance"],
                 default="within_tolerance",
             )
-            base = base.drop(columns=["_source_internal_inconsistent"])
+            base = base.drop(columns=[
+                "_source_internal_inconsistent", "_comparable_scope_period",
+                "_raw_parent_literal_observed", "_raw_parent_directly_mapped",
+            ])
             if skip_rows.any():
                 # Non-primary members of a shared-frontier group: the primary
                 # row above already carries the combined comparison, so these
@@ -1239,10 +1571,17 @@ def _augment_with_data_quality_exceptions(
 
     - the exception must be enabled and have ``review_status=confirmed``;
     - categorical context fields match exactly after whitespace/economy-code
-      normalization;
+      normalization; ``economy``, ``scenario``, and ``year`` may use the
+      literal ``all`` to apply one reviewed issue across those dimensions;
     - ``parent_value`` must be equal apart from negligible float
-      serialization noise;
-    - wildcard rows are not accepted for this exception family.
+      serialization noise for an economy-specific exception; when
+      ``economy=all``, the value is retained as review evidence but is not a
+      matching key because the APEC total cannot equal each economy's value;
+    - when both a specific exception and a broader ``all`` exception match,
+      the most specific row wins; duplicate rows at the same specificity
+      still fail closed;
+    - wildcard rows are not accepted for this exception family, and ``all``
+      is not accepted outside those three explicitly supported dimensions.
 
     The original numerical ``status`` and ``reason`` are never changed. A
     confirmed issue remains a visible validation failure with review metadata
@@ -1293,10 +1632,11 @@ def _augment_with_data_quality_exceptions(
             .str.strip()
             .ne("")
         )
-    populated_mask &= pd.to_numeric(
-        exception_df["year"],
-        errors="coerce",
-    ).notna()
+    year_values = exception_df["year"].fillna("").astype(str).str.strip()
+    populated_mask &= (
+        pd.to_numeric(year_values, errors="coerce").notna()
+        | year_values.str.casefold().eq(CONFIRMED_EXCEPTION_ALL_TOKEN)
+    )
     populated_mask &= pd.to_numeric(
         exception_df["parent_value"],
         errors="coerce",
@@ -1323,8 +1663,9 @@ def _augment_with_data_quality_exceptions(
     if not set(key_columns + ["parent_value"]).issubset(failed.columns):
         return result
 
-    # Broad exception rows would reintroduce the same circularity and
-    # overmatching risk that this review mechanism is meant to prevent.
+    # Prefix wildcards remain invalid.  The only supported broad token is the
+    # literal ``all`` in economy/scenario/year; all other identity fields must
+    # remain exact so a review cannot leak to an unrelated source issue.
     wildcard_mask = pd.Series(False, index=exception_df.index)
     for column in key_columns:
         wildcard_mask |= (
@@ -1334,6 +1675,10 @@ def _augment_with_data_quality_exceptions(
             .str.strip()
             .str.endswith("*")
         )
+        if column not in CONFIRMED_EXCEPTION_ALL_COLUMNS:
+            wildcard_mask |= exception_df[column].fillna("").astype(str).str.strip().str.casefold().eq(
+                CONFIRMED_EXCEPTION_ALL_TOKEN
+            )
     exception_df = exception_df.loc[~wildcard_mask].copy()
     if exception_df.empty:
         return result
@@ -1361,36 +1706,64 @@ def _augment_with_data_quality_exceptions(
     right["validation_axis"] = right["validation_axis"].str.lower()
     left["scenario"] = left["scenario"].str.lower()
     right["scenario"] = right["scenario"].str.lower()
-    left["year"] = pd.to_numeric(left["year"], errors="coerce").map(
-        lambda value: "" if pd.isna(value) else str(int(value))
-    )
-    right["year"] = pd.to_numeric(right["year"], errors="coerce").map(
-        lambda value: "" if pd.isna(value) else str(int(value))
-    )
+    left["year"] = _normalise_exception_year(left["year"])
+    right["year"] = _normalise_exception_year(right["year"])
     left[numeric_column] = pd.to_numeric(left[numeric_column], errors="coerce")
     right[numeric_column] = pd.to_numeric(right[numeric_column], errors="coerce")
 
-    matched = left.merge(
-        right,
-        on=key_columns,
-        how="inner",
-        suffixes=("_candidate", "_exception"),
-    )
-    if not matched.empty:
-        candidate_values = matched[f"{numeric_column}_candidate"]
-        exception_values = matched[f"{numeric_column}_exception"]
-        numeric_match = (
-            candidate_values.notna()
-            & exception_values.notna()
-            & (
-                (candidate_values - exception_values).abs()
-                <= (
-                    CONFIRMED_EXCEPTION_NUMERIC_TOLERANCE
-                    * exception_values.abs().clip(lower=1.0)
+    matched_rows: list[dict[str, object]] = []
+    for _, exception_row in right.iterrows():
+        specificity = sum(
+            str(exception_row[column]).strip().casefold()
+            != CONFIRMED_EXCEPTION_ALL_TOKEN
+            for column in CONFIRMED_EXCEPTION_ALL_COLUMNS
+        )
+        candidate_mask = pd.Series(True, index=left.index)
+        for column in key_columns:
+            expected = str(exception_row[column]).strip()
+            if (
+                column in CONFIRMED_EXCEPTION_ALL_COLUMNS
+                and expected.casefold() == CONFIRMED_EXCEPTION_ALL_TOKEN
+            ):
+                continue
+            candidate_mask &= left[column].eq(expected)
+        candidate_values = left.loc[candidate_mask, numeric_column]
+        exception_value = exception_row[numeric_column]
+        economy_is_all = (
+            str(exception_row["economy"]).strip().casefold()
+            == CONFIRMED_EXCEPTION_ALL_TOKEN
+        )
+        if economy_is_all:
+            # An APEC-wide review confirms the structural signature for every
+            # economy.  Keep the APEC parent value in the workbook as evidence,
+            # but do not require individual economies to equal that aggregate.
+            numeric_match = candidate_values.notna()
+        else:
+            numeric_match = (
+                candidate_values.notna()
+                & pd.notna(exception_value)
+                & (
+                    (candidate_values - exception_value).abs()
+                    <= (
+                        CONFIRMED_EXCEPTION_NUMERIC_TOLERANCE
+                        * max(abs(float(exception_value)), 1.0)
+                    )
                 )
             )
-        )
-        matched = matched.loc[numeric_match]
+        for result_index in candidate_values.index[numeric_match]:
+            matched_rows.append({
+                "_result_index": result_index,
+                "_specificity": specificity,
+                **{column: exception_row[column] for column in right_columns if column != numeric_column},
+                f"{numeric_column}_candidate": left.loc[result_index, numeric_column],
+                f"{numeric_column}_exception": exception_value,
+            })
+    matched = pd.DataFrame(matched_rows)
+    if not matched.empty:
+        highest_specificity = matched.groupby("_result_index")[
+            "_specificity"
+        ].transform("max")
+        matched = matched[matched["_specificity"].eq(highest_specificity)].copy()
         match_counts = matched["_result_index"].value_counts()
         unique_match_indices = match_counts[match_counts.eq(1)].index
         matched = matched[
@@ -1506,7 +1879,7 @@ def build_leaf_reconciliation_exception_candidates(
     rows: list[dict[str, object]] = []
 
     for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
-        dataset = source_system.casefold()
+        dataset = _source_tree_dataset(source_system)
         system_source = source[source["source_system"].astype(str).eq(source_system)]
         for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
             if dataset in {"leap", "ninth"}:
@@ -1891,7 +2264,7 @@ def build_failed_anchor_raw_child_context_values(
     detail_rows: list[pd.DataFrame] = []
 
     for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
-        dataset = source_system.casefold()
+        dataset = _source_tree_dataset(source_system)
         system_failed = failed[failed["source_system"].astype(str).eq(source_system)]
         system_source = source[source["source_system"].astype(str).eq(source_system)]
         for validation_axis, tree_axis in [("flow", "flow"), ("product", "product")]:
@@ -2002,7 +2375,7 @@ def build_failed_anchor_mapped_component_context_values(
     rows: list[dict[str, object]] = []
 
     for source_system in sorted(failed["source_system"].dropna().astype(str).unique()):
-        dataset = source_system.casefold()
+        dataset = _source_tree_dataset(source_system)
         system_failed = failed[failed["source_system"].astype(str).eq(source_system)]
         system_mapping = source_mapping_df[source_mapping_df["source_system"].astype(str).eq(source_system)].copy()
         if system_mapping.empty:

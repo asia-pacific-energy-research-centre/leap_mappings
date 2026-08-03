@@ -907,6 +907,9 @@ def run_stage_3(
     from codebase.mapping_tools.common_esto_validation_orchestration import (
         run_common_esto_validation_workflow,
     )
+    from codebase.mapping_tools.apec_anchor_validation import (
+        validate_source_parent_anchors_apec_first,
+    )
     from codebase.mapping_tools.source_parent_anchor_validation import (
         ANCHOR_COLUMNS,
         ANCHOR_CHILD_CONTEXT_COLUMNS,
@@ -920,7 +923,6 @@ def run_stage_3(
         select_source_parent_anchor_findings,
         summarise_failed_anchor_raw_child_context_values,
         summarise_source_parent_anchors,
-        validate_source_parent_anchors,
     )
 
     run_timestamp = datetime.now(timezone.utc)
@@ -1031,8 +1033,11 @@ def run_stage_3(
     common_hierarchy_edges = build_common_esto_hierarchy_edges(
         common_tree, WORKBOOK_PATH
     )
-    esto_tree = build_esto_tree(ESTO_CSV_PATH)
-    esto_extended_tree = build_esto_tree(ESTO_EXTENDED_CSV_PATH)
+    esto_tree = build_esto_tree(ESTO_CSV_PATH, dataset_id="esto")
+    esto_extended_tree = build_esto_tree(
+        ESTO_EXTENDED_CSV_PATH,
+        dataset_id="esto_extended",
+    )
     ninth_tree = build_ninth_tree(NINTH_CSV_PATH, data_df=ninth_wide)
     leap_tree = build_leap_tree(WORKBOOK_PATH)
     validation_tree = pd.concat(
@@ -1120,12 +1125,18 @@ def run_stage_3(
     anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
     anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.csv"
     anchor_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_mapped_component_context_values.csv"
+    anchor_economy_examples_path = tree_output_dir / "source_parent_anchor_economy_examples.csv"
+    anchor_economy_child_context_values_path = tree_output_dir / "source_parent_anchor_economy_child_context_values.csv"
+    anchor_economy_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_economy_mapped_component_context_values.csv"
     leaf_reconciliation_candidates_path = tree_output_dir / "source_parent_anchor_leaf_reconciliation_candidates.csv"
     if skip_reason:
         anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
         anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
         anchor_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
         anchor_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+        anchor_economy_examples = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+        anchor_economy_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
+        anchor_economy_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
         leaf_reconciliation_candidates = pd.DataFrame(columns=["run_id"] + LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
         anchor_summary = pd.DataFrame([{
             "run_id": run_id, "status": "skipped", "eligible": 0,
@@ -1227,7 +1238,7 @@ def run_stage_3(
                 )
 
             anchor_t0 = time.perf_counter()
-            anchor_detail = validate_source_parent_anchors(
+            anchor_result = validate_source_parent_anchors_apec_first(
                 source_df=raw_anchor_source,
                 source_tree_df=validation_tree,
                 source_mapping_df=source_mapping,
@@ -1237,17 +1248,27 @@ def run_stage_3(
                 unmodelled_source_codes=unmodelled_source_codes,
                 exclude_parents=anchor_exclude_parents,
             )
+            anchor_detail = anchor_result["apec_detail"]
+            anchor_economy_examples = anchor_result["economy_examples"]
             anchor_child_context_values = build_failed_anchor_raw_child_context_values(
                 anchor_detail,
-                raw_anchor_source,
+                anchor_result["apec_source"],
                 validation_tree,
             )
             anchor_child_values = summarise_failed_anchor_raw_child_context_values(anchor_child_context_values)
             anchor_mapped_component_context_values = build_failed_anchor_mapped_component_context_values(
-                anchor_detail, validation_tree, source_mapping, common_rows, comparison_data,
+                anchor_detail, validation_tree, source_mapping, common_rows,
+                anchor_result["apec_comparison"],
+            )
+            anchor_economy_child_context_values = build_failed_anchor_raw_child_context_values(
+                anchor_economy_examples, raw_anchor_source, validation_tree,
+            )
+            anchor_economy_mapped_component_context_values = build_failed_anchor_mapped_component_context_values(
+                anchor_economy_examples, validation_tree, source_mapping, common_rows,
+                comparison_data,
             )
             leaf_reconciliation_candidates = build_leaf_reconciliation_exception_candidates(
-                anchor_detail, raw_anchor_source, validation_tree,
+                anchor_detail, anchor_result["apec_source"], validation_tree,
             )
         except MemoryError as exc:
             print(
@@ -1259,6 +1280,9 @@ def run_stage_3(
             anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
             anchor_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
             anchor_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
+            anchor_economy_examples = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
+            anchor_economy_child_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_CONTEXT_COLUMNS)
+            anchor_economy_mapped_component_context_values = pd.DataFrame(columns=["run_id"] + ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
             leaf_reconciliation_candidates = pd.DataFrame(columns=["run_id"] + LEAF_RECONCILIATION_CANDIDATE_COLUMNS)
             anchor_summary = pd.DataFrame([{
                 "run_id": run_id,
@@ -1281,6 +1305,9 @@ def run_stage_3(
             anchor_child_values.insert(0, "run_id", run_id)
             anchor_child_context_values.insert(0, "run_id", run_id)
             anchor_mapped_component_context_values.insert(0, "run_id", run_id)
+            anchor_economy_examples.insert(0, "run_id", run_id)
+            anchor_economy_child_context_values.insert(0, "run_id", run_id)
+            anchor_economy_mapped_component_context_values.insert(0, "run_id", run_id)
             leaf_reconciliation_candidates.insert(0, "run_id", run_id)
             anchor_summary = summarise_source_parent_anchors(anchor_detail)
             anchor_summary.insert(0, "run_id", run_id)
@@ -1296,6 +1323,11 @@ def run_stage_3(
     anchor_child_values.to_csv(anchor_child_values_path, index=False)
     anchor_child_context_values.to_csv(anchor_child_context_values_path, index=False)
     anchor_mapped_component_context_values.to_csv(anchor_mapped_component_context_values_path, index=False)
+    anchor_economy_examples.to_csv(anchor_economy_examples_path, index=False)
+    anchor_economy_child_context_values.to_csv(anchor_economy_child_context_values_path, index=False)
+    anchor_economy_mapped_component_context_values.to_csv(
+        anchor_economy_mapped_component_context_values_path, index=False
+    )
     leaf_reconciliation_candidates.to_csv(leaf_reconciliation_candidates_path, index=False)
     anchor_summary.to_csv(anchor_summary_path, index=False)
 

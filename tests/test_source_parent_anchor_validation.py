@@ -96,6 +96,89 @@ def test_exact_parent_children_match_without_double_counting() -> None:
     assert row["frontier_row_count"] == 2
 
 
+def test_base_esto_anchor_never_expands_through_esto_extended_descendants() -> None:
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "09 Total transformation sector", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "09.01 Main activity producer", "parent_code": "09 Total transformation sector"},
+        {"dataset": "esto", "axis": "flow", "code": "09.02 Autoproducers", "parent_code": "09 Total transformation sector"},
+        {"dataset": "esto_extended", "axis": "flow", "code": "09.01.01 Electricity plants", "parent_code": "09.01 Main activity producer"},
+        {"dataset": "esto_extended", "axis": "flow", "code": "09.01.01.01 Coal", "parent_code": "09.01.01 Electricity plants"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "01AUS", "scenario": "historical", "year": 2023, "source_flow": "09 Total transformation sector", "source_product": "01.02 Other bituminous coal", "value": -566.185988},
+        {"source_system": "ESTO", "economy": "01AUS", "scenario": "historical", "year": 2023, "source_flow": "09.01 Main activity producer", "source_product": "01.02 Other bituminous coal", "value": -565.982803},
+        {"source_system": "ESTO", "economy": "01AUS", "scenario": "historical", "year": 2023, "source_flow": "09.02 Autoproducers", "source_product": "01.02 Other bituminous coal", "value": -0.203185},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "09.01 Main activity producer", "source_product": "01.02 Other bituminous coal", "component_esto_flow": "09.01 Main activity producer", "component_esto_product": "01.02 Other bituminous coal"},
+        {"source_system": "ESTO", "source_flow": "09.02 Autoproducers", "source_product": "01.02 Other bituminous coal", "component_esto_flow": "09.02 Autoproducers", "component_esto_product": "01.02 Other bituminous coal"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_leap", "component_esto_flow": "09.01 Main activity producer", "component_esto_product": "01.02 Other bituminous coal", "common_row_id": "c1"},
+        {"comparison_scope": "esto_leap", "component_esto_flow": "09.02 Autoproducers", "component_esto_product": "01.02 Other bituminous coal", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "01AUS", "scenario": "historical", "year": 2023, "common_row_id": "c1", "value": -565.982803},
+        {"comparison_scope": "esto_leap", "source_system": "ESTO", "economy": "01AUS", "scenario": "historical", "year": 2023, "common_row_id": "c2", "value": -0.203185},
+    ])
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    row = detail[
+        detail["parent_code"].eq("09 Total transformation sector")
+        & detail["validation_axis"].eq("flow")
+    ].iloc[0]
+
+    assert row["status"] == "passed"
+    assert row["reason"] == "within_tolerance"
+    assert row["missing_expected_child_count"] == 0
+    assert "09.01.01.01 Coal" not in str(row["missing_expected_children"])
+
+
+def test_esto_extended_numerical_scopes_are_explicitly_skipped() -> None:
+    source, tree, mappings, common, comparison = _fixture()
+    source["source_system"] = "ESTO_EXTENDED"
+    tree["dataset"] = "esto_extended"
+    mappings["source_system"] = "ESTO_EXTENDED"
+    common["comparison_scope"] = "esto_extended_leap"
+    comparison["comparison_scope"] = "esto_extended_leap"
+    comparison["source_system"] = "ESTO_EXTENDED"
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    assert len(detail) == 2
+    assert set(detail["status"]) == {"skipped"}
+    assert set(detail["reason"]) == {"skipped_esto_extended_unpopulated"}
+    assert set(detail["validation_axis"]) == {"flow", "product"}
+
+
+def test_missing_comparison_period_is_skipped_instead_of_failed() -> None:
+    source, tree, mappings, common, comparison = _fixture(child_b_value=5)
+    source["year"] = 2023
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    assert not detail.empty
+    assert set(detail["status"]) == {"skipped"}
+    assert set(detail["reason"]) == {"skipped_no_comparable_scope_period"}
+
+
+def test_absolute_tolerance_can_make_apec_gate_stricter_than_relative_tolerance() -> None:
+    source, tree, mappings, common, comparison = _fixture(child_b_value=5)
+
+    relative = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison, tolerance=0.20,
+    )
+    absolute = validate_source_parent_anchors(
+        source, tree, mappings, common, comparison,
+        tolerance=0.20,
+        absolute_tolerance=0.01,
+    )
+
+    assert relative.iloc[0]["status"] == "passed"
+    assert absolute.iloc[0]["status"] == "failed"
+    assert absolute.iloc[0]["reason"] == "difference_exceeds_tolerance"
+
+
 def test_preselected_anchor_year_input_matches_validator_year_filter() -> None:
     """Loading only the production anchor slice must not alter its findings."""
     source, tree, mappings, common, comparison = _fixture()
@@ -1297,8 +1380,7 @@ def test_data_quality_exception_annotates_matching_failure_without_hiding_it(tmp
 
 
 def test_data_quality_exception_does_not_match_a_different_parent_value(tmp_path) -> None:
-    """A stale exception (or a fresh, unrelated bug landing on the same
-    code/label key) must not silently inherit an old sign-off."""
+    """An economy-specific review must retain exact value matching."""
     workbook_path = _write_data_quality_exception_workbook(tmp_path)
     result = _data_quality_candidate_rows()
 
@@ -1345,6 +1427,84 @@ def test_data_quality_exception_requires_exact_scenario_and_year(tmp_path) -> No
 
     assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
     assert augmented.iloc[0]["status"] == "failed"
+
+
+def test_data_quality_exception_all_matches_economy_scenario_and_year(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        economy="all",
+        scenario="all",
+        year="all",
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+    result.loc[result.index[0], "economy"] = "05PRC"
+    result.loc[result.index[0], "scenario"] = "target"
+    result.loc[result.index[0], "year"] = 2030
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
+
+
+def test_data_quality_exception_all_economies_ignores_parent_value(tmp_path) -> None:
+    """An APEC review applies by structural signature, not the APEC total."""
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        economy="all",
+        parent_value="-9999.0",
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+    result.loc[result.index[0], "economy"] = "05PRC"
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
+    assert augmented.iloc[0]["exception_id"] == "SRC-NINTH-PRODUCT-TEST-001"
+
+
+def test_specific_exception_wins_over_all_economies_exception(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(tmp_path)
+    rows = pd.read_excel(workbook_path)
+    broad = rows.iloc[0].copy()
+    broad["exception_id"] = "SRC-NINTH-PRODUCT-TEST-ALL"
+    broad["economy"] = "all"
+    broad["parent_value"] = -9999.0
+    rows = pd.concat([rows, broad.to_frame().T], ignore_index=True)
+    rows.to_excel(
+        workbook_path,
+        sheet_name=DATA_QUALITY_EXCEPTION_SHEET,
+        index=False,
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is True
+    assert augmented.iloc[0]["exception_id"] == "SRC-NINTH-PRODUCT-TEST-001"
+
+
+def test_data_quality_exception_all_is_not_allowed_for_parent_identity(tmp_path) -> None:
+    workbook_path = _write_data_quality_exception_workbook(
+        tmp_path,
+        parent_code="all",
+    )
+    result = _data_quality_candidate_rows().iloc[[0]].copy()
+
+    augmented = _augment_with_data_quality_exceptions(
+        result,
+        workbook_path=workbook_path,
+    )
+
+    assert bool(augmented.iloc[0]["known_data_quality_exception"]) is False
 
 
 def test_duplicate_confirmations_fail_closed(tmp_path) -> None:

@@ -892,4 +892,22 @@ LEAP_LOOKUP_COLUMNS = [
     "inheritance_eligible",
 ]
 
+
+def test_build_esto_tree_preserves_explicit_extended_dataset_identity() -> None:
+    csv_text = "\n".join([
+        "flows,products",
+        "09 Total transformation sector,01 Coal",
+        "09.01 Main activity producer,01 Coal",
+        "09.01.01 Electricity plants,01 Coal",
+        "09.01.01.01 Coal,01 Coal",
+    ])
+
+    tree = build_esto_tree(
+        io.StringIO(csv_text),
+        dataset_id="esto_extended",
+    )
+
+    assert set(tree["dataset"]) == {"esto_extended"}
+    assert "09.01.01.01 Coal" in set(tree["code"])
+
 #%%

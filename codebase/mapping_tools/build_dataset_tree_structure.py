@@ -272,8 +272,9 @@ def _build_esto_axis_tree(codes: list[str], axis: str, dataset: str,
 
 def build_esto_tree(
     data_csv_path: Path = ESTO_DATA_PATH,
+    dataset_id: str = "esto",
 ) -> pd.DataFrame:
-    """Build ESTO flow and product hierarchy from the balance data CSV."""
+    """Build an ESTO-format hierarchy with explicit dataset provenance."""
     df = pd.read_csv(data_csv_path, dtype=object)
 
     flows = sorted(df["flows"].dropna().unique())
@@ -313,8 +314,15 @@ def build_esto_tree(
     # (build_common_esto_tree, unaffected), which is where NINTH/LEAP's
     # comparison rows actually resolve onto them. See
     # docs/prompts/anchor_validator_fixes_findings_20260722.md.
-    flow_tree = _build_esto_axis_tree(flows, "flow", "esto", subtotal_flows)
-    prod_tree = _build_esto_axis_tree(prods, "product", "esto", subtotal_prods)
+    normalized_dataset_id = str(dataset_id).strip().casefold()
+    if not normalized_dataset_id:
+        raise ValueError("dataset_id must be a non-empty string")
+    flow_tree = _build_esto_axis_tree(
+        flows, "flow", normalized_dataset_id, subtotal_flows
+    )
+    prod_tree = _build_esto_axis_tree(
+        prods, "product", normalized_dataset_id, subtotal_prods
+    )
 
     return pd.concat([flow_tree, prod_tree], ignore_index=True)
 

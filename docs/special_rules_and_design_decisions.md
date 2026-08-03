@@ -667,3 +667,51 @@ many-to-many transport-flow relationship.
 
 - 2026-07-30: Removed the Road and Rail mappings from the editable single-axis
   workbook; retained only the ESTO nonspecified-transport mapping.
+
+## MAP-015: Keep base ESTO and ESTO Extended anchor hierarchies separate
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Validation provenance / temporary numerical-scope policy
+**Affected areas:** dataset-tree compilation; source-parent anchor validation;
+APEC-first diagnostics
+
+### Situation
+
+Both ESTO-format input files were previously compiled with `dataset=esto`.
+Consequently, base ESTO anchor checks could expand through technology branches
+that exist only in ESTO Extended. This produced false missing-child findings,
+including base `09 Total transformation sector` checks whose valid native ESTO
+children reconciled exactly.
+
+ESTO Extended is currently structurally populated but numerically zero-filled,
+so its numerical anchors are not meaningful yet.
+
+### Decision
+
+- Compile the ordinary source as `esto` and the Extended source as
+  `esto_extended`; validators must select the tree using explicit source-system
+  provenance.
+- Do not run numerical anchor checks for `esto_extended_leap` or
+  `esto_extended_leap_ninth` while Extended remains zero-filled. Emit explicit
+  `skipped_esto_extended_unpopulated` scope records instead.
+- Continue structural validation of Extended codes, hierarchy edges, IDs, and
+  mapping relationships.
+- If a comparison scope has data for a source/scenario in other periods but
+  not the period being checked, classify the row as
+  `skipped_no_comparable_scope_period`, not as a numerical failure.
+- Use an absolute `0.01 PJ` tolerance for the summed APEC gate. Retain the
+  existing relative tolerance for the targeted economy attribution that runs
+  only after an APEC issue is found. The former one-percent APEC tolerance
+  diluted material gaps against the much larger regional parent value.
+- A missing active-scope Common ESTO boundary must not suppress an independently
+  demonstrable raw-source hierarchy mismatch. When a maintained direct mapping
+  and literal source-parent row exist, compare that parent with its resolved raw
+  child frontier and retain a mismatch as
+  `parent_child_source_inconsistency`. Report `raw_source_frontier_sum`,
+  `raw_source_difference`, and the raw mismatch flag separately from the Common
+  ESTO frontier. Shared raw categories with the same maintained direct ESTO
+  target remain one grouped APEC signature, and that signature is expanded back
+  to its members before economy attribution.
+- Re-enable Extended numerical scopes only after a reviewed data-population
+  milestone and a fresh real-data verification.
