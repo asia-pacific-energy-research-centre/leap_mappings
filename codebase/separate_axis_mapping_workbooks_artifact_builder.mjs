@@ -43,6 +43,12 @@ const generationManifestPath = path.join(
   "config",
   "outlook_mappings_generation_manifest.json",
 );
+const mappingWorkflowDiagramPath = path.join(
+  repoRoot,
+  "docs",
+  "diagrams",
+  "mapping_production_workflow.png",
+);
 const compilerManifestPath = path.join(
   repoRoot,
   "outputs",
@@ -310,6 +316,88 @@ async function scanFormulaErrors(workbook, label) {
     summary: `${label} formula error scan`,
   });
   console.log(result.ndjson);
+}
+
+async function addWorkflowDiagram(sheet, headingRow, imageTopRow) {
+  const diagramBytes = await fs.readFile(mappingWorkflowDiagramPath);
+  const dataUrl = `data:image/png;base64,${diagramBytes.toString("base64")}`;
+  sheet.mergeCells(`A${headingRow}:H${headingRow}`);
+  sheet.getRange(`A${headingRow}`).values = [[
+    "Production workflow (rendered from docs/diagrams/mapping_production_workflow.mmd)",
+  ]];
+  sheet.getRange(`A${headingRow}:H${headingRow}`).format = {
+    fill: colors.lightBlue,
+    font: { name: "Aptos", size: 11, bold: true, color: colors.navy },
+    verticalAlignment: "center",
+  };
+  sheet.getRange(`A${headingRow}:H${headingRow}`).format.rowHeight = 25;
+  sheet.getRange(`A${imageTopRow}:H${imageTopRow + 11}`).format.rowHeight = 18;
+  sheet.images.add({
+    dataUrl,
+    anchor: {
+      from: { row: imageTopRow - 1, col: 0 },
+      extent: { widthPx: 1180, heightPx: 235 },
+    },
+  });
+}
+
+async function refreshMasterGuide(workbook) {
+  const existing = workbook.worksheets.getItem("Guide");
+  const originalIndex = existing.index;
+  existing.delete();
+  const guide = workbook.worksheets.add("Guide");
+  guide.index = originalIndex;
+  styleTitle(
+    guide,
+    "Generated mapping compatibility workbook",
+    "GENERATED COMPATIBILITY INTERFACE — edit outlook_mappings_single_axis.xlsx, not generated pair or rollup sheets here.",
+    { fill: colors.warning, color: colors.warningText },
+  );
+  styleReadmeTable(guide, 6, [
+    [
+      "Where people edit",
+      "config/outlook_mappings_single_axis.xlsx is the human-maintained authority for the six axes, accepted exact pairs, exceptions, and rollups.",
+    ],
+    [
+      "Preliminary production gate",
+      "After an editable-contract change, save and close Excel, then run codebase/separate_axis_mapping_refresh_workflow.py before Stage 1. Preliminary means upstream, not optional.",
+    ],
+    [
+      "Generated pair sheets",
+      "leap_combined_esto, leap_combined_ninth, and ninth_pairs_to_esto_pairs are compiled compatibility outputs. Do not edit their bodies.",
+    ],
+    [
+      "Generated rollup copies",
+      "leap_rollup_rules, esto_rollup_rules, and ninth_rollup_rules are copied from the editable workbook. Change the upstream copies.",
+    ],
+    [
+      "Preserved live sheets",
+      "leap_display_names, NINTH unique sectors and fuels, ESTO unique flows and products, and ninth fuel to esto product remain active reference/compatibility inputs.",
+    ],
+    [
+      "Reserved sheet",
+      "rollup_label_overrides is loaded for schema compatibility, but preferred-label overrides are not currently applied.",
+    ],
+    [
+      "Deletion candidates",
+      "other branches and deleted rows - might regret have no executable consumers in the three repositories. Keep them empty; remove only in a coordinated workbook-contract migration.",
+    ],
+    [
+      "Then run",
+      "Run the affected mapping pipeline stages (normally Stages 1–3) and review relationship, cardinality, hierarchy, lineage, and value-preservation QA.",
+    ],
+    [
+      "QA exceptions",
+      "Reviewed diagnostic exceptions belong in config/mapping_issue_exception_sets.xlsx. They never create or repair a mapping relationship.",
+    ],
+    [
+      "Detailed documentation",
+      "See docs/guide_outlook_mappings_master.md, docs/mappings_system.md, config/README.md, and docs/separate_axis_mapping_pipeline.md.",
+    ],
+  ]);
+  await addWorkflowDiagram(guide, 18, 19);
+  guide.getRange("A1:H34").format.font.name = "Aptos";
+  guide.freezePanes.freezeRows(4);
 }
 
 function normaliseEditableKeyValue(value, header) {
@@ -699,16 +787,16 @@ async function buildEditableWorkbook() {
   );
   styleReadmeTable(readme, 6, [
     [
+      "Start here",
+      "This is the human-maintained mapping contract. Yellow cells are editable; generated pair sheets live in other workbooks.",
+    ],
+    [
       "What people edit",
-      "The six single-axis mapping sheets and four extra-key-pair sheets. Yellow cells are editable.",
+      "Maintain the six single-axis mapping sheets, four accepted-extra-pair sheets, exceptions, and rollup sheets in this workbook.",
     ],
     [
-      "Why it is smaller",
-      "Each relationship sheet has two key columns. Sheets targeting ESTO have one additional dataset-scope column.",
-    ],
-    [
-      "Allowed cardinality",
-      "One-to-one, one-to-many, and many-to-one relationships are supported. Many-to-many components are reported for review; record an approved complete component in exceptions. Oversized or cross-family product components block compilation.",
+      "Why axes are separate",
+      "Sector/flow and fuel/product meanings are maintained once, then combined only for accepted exact source and target pairs.",
     ],
     [
       "ESTO dataset scope",
@@ -716,7 +804,7 @@ async function buildEditableWorkbook() {
     ],
     [
       "Generated outputs",
-      "Key-pair evidence and final pair mappings live in separate generated workbooks. Do not copy generated columns back into this workbook.",
+      "The refresh writes exact-pair evidence and the compatibility master. Do not copy generated columns back here or edit generated pair sheets.",
     ],
     [
       "Extra key pairs",
@@ -728,19 +816,44 @@ async function buildEditableWorkbook() {
     ],
     [
       "Subtotals and rollups",
-      "Canonical rollup rules are applied to raw key pairs before mappings are compiled. The generated master keeps the existing rollup-rule sheets unchanged.",
+      "Maintain rollup rules here. The refresh applies them to pair evidence and copies the rollup sheets into the generated master.",
+    ],
+    [
+      "Run order",
+      "Save and close Excel, run separate_axis_mapping_refresh_workflow.py as the preliminary production gate, then run the affected mapping Stages 1–3.",
+    ],
+    [
+      "Review after generation",
+      "Inspect missing relations, many-to-many components, sibling coverage, rollup/hierarchy checks, lineage, and value preservation.",
     ],
     [
       "Current status",
-      manifest.prototype_status,
+      `${String(manifest.prototype_status).replace(/[.\s]+$/, "")}. Presence accepts a row; deletion withdraws it.`,
     ],
   ]);
-  readme.getRange("A1:H30").format.font.name = "Aptos";
+  await addWorkflowDiagram(readme, 19, 20);
+  readme.getRange("A1:H35").format.font.name = "Aptos";
   readme.freezePanes.freezeRows(4);
 
   await addCsvSheets(workbook, manifest.editable_sources, true);
+  ensureExceptionSheet(workbook);
+  await ensureEditableManualSheets(workbook);
+  const expectedEditableSheets = [
+    "README",
+    ...Object.keys(manifest.editable_sources),
+    exceptionSheetName,
+    ...editableManualSheetNames,
+  ];
+  const actualEditableSheets = workbook.worksheets.items.map((sheet) => sheet.name);
+  if (JSON.stringify(actualEditableSheets) !== JSON.stringify(expectedEditableSheets)) {
+    throw new Error(
+      "Editable workbook sheet contract changed: "
+      + `${JSON.stringify(actualEditableSheets)} vs `
+      + `${JSON.stringify(expectedEditableSheets)}`,
+    );
+  }
   await renderWorkbook(workbook, "editable_axis", {
-    README: "A1:H22",
+    README: "A1:H35",
     leap_sector_to_esto: "A1:C20",
     leap_fuel_to_esto: "A1:C20",
     leap_sector_to_ninth: "A1:B20",
@@ -918,27 +1031,51 @@ async function buildGeneratedMaster() {
     };
   }
 
+  for (const sheetName of editableManualSheetNames) {
+    const existing = workbook.worksheets.getItem(sheetName);
+    const originalIndex = existing.index;
+    existing.delete();
+    const copiedSheet = copySheetValues(
+      editableWorkbook,
+      workbook,
+      sheetName,
+      false,
+    );
+    copiedSheet.index = originalIndex;
+    replacementSummary[sheetName] = {
+      presentation: "Copied from the editable single-axis workbook.",
+    };
+  }
+
+  await refreshMasterGuide(workbook);
+
   await scanFormulaErrors(workbook, "generated master");
   const output = await SpreadsheetFile.exportXlsx(workbook);
   await output.save(generatedMasterPath);
 
-  const reopenedInput = await FileBlob.load(generatedMasterPath);
-  const reopened = await SpreadsheetFile.importXlsx(reopenedInput);
+  let validatedWorkbook = workbook;
+  let validationLabel = "generated master";
+  if (reopenMaster) {
+    const reopenedInput = await FileBlob.load(generatedMasterPath);
+    validatedWorkbook = await SpreadsheetFile.importXlsx(reopenedInput);
+    validationLabel = "reopened generated master";
+  }
   const contractValidation = validateMasterContract(
-    reopened,
+    validatedWorkbook,
     expectedSheetNames,
   );
-  await renderWorkbook(reopened, "generated_master", {
+  await renderWorkbook(validatedWorkbook, "generated_master", {
+    Guide: "A1:H34",
     leap_combined_esto: "A1:H18",
     leap_combined_ninth: "A1:G18",
     ninth_pairs_to_esto_pairs: "A1:H18",
   });
-  await scanFormulaErrors(reopened, "reopened generated master");
+  await scanFormulaErrors(validatedWorkbook, validationLabel);
   await removeInspectSidecar(generatedMasterPath);
 
   const inspection = {};
   for (const sheetName of Object.keys(manifest.compiled_sources)) {
-    const result = await reopened.inspect({
+    const result = await validatedWorkbook.inspect({
       kind: "table",
       range: `${sheetName}!A1:H6`,
       include: "values,formulas",
@@ -968,6 +1105,8 @@ const buildPairs = globalThis.BUILD_PAIRS
   ?? runtimeEnvironment.BUILD_PAIRS !== "false";
 const buildMaster = globalThis.BUILD_MASTER
   ?? runtimeEnvironment.BUILD_MASTER !== "false";
+const reopenMaster = globalThis.REOPEN_MASTER
+  ?? runtimeEnvironment.REOPEN_MASTER !== "false";
 const verifyPairs = globalThis.VERIFY_PAIRS
   ?? runtimeEnvironment.VERIFY_PAIRS === "true";
 const promoteMaster = globalThis.PROMOTE_MASTER
@@ -998,21 +1137,6 @@ if (promoteMaster) {
     throw new Error("PROMOTE_MASTER requires BUILD_MASTER.");
   }
 
-  for (const sheetName of editableManualSheetNames) {
-    const existing = workbook.worksheets.getItem(sheetName);
-    const originalIndex = existing.index;
-    existing.delete();
-    const copiedSheet = copySheetValues(
-      editableWorkbook,
-      workbook,
-      sheetName,
-      false,
-    );
-    copiedSheet.index = originalIndex;
-    replacementSummary[sheetName] = {
-      presentation: "Copied from the editable single-axis workbook.",
-    };
-  }
   const compilerManifest = JSON.parse(
     await fs.readFile(compilerManifestPath, "utf8"),
   );
