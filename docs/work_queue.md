@@ -155,6 +155,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-034 | P2 | `production_validation_complete_review_debt_open` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | promoted and run end to end; semantic and QA debt remains | 2026-07-30 |
 | MAPQ-035 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-034 | after current detailed-row work | 2026-07-29 |
 | MAPQ-036 | P2 | `queued_after_separate_axis_promotion` | `leap_mappings` | MAPQ-034 | after production validation | 2026-07-30 |
+| MAPQ-037 | P1 | `review_in_progress` | `leap_mappings` + `leap_dashboard` | MAPQ-034 | current APEC anchor-validation work | 2026-08-03 |
 
 ---
 
@@ -568,6 +569,14 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   authority; ordinary generation never copies editable state from a generated
   output; downstream loaders retain their current compatibility interface; and
   rollback/provenance tests cover the new ownership boundary.
+
+### MAPQ-037 — Complete review of the APEC anchor-validation workbook
+
+- **Priority / status / timing:** P1 · `review_in_progress` · current work
+- **Owner repos:** `leap_mappings` + `leap_dashboard` · **Depends on:** MAPQ-034
+- **Evidence:** `outputs/019fc2a9-cf44-7671-b580-29079f59a49d/apec_anchor_validation_review.xlsx` is the current review artifact for the APEC-first source-parent anchor validation work.
+- **Next action:** Complete the human review of the workbook before treating the APEC-first validation, targeted economy attribution, shared dashboard diagnostics page, or reviewed source-exception candidate flow as commit-ready. Record accepted findings, rejected exceptions, and any required mapping/workbook corrections in the appropriate maintained authority.
+- **Completion criteria:** Every material APEC anchor finding has a documented disposition; any approved exception is exact and reviewer-confirmed; required code, mapping, or documentation corrections are applied and verified; and the resulting dashboard/pipeline smoke evidence is recorded.
 
 ---
 
