@@ -262,10 +262,11 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-004 — Integrate two small Stage 3 safety fixes
 
-- **Priority / status / week:** P0 · `complete_in_worktree` · W1
+- **Priority / status / week:** P0 · ✅ `complete_on_master` · W1
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001
 - **Evidence (2026-07-28):** `claude/zen-pike-39adbf` (`add312d`, empty partial-coverage candidate guard) and `codex/esto-rollup-source-identity-guard` (`8b169de`) are both clean and both report `+` under `git cherry master` — neither is on `master`. The guard adds 334 lines across `non_expanding_rollups.py`, `run_mapping_pipeline.py`, a README line, and a 151-line test module.
-- **Next action:** Integrate both, then delete the two source branches once merged.
+- **Resolution (2026-08-03):** Both fixes are on `master`. `add312d` was cherry-picked unchanged as `329d9a7` and now reports `-` under `git cherry`. `8b169de` was cherry-picked as `82e31f0` and still reports `+` because it required conflict resolution: `master` had since compressed `ESTO_COMPONENT_LINEAGE_PATH` to `.csv.gz` and extracted `ROLLUP_SHEET_CONFIGS` into `rollup_sheet_registry.build_rollup_sheet_configs()`. Both later changes were kept and only the branch's additive guard, its QA output path, and its tests were taken. Merging the branch would have reverted the registry extraction. Focused tests pass: 8 in `test_mapping_candidate_generation.py`, 26 in `test_non_expanding_rollups.py`.
+- **Next action:** Delete the two source branches and their worktrees.
 - **Completion criteria:** Both fixes on `master` with their focused tests passing, or a written comparison proving a later guard supersedes one of them. Do not accept the `master` `_source_identity` helpers in `apply_partitioned_common_esto.py` as that proof — verified to be a different concept.
 
 ### MAPQ-005 — Produce one clean current pipeline baseline
