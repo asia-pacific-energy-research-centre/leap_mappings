@@ -96,6 +96,22 @@ def test_shifted_buildings_fuel_relations_are_not_global_axis_mappings() -> None
     assert ("Peat", "18 Heat", "BOTH") not in rows
 
 
+def test_ninth_agriculture_and_fishing_maps_only_to_combined_flow() -> None:
+    ninth_to_esto = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="ninth_sector_to_esto",
+        dtype=str,
+    ).fillna("")
+    mapped_flows = set(
+        ninth_to_esto.loc[
+            ninth_to_esto["ninth_sector"].eq("16_02_agriculture_and_fishing"),
+            "esto_flow",
+        ]
+    )
+
+    assert mapped_flows == {"16.03-16.04 Agriculture and fishing"}
+
+
 def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
     leap_to_esto_flow = pd.read_excel(
         SINGLE_AXIS_PATH,
