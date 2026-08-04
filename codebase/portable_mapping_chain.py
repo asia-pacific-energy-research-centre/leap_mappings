@@ -117,6 +117,12 @@ def run_mapping_chain(job: dict) -> dict:
         economies=[economy],
         run_id=job.get("run_id"),
         run_timestamp_utc=job.get("run_timestamp_utc"),
+        # Without this, build_wide_year_output() (called internally, with no
+        # override) falls back to the module-level OUTLOOK_MAPPINGS_PATH
+        # constant, which is REPO_ROOT/config/outlook_mappings_master.xlsx -
+        # REPO_ROOT being sys._MEIPASS when frozen, where that file does not
+        # exist. Point it at the workbook this job was actually given.
+        outlook_mappings_path=Path(config["mapping_workbook_path"]),
     )
     comparison_rows = len(comparison_df)
     if not missing_map_df.empty:

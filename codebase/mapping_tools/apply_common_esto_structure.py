@@ -1893,6 +1893,7 @@ def run_common_esto_comparison_fast_path(
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
     comparison_scope_systems: dict[str, set[str]] | None = None,
+    outlook_mappings_path: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -1949,7 +1950,13 @@ def run_common_esto_comparison_fast_path(
         comparison_scope_systems=comparison_scope_systems,
     )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
-    wide_year_df = build_wide_year_output(comparison_df, common_rows_path)
+    wide_year_df = build_wide_year_output(
+        comparison_df,
+        common_rows_path,
+        outlook_mappings_path=(
+            outlook_mappings_path if outlook_mappings_path is not None else OUTLOOK_MAPPINGS_PATH
+        ),
+    )
     save_fast_path_outputs(
         comparison_df=comparison_df,
         wide_year_df=wide_year_df,
