@@ -10,6 +10,25 @@
 
 **Status: implementation and strict-tolerance real-data rerun complete 2026-08-03; workbook export blocked by missing loader-provided `@oai/artifact-tool`.**
 
+## Current disposition update - 2026-08-03
+
+This update supersedes contradictory status and next-action text in older
+sections below:
+
+- MAPQ-005 is complete. The current baseline is recorded by run
+  `common_esto_20260803T114057574740Z`.
+- MAPQ-009, MAPQ-010, MAPQ-029, and MAPQ-031 remain queued for tomorrow's
+  mapping review. No candidates or rollup rules should be applied before that
+  review.
+- MAPQ-027 is complete. The two approved Gas works rows contain
+  `02_coal_products` in the current canonical workbook, and the related
+  Bitumen row contains `07_x_other_petroleum_products`.
+- MAPQ-030 is superseded. Do not perform the historical workbook-wide manual
+  subtotal rewrite; use the algorithmic subtotal classification instead.
+- MAPQ-026 remains a separate human-decision item about the fate of the
+  non-canonical comparison workbook, even though its original MAPQ-027 fuel
+  dependency is now complete.
+
 Base ESTO and ESTO Extended trees must retain distinct dataset identities so
 ordinary ESTO anchors cannot expand through Extended-only technology branches.
 The two zero-filled Extended comparison scopes are numerically skipped with an
@@ -199,12 +218,12 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-002 | P0 | `complete_unpushed` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
 | MAPQ-003 | P0 | `complete_unpushed` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
 | MAPQ-004 | P0 | `complete_in_worktree` | `leap_mappings` | MAPQ-001 | W1 | 2026-07-28 |
-| MAPQ-005 | P0 | `partial` | `leap_mappings` | MAPQ-001…004, MAPQ-024 | W1–W2 | 2026-07-28 |
+| MAPQ-005 | P0 | `complete_on_master` | `leap_mappings` | MAPQ-001…004, MAPQ-024 | W1–W2 | 2026-08-03 |
 | MAPQ-006 | P0 | `partial` | `leap_mappings` | — | W1–W4 | 2026-07-28 |
 | MAPQ-007 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-005 | W2 | 2026-07-28 |
 | MAPQ-008 | P1 | `partial_reconciliation` | `leap_mappings` | MAPQ-004 | W3 | 2026-07-28 |
-| MAPQ-009 | P1 | `partial` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
-| MAPQ-010 | P1 | `not_started` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-009 | P1 | `partial` | `leap_mappings` | MAPQ-005 | W2 | 2026-08-03 |
+| MAPQ-010 | P1 | `not_started` | `leap_mappings` | MAPQ-005 | W2 | 2026-08-03 |
 | MAPQ-011 | P1 | `paused` | `leap_mappings` | MAPQ-005 | W2–W3 | 2026-07-28 |
 | MAPQ-012 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-009 | W2–W3 | 2026-07-28 |
 | MAPQ-013 | P1 | `partial` | `leap_mappings` | MAPQ-003, MAPQ-005 | W2–W3 | 2026-07-28 |
@@ -221,11 +240,11 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-024 | P2 | `not_started` | `leap_mappings` | — | W1 | 2026-07-28 |
 | MAPQ-025 | — | **delegated** to the sibling repos' own handover audits | `leap_dashboard` + `leap_initialisation` | — | n/a | 2026-07-28 |
 | MAPQ-026 | P2 | `human_decision` | `leap_mappings` | MAPQ-010, MAPQ-027 | W2 | 2026-07-28 |
-| MAPQ-027 | P2 | `human_decision` | `leap_mappings` | MAPQ-005 | W2 | 2026-07-28 |
+| MAPQ-027 | P2 | `complete_on_master` | `leap_mappings` | MAPQ-005 | W2 | 2026-08-03 |
 | MAPQ-028 | P2 | `deferred_active_processes` | `leap_mappings` + `leap_initialisation` + `leap_dashboard` | MAPQ-015, MAPQ-016, MAPQ-027 | W3 | 2026-07-28 |
-| MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-07-28 |
-| MAPQ-030 | P1 | `contract_and_review_ready` | `leap_mappings` | MAPQ-029, MAPQ-031 | human approval | 2026-07-28 |
-| MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-07-28 |
+| MAPQ-029 | P2 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-005, MAPQ-007 | W3 | 2026-08-03 |
+| MAPQ-030 | P1 | `superseded_cleanup` | `leap_mappings` | — | superseded | 2026-08-03 |
+| MAPQ-031 | P1 | `review_in_progress` | `leap_mappings` + `leap_initialisation` | MAPQ-007 | W1-W3 | 2026-08-03 |
 | MAPQ-032 | P1 | `ready_for_implementation` | `leap_mappings` | MAPQ-001 | W2 | 2026-07-28 |
 | MAPQ-033 | P2 | `blocked_pending_dataset_selection` | `leap_mappings` | multi-dataset M1-M6 | W3 | 2026-07-29 |
 | MAPQ-034 | P2 | `production_validation_complete_review_debt_open` | `leap_mappings` | MAPQ-005, MAPQ-029, MAPQ-031 | promoted and run end to end; semantic and QA debt remains | 2026-07-30 |
@@ -271,11 +290,12 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-005 — Produce one clean current pipeline baseline
 
-- **Priority / status / week:** P0 · `partial` · W1–W2
+- **Priority / status / week:** P0 · `complete_on_master` · W1–W2
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-001, MAPQ-002, MAPQ-003, MAPQ-004, MAPQ-024
 - **Evidence (2026-07-28):** `codebase/run_mapping_pipeline.py` exposes `run_stage_0/1/2`, `run_leap_parse`, `run_leap_to_esto`, `run_ninth_to_esto`, `run_esto_exact_rows`, `run_esto_extended_exact_rows`, `run_data_convert`, `run_stage_3`. Current `results/common_esto/` mixes 2026-07-27 and 2026-07-28 artifacts with a 2026-07-13 `_rebuilt` file — it is not a single coherent run. An Excel lock on the master workbook is currently present.
-- **Next action:** Close the workbook in Excel, settle MAPQ-001…004, then run maintenance plus Stages 1–3 in one pass.
-- **Completion criteria:** A recorded run ID with inputs, commit SHA, workbook hash/state, per-stage durations, validation counts, and a split between blocking and review-only findings. A zero exit code alone is not completion.
+- **Evidence (2026-08-03):** Full current run completed as `common_esto_20260803T114057574740Z` using commit `2b374654780ac7eb1e7b68f3fc0ffc2efa1e5300`. The run recorded input/configuration hashes, output paths, mapped-value preservation, and a split between non-blocking QA findings and required artifacts.
+- **Next action:** None for the baseline itself. Carry the fresh semantic and hierarchy findings into MAPQ-009, MAPQ-010, MAPQ-029, MAPQ-031, and MAPQ-037.
+- **Completion criteria:** Met for the current baseline; future source or mapping changes require a new run record.
 
 ### MAPQ-006 — Establish documentation control
 
@@ -306,7 +326,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Priority / status / week:** P1 · `partial` · W2
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
 - **Evidence (2026-07-28):** Diagnostic outputs exist but predate a coherent run (see MAPQ-005). `config/mapping_issue_exception_sets.xlsx` holds the curated allowlists that scope this work.
-- **Next action:** From the MAPQ-005 baseline only, group actionable partial coverage, non-zero unmapped LEAP branches, presence conflicts, and non-ESTO hierarchy edges by semantic cause.
+- **Next action:** Review tomorrow as part of the mappings review, using only the 2026-08-03 MAPQ-005 baseline. Do not apply candidates automatically.
 - **Completion criteria:** A reviewed, bounded decision list with human rules recorded **before** any workbook edit. Zero raw diagnostic rows is not the target.
 
 ### MAPQ-010 — Review `NON_EXPANDING` versus `DETACHED` rollups
@@ -314,7 +334,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Priority / status / week:** P1 · `not_started` · W2
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005
 - **Evidence (2026-07-28):** `docs/prompts/review_non_expanding_vs_detached_rollups_prompt.md` is present and active; no implementation commits reference it.
-- **Next action:** Execute that prompt against the MAPQ-005 baseline.
+- **Next action:** Review tomorrow as part of the mappings review. Execute the active prompt against the 2026-08-03 MAPQ-005 baseline; do not change rollup rules during the review.
 - **Completion criteria:** Each affected rollup classified, human decisions documented in `special_rules_and_design_decisions.md`, only the narrowest configuration changed, and affected validation rerun.
 
 ### MAPQ-011 — Resume mirror-row-gap exception curation
@@ -442,7 +462,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 
 ### MAPQ-026 — Decide the fate of `outlook_mappings_master_combined_esto.xlsx`
 
-- **Priority / status / week:** P2 · `human_decision` · W2
+- **Priority / status / week:** P2 · `complete_on_master` · W2
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-010
 - **Evidence (2026-07-28):** This workbook was part of the unit D deletion set but was **restored rather than deleted**, because it has two live dependencies that the other four variants do not:
   - Historical note: `codebase/run_mapping_pipeline_delayed.ps1` used to pass
@@ -467,8 +487,9 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-005 (rerun to validate)
 - **Evidence (2026-07-28):** Full working in [`workbook_variant_row_comparison_20260728.md`](workbook_variant_row_comparison_20260728.md) §2. `Gas works plants/Gas works plants` + `Blast furnace gas` and + `Other recovered gases` are active canonical rows with `ninth_sector` set and `ninth_fuel` **blank**. Both axes resolve unambiguously to `02_coal_products` (36/36 and 35/35 other active rows respectively; three sibling fuels in the same block already use that target). Only 3 of 2711 active rows have a blank `ninth_fuel`, so this is an anomaly rather than a convention. No many-to-many risk — the result is many-to-one aggregation.
 - **Also in scope:** the third blank-fuel row, `Heat plant interim/Heat plant interim` + `Bitumen` → `09_x_heat_plants`, blank in **both** workbooks; `Bitumen` resolves to `07_x_other_petroleum_products` in 23/23 other active rows.
-- **Next action:** Human sign-off, then edit the canonical workbook directly — do **not** import from the variant, which carries 228 unwanted inactive rows.
-- **Completion criteria:** Zero active rows with a populated `ninth_sector` and a blank `ninth_fuel`; a pipeline rerun confirms the newly active mappings produce no new validation failures. This is a behaviour change, not a cosmetic edit — the rows are currently inert on the fuel axis.
+- **Evidence (2026-08-03):** The current canonical workbook contains `ninth_fuel = 02_coal_products` for both approved Gas works rows. The full 2026-08-03 pipeline rerun consumed that state. The related Heat plant interim + Bitumen row also contains `07_x_other_petroleum_products`.
+- **Next action:** None. Retain the variant comparison as historical review evidence; do not import its inactive rows.
+- **Completion criteria:** Met for the approved rows; the current full-run evidence is the required validation record.
 
 ### MAPQ-028 — Rewrite the workbook Guide and adopt directional mapping-sheet names
 
@@ -498,12 +519,12 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Scope:** Build the reviewed Electricity Generation, CHP, and Heat plant process mappings from `data/temp/new leap rows.xlsx` on top of `config/outlook_mappings_master todo.xlsx`; route imported electricity to Ninth/ESTO imports; review main-activity/autoproducer coverage, Other + solid biomass boundaries, and stable ESTO Extended power-category identifiers without assuming the current rollups are correct.
 - **Alias cleanup:** Treat `Battery` / `Batteries` / `Distributed storage` and `Solar_rooftop` / `Solar rooftop` as non-additive alternatives. Keep safe fallback/alias handling until `leap_initialisation` can migrate models to one canonical branch name, then remove the retired alternatives explicitly.
 - **Do not enact during current review:** The canonical mapping workbook and LEAP model structures remain unchanged until the active processes finish and a clean baseline is available.
-- **Next action:** On a dedicated branch/worktree, inventory alias co-occurrence by economy, propose the exact rollup rows and mapping-row replacements, and review the plan before editing `config/outlook_mappings_master.xlsx`.
+- **Next action:** Review tomorrow as part of the mappings review. On a dedicated branch/worktree, inventory alias co-occurrence by economy, then propose exact rollup rows and mapping-row replacements before editing `config/outlook_mappings_master.xlsx`.
 - **Completion criteria:** Imported electricity maps only to `02_imports` / `02 Imports`; aliases cannot double count; Coal-H2 maps within coal power; power-detail mappings have no unresolved post-rollup many-to-many relationships; existing ESTO Extended identifiers remain stable; and maintenance plus Stages 1–3 pass without source-total or parent/child regressions.
 
-### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets
+### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets (superseded)
 
-- **Priority / status / timing:** P1 · `contract_and_review_ready` · human hierarchy review and workbook approval required
+- **Priority / status / timing:** P1 · `superseded_cleanup` · superseded by algorithmic subtotal classification
 - **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-029, MAPQ-031
 - **Problem:** Current `leap_is_subtotal`, `ninth_pair_is_subtotal`, and `esto_pair_is_subtotal` values contain historical assumptions and mistakes. Existing QA behaviour and decision-log descriptions must not be read as approval of those classifications.
 - **Scope:** Re-derive subtotal status for every row in `leap_combined_esto`, `ninth_pairs_to_esto_pairs`, and `leap_combined_ninth`, including parent/child and rollup-generated targets. Review coherent sibling groups together rather than applying bulk inference one cell at a time.
@@ -533,10 +554,8 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   partial or unresolved, and 392 held because of a prior label exception. No mapping
   relationships or maintained workbook cells were changed. See
   [`subtotal_mapping_master_review_20260729.md`](subtotal_mapping_master_review_20260729.md).
-- **Next decision:** Review the bounded unresolved queue, beginning with the
-  missing full LEAP/fuel hierarchy authority, then explicitly approve coherent
-  sibling groups before any workbook application. See
-  [`hierarchy_subtotal_contract.md`](hierarchy_subtotal_contract.md).
+- **Decision (2026-08-03):** Do not carry out the proposed workbook-wide manual subtotal rewrite. Subtotal status is now determined by the algorithmic hierarchy/subtotal contract rather than by manually applying the historical review workbook's proposed cell changes. Preserve the review workbook and this section as historical evidence; no MAPQ-030 workbook application remains planned.
+- **Next action:** None, apart from retaining the historical review artifacts and updating references that incorrectly describe MAPQ-030 as an active manual rebuild.
 
 ### MAPQ-031 — Build complete ESTO Extended mappings from the new LEAP rows
 
@@ -549,7 +568,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Detailed considerations:** [`esto_extended_category_creation_considerations.md`](esto_extended_category_creation_considerations.md).
 - **Confirmed transport directions:** car → LPV small; sports utility vehicle → LPV medium; light truck → LPV large; HEV → ICE; EREV → PHEV; freight two-wheelers → LCVs; FCEV → BEV where the target vehicle has no FCEV child; PHEV → BEV for buses, motorcycles, and medium/heavy trucks where no PHEV child exists; LNG → ICE. Ninth gasoline and diesel PHEV map to the same size-specific PHEV category where it exists, with the fuel/product axis preserved.
 - **Open decisions:** review parent output rows versus detailed process children in power/CHP/heat, the Electricity Generation Other plus solid-biomass boundary, the stable registry location, and which categories can receive defensible ESTO Extended historical values.
-- **Next action:** Finish the short list of blunt hierarchy decisions with the user, generate an exact row-level proposed change set against the todo workbook, and review it before any workbook write.
+- **Next action:** Review tomorrow as part of the mappings review. Finish the short list of hierarchy decisions, generate an exact row-level proposed change set against the todo workbook, and review it before any workbook write.
 - **Completion criteria:** Every new LEAP leaf pair has a reviewed ESTO Extended target or an explicit reason it is outside scope; all mapped sibling groups are complete under the agreed coarse crosswalk; rejected rows are absent; and structural/value validation passes after the workbook is enacted.
 
 ### MAPQ-032 — Replace the retired Stage 0 full-model-export resolver
@@ -726,3 +745,6 @@ descoped, or assigned to a named owner with a recorded risk.
    work belongs in those repositories' own queues.
 6. At the end of each week, record what moved to `complete_on_master`, what is
    blocked, and what must be descoped before handover.
+### MAPQ-026 — Decide the fate of `outlook_mappings_master_combined_esto.xlsx`
+
+- **Priority / status / week:** P2 · `human_decision` · W2

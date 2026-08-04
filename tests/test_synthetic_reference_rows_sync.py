@@ -58,18 +58,19 @@ def test_the_canonical_rules_file_exists() -> None:
 
 
 def test_the_dead_coverage_module_still_names_the_canonical_path() -> None:
-    """`ninth_to_esto_mapping_coverage` is unreachable, and this records it.
+    """`ninth_to_esto_mapping_coverage` is archived, and this records why.
 
     It imports ``codebase.scrapbook.utilities``, which does not exist, and
-    nothing else references it — so its default rules path pointing at a missing
-    file was never a live bug, just unreachable code. The constant is asserted
+    nothing else referenced it, so it was archived on 2026-08-04. Its default
+    rules path pointing at a missing file was never a live bug, just unreachable
+    code. The constant is asserted
     textually rather than by import, because importing the module raises.
 
     If that module is ever revived or deleted, this test is the reminder that
     its rules path has to move with it.
     """
     source = (
-        MAPPINGS_ROOT / "codebase" / "utilities" / "ninth_to_esto_mapping_coverage.py"
+        MAPPINGS_ROOT / "codebase" / "archive" / "ninth_to_esto_mapping_coverage.py"
     ).read_text(encoding="utf-8")
     assert 'DEFAULT_SYNTHETIC_RULES_PATH = REPO_ROOT / "config" / "synthetic_reference_rows.csv"' in source
 

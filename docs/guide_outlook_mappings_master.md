@@ -263,6 +263,61 @@ Restrictions:
   expected result is that detailed children stay separate and every subtotal
   is standalone (`check_status = ok`).
 
+## 5c. Detached rollups for cross-hierarchy comparison totals
+
+Use `ROLLUP_MODE = DETACHED` when a comparison or reporting row must sum
+categories that do **not** share an ordinary parent in the source hierarchy.
+A detached rollup creates the required synthetic subtotal while retaining the
+contributors in their normal hierarchy and detailed comparisons. It is a
+comparison boundary, not permission to make one contributor an ordinary child
+of another.
+
+The `All demand aggregated / Other sector` comparison is the worked example:
+
+```
+ESTO detached target:
+  16.03 Agriculture
+  + 16.04 Fishing
+  + 16.05 Non-specified others
+  + 17 Non-energy use
+  = 16.03-16.05,17 Other sector including non-energy (all demand aggregate)
+
+NINTH detached source subtotal:
+  16_02_agriculture_and_fishing
+  + 16_05_nonspecified_others
+  + 17_nonenergy_use
+  = 16_02-16_05,17 Other sector including non-energy (all demand aggregate)
+```
+
+Flow `17 Non-energy use` is not structurally below `16 Other sector`, so an
+expanding hierarchy rollup would state a false parent/child relationship. A
+detached rollup gives LEAP's aggregate Other-sector row the matching source
+total without requiring a new Non-energy subsector to be created and pushed
+through every relevant LEAP template and economy.
+
+Rules for this pattern:
+
+- Give the synthetic target an explicit name that says it includes the
+  cross-hierarchy contributor; do not reuse the ordinary `16 Other sector`
+  label.
+- Declare every contributor once in the detached group and leave products
+  blank when the subtotal should be calculated independently for every product.
+- Point the aggregate LEAP mapping to the synthetic target exactly once. Keep
+  the detailed `Non-energy use -> 17 Non-energy use` mapping for the detailed
+  view.
+- A contributor may therefore appear in its ordinary detailed row and in the
+  detached subtotal. This is intentional reuse across alternative comparison
+  views, not an allocation relationship. Never add the detached subtotal and
+  its contributors in the same total.
+- Apply the matching detached boundary to other source systems used in the
+  comparison. Otherwise LEAP, ESTO, and NINTH will still be compared at
+  different reporting boundaries.
+- After refreshing, verify the detached target is labelled
+  `detached_rollup`, its contributor set is exact, and no ordinary hierarchy
+  edge makes flow 17 a child of flow 16. Spot-check at least one product whose
+  value is concentrated in the cross-hierarchy contributor; for this example,
+  `Other products` is the useful regression case.
+
 ## 6. Checklist for adding or editing a rollup group
 
 1. List **all** real components as `input_*` rows — for "(including own use)" groups that

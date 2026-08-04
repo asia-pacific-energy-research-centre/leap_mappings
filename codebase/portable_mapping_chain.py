@@ -287,7 +287,22 @@ def main(argv: list[str] | None = None) -> int:
         job = json.load(sys.stdin)
         result = run_mapping_chain(job)
     except Exception as exc:  # noqa: BLE001 - errors must reach the caller as JSON
-        print(json.dumps({"error": str(exc)}))
+        # The message alone is often not enough to place a failure: "argument
+        # should be a str ... not 'NoneType'" says nothing about which argument
+        # or which call. The caller still shows only the message to a user, but
+        # the traceback travels with it so a maintainer can find the line
+        # without re-running anything.
+        import traceback
+
+        print(
+            json.dumps(
+                {
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "traceback": traceback.format_exc().splitlines()[-12:],
+                }
+            )
+        )
         return 1
 
     print(json.dumps(result))
