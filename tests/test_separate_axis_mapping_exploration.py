@@ -656,6 +656,69 @@ def test_editable_axis_rows_are_the_compiler_authority() -> None:
     ) == {"T2"}
 
 
+@pytest.mark.parametrize(
+    "physical_path",
+    [
+        r"Demand\All demand aggregated\Road",
+        r"Transformation\Electricity Generation",
+        r"Resources\Coal",
+    ],
+)
+def test_editable_leap_flow_axis_rejects_physical_branch_paths(
+    physical_path: str,
+) -> None:
+    sheets = {
+        "leap_sector_to_esto": pd.DataFrame(
+            [
+                {
+                    "leap_sector": physical_path,
+                    "esto_flow": "15.02 Road",
+                    "esto_dataset_scope": "BOTH",
+                }
+            ]
+        ),
+        "leap_fuel_to_esto": pd.DataFrame(
+            [
+                {
+                    "leap_fuel": "Electricity",
+                    "esto_product": "17 Electricity",
+                    "esto_dataset_scope": "BOTH",
+                }
+            ]
+        ),
+        "leap_sector_to_ninth": pd.DataFrame(
+            [{"leap_sector": "Road", "ninth_sector": "15_02_road"}]
+        ),
+        "leap_fuel_to_ninth": pd.DataFrame(
+            [{"leap_fuel": "Electricity", "ninth_fuel": "17_electricity"}]
+        ),
+        "ninth_sector_to_esto": pd.DataFrame(
+            [
+                {
+                    "ninth_sector": "15_02_road",
+                    "esto_flow": "15.02 Road",
+                    "esto_dataset_scope": "BOTH",
+                }
+            ]
+        ),
+        "ninth_fuel_to_esto": pd.DataFrame(
+            [
+                {
+                    "ninth_fuel": "17_electricity",
+                    "esto_product": "17 Electricity",
+                    "esto_dataset_scope": "BOTH",
+                }
+            ]
+        ),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="full physical LEAP branch paths",
+    ):
+        build_axis_mappings_from_editable_sheets(sheets)
+
+
 def test_editable_duplicate_cleanup_keeps_distinct_targets() -> None:
     frame = pd.DataFrame(
         [
@@ -1030,7 +1093,38 @@ def test_compiled_sheet_frames_match_maintained_pair_sheet_columns() -> None:
         "esto_dataset_scope",
     ]
     assert not bool(leap_esto.iloc[0]["leap_is_subtotal"])
+    assert bool(leap_esto.iloc[0]["esto_pair_is_subtotal"])
     assert not bool(leap_esto.iloc[0]["duplicate_to_remove"])
+
+
+def test_compiled_sheet_frames_use_registry_subtotals_unless_legacy_enabled() -> None:
+    current = pd.DataFrame([_relationship("S1", "P1", "T1", "Q1")])
+    relationships = current[RELATIONSHIP_KEY_COLUMNS].copy()
+    registries = {
+        ("LEAP", "ESTO"): pd.DataFrame(
+            [{"flow": "S1", "product": "P1", "pair_is_subtotal": True}]
+        ),
+        ("ESTO", "ESTO"): pd.DataFrame(
+            [{"flow": "T1", "product": "Q1", "pair_is_subtotal": True}]
+        ),
+    }
+
+    generated = build_compiled_mapping_sheet_frames(
+        relationships,
+        current,
+        registries,
+    )["leap_combined_esto"]
+    legacy = build_compiled_mapping_sheet_frames(
+        relationships,
+        current,
+        registries,
+        use_current_reviewed_subtotal_flags=True,
+    )["leap_combined_esto"]
+
+    assert bool(generated.iloc[0]["leap_is_subtotal"])
+    assert bool(generated.iloc[0]["esto_pair_is_subtotal"])
+    assert not bool(legacy.iloc[0]["leap_is_subtotal"])
+    assert not bool(legacy.iloc[0]["esto_pair_is_subtotal"])
 
 
 def test_source_once_delivery_handles_many_to_one_recombine_and_allocation() -> None:

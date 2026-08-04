@@ -83,6 +83,10 @@ REGISTRY_PATHS = {
     ),
 }
 
+# Keep the former reviewed-master subtotal precedence available for deliberate
+# legacy comparisons, but do not use it in the production compiler.
+USE_CURRENT_REVIEWED_SUBTOTAL_FLAGS = False
+
 
 def _github_checkout(repo_name: str) -> Path:
     """Resolve a main checkout from either a main repo or repo worktree."""
@@ -988,6 +992,9 @@ def run_single_axis_master_prototype(
         temporal_pair_compiled,
         current,
         registries_by_scope,
+        use_current_reviewed_subtotal_flags=(
+            USE_CURRENT_REVIEWED_SUBTOTAL_FLAGS
+        ),
     )
 
     summary = _summary_rows(
@@ -1184,6 +1191,11 @@ def run_single_axis_master_prototype(
         "canonical_workbook_path": str(WORKBOOK_PATH),
         "editable_axis_workbook_path": str(EDITABLE_AXIS_WORKBOOK_PATH),
         "axis_contract_authority": "editable_single_axis_workbook",
+        "subtotal_flag_authority": (
+            "current_reviewed_master_then_generated_registry"
+            if USE_CURRENT_REVIEWED_SUBTOTAL_FLAGS
+            else "generated_pair_registries_only"
+        ),
         "axis_contract_bootstrapped_this_run": (
             axis_contract_bootstrapped_this_run
         ),

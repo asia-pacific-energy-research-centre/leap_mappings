@@ -1383,6 +1383,20 @@ def build_axis_mappings_from_editable_sheets(
         source_values = frame[source_column].map(_clean)
         target_values = frame[target_column].map(_clean)
         populated = source_values.ne("") | target_values.ne("")
+        if spec["source_system"] == "LEAP" and spec["axis"] == "flow":
+            physical_roots = ("demand\\", "transformation\\", "resources\\")
+            physical_branch_path = (
+                populated
+                & source_values.str.casefold().str.startswith(physical_roots)
+            )
+            if physical_branch_path.any():
+                workbook_rows = (frame.index[physical_branch_path] + 2).tolist()
+                raise ValueError(
+                    f"{sheet_name} uses full physical LEAP branch paths "
+                    f"at workbook rows {workbook_rows[:20]}. leap_sector must "
+                    "use the parsed balance-flow key without the leading "
+                    r"'Demand\', 'Transformation\', or 'Resources\' root."
+                )
         incomplete = populated & (source_values.eq("") | target_values.eq(""))
         if incomplete.any():
             workbook_rows = (frame.index[incomplete] + 2).tolist()
@@ -2020,27 +2034,34 @@ def build_compiled_mapping_sheet_frames(
     relationships: pd.DataFrame,
     current_relationships: pd.DataFrame,
     registries_by_scope: dict[tuple[str, str], pd.DataFrame],
+    use_current_reviewed_subtotal_flags: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """Return generated pair sheets with the canonical maintained columns.
 
-    Current reviewed subtotal flags take precedence. Newly compiled pairs use
-    exact source/target registry metadata when available.
+    Registry subtotal metadata is authoritative by default. The former
+    reviewed-flag precedence remains available only through the explicit
+    legacy switch.
     """
-    working = add_target_pair_metadata(
-        relationships,
-        current_relationships,
-        registries_by_scope,
-    )
-
-    current_source_subtotals = (
-        current_relationships.groupby(SOURCE_PAIR_COLUMNS, as_index=False)
-        .agg(source_pair_is_subtotal=("source_pair_is_subtotal", "max"))
-    )
-    working = working.merge(
-        current_source_subtotals,
-        on=SOURCE_PAIR_COLUMNS,
-        how="left",
-    )
+    if use_current_reviewed_subtotal_flags:
+        working = add_target_pair_metadata(
+            relationships,
+            current_relationships,
+            registries_by_scope,
+        )
+        current_source_subtotals = (
+            current_relationships.groupby(SOURCE_PAIR_COLUMNS, as_index=False)
+            .agg(source_pair_is_subtotal=("source_pair_is_subtotal", "max"))
+        )
+        working = working.merge(
+            current_source_subtotals,
+            on=SOURCE_PAIR_COLUMNS,
+            how="left",
+        )
+    else:
+        working = add_registry_target_pair_metadata(
+            relationships,
+            registries_by_scope,
+        )
 
     registry_subtotals: dict[
         tuple[str, str, str],
@@ -2058,10 +2079,11 @@ def build_compiled_mapping_sheet_frames(
 
     source_flags: list[bool] = []
     for row in working.itertuples(index=False):
-        reviewed = getattr(row, "source_pair_is_subtotal", pd.NA)
-        if not pd.isna(reviewed):
-            source_flags.append(_truthy(reviewed))
-            continue
+        if use_current_reviewed_subtotal_flags:
+            reviewed = getattr(row, "source_pair_is_subtotal", pd.NA)
+            if not pd.isna(reviewed):
+                source_flags.append(_truthy(reviewed))
+                continue
         source_flags.append(
             registry_subtotals.get(
                 (
@@ -2442,6 +2464,43 @@ def add_target_pair_metadata(
         "Compiled from separate flow/product axes; prototype only."
     )
     return result.drop(columns=["_current_subtotal", "_current_notes"])
+
+
+def add_registry_target_pair_metadata(
+    relationships: pd.DataFrame,
+    registries_by_scope: dict[tuple[str, str], pd.DataFrame],
+) -> pd.DataFrame:
+    """Attach target subtotal metadata using generated registries only."""
+    result = relationships.copy()
+    registry_subtotal_lookups: dict[
+        tuple[str, str],
+        dict[tuple[str, str], bool],
+    ] = {}
+    for scope_key, registry in registries_by_scope.items():
+        if registry.empty:
+            registry_subtotal_lookups[scope_key] = {}
+            continue
+        registry_subtotal_lookups[scope_key] = {
+            (_clean(row.flow), _clean(row.product)): _truthy(
+                row.pair_is_subtotal
+            )
+            for row in registry[
+                ["flow", "product", "pair_is_subtotal"]
+            ].drop_duplicates(["flow", "product"]).itertuples(index=False)
+        }
+
+    result["target_pair_is_subtotal"] = [
+        registry_subtotal_lookups.get(
+            (_clean(row.target_system), _clean(row.comparison_scope)),
+            {},
+        ).get(
+            (_clean(row.target_flow), _clean(row.target_product)),
+            False,
+        )
+        for row in result.itertuples(index=False)
+    ]
+    result["notes"] = "Compiled from separate flow/product axes."
+    return result
 
 
 def _mapping_frame_from_contract(
