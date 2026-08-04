@@ -71,6 +71,108 @@ from codebase.mapping_tools.parse_leap_balance_export import (  # noqa: E402
 )
 
 
+def prepare_esto_exact_rows(
+    *,
+    bundled_exact_rows: Path,
+    esto_base_table: Path | None,
+    synthetic_rules_path: Path | None,
+    relationships_path: Path,
+    mapping_workbook_path: Path,
+    work_dir: Path,
+    notes: list[str],
+) -> Path:
+    """Return the ESTO exact-row table to compare against.
+
+    A release ships exact rows extracted from one ESTO issue. When the caller
+    supplies a raw ESTO base table - because the user dropped in a newer issue -
+    those shipped rows are the wrong vintage, and using them would compare LEAP
+    against last year's data while looking entirely normal.
+
+    So the rows are re-extracted here from the supplied table. Synthetic
+    reference rows are applied to the raw table *first*, because they describe
+    rows a given ESTO issue may not carry (Datacentres, hydrogen transformation)
+    and the extraction can only find rows that exist. Every injected row stays
+    tagged with the rule that created it.
+
+    Extraction takes roughly a minute, so the result is cached on the identity
+    of its inputs: a second run against the same table reuses it.
+    """
+    if esto_base_table is None or not Path(esto_base_table).is_file():
+        return bundled_exact_rows
+
+    esto_base_table = Path(esto_base_table)
+    fingerprint = _fingerprint(
+        [esto_base_table, synthetic_rules_path, relationships_path, mapping_workbook_path]
+    )
+    cached = work_dir / f"esto_results_exact_rows_{fingerprint}.csv.gz"
+    if cached.is_file():
+        notes.append(f"Reused cached ESTO exact rows for this table ({cached.name}).")
+        return cached
+
+    prepared_table = esto_base_table
+    if synthetic_rules_path and Path(synthetic_rules_path).is_file():
+        prepared_table, added = _apply_synthetic_rows(
+            esto_base_table, Path(synthetic_rules_path), work_dir
+        )
+        notes.append(
+            f"Applied synthetic reference rows to the ESTO table: {added} row(s) added."
+        )
+
+    from codebase.run_mapping_pipeline import run_esto_exact_rows_for_path
+
+    run_esto_exact_rows_for_path(prepared_table, cached, "ESTO")
+    notes.append(
+        f"Re-extracted ESTO exact rows from {esto_base_table.name} "
+        "because a base table was supplied."
+    )
+    return cached
+
+
+def _fingerprint(paths: list[Path | None]) -> str:
+    """Return a short digest identifying a set of input files."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for path in paths:
+        if path is None or not Path(path).is_file():
+            digest.update(b"<absent>")
+            continue
+        stat = Path(path).stat()
+        digest.update(f"{Path(path).name}:{stat.st_size}:{int(stat.st_mtime)}".encode())
+    return digest.hexdigest()[:12]
+
+
+def _apply_synthetic_rows(
+    esto_table: Path, rules_path: Path, work_dir: Path
+) -> tuple[Path, int]:
+    """Write a copy of *esto_table* with the synthetic reference rows added."""
+    import pandas as pd
+
+    from codebase.utilities.leap_results_dashboard_v2.reference_loader import (
+        append_synthetic_reference_rows,
+        load_synthetic_reference_rows_config,
+    )
+
+    esto_df = pd.read_csv(esto_table, dtype=object)
+    rules = load_synthetic_reference_rows_config(rules_path)
+    # The 9th frame is not needed here: only the ESTO side feeds this extraction.
+    esto_out, _ninth_out, _status = append_synthetic_reference_rows(
+        esto_df=esto_df,
+        ninth_df=pd.DataFrame(),
+        rules=rules,
+    )
+    added = len(esto_out) - len(esto_df)
+    # The tagging columns are for provenance, not for the extraction, which
+    # expects the published ESTO column set.
+    esto_out = esto_out.drop(
+        columns=[c for c in esto_out.columns if c.startswith("_synthetic")],
+        errors="ignore",
+    )
+    prepared = work_dir / "esto_base_table_with_synthetic_rows.csv"
+    esto_out.to_csv(prepared, index=False)
+    return prepared, added
+
+
 def run_mapping_chain(job: dict) -> dict:
     """Run the parse -> convert -> Common ESTO fast-path chain for one economy."""
     economy = job["economy"]
@@ -81,6 +183,26 @@ def run_mapping_chain(job: dict) -> dict:
     artifacts = job.get("artifacts", {})
     config = job.get("config", {})
     notes: list[str] = []
+
+    # Settle which ESTO exact rows this run compares against before anything
+    # else uses them: both the conversion and the fast path read them.
+    esto_exact_rows_path = prepare_esto_exact_rows(
+        bundled_exact_rows=Path(artifacts["esto_exact_rows_path"]),
+        esto_base_table=(
+            Path(config["esto_base_table_path"])
+            if config.get("esto_base_table_path")
+            else None
+        ),
+        synthetic_rules_path=(
+            Path(config["synthetic_reference_rows_path"])
+            if config.get("synthetic_reference_rows_path")
+            else None
+        ),
+        relationships_path=Path(artifacts["relationships_path"]),
+        mapping_workbook_path=Path(config["mapping_workbook_path"]),
+        work_dir=work_dir,
+        notes=notes,
+    )
 
     raw_leap_path = work_dir / "raw_leap_results.csv"
     converted_path = work_dir / "leap_results_converted_to_esto.csv"
@@ -94,7 +216,7 @@ def run_mapping_chain(job: dict) -> dict:
         output_path=converted_path,
         mapping_workbook_path=Path(config["mapping_workbook_path"]),
         rollup_audit_path=work_dir / "leap_source_rollup_audit.csv",
-        target_values_path=Path(artifacts["esto_exact_rows_path"]),
+        target_values_path=esto_exact_rows_path,
         lineage_output_path=work_dir / "lineage.csv.gz",
         source_branch_fallback_rules_path=Path(config["source_branch_fallback_rules_path"]),
         all_demand_components_path=Path(config["all_demand_components_path"]),
@@ -107,7 +229,7 @@ def run_mapping_chain(job: dict) -> dict:
         source_paths={
             "LEAP": converted_path,
             "NINTH": Path(artifacts["ninth_converted_path"]),
-            "ESTO": Path(artifacts["esto_exact_rows_path"]),
+            "ESTO": esto_exact_rows_path,
         },
         common_rows_path=common_rows_path,
         output_dir=work_dir,

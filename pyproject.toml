@@ -23,3 +23,8 @@ Homepage = "https://example.com/leap-mappings"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["codebase*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: takes minutes; runs the real ESTO exact-row extraction",
+]
