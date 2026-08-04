@@ -212,11 +212,21 @@ def run_esto_exact_rows_for_path(
     # Regression guard: derived rollup rows are built here, not read from the
     # source CSV, so a hard-coded identity would land ESTO rows inside the
     # Extended artifact and double every affected flow downstream.
+    # The identity guard always writes its QA table, so it needs a real path.
+    # A caller with no configured location (the portable worker) gets one beside
+    # the output rather than a skipped check: this guard is what stops ESTO rows
+    # landing inside the Extended artifact and double-counting downstream, so it
+    # must run in the worker exactly as it does in the pipeline.
+    resolved_qa_path = (
+        Path(qa_path)
+        if qa_path is not None
+        else output_path.parent / "qa_esto_exact_rows_source_identity.csv"
+    )
     identity_summary = guard_esto_exact_rows_source_identity(
         long_df,
         output_path,
         source_system,
-        qa_path=qa_path,
+        qa_path=resolved_qa_path,
         repo_root=repo_root,
     )
 
