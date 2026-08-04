@@ -787,7 +787,15 @@ def run_esto_exact_rows_for_path(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     long_df.to_csv(output_path, index=False)
-    print(f"  {source_system} exact rows: {exact_row_count:,} -> {output_path.relative_to(REPO_ROOT)}")
+    # A repo-relative label is friendlier in a pipeline run, but the portable
+    # mapping-chain worker writes to a scratch directory outside the repository,
+    # where relative_to raises. Fall back to the absolute path rather than
+    # failing after the work is already done.
+    try:
+        display_output = output_path.relative_to(REPO_ROOT)
+    except ValueError:
+        display_output = output_path
+    print(f"  {source_system} exact rows: {exact_row_count:,} -> {display_output}")
     for row in identity_summary.itertuples():
         print(
             f"  source_system={row.source_system}: {row.row_count:,} rows "
