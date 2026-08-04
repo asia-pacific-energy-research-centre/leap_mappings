@@ -50,6 +50,12 @@ def _find_repo_root() -> Path:
     for parent in [here, *here.parents]:
         if (parent / "config" / "outlook_mappings_master.xlsx").exists():
             return parent
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root is not None:
+        # Frozen build (PyInstaller, the portable mapping-chain worker): see
+        # build_dataset_tree_structure.py's _find_repo_root for why this falls
+        # back instead of raising.
+        return Path(frozen_root)
     raise RuntimeError("Could not locate repo root.")
 
 REPO_ROOT = _find_repo_root()

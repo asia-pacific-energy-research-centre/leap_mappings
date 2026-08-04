@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -15,7 +16,10 @@ from codebase.mapping_tools.dataset_registry import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# See dataset_registry.py's REPO_ROOT for why this falls back when frozen.
+REPO_ROOT = (
+    Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
+)
 MAPPING_SHEET_REGISTRY_PATH = (
     REPO_ROOT / "config" / "datasets" / "mapping_sheet_registry.csv"
 )

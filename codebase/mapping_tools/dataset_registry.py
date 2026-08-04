@@ -10,12 +10,20 @@ dataset identity and comparison-scope membership into reviewed configuration.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Frozen build (PyInstaller, the portable mapping-chain worker): no repo
+# checkout exists on disk, but the registry CSVs are bundled into the
+# worker's own PyInstaller `datas` at sys._MEIPASS/config/datasets - see
+# leap_initialisation/docs/leap_review_tools_handover_20260803.md §1 and
+# codebase/portable_release/build_release.py's worker spec in that repo.
+REPO_ROOT = (
+    Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
+)
 DATASET_REGISTRY_PATH = REPO_ROOT / "config" / "datasets" / "dataset_registry.csv"
 COMPARISON_SCOPE_REGISTRY_PATH = (
     REPO_ROOT / "config" / "datasets" / "comparison_scopes.csv"

@@ -47,6 +47,13 @@ def _find_repo_root() -> Path:
     for parent in [here, *here.parents]:
         if (parent / "config" / "outlook_mappings_master.xlsx").exists():
             return parent
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root is not None:
+        # Frozen build (PyInstaller, the portable mapping-chain worker): no
+        # repo checkout exists on disk. The worker's caller supplies every
+        # path this module's constants would otherwise default to, explicitly
+        # - see leap_initialisation/docs/leap_review_tools_handover_20260803.md §1.
+        return Path(frozen_root)
     raise RuntimeError("Could not locate repo root (no config/outlook_mappings_master.xlsx found).")
 
 REPO_ROOT = _find_repo_root()

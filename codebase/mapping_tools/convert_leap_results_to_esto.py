@@ -8,6 +8,7 @@ LEAP flow/product columns and writes grouped ESTO flow/product results.
 """
 
 #%%
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -42,6 +43,12 @@ def _find_repo_root(start_path: Path) -> Path:
     for candidate in [start_path, *start_path.parents]:
         if (candidate / "AGENTS.md").exists() and (candidate / "config" / "outlook_mappings_master.xlsx").exists():
             return candidate
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root is not None:
+        # Frozen build (PyInstaller, the portable mapping-chain worker): see
+        # build_dataset_tree_structure.py's _find_repo_root for why this falls
+        # back instead of raising.
+        return Path(frozen_root)
     raise FileNotFoundError(f"Could not find repo root above: {start_path}")
 
 

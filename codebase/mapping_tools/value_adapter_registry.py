@@ -4,6 +4,7 @@
 #%%
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Callable
 
@@ -16,7 +17,10 @@ from codebase.mapping_tools.dataset_registry import (
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# See dataset_registry.py's REPO_ROOT for why this falls back when frozen.
+REPO_ROOT = (
+    Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
+)
 VALUE_ADAPTER_REGISTRY_PATH = (
     REPO_ROOT / "config" / "datasets" / "value_adapter_registry.csv"
 )
