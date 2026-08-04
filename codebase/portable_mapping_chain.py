@@ -118,9 +118,18 @@ def prepare_esto_exact_rows(
             f"Applied synthetic reference rows to the ESTO table: {added} row(s) added."
         )
 
-    from codebase.run_mapping_pipeline import run_esto_exact_rows_for_path
+    # The extracted module, not the pipeline runner: importing the runner would
+    # bundle the Stage 1/2 builders and the separate-axis workflows into this
+    # worker to reach one function.
+    from codebase.mapping_tools.esto_exact_rows import run_esto_exact_rows_for_path
 
-    run_esto_exact_rows_for_path(prepared_table, cached, "ESTO")
+    run_esto_exact_rows_for_path(
+        prepared_table,
+        cached,
+        "ESTO",
+        relationships_path=relationships_path,
+        mapping_workbook_path=mapping_workbook_path,
+    )
     notes.append(
         f"Re-extracted ESTO exact rows from {esto_base_table.name} "
         "because a base table was supplied."
