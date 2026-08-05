@@ -6,6 +6,40 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-042 — Finish APEC-wide anchor-exception integration
+
+**Status: validator behaviour implemented and verified on real data 2026-08-05;
+commit and dashboard integration deferred for a later clean work window.**
+
+The reviewed exception identity for an APEC anchor finding is structural. For
+`economy = all`, `parent_value` is retained as evidence from the APEC review
+but is not a matching key, because an individual economy cannot equal the APEC
+aggregate. Economy-specific exceptions continue to require the exact value.
+When both levels match, the economy-specific exception takes precedence;
+duplicate exceptions at the same specificity still fail closed.
+
+Real-data verification in
+`outputs/apec_anchor_validation_value_independent_verification/` matched all
+2,146 failed APEC rows and all 7,776 failed economy drill-down rows. Of the
+economy rows, 7,422 inherited an APEC-wide exception and 354 retained an older
+economy-specific exception. No passed or skipped row was annotated, the
+50,455 core validation rows were numerically unchanged, and all 56 focused
+source-parent anchor tests passed.
+
+**Next action:** In a clean work window, isolate and commit the validator,
+tests, exception-workbook documentation, and reviewed exception-set changes;
+then update `leap_dashboard` so the shared APEC diagnostics page presents the
+APEC exception as the primary decision and exposes related economy examples
+without requiring duplicate economy-level exception entries. Verify the
+exception-entry dropdown for both `all` and a specifically selected economy,
+then run the mapping anchor stage and dashboard smoke tests together.
+
+**Completion criteria:** The mapping and dashboard changes are committed in
+their owning repositories; every failed APEC row and related failed economy
+example displays the intended exception status; specific-over-APEC precedence
+is preserved; numerical validation results remain visible and unchanged; and
+the shared diagnostics page is accessible from every economy dashboard.
+
 ## MAPQ-041 — Separate ESTO Extended anchor provenance and rebuild review output
 
 **Status: implementation and strict-tolerance real-data rerun complete 2026-08-03; workbook export blocked by missing loader-provided `@oai/artifact-tool`.**
@@ -251,6 +285,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-035 | P2 | `deferred_until_current_row_work_finishes` | `leap_mappings` + `leap_initialisation` | MAPQ-031, MAPQ-034 | after current detailed-row work | 2026-07-29 |
 | MAPQ-036 | P2 | `queued_after_separate_axis_promotion` | `leap_mappings` | MAPQ-034 | after production validation | 2026-07-30 |
 | MAPQ-037 | P1 | `review_in_progress` | `leap_mappings` + `leap_dashboard` | MAPQ-034 | current APEC anchor-validation work | 2026-08-03 |
+| MAPQ-042 | P1 | `verified_uncommitted_dashboard_follow_up` | `leap_mappings` + `leap_dashboard` | MAPQ-037 | later clean work window | 2026-08-05 |
 
 ---
 
