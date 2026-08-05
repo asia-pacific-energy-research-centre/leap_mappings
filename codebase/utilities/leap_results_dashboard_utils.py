@@ -27,6 +27,11 @@ import pandas as pd
 
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
+# A replacement field in an f-string cannot contain a backslash before Python
+# 3.12, and the deployed Space runs an older interpreter than a maintainer's
+# checkout, so Windows path separators are cleaned through this constant.
+BACKSLASH = chr(92)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -7055,10 +7060,18 @@ def build_dashboards(
                     f'<div style="margin-top:4px;color:{palette["text"]};font-size:12px;font-weight:600;">'
                     f'{issue["label"]}</div>'
                 )
+            # Built outside the f-string: a replacement field cannot contain a
+            # backslash before Python 3.12, and the Space runs an older one.
+            measure_heading = (
+                "<div style='margin-bottom:4px;color:#4b5563;font-size:12px;"
+                "font-weight:600;'>" + str(measure) + "</div>"
+                if str(measure).strip()
+                else ""
+            )
             cards.append(
                 f"""
 <figure style="{card_style}">
-  {"<div style=\"margin-bottom:4px;color:#4b5563;font-size:12px;font-weight:600;\">" + str(measure) + "</div>" if str(measure).strip() else ""}
+  {measure_heading}
   {issue_badge}
   {chart_markup}
 </figure>
@@ -7219,12 +7232,21 @@ def build_dashboards(
     path_order_index = {path: idx for idx, path in enumerate(ordered_node_paths)}
     fallback_path_rank = len(path_order_index) + 1
 
+    def _node_slug(path: tuple[str, ...]) -> str:
+        """Return a filename-safe slug for a node path.
+
+        Kept out of the f-strings that use it: a replacement field cannot
+        contain a backslash before Python 3.12, and the deployed Space runs an
+        older interpreter than a maintainer's checkout.
+        """
+        return "__".join(_safe_token(part.replace(BACKSLASH, "_")) for part in path)
+
     def _dashboard_filename(path: tuple[str, ...]) -> str:
         if path in node_to_sheet:
             sheet = node_to_sheet[path]
-            return f"{_safe_token(sheet.replace('\\', '_'))}.html"
-        slug = "__".join(_safe_token(part.replace("\\", "_")) for part in path)
-        return f"node__{slug}.html"
+            sheet_token = _safe_token(sheet.replace(BACKSLASH, "_"))
+            return f"{sheet_token}.html"
+        return f"node__{_node_slug(path)}.html"
 
     path_to_file = {path: dashboards_dir / _dashboard_filename(path) for path in ordered_node_paths}
     expected_dashboard_files = set(path_to_file.values()) | {dashboards_dir / "index.html"}
@@ -7833,7 +7855,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                            file_sheet=f"node__{_node_slug(path)}__overview__{child_sheet}",
                         )
                         if total_chart_path:
                             overview_entries.append((child_sheet, "Total", total_chart_path))
@@ -7877,7 +7899,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(str(measure_value).strip())}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__{measure_value}",
+                            file_sheet=f"node__{_node_slug(path)}__{measure_value}",
                         )
                         if node_chart:
                             normalized_measure = str(measure_value).strip()
@@ -7961,7 +7983,7 @@ def build_dashboards(
                     charts_dir,
                     backend="plotly",
                     display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                    file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                    file_sheet=f"node__{_node_slug(path)}__overview__{child_sheet}",
                 )
                 if total_chart_path:
                     overview_entries.append((child_sheet, "Total", total_chart_path))
