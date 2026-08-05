@@ -16,6 +16,13 @@ and writes a single JSON result to stdout. Any failure becomes
 ``{"error": "..."}`` on stdout with a non-zero exit code, so the caller never
 has to parse a Python traceback.
 
+Each step is announced on stdout as it starts, on its own line prefixed with
+``PROGRESS_PREFIX``. The steps here take minutes, and the caller captures this
+process's output, so without these the user watches a still console for the
+whole run and cannot tell it apart from a hang. The prefix keeps them
+unambiguously separate from the single result line, and from the assorted
+prints the underlying mapping modules make.
+
 Job schema (all paths are strings, resolved by the caller before invocation)::
 
     {
@@ -59,6 +66,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+#: Marks a progress line on stdout. The caller matches on this exactly; the
+#: result line is the last line that does not carry it.
+PROGRESS_PREFIX = "@@step "
+
+
+def report_step(key: str) -> None:
+    """Announce that step *key* has started.
+
+    Flushed immediately: the caller reads this pipe line by line, and a
+    buffered announcement of a four-minute step arrives only once the step is
+    over, which is worse than not sending it at all.
+    """
+    print(f"{PROGRESS_PREFIX}{key}", flush=True)
+
 from codebase.mapping_tools.apply_common_esto_structure import (  # noqa: E402
     NINTH_PROJECTION_START_YEAR,
     run_common_esto_comparison_fast_path,
@@ -101,6 +122,12 @@ def prepare_esto_exact_rows(
         return bundled_exact_rows
 
     esto_base_table = Path(esto_base_table)
+    # Every path below writes into work_dir. run_mapping_chain happens to
+    # create it first, so this only shows up when the function is called
+    # directly - which is exactly what a caller is entitled to do, and what
+    # the re-extraction test does.
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
     fingerprint = _fingerprint(
         [esto_base_table, synthetic_rules_path, relationships_path, mapping_workbook_path]
     )
@@ -195,6 +222,11 @@ def run_mapping_chain(job: dict) -> dict:
 
     # Settle which ESTO exact rows this run compares against before anything
     # else uses them: both the conversion and the fast path read them.
+    if config.get("esto_base_table_path"):
+        # Only announced when a table was supplied: without one this returns
+        # the bundled rows immediately, and a step that is always instant is
+        # noise in a six-step display.
+        report_step("esto_rows")
     esto_exact_rows_path = prepare_esto_exact_rows(
         bundled_exact_rows=Path(artifacts["esto_exact_rows_path"]),
         esto_base_table=(
@@ -216,9 +248,11 @@ def run_mapping_chain(job: dict) -> dict:
     raw_leap_path = work_dir / "raw_leap_results.csv"
     converted_path = work_dir / "leap_results_converted_to_esto.csv"
 
+    report_step("parse_export")
     raw_df = parse_leap_balance_dir(export_dir, raw_leap_path, economy_code=economy)
     raw_leap_rows = len(raw_df)
 
+    report_step("convert")
     converted_df = run_conversion(
         leap_results_path=raw_leap_path,
         relationships_path=Path(artifacts["relationships_path"]),
@@ -233,6 +267,7 @@ def run_mapping_chain(job: dict) -> dict:
     )
     converted_rows = len(converted_df)
 
+    report_step("compare")
     common_rows_path = Path(artifacts["common_esto_rows_path"])
     comparison_df, _wide_year_df, missing_map_df = run_common_esto_comparison_fast_path(
         source_paths={
