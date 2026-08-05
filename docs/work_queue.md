@@ -6,6 +6,32 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-043 — Run four-source mappings and all-economy dashboards
+
+**Priority / status:** P0 · `not_started`; pick up after the user's separate-axis
+work is committed at a stable checkpoint.
+
+**Owner repositories:** `leap_mappings` + `leap_dashboard`
+
+Run the complete mapping pipeline for ESTO, ESTO Extended, NINTH, and LEAP.
+When the required mapping artifacts are structurally valid, render the dashboard
+for every economy with available data, including each economy's diagnostics
+pages and the mapping-pipeline health report. QA findings are completed with
+findings and do not block the dashboard unless a documented structural or
+safety gate fails.
+
+Use the maintained reusable procedure:
+[`prompts/run_mapping_pipeline_future_prompt.md`](prompts/run_mapping_pipeline_future_prompt.md).
+It contains the prerequisites, exact 20-minute-only polling rule, source and
+artifact checks, confirmed-versus-unconfirmed anchor invariants, economy-scope
+checks, publication checks, and required completion report.
+
+**Acceptance:** one coherent current mapping run; all four source systems
+processed; every data-backed economy rendered; diagnostics and health outputs
+present; publication/page-noise checks reported; numerical QA findings retained
+without being misclassified as blockers or passes; no unrequested commits or
+pushes.
+
 ## MAPQ-042 — Finish APEC-wide anchor-exception integration
 
 **Status: validator behaviour implemented and verified on real data 2026-08-05;
@@ -286,6 +312,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-036 | P2 | `queued_after_separate_axis_promotion` | `leap_mappings` | MAPQ-034 | after production validation | 2026-07-30 |
 | MAPQ-037 | P1 | `review_in_progress` | `leap_mappings` + `leap_dashboard` | MAPQ-034 | current APEC anchor-validation work | 2026-08-03 |
 | MAPQ-042 | P1 | `verified_uncommitted_dashboard_follow_up` | `leap_mappings` + `leap_dashboard` | MAPQ-037 | later clean work window | 2026-08-05 |
+| MAPQ-043 | P0 | `not_started` | `leap_mappings` + `leap_dashboard` | user's separate-axis checkpoint | next production run | 2026-08-05 |
 
 ---
 
