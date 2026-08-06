@@ -157,7 +157,7 @@ def _build_numerically_skipped_scope_rows(
 
 def _normalise_exception_year(year: pd.Series) -> pd.Series:
     """Normalize exception years while preserving the supported ``all`` token."""
-    values = year.fillna("").astype(str).str.strip()
+    values = year.astype("string").fillna("").str.strip()
     numeric = pd.to_numeric(values, errors="coerce")
     return pd.Series(
         np.where(
@@ -212,10 +212,10 @@ def _build_source_evidence_lookup(
     validator's mapped ancestor scope.
     """
     working = source_df.copy()
-    working[axis_column] = working[axis_column].fillna("").astype(str).str.strip()
-    working[other_column] = working[other_column].fillna("").astype(str).str.strip()
-    working["economy"] = working["economy"].fillna("").astype(str).str.strip()
-    working["scenario"] = working["scenario"].fillna("").astype(str).str.strip()
+    working[axis_column] = working[axis_column].astype("string").fillna("").str.strip()
+    working[other_column] = working[other_column].astype("string").fillna("").str.strip()
+    working["economy"] = working["economy"].astype("string").fillna("").str.strip()
+    working["scenario"] = working["scenario"].astype("string").fillna("").str.strip()
     working["year"] = pd.to_numeric(working["year"], errors="coerce")
     working["_abs_value"] = pd.to_numeric(working["value"], errors="coerce").fillna(0.0).abs()
     working = working[
@@ -227,6 +227,7 @@ def _build_source_evidence_lookup(
         working.groupby(
             [axis_column, other_column, "economy", "scenario", "year"],
             dropna=False,
+            observed=True,
         )["_abs_value"]
         .sum()
     )
@@ -265,10 +266,10 @@ def _build_raw_pair_values(source_df: pd.DataFrame) -> pd.DataFrame:
     ``scenario``, ``year``, ``value``.
     """
     working = source_df[["source_flow", "source_product", "economy", "scenario", "year", "value"]].copy()
-    working["source_flow"] = working["source_flow"].fillna("").astype(str).str.strip()
-    working["source_product"] = working["source_product"].fillna("").astype(str).str.strip()
-    working["economy"] = working["economy"].fillna("").astype(str).str.strip()
-    working["scenario"] = working["scenario"].fillna("").astype(str).str.strip()
+    working["source_flow"] = working["source_flow"].astype("string").fillna("").str.strip()
+    working["source_product"] = working["source_product"].astype("string").fillna("").str.strip()
+    working["economy"] = working["economy"].astype("string").fillna("").str.strip()
+    working["scenario"] = working["scenario"].astype("string").fillna("").str.strip()
     working["year"] = pd.to_numeric(working["year"], errors="coerce")
     working["value"] = pd.to_numeric(working["value"], errors="coerce").fillna(0.0)
     working = working[
@@ -279,7 +280,7 @@ def _build_raw_pair_values(source_df: pd.DataFrame) -> pd.DataFrame:
     return (
         working.groupby(
             ["source_flow", "source_product", "economy", "scenario", "year"],
-            dropna=False, as_index=False,
+            dropna=False, as_index=False, observed=True,
         )["value"]
         .sum()
     )
@@ -318,7 +319,10 @@ def _build_source_internal_bad_pairs(
         return pd.DataFrame(columns=[axis_col, other_col, "economy", "scenario", "year"])
     children_sum = (
         children_side.groupby(
-            [axis_col, "_other_parent", "economy", "scenario", "year"], dropna=False, as_index=False,
+            [axis_col, "_other_parent", "economy", "scenario", "year"],
+            dropna=False,
+            as_index=False,
+            observed=True,
         )["value"]
         .sum()
         .rename(columns={"_other_parent": other_col, "value": "_children_sum"})

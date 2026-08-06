@@ -41,7 +41,7 @@ def build_tree_code_aliases(
 
 def canonicalize_tree_codes(values: pd.Series, aliases: dict[str, str]) -> pd.Series:
     """Replace known tree labels with their canonical structural codes."""
-    cleaned = values.fillna("").astype(str).str.strip()
+    cleaned = values.astype("string").fillna("").str.strip()
     return cleaned.map(lambda value: aliases.get(value, value))
 
 
@@ -58,8 +58,8 @@ def build_tree_index(
         tree_df["dataset"].astype(str).str.casefold().eq(dataset.casefold())
         & tree_df["axis"].astype(str).str.casefold().eq(axis.casefold())
     ].copy()
-    selected["code"] = selected["code"].fillna("").astype(str).str.strip()
-    selected["parent_code"] = selected["parent_code"].fillna("").astype(str).str.strip()
+    selected["code"] = selected["code"].astype("string").fillna("").str.strip()
+    selected["parent_code"] = selected["parent_code"].astype("string").fillna("").str.strip()
 
     issues: list[dict[str, str]] = []
     parent_sets = selected[selected["code"].ne("")].groupby("code")["parent_code"].agg(
