@@ -44,6 +44,7 @@ This repo is the canonical mapping source for the APERC project. Other repos sho
 Active documentation being developed:
 
 - `docs/mappings_system.md` — the canonical reference for the mappings system design, pipeline stages, rollup rules, graph partitioning, and naming conventions.
+- `docs/using_common_esto_mappings.md` — consumer-facing guide to this repository's main output: why the common structure is the lowest common denominator of its participating datasets, why mapping onto it therefore needs no allocation, and how to consume it in one merge. `leap_dashboard` is the worked reference implementation.
 - `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
 - `docs/esto_extended_category_creation_considerations.md` — working rules for creating stable ESTO Extended categories from new LEAP branches, completing sibling mappings, and separating category creation from value allocation.
 
