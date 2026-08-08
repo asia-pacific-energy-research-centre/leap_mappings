@@ -149,8 +149,7 @@ per-scope table covering every participating dataset:
 ```text
 comparison_scope, source_system, source_flow, source_product,
 common_row_id, common_flow_label, common_product_label,
-common_row_is_leaf, common_flow_is_structural_parent,
-common_product_is_structural_parent,
+is_subtotal, common_flow_is_subtotal, common_product_is_subtotal,
 common_flow_hierarchy_status, common_product_hierarchy_status
 ```
 
@@ -163,9 +162,9 @@ Columns to add to both:
 
 | Column | Meaning |
 |---|---|
-| `common_flow_is_structural_parent` | flow axis has declared children |
-| `common_product_is_structural_parent` | product axis has declared children |
-| `common_row_is_leaf` | both axes are leaves — safe to sum without further checks |
+| `common_flow_is_subtotal` | flow axis has declared children, so this row's flow is a subtotal |
+| `common_product_is_subtotal` | product axis has declared children |
+| `is_subtotal` | **true on either axis. Do not sum rows where this is true** — they contain other rows |
 | `common_flow_hierarchy_status` / `common_product_hierarchy_status` | `leaf`, `parent`, or `outside_declared_tree` |
 
 Sourced from `results/hierarchy_subtotal_contract/current/axis_nodes.csv`
