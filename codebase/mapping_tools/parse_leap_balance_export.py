@@ -38,6 +38,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     BALANCE_EXPORT_TRUST_FILENAME_SCENARIO,
     resolve_balance_exports_root,
     scenario_code_from_balance_export_filename,
+    select_latest_balance_export_workbooks,
 )
 
 # Internal "Scenario:" subtitle text these filename-derived REF/TGT codes
@@ -385,14 +386,22 @@ def parse_leap_balance_dir(
     """
     # Excel creates ``~$`` lock files while a workbook is open. They are not
     # workbooks and pandas cannot read them, so never treat them as LEAP input.
-    xlsx_files = sorted(
+    all_xlsx_files = sorted(
         path for path in export_dir.glob("*.xlsx")
         if not path.name.startswith("~$")
     )
-    if not xlsx_files:
+    if not all_xlsx_files:
         raise FileNotFoundError(f"No .xlsx files found in {export_dir}")
 
     eco = economy_code or export_dir.name
+    xlsx_files = select_latest_balance_export_workbooks(
+        export_dir,
+        economy=eco,
+    )
+    if not xlsx_files:
+        # Preserve support for portable/test directories whose workbooks do
+        # not use the maintained production filename conventions.
+        xlsx_files = all_xlsx_files
     frames = []
     for f in xlsx_files:
         print(f"  Parsing {f.name} …")

@@ -668,7 +668,37 @@ many-to-many transport-flow relationship.
 - 2026-07-30: Removed the Road and Rail mappings from the editable single-axis
   workbook; retained only the ESTO nonspecified-transport mapping.
 
-## MAP-015: Keep base ESTO and ESTO Extended anchor hierarchies separate
+## MAP-015: LEAP refinery output uses the inclusive own-use boundary
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Comparison-boundary alignment
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`; Common ESTO
+Refining comparisons
+
+### Decision
+
+Map `Oil Refining/Oil Refining` directly to
+`09.07 Oil refineries (including own use)` on both the ESTO and Ninth axes.
+LEAP reports the refinery process at this inclusive boundary and does not
+publish refinery own use as a separately additive observation. Remove the
+maintained `Other loss and own use/Oil refineries` flow-axis relationships so
+a future structural placeholder cannot be added to the already-inclusive LEAP
+refinery amount.
+
+ESTO continues to derive the inclusive comparison row from its exact
+`09.07 Oil refineries` and `10.01.11 Oil refineries` contributors. Ninth
+continues to use its maintained inclusive refinery rollup. Exact source rows
+may remain available upstream for audit, but the shared Refining comparison
+boundary is the inclusive category.
+
+### History
+
+- 2026-08-09: Confirmed against current LEAP balance exports, which contain
+  non-zero `Oil Refining/Oil Refining` observations and no reported
+  `Other loss and own use/Oil refineries` observations.
+
+## MAP-016: Keep base ESTO and ESTO Extended anchor hierarchies separate
 
 **Status:** Decided
 **Owner:** `leap_mappings`
