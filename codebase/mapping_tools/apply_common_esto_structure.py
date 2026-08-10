@@ -132,6 +132,28 @@ COMPONENT_RELEVANCE_COLUMNS = [
 ]
 COMPARISON_SCOPE_SYSTEMS = get_comparison_scope_systems()
 
+
+def _scope_membership_mask(
+    source_df: pd.DataFrame,
+    scope_systems: dict[str, set[str]],
+) -> pd.Series:
+    """Return scope membership without row-wise Python iteration."""
+    comparison_scope = source_df["comparison_scope"]
+    source_system = source_df["source_system"]
+    valid_mask = pd.Series(False, index=source_df.index)
+    known_scope_mask = pd.Series(False, index=source_df.index)
+    for scope, allowed_systems in scope_systems.items():
+        scope_mask = comparison_scope.eq(scope)
+        known_scope_mask |= scope_mask
+        if allowed_systems is None:
+            valid_mask |= scope_mask
+        else:
+            valid_mask |= scope_mask & source_system.isin(allowed_systems)
+    # Preserve the existing fallback: unknown or missing scopes keep their
+    # source rows rather than being discarded by a new validation rule.
+    valid_mask |= ~known_scope_mask
+    return valid_mask
+
 #%%
 def _relevance_stat_columns(
     evidence_column: str,
@@ -298,7 +320,7 @@ def _compact_source_frames(
     for frame in frames:
         for column in category_columns:
             frame[column] = (
-                frame[column].fillna("").astype(str).astype("category")
+                frame[column].astype("string").fillna("").astype("category")
             )
         frame["year"] = pd.to_numeric(frame["year"], errors="coerce")
 
@@ -1038,13 +1060,7 @@ def apply_common_structure(
         del expanded_frames
     else:
         source_df = source_df.copy()
-        valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in scope_systems.get(
-                str(row["comparison_scope"]),
-                {row["source_system"]},
-            ),
-            axis=1,
-        )
+        valid_scope_mask = _scope_membership_mask(source_df, scope_systems)
         source_df = source_df[valid_scope_mask].copy()
     merged_df = source_df.merge(
         map_df,
@@ -1066,7 +1082,12 @@ def apply_common_structure(
         lineage_df = mapped_df[ESTO_COMPONENT_LINEAGE_COLUMNS].copy()
     group_columns = OUTPUT_COLUMNS[:-1] + COMPARISON_INTERNAL_COLUMNS
     comparison_df = (
-        mapped_df.groupby(group_columns, dropna=False, as_index=False)["value"]
+        mapped_df.groupby(
+            group_columns,
+            dropna=False,
+            as_index=False,
+            observed=True,
+        )["value"]
         .sum()
         .sort_values(OUTPUT_COLUMNS[:-1])
         .reset_index(drop=True)
@@ -1477,19 +1498,31 @@ def build_total_check(
             source_df = pd.concat(expanded_frames, ignore_index=True) if expanded_frames else pd.DataFrame(columns=SOURCE_VALUE_SCOPE_COLUMNS)
             del expanded_frames
     else:
-        valid_scope_mask = source_df.apply(
-            lambda row: row["source_system"] in scope_systems.get(
-                str(row["comparison_scope"]),
-                {row["source_system"]},
-            ),
-            axis=1,
-        )
+        valid_scope_mask = _scope_membership_mask(source_df, scope_systems)
         source_df = source_df[valid_scope_mask].copy()
-    before_df = source_df.groupby(TOTAL_GROUP_COLUMNS, dropna=False, as_index=False)["value"].sum().rename(columns={"value": "source_total"})
+    before_df = (
+        source_df.groupby(
+            TOTAL_GROUP_COLUMNS,
+            dropna=False,
+            as_index=False,
+            observed=True,
+        )["value"]
+        .sum()
+        .rename(columns={"value": "source_total"})
+    )
     if comparison_df.empty:
         after_df = pd.DataFrame(columns=TOTAL_GROUP_COLUMNS + ["common_total"])
     else:
-        after_df = comparison_df.groupby(TOTAL_GROUP_COLUMNS, dropna=False, as_index=False)["value"].sum().rename(columns={"value": "common_total"})
+        after_df = (
+            comparison_df.groupby(
+                TOTAL_GROUP_COLUMNS,
+                dropna=False,
+                as_index=False,
+                observed=True,
+            )["value"]
+            .sum()
+            .rename(columns={"value": "common_total"})
+        )
     check_df = before_df.merge(after_df, on=TOTAL_GROUP_COLUMNS, how="outer")
     check_df["source_total"] = pd.to_numeric(check_df["source_total"], errors="coerce").fillna(0)
     check_df["common_total"] = pd.to_numeric(check_df["common_total"], errors="coerce").fillna(0)
@@ -1539,7 +1572,12 @@ def build_source_coverage_check(
             expanded.append(scoped)
         source_df = pd.concat(expanded, ignore_index=True) if expanded else pd.DataFrame(columns=empty_cols)
     before_df = (
-        source_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+        source_df.groupby(
+            SOURCE_COVERAGE_GROUP_COLUMNS,
+            dropna=False,
+            as_index=False,
+            observed=True,
+        )["value"]
         .sum()
         .rename(columns={"value": "source_total"})
     )
@@ -1547,7 +1585,12 @@ def build_source_coverage_check(
         after_df = pd.DataFrame(columns=SOURCE_COVERAGE_GROUP_COLUMNS + ["common_total"])
     else:
         after_df = (
-            comparison_df.groupby(SOURCE_COVERAGE_GROUP_COLUMNS, dropna=False, as_index=False)["value"]
+            comparison_df.groupby(
+                SOURCE_COVERAGE_GROUP_COLUMNS,
+                dropna=False,
+                as_index=False,
+                observed=True,
+            )["value"]
             .sum()
             .rename(columns={"value": "common_total"})
         )
@@ -1581,9 +1624,9 @@ def build_wide_year_output(
     working_df["product"] = working_df["common_product_label"]
     working_df["flow"] = working_df["common_flow_label"]
     working_df["scenario"] = (
-        working_df["source_system"].fillna("").astype(str).str.strip()
+        working_df["source_system"].astype("string").fillna("").str.strip()
         + " "
-        + working_df["scenario"].fillna("").astype(str).str.strip()
+        + working_df["scenario"].astype("string").fillna("").str.strip()
     ).str.strip()
     working_df["year"] = working_df["year"].astype(str)
     wide_df = (
@@ -2303,7 +2346,10 @@ def run_apply_common_esto_structure(
     print(f"Wide year rows written: {len(wide_year_df):,}")
     print(f"Source rows missing common map: {len(missing_map_df):,}")
     print(f"before/after total differences max abs: {max_abs_difference}")
-    for source_system, grp in source_coverage_check_df.groupby("source_system"):
+    for source_system, grp in source_coverage_check_df.groupby(
+        "source_system",
+        observed=True,
+    ):
         n_groups = len(grp)
         max_abs = grp["difference"].abs().max() if not grp.empty else 0
         total_diff = grp["difference"].sum()
@@ -2316,7 +2362,11 @@ def run_apply_common_esto_structure(
         )
         summary = (
             total_check_df
-            .groupby(["comparison_scope", "source_system"], dropna=False)[["source_total", "common_total", "difference"]]
+            .groupby(
+                ["comparison_scope", "source_system"],
+                dropna=False,
+                observed=True,
+            )[["source_total", "common_total", "difference"]]
             .sum()
             .reset_index()
         )

@@ -8,6 +8,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     format_balance_export_discovery_report,
     resolve_balance_exports_root,
     scenario_code_from_balance_export_filename,
+    select_latest_balance_export_workbooks,
 )
 
 
@@ -64,3 +65,46 @@ def test_prefix_scenario_filename_convention_is_discovered(tmp_path: Path) -> No
     assert discovery[("05_PRC", "REF")] == [prc_ref]
     assert discover_available_economies(tmp_path) == ["01_AUS", "05_PRC"]
     assert scenario_code_from_balance_export_filename(aus_ref) == "REF"
+
+
+def test_economy_prefix_is_discovered_and_newest_duplicate_wins(tmp_path: Path) -> None:
+    rus_dir = tmp_path / "16_RUS"
+    rus_dir.mkdir()
+    old_ref = rus_dir / "RUS REF 0808.xlsx"
+    new_ref = rus_dir / "RUS REF 0908.xlsx"
+    target = rus_dir / "RUS TGT 0908.xlsx"
+    for path in [old_ref, new_ref, target]:
+        path.touch()
+
+    discovery = discover_balance_export_workbooks(
+        economies=["16_RUS"],
+        exports_root=tmp_path,
+    )
+
+    assert discovery[("16_RUS", "REF")] == [old_ref, new_ref]
+    assert discovery[("16_RUS", "TGT")] == [target]
+    assert discover_available_economies(tmp_path) == ["16_RUS"]
+    with pytest.warns(UserWarning, match="Multiple REF.*Using newest: RUS REF 0908.xlsx"):
+        selected = select_latest_balance_export_workbooks(
+            rus_dir,
+            economy="16_RUS",
+        )
+    assert selected == [new_ref, target]
+
+
+def test_short_ddmm_export_can_be_newer_than_full_ddmmyyyy_name(tmp_path: Path) -> None:
+    rus_dir = tmp_path / "16_RUS"
+    rus_dir.mkdir()
+    old_ref = rus_dir / "full model output all years 13072026 REF.xlsx"
+    new_ref = rus_dir / "RUS REF 0908.xlsx"
+    old_ref.touch()
+    new_ref.touch()
+
+    with pytest.warns(UserWarning, match="Using newest: RUS REF 0908.xlsx"):
+        selected = select_latest_balance_export_workbooks(
+            rus_dir,
+            economy="16_RUS",
+            scenarios=("REF",),
+        )
+
+    assert selected == [new_ref]

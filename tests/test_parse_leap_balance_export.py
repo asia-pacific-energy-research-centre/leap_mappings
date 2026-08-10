@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from codebase.mapping_tools.parse_leap_balance_export import parse_leap_balance_dir, parse_leap_balance_xlsx
 
@@ -42,6 +43,30 @@ def test_parse_leap_balance_dir_ignores_excel_lock_files(tmp_path: Path) -> None
     # Two source rows × one retained fuel; the "Total" fuel column is dropped.
     assert len(parsed) == 2
     assert output_path.exists()
+
+
+def test_parse_leap_balance_dir_uses_newest_recognized_scenario_export(
+    tmp_path: Path,
+) -> None:
+    old_ref = tmp_path / "RUS REF 0808.xlsx"
+    new_ref = tmp_path / "RUS REF 0908.xlsx"
+    review = tmp_path / "balance_review_16_RUS_tgt_2023.xlsx"
+    with pd.ExcelWriter(old_ref) as writer:
+        _sheet(2059).to_excel(writer, sheet_name="2059", header=False, index=False)
+    with pd.ExcelWriter(new_ref) as writer:
+        _sheet(2060).to_excel(writer, sheet_name="2060", header=False, index=False)
+    with pd.ExcelWriter(review) as writer:
+        _sheet(2023).to_excel(writer, sheet_name="2023", header=False, index=False)
+
+    output_path = tmp_path / "raw_leap_results.csv"
+    with pytest.warns(UserWarning, match="Multiple REF.*RUS REF 0908.xlsx"):
+        parsed = parse_leap_balance_dir(
+            tmp_path,
+            output_path,
+            economy_code="16_RUS",
+        )
+
+    assert set(parsed["year"]) == {2060}
 
 
 def test_parse_leap_balance_xlsx_uses_mapping_workbook_fuel_spellings(

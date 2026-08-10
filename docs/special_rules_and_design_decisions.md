@@ -668,7 +668,37 @@ many-to-many transport-flow relationship.
 - 2026-07-30: Removed the Road and Rail mappings from the editable single-axis
   workbook; retained only the ESTO nonspecified-transport mapping.
 
-## MAP-015: Keep base ESTO and ESTO Extended anchor hierarchies separate
+## MAP-015: LEAP refinery output uses the inclusive own-use boundary
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Comparison-boundary alignment
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`; Common ESTO
+Refining comparisons
+
+### Decision
+
+Map `Oil Refining/Oil Refining` directly to
+`09.07 Oil refineries (including own use)` on both the ESTO and Ninth axes.
+LEAP reports the refinery process at this inclusive boundary and does not
+publish refinery own use as a separately additive observation. Remove the
+maintained `Other loss and own use/Oil refineries` flow-axis relationships so
+a future structural placeholder cannot be added to the already-inclusive LEAP
+refinery amount.
+
+ESTO continues to derive the inclusive comparison row from its exact
+`09.07 Oil refineries` and `10.01.11 Oil refineries` contributors. Ninth
+continues to use its maintained inclusive refinery rollup. Exact source rows
+may remain available upstream for audit, but the shared Refining comparison
+boundary is the inclusive category.
+
+### History
+
+- 2026-08-09: Confirmed against current LEAP balance exports, which contain
+  non-zero `Oil Refining/Oil Refining` observations and no reported
+  `Other loss and own use/Oil refineries` observations.
+
+## MAP-016: Keep base ESTO and ESTO Extended anchor hierarchies separate
 
 **Status:** Decided
 **Owner:** `leap_mappings`
@@ -715,3 +745,33 @@ so its numerical anchors are not meaningful yet.
   to its members before economy attribution.
 - Re-enable Extended numerical scopes only after a reviewed data-population
   milestone and a fresh real-data verification.
+
+## MAP-017: Build LEAP TFC from domestic demand children
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Final-demand comparison boundary
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`; LEAP-to-ESTO
+conversion; Common ESTO flow 12
+
+### Decision
+
+Generate LEAP `12 Total final consumption` from the five domestic children of
+`All demand aggregated`: Buildings, Industry, Road, Transport non-road, and
+Other sector. Do not use the `All demand aggregated` parent because that parent
+also contains International transport. International marine and aviation
+bunker demand remains mapped separately to flows `04-05`.
+
+The exact child paths are used instead of also adding separately modelled
+top-level demand sectors. This keeps the generated TFC source frontier
+non-overlapping and prevents detailed-sector values from being counted twice.
+If the required children are absent, the broader parent is not a valid
+fallback for TFC.
+
+### History
+
+- 2026-08-10: Russia exposed the boundary error: the former LEAP TFC total
+  exceeded its domestic sector and fuel frontiers by exactly its mapped bunker
+  demand. The same review identified missing registered source pairs for
+  Buildings/Crude oil and Other sector/Hydrogen; both were added to the
+  maintained key-pair registry.

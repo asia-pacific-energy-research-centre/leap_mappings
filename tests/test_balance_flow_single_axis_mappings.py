@@ -112,6 +112,42 @@ def test_ninth_agriculture_and_fishing_maps_only_to_combined_flow() -> None:
     assert mapped_flows == {"16.03-16.04 Agriculture and fishing"}
 
 
+def test_leap_refining_maps_only_to_inclusive_comparison_boundary() -> None:
+    leap_to_esto = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_esto",
+        dtype=str,
+    ).fillna("")
+    leap_to_ninth = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_ninth",
+        dtype=str,
+    ).fillna("")
+
+    esto_rows = set(
+        leap_to_esto[
+            ["leap_sector", "esto_flow", "esto_dataset_scope"]
+        ].itertuples(index=False, name=None)
+    )
+    ninth_rows = set(
+        leap_to_ninth[
+            ["leap_sector", "ninth_sector"]
+        ].itertuples(index=False, name=None)
+    )
+
+    assert (
+        "Oil Refining/Oil Refining",
+        "09.07 Oil refineries (including own use)",
+        "BOTH",
+    ) in esto_rows
+    assert (
+        "Oil Refining/Oil Refining",
+        "09_07_oil_refineries_incl_own_use",
+    ) in ninth_rows
+    assert not any(row[0] == "Other loss and own use/Oil refineries" for row in esto_rows)
+    assert not any(row[0] == "Other loss and own use/Oil refineries" for row in ninth_rows)
+
+
 def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
     leap_to_esto_flow = pd.read_excel(
         SINGLE_AXIS_PATH,

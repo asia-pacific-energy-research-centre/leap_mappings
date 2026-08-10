@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -32,6 +33,10 @@ BALANCE_EXPORT_PREFIX_FILENAME_PATTERN = re.compile(
     r"^(?P<scenario>REF|TGT)\s+(?P<date_id>\d{4,8})(?:\s+[^.]*)?\.xlsx$",
     re.IGNORECASE,
 )
+BALANCE_EXPORT_ECONOMY_PREFIX_FILENAME_PATTERN = re.compile(
+    r"^(?:[A-Za-z0-9_-]+\s+)(?P<scenario>REF|TGT)\s+(?P<date_id>\d{4,8})(?:\s+[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
 
 # LEAP sometimes exports a "...REF.xlsx" balance workbook whose sheets'
 # internal "Scenario: X, Year: Y, Units: Z" subtitle still says "Target" (a
@@ -60,6 +65,7 @@ def _match_balance_export_filename(filename: str) -> re.Match[str] | None:
     return (
         BALANCE_EXPORT_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_PREFIX_FILENAME_PATTERN.match(filename)
+        or BALANCE_EXPORT_ECONOMY_PREFIX_FILENAME_PATTERN.match(filename)
     )
 
 
@@ -137,6 +143,7 @@ def _parse_balance_export_date_id(date_id: str) -> date | None:
     if len(token) == 8:
         for year, month, day in (
             (token[:4], token[4:6], token[6:8]),
+            (token[4:8], token[2:4], token[:2]),
             (token[4:8], token[:2], token[2:4]),
         ):
             try:
@@ -244,6 +251,81 @@ def discover_available_economies(
     return economies
 
 
+def _balance_export_recency_key(workbook: BalanceExportWorkbook) -> tuple[int, int, float, str]:
+    """Return a stable newest-first key for one recognized balance export."""
+    if workbook.parsed_date is not None:
+        date_rank = workbook.parsed_date.toordinal()
+        date_quality = 2
+    elif len(str(workbook.date_id)) == 4 and str(workbook.date_id).isdigit():
+        # Short production stamps use DDMM (for example, 0908 = 9 August).
+        # Infer the year from the file modification time so they can be
+        # compared sensibly with full DDMMYYYY filenames in the same folder.
+        modified = workbook.path.stat().st_mtime
+        modified_year = date.fromtimestamp(modified).year
+        try:
+            inferred = date(
+                modified_year,
+                int(str(workbook.date_id)[2:4]),
+                int(str(workbook.date_id)[:2]),
+            )
+        except ValueError:
+            inferred = None
+        date_rank = inferred.toordinal() if inferred is not None else int(workbook.date_id)
+        date_quality = 2 if inferred is not None else 1
+    elif str(workbook.date_id).isdigit():
+        date_rank = int(workbook.date_id)
+        date_quality = 1
+    else:
+        date_rank = 0
+        date_quality = 0
+    return (
+        date_quality,
+        date_rank,
+        workbook.path.stat().st_mtime,
+        workbook.path.name.casefold(),
+    )
+
+
+def select_latest_balance_export_workbooks(
+    export_dir: Path | str,
+    *,
+    economy: str,
+    scenarios: Sequence[str] = ("REF", "TGT"),
+) -> list[Path]:
+    """Select the newest recognized workbook for each requested scenario.
+
+    Multiple same-scenario exports are expected during refreshes. They produce
+    an explicit warning and the newest filename date (then modification time)
+    wins, preventing old and new exports from being added together.
+    """
+    resolved_dir = _resolve_path(export_dir)
+    selected: list[Path] = []
+    for raw_scenario in scenarios:
+        scenario = normalize_balance_scenario_code(raw_scenario)
+        candidates = list(
+            _iter_balance_export_workbooks(
+                resolved_dir,
+                economy=str(economy).strip(),
+                scenario_code=scenario,
+            )
+        )
+        if not candidates:
+            continue
+        newest = max(candidates, key=_balance_export_recency_key)
+        if len(candidates) > 1:
+            candidate_names = ", ".join(
+                item.path.name for item in sorted(candidates, key=_balance_export_recency_key)
+            )
+            warnings.warn(
+                f"Multiple {scenario} LEAP balance exports found for {economy}: "
+                f"{candidate_names}. Using newest: {newest.path.name}",
+                UserWarning,
+                stacklevel=2,
+            )
+        selected.append(newest.path)
+    return selected
+
+
 def format_balance_export_discovery_report(
     discovery: dict[tuple[str, str], list[Path]],
 ) -> str:
@@ -288,16 +370,16 @@ def resolve_balance_export_workbook(
                 f"economy={economy_text!r}, scenario={scenario_code!r}, date_id={date_text!r} "
                 f"under {export_dir}."
             )
+        newest = max(candidates, key=_balance_export_recency_key)
         if len(candidates) > 1:
-            paths = "\n".join(
-                f"- {candidate.path}"
-                for candidate in sorted(candidates, key=lambda item: item.path.name)
-            )
-            raise ValueError(
+            warnings.warn(
                 "Multiple LEAP balance-export workbooks matched "
-                f"economy={economy_text!r}, scenario={scenario_code!r}, date_id={date_text!r}:\n{paths}"
+                f"economy={economy_text!r}, scenario={scenario_code!r}, date_id={date_text!r}; "
+                f"using newest: {newest.path}",
+                UserWarning,
+                stacklevel=2,
             )
-        return candidates[0].path
+        return newest.path
 
     if not candidates:
         raise FileNotFoundError(
@@ -305,28 +387,15 @@ def resolve_balance_export_workbook(
             f"economy={economy_text!r}, scenario={scenario_code!r} under {export_dir}."
         )
 
-    sortable = [
-        candidate
-        for candidate in candidates
-        if candidate.parsed_date is not None
-    ]
-    if sortable:
-        latest_date = max(candidate.parsed_date for candidate in sortable)
-        latest = [candidate for candidate in sortable if candidate.parsed_date == latest_date]
-    else:
-        latest = candidates
-
-    if len(latest) > 1:
-        paths = "\n".join(
-            f"- {candidate.path}"
-            for candidate in sorted(latest, key=lambda item: item.path.name)
+    newest = max(candidates, key=_balance_export_recency_key)
+    if len(candidates) > 1:
+        warnings.warn(
+            f"Multiple {scenario_code} LEAP balance exports found for {economy_text}; "
+            f"using newest: {newest.path.name}",
+            UserWarning,
+            stacklevel=2,
         )
-        raise ValueError(
-            "Multiple LEAP balance-export workbooks matched the latest date for "
-            f"economy={economy_text!r}, scenario={scenario_code!r}. Set date_id explicitly.\n{paths}"
-        )
-
-    return latest[0].path
+    return newest.path
 
 
 def _leap_balance_sheet_unit_to_pj_multiplier(raw: pd.DataFrame) -> float:

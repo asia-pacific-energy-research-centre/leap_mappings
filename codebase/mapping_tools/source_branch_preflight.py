@@ -409,9 +409,13 @@ def run_leap_source_branch_preflight(
     zeroed = fallback_audit_df[fallback_audit_df["status"] == "interim_zeroed"] if not fallback_audit_df.empty else fallback_audit_df
     if zeroed is not None and not zeroed.empty:
         print(
-            f"WARNING: {WARN_AND_ZERO_INTERIM}: zeroed interim branch values for "
-            f"{len(zeroed):,} economy/scenario/year periods where the standard "
-            "branch was also non-zero. See leap_source_branch_fallback_audit.csv"
+            "WARNING: LEAP SOURCE STRUCTURE OVERLAP [INTERIM + STANDARD]: "
+            f"{len(zeroed):,} economy/scenario/year periods contain non-zero values "
+            "in both an interim transformation branch and its standard branch. "
+            "The interim values were suppressed in mapping working data to prevent "
+            "double counting; the raw LEAP balance export was not changed. Remove or "
+            "correct the unintended standard/interim branch in the LEAP model. "
+            "See leap_source_branch_fallback_audit.csv for every affected period."
         )
         for _, row in zeroed.head(10).iterrows():
             print(
@@ -422,10 +426,15 @@ def run_leap_source_branch_preflight(
     if all_demand_warnings_df is not None and not all_demand_warnings_df.empty:
         periods = all_demand_warnings_df[PERIOD_COLUMNS].drop_duplicates()
         print(
-            "WARNING: 'All demand aggregated' overlaps a configured included demand "
-            f"sector in {len(periods):,} periods. No values were changed. "
-            "Confirm config/all_demand_aggregated_components.json reflects the model. "
-            "See leap_all_demand_aggregated_overlap_warnings.csv"
+            "WARNING: LEAP SOURCE STRUCTURE OVERLAP [AGGREGATED + DETAILED DEMAND]: "
+            "'All demand aggregated' and at least one configured included demand "
+            f"sector are both non-zero in {len(periods):,} economy/scenario/year "
+            "periods. Values were not changed, so this can double count demand if the "
+            "configuration still treats the detailed sector as part of the aggregate. "
+            "Correct the LEAP model or update "
+            "config/all_demand_aggregated_components.json when the detailed sector is "
+            "intentional. See leap_all_demand_aggregated_overlap_warnings.csv for "
+            "every affected period."
         )
         for _, row in all_demand_warnings_df.head(10).iterrows():
             print(

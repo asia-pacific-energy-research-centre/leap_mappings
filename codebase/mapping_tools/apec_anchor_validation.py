@@ -63,13 +63,21 @@ def aggregate_anchor_inputs_to_apec(
 
     source = source_df[source_columns + ["value"]].copy()
     source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
-    source = source.groupby(source_columns, dropna=False, as_index=False)["value"].sum()
+    source = source.groupby(
+        source_columns,
+        dropna=False,
+        as_index=False,
+        observed=True,
+    )["value"].sum()
     source.insert(1, "economy", APEC_ECONOMY)
 
     comparison = comparison_df[comparison_columns + ["value"]].copy()
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison = comparison.groupby(
-        comparison_columns, dropna=False, as_index=False
+        comparison_columns,
+        dropna=False,
+        as_index=False,
+        observed=True,
     )["value"].sum()
     comparison.insert(2, "economy", APEC_ECONOMY)
     return source, comparison
