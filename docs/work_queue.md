@@ -6,6 +6,20 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-044 â€” Correct the LEAP TFC domestic-demand boundary
+
+**Status: implementation in progress 2026-08-10.**
+
+Replace the broad `All demand aggregated` contributor to LEAP flow 12 with its
+five domestic child branches, excluding International transport. Register the
+previously missing Buildings/Crude oil and Other sector/Hydrogen source pairs,
+rerun mapping Stages 1-3, and verify Russia's post-2022 TFC total against both
+the demand-sector and demand-fuel frontiers in the Common ESTO dashboard.
+
+**Acceptance:** no bunker values in LEAP TFC; both missing pairs mapped; Russia
+sector stack, fuel stack, and LEAP TFC total reconcile within numerical
+tolerance; focused tests and dashboard readiness checks pass.
+
 ## MAPQ-043 — Run four-source mappings and all-economy dashboards
 
 **Priority / status:** P0 · `not_started`; pick up after the user's separate-axis

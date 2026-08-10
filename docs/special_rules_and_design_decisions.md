@@ -745,3 +745,33 @@ so its numerical anchors are not meaningful yet.
   to its members before economy attribution.
 - Re-enable Extended numerical scopes only after a reviewed data-population
   milestone and a fresh real-data verification.
+
+## MAP-017: Build LEAP TFC from domestic demand children
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Final-demand comparison boundary
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`; LEAP-to-ESTO
+conversion; Common ESTO flow 12
+
+### Decision
+
+Generate LEAP `12 Total final consumption` from the five domestic children of
+`All demand aggregated`: Buildings, Industry, Road, Transport non-road, and
+Other sector. Do not use the `All demand aggregated` parent because that parent
+also contains International transport. International marine and aviation
+bunker demand remains mapped separately to flows `04-05`.
+
+The exact child paths are used instead of also adding separately modelled
+top-level demand sectors. This keeps the generated TFC source frontier
+non-overlapping and prevents detailed-sector values from being counted twice.
+If the required children are absent, the broader parent is not a valid
+fallback for TFC.
+
+### History
+
+- 2026-08-10: Russia exposed the boundary error: the former LEAP TFC total
+  exceeded its domestic sector and fuel frontiers by exactly its mapped bunker
+  demand. The same review identified missing registered source pairs for
+  Buildings/Crude oil and Other sector/Hydrogen; both were added to the
+  maintained key-pair registry.

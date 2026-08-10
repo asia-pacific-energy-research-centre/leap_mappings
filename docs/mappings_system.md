@@ -1801,14 +1801,19 @@ Transport non road/Passenger non road     →   Transport
 **`tfc_comparison`**
 
 ```text
-All demand aggregated   →   Total final consumption
-Buildings               →   Total final consumption
-Freight road            →   Total final consumption
-Industry                →   Total final consumption
-Other sector            →   Total final consumption
-Passenger road          →   Total final consumption
-Transport non road      →   Total final consumption
+All demand aggregated/Buildings          →   Total final consumption
+All demand aggregated/Industry           →   Total final consumption
+All demand aggregated/Road               →   Total final consumption
+All demand aggregated/Transport non road →   Total final consumption
+All demand aggregated/Other sector       →   Total final consumption
 ```
+
+The `All demand aggregated` parent is deliberately not a TFC contributor. It
+also contains `All demand aggregated/International transport`, whose marine
+and aviation bunker demand belongs to flows `04-05`, outside domestic total
+final consumption. TFC is therefore generated from the five non-overlapping
+domestic children above. If those children are unavailable, consumers must
+report the missing boundary rather than relabel the broader parent as TFC.
 
 **`tfec_comparison`**
 
