@@ -1,5 +1,9 @@
 # Cross-repository hierarchy/subtotal system audit and modularisation prompt
 
+> **Completed 2026-07-29.** The maintained findings, architecture decision,
+> inventory, and linked migration queue are in
+> [`../cross_repo_hierarchy_subtotal_modularisation_plan.md`](../cross_repo_hierarchy_subtotal_modularisation_plan.md).
+
 ## Objective
 
 Review the hierarchy, subtotal-recognition, mapping-validation, exception, and

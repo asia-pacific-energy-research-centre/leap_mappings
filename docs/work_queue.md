@@ -334,6 +334,8 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-037 | P1 | `review_in_progress` | `leap_mappings` + `leap_dashboard` | MAPQ-034 | current APEC anchor-validation work | 2026-08-03 |
 | MAPQ-042 | P1 | `verified_uncommitted_dashboard_follow_up` | `leap_mappings` + `leap_dashboard` | MAPQ-037 | later clean work window | 2026-08-05 |
 | MAPQ-043 | P0 | `not_started` | `leap_mappings` + `leap_dashboard` | user's separate-axis checkpoint | next production run | 2026-08-05 |
+| MAPQ-045 | P1 | `needs_revalidation` | all three repositories | MAPQ-015, MAPQ-027 | W2 | 2026-07-29 |
+| MAPQ-046 | P1 | `needs_revalidation` | `leap_mappings` | MAPQ-027, MAPQ-045 | W2-W3 | 2026-07-29 |
 
 ---
 
@@ -756,6 +758,47 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Evidence:** `outputs/019fc2a9-cf44-7671-b580-29079f59a49d/apec_anchor_validation_review.xlsx` is the current review artifact for the APEC-first source-parent anchor validation work.
 - **Next action:** Complete the human review of the workbook before treating the APEC-first validation, targeted economy attribution, shared dashboard diagnostics page, or reviewed source-exception candidate flow as commit-ready. Record accepted findings, rejected exceptions, and any required mapping/workbook corrections in the appropriate maintained authority.
 - **Completion criteria:** Every material APEC anchor finding has a documented disposition; any approved exception is exact and reviewer-confirmed; required code, mapping, or documentation corrections are applied and verified; and the resulting dashboard/pipeline smoke evidence is recorded.
+
+### MAPQ-045 — Publish and prove the shared hierarchy/subtotal consumer boundary
+
+- **Priority / status / week:** P1 · `needs_revalidation` · W2
+- **Owner repos:** `leap_mappings`, `leap_initialisation`, and
+  `leap_dashboard` · **Depends on:** MAPQ-015, MAPQ-027
+- **Evidence:** The producer contract is canonical, but the current contract
+  bundle exists only in an untracked mappings result directory. Initialisation's
+  strict loader is test-only. Dashboard selects the contract only when a
+  sibling-checkout manifest happens to exist. The two consumer loaders share
+  their load core but have repository-specific helpers and weaker schema/key
+  checks than the producer.
+- **Plan:** Use one generated/reference-tested consumer core plus a shared
+  corrupt/valid fixture matrix; publish immutable build-ID-named bundles; make
+  production consumers select an expected build and schema explicitly. Keep
+  dashboard rendering and initialisation ingress helpers local.
+- **Cross-repo tasks:** `leap_initialisation` INIT-HS-001 and
+  `leap_dashboard` DASHQ-026/DASHQ-027.
+- **Audit:** [Cross-repository hierarchy/subtotal modularisation plan](cross_repo_hierarchy_subtotal_modularisation_plan.md).
+- **Completion criteria:** The same loader fixtures pass in all repositories;
+  required members/columns/keys and booleans are validated; clean checkouts can
+  obtain one named bundle without importing a sibling checkout; every consumer
+  run records the same build ID and schema.
+
+### MAPQ-046 — Consolidate subtotal review and exception policy
+
+- **Priority / status / week:** P1 · `needs_revalidation` · W2-W3
+- **Owner repo:** `leap_mappings` · **Depends on:** MAPQ-027, MAPQ-045
+- **Evidence:** Contract review is the correct proposal path. The old inference
+  draft, majority-based mismatch review, and two associated workbook writers
+  answer the same structural question from current workbook state. Stage 0
+  still derives status independently even though its bulk write path is
+  intentionally unreachable.
+- **Plan:** Route Stage 0's subtotal preview through contract review frames,
+  type and audit the three exception mechanisms, freeze superseded proposal
+  and writer tools, and preserve unrelated Stage 0 mapping QA.
+- **Audit:** [Cross-repository hierarchy/subtotal modularisation plan](cross_repo_hierarchy_subtotal_modularisation_plan.md).
+- **Completion criteria:** One canonical pair has one proposal; every retained
+  exception has a typed policy and evidence/build identity; no active workflow
+  reads `subtotal_label_exceptions`; unique useful tests are ported before old
+  tools are removed.
 
 ---
 

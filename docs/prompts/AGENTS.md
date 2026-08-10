@@ -92,3 +92,9 @@ for the evidence and destination of every moved file.
 The valid sector/fuel pair authority investigation proposed on 2026-07-29 was
 archived as out of scope at
 [`../archive/investigate_valid_sector_fuel_pair_authority_20260729.md`](../archive/investigate_valid_sector_fuel_pair_authority_20260729.md).
+
+The completed cross-repository hierarchy/subtotal architecture audit is
+archived at
+[`../archive/cross_repo_hierarchy_subtotal_modularisation_prompt.md`](../archive/cross_repo_hierarchy_subtotal_modularisation_prompt.md).
+Its maintained output and linked implementation queue are in
+[`../cross_repo_hierarchy_subtotal_modularisation_plan.md`](../cross_repo_hierarchy_subtotal_modularisation_plan.md).
