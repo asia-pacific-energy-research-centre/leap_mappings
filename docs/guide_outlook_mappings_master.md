@@ -58,7 +58,7 @@ is incomplete until the refresh has regenerated and validated this workbook.
 | `leap_rollup_rules` | Active, generated copy | Rollups applied to raw LEAP data; edit the upstream single-axis copy. |
 | `esto_rollup_rules` | Active, generated copy | Virtual ESTO flow definitions; edit the upstream single-axis copy. |
 | `ninth_rollup_rules` | Active, generated copy | Rollups applied to raw 9th data; edit the upstream single-axis copy. |
-| `rollup_label_overrides` | Reserved, loaded | The schema is loaded, but preferred-label overrides are not currently applied. |
+| `rollup_label_overrides` | Active, generated copy | Display-only labels keyed by stable `rollup_group_id`; edit the upstream single-axis copy. |
 | `leap_display_names` | Active, preserved | Code → LEAP display name; also consumed by `leap_initialisation`. |
 | `NINTH unique sectors and fuels` | Active reference | Real 9th labels used by Stage 1 validation. |
 | `ESTO unique flows and products` | Active reference | Real ESTO labels used by Stage 1 validation. |
@@ -71,6 +71,13 @@ producer/consumer contract change removes them. Do not add new data to them.
 
 Validation/QA exceptions do **not** live in this workbook — they live in
 `config/mapping_issue_exception_sets.xlsx` (see mappings_system.md §exception sets).
+
+`rollup_label_overrides` is display-only. Its `rollup_group_id` must identify
+one enabled rolled category. Keep the `auto_rollup_*` values populated as
+staleness guards and put the human-facing replacement in the corresponding
+`preferred_rollup_*` fields. The pipeline fails on unknown, inactive,
+ambiguous, duplicate, or stale override rows. Structural rolled labels,
+component membership, IDs and values do not change.
 
 ## 2. Mapping sheets: the basics
 

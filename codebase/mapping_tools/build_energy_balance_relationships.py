@@ -31,6 +31,10 @@ from codebase.mapping_tools.rollup_sheet_registry import (
     compile_normalized_rollup_rules,
     load_active_rollup_rules,
 )
+from codebase.mapping_tools.rollup_label_overrides import (
+    load_rollup_label_overrides,
+    override_lookup,
+)
 from codebase.utilities.outlook_mappings_filters import filter_used_in_leap_initialisation
 
 #%%
@@ -1748,11 +1752,18 @@ def _apply_ninth_rollup_rules(
     return pd.DataFrame(new_rows, columns=relationship_df.columns).reset_index(drop=True)
 
 
-def build_esto_overrides(esto_rules: pd.DataFrame) -> pd.DataFrame:
+def build_esto_overrides(
+    esto_rules: pd.DataFrame,
+    rollup_label_overrides_df: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """Generate common_esto_overrides.csv content from esto_rollup_rules."""
     if esto_rules.empty:
         return pd.DataFrame(columns=ESTO_OVERRIDES_COLUMNS)
 
+    label_overrides = override_lookup(
+        rollup_label_overrides_df,
+        rule_sheet="esto_rollup_rules",
+    )
     group_key_to_id: dict[tuple[str, str], str] = {}
     rows: list[dict[str, Any]] = []
     for _, rule in esto_rules.iterrows():
@@ -1768,14 +1779,21 @@ def build_esto_overrides(esto_rules: pd.DataFrame) -> pd.DataFrame:
             digest = hashlib.sha1(f"{rolled_flow}||{rolled_product}".encode()).hexdigest()[:12]
             group_key_to_id[group_key] = f"esto_override_{digest}"
         override_group_id = group_key_to_id[group_key]
+        display_override = label_overrides.get(_str(rule.get("rollup_group_id")), {})
+        preferred_flow_label = rolled_flow
+        preferred_product_label = rolled_product
+        if display_override.get("rollup_axis") == "flow":
+            preferred_flow_label = display_override.get("preferred_rollup_label") or rolled_flow
+        elif display_override.get("rollup_axis") == "product":
+            preferred_product_label = display_override.get("preferred_rollup_label") or rolled_product
 
         rows.append({
             "comparison_scope": "",
             "override_group_id": override_group_id,
             "component_esto_flow": input_flow,
             "component_esto_product": input_product,
-            "preferred_common_flow_label": rolled_flow,
-            "preferred_common_product_label": rolled_product,
+            "preferred_common_flow_label": preferred_flow_label,
+            "preferred_common_product_label": preferred_product_label,
             "override_reason": "esto_rollup_rules",
             "notes": _str(rule.get("Note")),
         })
@@ -1879,6 +1897,7 @@ def run_relationship_workflow(
     base_df = pd.concat(relationship_frames, ignore_index=True)
 
     leap_rules, esto_rules, ninth_rules = load_rollup_rules(mapping_workbook_path)
+    rollup_label_overrides_df = load_rollup_label_overrides(mapping_workbook_path)
     # Non-expanding rules declare named derived subtotals. They must not fan
     # out mapping targets, duplicate source relationships upward, or emit
     # common_esto_overrides edges, so only the ordinary subsets feed those
@@ -1908,7 +1927,10 @@ def run_relationship_workflow(
         print(f"NINTH rollup target expansion: {rows_before_ninth_rollup_expansion:,} -> {len(base_df):,} rows")
     leap_rollup_df = _apply_leap_rollup_rules(base_df, leap_ordinary_rules)
     ninth_rollup_df = _apply_ninth_rollup_rules(base_df, ninth_ordinary_rules)
-    esto_overrides_df = build_esto_overrides(esto_ordinary_rules)
+    esto_overrides_df = build_esto_overrides(
+        esto_ordinary_rules,
+        rollup_label_overrides_df=rollup_label_overrides_df,
+    )
 
     all_frames = [base_df]
     if not leap_rollup_df.empty:

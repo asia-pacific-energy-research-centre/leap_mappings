@@ -1,27 +1,27 @@
 {
   "status": "promoted_and_reopened",
   "writer": "python_openpyxl",
-  "generated_at_utc": "2026-08-10T10:59:02.749502+00:00",
+  "generated_at_utc": "2026-08-10T15:07:59.178054+00:00",
   "contract_version": "separate_axis_mapping_contract_v1",
   "historical_boundary_year": 2023,
   "editable_axis_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
   "generated_pair_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_key_pairs_generated.xlsx",
   "canonical_master_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_master.xlsx",
   "candidate_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\outlook_mappings_master_candidate.xlsx",
-  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_c4a11b3095e4.xlsx",
+  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_3bf8057ca4c5.xlsx",
   "original_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_b1826a4e7f9d.xlsx",
   "hashes": {
     "original_canonical_master_sha256": "b1826a4e7f9db60e491e0ff04b42de489cfa395eea68d551675cf9df2736079a",
-    "prior_canonical_master_sha256": "c4a11b3095e4634324d918341646d61dbbe60a1d5d9aeebc99f0e257c680b58a",
-    "promoted_master_sha256": "f78c1f63d77a73fa77eef750d335ac24ed1a9f34e12f2aaf1063f44046ea6dac",
-    "generated_pair_workbook_sha256": "3034272f6a3cac368c27d1c92eae7848d7754c36ab04c0158207c31b3dfb8c9e",
-    "editable_axis_workbook_sha256": "bfef9d18fcd8c0c71181738fc83e518472e60dc4a5201d54f504ee96f341714a",
-    "compiler_manifest_sha256": "d62e01dd1b2047560dcbe3128aa1f5fb8dc822d2b9edd19ff3b733b3473a7f97",
-    "split_manifest_sha256": "9fd17aaa61173529ee5d47af6eae50f7c5d9fe9eadf804255173dc47187dca78"
+    "prior_canonical_master_sha256": "3bf8057ca4c5fccccaff70a79eccbcd65015e89083a1e84d3ddaa71a17eb47eb",
+    "promoted_master_sha256": "38512e3dd3d9723fe1d02ab292c542b13b5c9d95f667bd32bb8cbd14673379d3",
+    "generated_pair_workbook_sha256": "05c5f44ed682acabeb81b4b013557448dce5ed271b49ca7e273d453af574fa0b",
+    "editable_axis_workbook_sha256": "c710fd483030fafee95a1966e15d66553443c00148539362cf77024d16a9b4af",
+    "compiler_manifest_sha256": "1216f8869c1adc8e5195b8d36914461975bc31f43ce56b6ad3ac57fc28f5b23f",
+    "split_manifest_sha256": "62f8d45c1ffa024c4b1b1c22ec5519330473dc98156b81584f4cedf60b81c69e"
   },
   "compiled_counts": {
     "leap_combined_esto": 2992,
-    "leap_combined_ninth": 3345,
+    "leap_combined_ninth": 3417,
     "ninth_pairs_to_esto_pairs": 2676
   },
   "pair_counts": {
@@ -39,28 +39,28 @@
     "many_to_many_axis_components": 0,
     "allowed_many_to_many_component_exceptions": 0,
     "unresolved_many_to_many_axis_components": 0,
-    "universe_compiled_relationship_rows": 15375,
-    "universe_exact_current_relationship_matches": 8723,
-    "universe_current_relationships_not_compiled": 290,
-    "universe_extra_targets_for_current_sources": 494,
-    "universe_new_source_pair_candidates": 6158,
-    "temporal_compiled_relationship_rows": 9013,
-    "temporal_rows_after_axis_contract_gate": 9013,
-    "temporal_exact_current_relationship_matches": 8929,
-    "temporal_current_relationships_not_compiled": 84,
-    "temporal_extra_targets_for_current_sources": 0,
-    "temporal_new_source_pair_candidates": 84,
-    "generated_relationship_governance_rows": 168,
+    "universe_compiled_relationship_rows": 15447,
+    "universe_exact_current_relationship_matches": 8807,
+    "universe_current_relationships_not_compiled": 206,
+    "universe_extra_targets_for_current_sources": 496,
+    "universe_new_source_pair_candidates": 6144,
+    "temporal_compiled_relationship_rows": 9085,
+    "temporal_rows_after_axis_contract_gate": 9085,
+    "temporal_exact_current_relationship_matches": 9013,
+    "temporal_current_relationships_not_compiled": 0,
+    "temporal_extra_targets_for_current_sources": 2,
+    "temporal_new_source_pair_candidates": 70,
+    "generated_relationship_governance_rows": 72,
     "leap_layered_registry_pair_rows": 29435,
-    "leap_current_source_pairs_present_in_registry": 3511,
+    "leap_current_source_pairs_present_in_registry": 3595,
     "leap_current_source_keys_absent_from_registry": 0,
-    "leap_generated_pairs_not_in_current_mapping_contract": 25924,
+    "leap_generated_pairs_not_in_current_mapping_contract": 25840,
     "leap_observed_verification_pair_rows": 8229,
     "leap_observed_pairs_missing_from_registry": 4176
   },
   "leap_pair_registry_manifest": {
     "manifest_version": 5,
-    "source_signature": "a85e84c4a0d8e317742fb18f4801575af277ea5564c7c19dc99031b01156b226",
+    "source_signature": "3d8c245e11a34a15ed8ed8c473ed522c1369defc14d3a5e2ade5caac597bd267",
     "source_count": 14,
     "sources": [
       {
@@ -147,9 +147,9 @@
         "source_kind": "export_template",
         "source_id": "RUS clean slate 06_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\RUS clean slate 06_08.xlsx",
-        "size_bytes": 869428,
-        "modified_time_ns": 1786004034000000000,
-        "sha256": "7a9c4872b7a803598a1e0256f3c218be0c2b36553a5f66ac2a025bb042d6d369"
+        "size_bytes": 869629,
+        "modified_time_ns": 1786365240536323500,
+        "sha256": "bbb1e7964e6fc491f1a5288f705d2081d7f8ac073b67e7d6342f333b53f807ee"
       },
       {
         "source_kind": "export_template",
@@ -177,7 +177,7 @@
       }
     ],
     "registry_version": 5,
-    "generated_at_utc": "2026-08-06T09:44:31.659860+00:00",
+    "generated_at_utc": "2026-08-10T15:06:17.742206+00:00",
     "pair_count": 28220,
     "subtotal_pair_count": 3572,
     "direct_only_pair_count": 896,
@@ -188,13 +188,13 @@
     "excluded_leaf_count": 2854,
     "registry_path": "C:\\Users\\Work\\github\\leap_mappings\\results\\separate_axis_mapping_exploration\\valid_pairs\\leap_layered.csv",
     "diagnostics_path": "C:\\Users\\Work\\github\\leap_mappings\\results\\separate_axis_mapping_exploration\\valid_pairs\\leap_layered_excluded_leaves.csv",
-    "refreshed_this_run": false,
-    "refresh_reason": "source_workbooks_unchanged",
+    "refreshed_this_run": true,
+    "refresh_reason": "source_workbook_set_or_fingerprint_changed",
     "rollup_pair_counts": {
       "LEAP": 796,
-      "ESTO": 1259,
+      "ESTO": 1337,
       "ESTO_EXTENDED": 940,
-      "NINTH": 570
+      "NINTH": 618
     },
     "reviewed_extra_pair_counts": {
       "LEAP": 427,
@@ -206,7 +206,7 @@
   "provisional_relationship_policy": "provisionally_accepted",
   "semantic_review_debt": {
     "within_axis_many_to_many_components": 0,
-    "additional_compiled_relationships": 168
+    "additional_compiled_relationships": 72
   },
   "validation": {
     "sheetCount": 14,
@@ -228,7 +228,7 @@
     ],
     "rowCounts": {
       "leap_combined_esto": 2992,
-      "leap_combined_ninth": 3345,
+      "leap_combined_ninth": 3417,
       "ninth_pairs_to_esto_pairs": 2676
     },
     "booleanColumns": [
@@ -245,7 +245,7 @@
     "formulaErrors": []
   },
   "editable_duplicate_cleanup": {
-    "checked_at_utc": "2026-08-10T10:58:21.540442+00:00",
+    "checked_at_utc": "2026-08-10T15:07:15.907748+00:00",
     "workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
     "checked_sheets": [
       "leap_sector_to_esto",
