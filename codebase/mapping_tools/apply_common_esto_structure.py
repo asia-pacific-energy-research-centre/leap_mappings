@@ -1636,6 +1636,7 @@ def build_wide_year_output(
             values="value",
             aggfunc="sum",
             fill_value=0,
+            observed=True,
         )
         .reset_index()
     )
