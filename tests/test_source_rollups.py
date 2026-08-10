@@ -91,3 +91,60 @@ def test_multiple_ancestor_aggregates_are_not_reported_as_duplicates() -> None:
 
     assert set(rolled["leap_flow"]) == {"Passenger road", "Road", "Transport"}
     assert audit.empty
+
+
+def test_rollup_input_multiplier_supports_signed_balance_contributors() -> None:
+    source = pd.DataFrame([
+        {"leap_flow": "Total Primary Supply", "leap_product": "Jet fuel", "value": 10.0},
+        {
+            "leap_flow": "All demand aggregated/International transport",
+            "leap_product": "Jet fuel",
+            "value": 2.0,
+        },
+    ])
+    rules = pd.DataFrame([
+        {
+            "input_leap_sector_name_full_path": "Total Primary Supply",
+            "input_raw_leap_fuel_name": "",
+            "rolled_leap_sector_name_full_path": "TPES including bunker adjustment",
+            "rolled_raw_leap_fuel_name": "",
+            "input_value_multiplier": 1,
+            "include": True,
+        },
+        {
+            "input_leap_sector_name_full_path": "All demand aggregated/International transport",
+            "input_raw_leap_fuel_name": "",
+            "rolled_leap_sector_name_full_path": "TPES including bunker adjustment",
+            "rolled_raw_leap_fuel_name": "",
+            "input_value_multiplier": -1,
+            "include": True,
+        },
+        {
+            "input_leap_sector_name_full_path": "All demand aggregated/International transport",
+            "input_raw_leap_fuel_name": "",
+            "rolled_leap_sector_name_full_path": "International transport signed for supply",
+            "rolled_raw_leap_fuel_name": "",
+            "input_value_multiplier": -1,
+            "include": True,
+        },
+    ])
+
+    rolled, audit = apply_source_rollups(
+        source_df=source,
+        rules_df=rules,
+        source_flow_column="leap_flow",
+        source_product_column="leap_product",
+        value_column="value",
+        input_flow_column="input_leap_sector_name_full_path",
+        input_product_column="input_raw_leap_fuel_name",
+        rolled_flow_column="rolled_leap_sector_name_full_path",
+        rolled_product_column="rolled_raw_leap_fuel_name",
+    )
+
+    assert audit.empty
+    assert rolled.loc[
+        rolled["leap_flow"].eq("TPES including bunker adjustment"), "value"
+    ].sum() == 8.0
+    assert rolled.loc[
+        rolled["leap_flow"].eq("International transport signed for supply"), "value"
+    ].sum() == -2.0

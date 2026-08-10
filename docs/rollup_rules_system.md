@@ -43,6 +43,15 @@ Rollup rules are consumed in two different directions.
 
 **Source-side duplicate-up** applies to `leap_rollup_rules` and `ninth_rollup_rules`. Stage 1 copies included leaf relationships under the rolled source label and marks the new rows `is_rollup_derived=True`. This supports source datasets that may report aggregate-level values. Stage 2 deliberately excludes `is_rollup_derived=True` rows from merge-edge creation so shared aggregate labels do not blob-merge unrelated descendants.
 
+LEAP source rollups may also declare an `input_value_multiplier`. A blank value
+means `1`; negative values are reserved for signed balance contributors. The
+international-transport placeholder uses `-1` in two reviewed rollups: once to
+publish bunkers with the ESTO negative supply convention, and once to derive
+net TPES from LEAP's gross `Total Primary Supply`. This keeps the positive LEAP
+demand magnitude traceable while ensuring domestic demand excludes bunkers and
+the balance identity is `TPES = production + imports + exports + bunkers + stock
+changes` using signed values.
+
 **Target-side expand-down** applies to target axes that can contain synthetic labels in mapping sheets:
 
 - ESTO targets in `leap_combined_esto` and `ninth_pairs_to_esto_pairs`.

@@ -7,6 +7,8 @@ from __future__ import annotations
 import pandas as pd
 
 
+INPUT_VALUE_MULTIPLIER_COLUMN = "input_value_multiplier"
+
 ROLLUP_AUDIT_COLUMNS = [
     "issue_type",
     "input_flow",
@@ -56,6 +58,15 @@ def prepare_source_rollup_rules(
         if column not in rules.columns:
             rules[column] = ""
         rules[column] = rules[column].fillna("").astype(str).str.strip()
+
+    if INPUT_VALUE_MULTIPLIER_COLUMN not in rules.columns:
+        rules[INPUT_VALUE_MULTIPLIER_COLUMN] = 1.0
+    raw_multipliers = rules[INPUT_VALUE_MULTIPLIER_COLUMN]
+    blank_multiplier = raw_multipliers.isna() | raw_multipliers.astype(str).str.strip().eq("")
+    rules.loc[blank_multiplier, INPUT_VALUE_MULTIPLIER_COLUMN] = 1.0
+    rules[INPUT_VALUE_MULTIPLIER_COLUMN] = pd.to_numeric(
+        rules[INPUT_VALUE_MULTIPLIER_COLUMN], errors="raise"
+    ).astype(float)
 
     rules = rules[
         rules[input_flow_column].ne("") & rules[rolled_flow_column].ne("")
@@ -136,6 +147,9 @@ def apply_source_rollups(
         matched[source_flow_column] = rule[rolled_flow_column]
         if rolled_product:
             matched[source_product_column] = rolled_product
+        matched[value_column] = (
+            matched[value_column] * float(rule[INPUT_VALUE_MULTIPLIER_COLUMN])
+        )
 
         if allowed_rolled_pairs is not None:
             pair_mask = [
