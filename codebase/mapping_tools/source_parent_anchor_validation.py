@@ -418,6 +418,106 @@ def _mapped_descendants(
     return result
 
 
+def _leaf_descendants(
+    code: str,
+    children: dict[str, list[str]],
+    visited: frozenset[str] = frozenset(),
+) -> list[str]:
+    """Return the terminal descendants of ``code`` in a source-axis tree."""
+    if code in visited:
+        return []
+    direct_children = children.get(code, [])
+    if not direct_children:
+        return [code]
+    leaves: list[str] = []
+    next_visited = visited | {code}
+    for child in direct_children:
+        leaves.extend(_leaf_descendants(child, children, next_visited))
+    return list(dict.fromkeys(leaves))
+
+
+def _mapping_rows_have_data(
+    rows: pd.DataFrame,
+    has_data_pairs: set[tuple[str, str]] | None,
+) -> bool:
+    """Return whether mapped rows reach a component with comparison data."""
+    if rows.empty:
+        return False
+    if has_data_pairs is None:
+        return True
+    pairs = set(zip(
+        rows["component_esto_flow"].astype(str),
+        rows["component_esto_product"].astype(str),
+    ))
+    return not pairs.isdisjoint(has_data_pairs)
+
+
+def _mapped_descendants_with_other_axis_expansion(
+    code: str,
+    other_axis_value: str,
+    children: dict[str, list[str]],
+    other_children: dict[str, list[str]],
+    direct_index: dict[tuple[str, str], pd.DataFrame],
+    empty_frame: pd.DataFrame,
+    cache: dict[tuple[str, str], tuple[pd.DataFrame, list[str]]],
+    has_data_pairs: set[tuple[str, str]] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Resolve a frontier node, expanding an inert opposite-axis subtotal.
+
+    Common ESTO usually registers real rows at detailed flow/product pairs.
+    A source anchor can nevertheless be displayed against an opposite-axis
+    aggregate such as ``08 Gas``.  First preserve the exact aggregate mapping
+    whenever it reaches real comparison data.  Only when that exact route is
+    numerically inert do we retry the original validation-axis node against
+    the opposite axis' terminal descendants.  Retrying the original node is
+    important: a valid combined source node (for example ESTO ``09.06.02``)
+    must remain atomic at detailed products rather than being forced through
+    structure-only children that are absent from the raw source export.
+    """
+    exact_rows, exact_missing = _mapped_descendants(
+        code,
+        other_axis_value,
+        children,
+        direct_index,
+        empty_frame,
+        cache,
+        has_data_pairs,
+    )
+    if _mapping_rows_have_data(exact_rows, has_data_pairs):
+        return exact_rows, exact_missing
+
+    other_leaves = [
+        leaf for leaf in _leaf_descendants(other_axis_value, other_children)
+        if leaf != other_axis_value
+    ]
+    if not other_leaves:
+        return exact_rows, exact_missing
+
+    expanded_frames: list[pd.DataFrame] = []
+    for other_leaf in other_leaves:
+        resolved, _missing = _mapped_descendants(
+            code,
+            other_leaf,
+            children,
+            direct_index,
+            empty_frame,
+            cache,
+            has_data_pairs,
+        )
+        expanded_frames.append(resolved)
+    expanded_rows = (
+        pd.concat(expanded_frames, ignore_index=True).drop_duplicates()
+        if expanded_frames else empty_frame
+    )
+    if _mapping_rows_have_data(expanded_rows, has_data_pairs):
+        # Missing combinations on individual opposite-axis leaves are not
+        # missing validation-axis children: many flows legitimately use only
+        # a subset of a product family (and vice versa). Any non-zero unmapped
+        # leaf still appears as a numerical residual in the anchor comparison.
+        return expanded_rows, []
+    return exact_rows, exact_missing
+
+
 def validate_source_parent_anchors(
     source_df: pd.DataFrame,
     source_tree_df: pd.DataFrame,
@@ -771,6 +871,7 @@ def validate_source_parent_anchors(
             missing_join_map: dict[tuple[str, str], str] = {}
             has_missing_map: dict[tuple[str, str], bool] = {}
             fids_empty_map: dict[tuple[str, str, str], bool] = {}
+            opposite_axis_expanded_keys: set[tuple[str, str]] = set()
             fid_rows: list[tuple[str, str, str, str]] = []
             # A resolved frontier component still has a real, correct raw
             # value from this same source system even when there is no way
@@ -808,10 +909,16 @@ def validate_source_parent_anchors(
                     frontier_parts: list[pd.DataFrame] = []
                     missing_children: list[str] = []
                     for child in children.get(pcode, []):
-                        resolved, missing = _mapped_descendants(
-                            child, oas, children, direct_index,
-                            empty_mapping, descendant_cache, has_data_pairs,
-                        )
+                        if source_system == "ESTO" and axis == "flow":
+                            resolved, missing = _mapped_descendants_with_other_axis_expansion(
+                                child, oas, children, other_children, direct_index,
+                                empty_mapping, descendant_cache, has_data_pairs,
+                            )
+                        else:
+                            resolved, missing = _mapped_descendants(
+                                child, oas, children, direct_index,
+                                empty_mapping, descendant_cache, has_data_pairs,
+                            )
                         frontier_parts.append(resolved)
                         missing_children.extend(missing)
                     frontier_components = (
@@ -821,6 +928,11 @@ def validate_source_parent_anchors(
                     frontier_entry = (frontier_components, missing_children)
                     frontier_cache[fk] = frontier_entry
                 frontier_components, missing_children = frontier_entry
+                if (
+                    not frontier_components.empty
+                    and frontier_components[other_col].astype(str).ne(oas).any()
+                ):
+                    opposite_axis_expanded_keys.add(fk)
                 missing_join_map[fk] = "|".join(sorted(set(missing_children)))
                 has_missing_map[fk] = bool(missing_children)
                 raw_frontier_pairs = set(
@@ -1207,7 +1319,21 @@ def validate_source_parent_anchors(
                 node = (gpcode, gscope, goas)
                 id_signature = sorted({str(cid) for cid in ids})
                 if id_signature:
-                    signature = [f"common_row::{cid}" for cid in id_signature]
+                    # An opposite-axis subtotal intentionally reuses the
+                    # detailed descendants' Common ESTO rows. It is still a
+                    # separate source observation and must not be combined
+                    # with those descendant observations by shared-frontier
+                    # grouping, or the raw parent is counted once at the
+                    # subtotal and again at every detail level.
+                    signature_prefix = (
+                        f"expanded_other_axis::{goas}::"
+                        if (gpcode, goas) in opposite_axis_expanded_keys
+                        else ""
+                    )
+                    signature = [
+                        f"{signature_prefix}common_row::{cid}"
+                        for cid in id_signature
+                    ]
                 elif not structurally_registered:
                     # When the Common ESTO boundary is unavailable, preserve
                     # shared-source grouping using the mapped component pairs
@@ -2415,16 +2541,43 @@ def build_failed_anchor_mapped_component_context_values(
             axis_col = "source_flow" if validation_axis == "flow" else "source_product"
             other_col = "source_product" if validation_axis == "flow" else "source_flow"
             aliases = build_tree_code_aliases(source_tree_df, dataset, tree_axis)
-            tree = source_tree_df[
+            other_tree_axis = "product" if other_col == "source_product" else "flow"
+            if dataset in {"leap", "ninth"}:
+                other_tree_axis = "fuel" if other_col == "source_product" else "sector"
+            other_aliases = build_tree_code_aliases(
+                source_tree_df, dataset, other_tree_axis,
+            )
+            canonical_tree = source_tree_df.copy()
+            tree_mask = (
                 source_tree_df["dataset"].astype(str).str.casefold().eq(dataset)
                 & source_tree_df["axis"].astype(str).str.casefold().eq(tree_axis)
-            ].copy()
-            if tree.empty:
+            )
+            other_tree_mask = (
+                source_tree_df["dataset"].astype(str).str.casefold().eq(dataset)
+                & source_tree_df["axis"].astype(str).str.casefold().eq(other_tree_axis)
+            )
+            if not tree_mask.any():
                 continue
-            tree["code"] = canonicalize_tree_codes(tree["code"], aliases)
-            tree["parent_code"] = canonicalize_tree_codes(tree["parent_code"], aliases)
-            children = _children_map(tree, dataset, tree_axis)
+            canonical_tree.loc[tree_mask, "code"] = canonicalize_tree_codes(
+                canonical_tree.loc[tree_mask, "code"], aliases,
+            )
+            canonical_tree.loc[tree_mask, "parent_code"] = canonicalize_tree_codes(
+                canonical_tree.loc[tree_mask, "parent_code"], aliases,
+            )
+            canonical_tree.loc[other_tree_mask, "code"] = canonicalize_tree_codes(
+                canonical_tree.loc[other_tree_mask, "code"], other_aliases,
+            )
+            canonical_tree.loc[other_tree_mask, "parent_code"] = canonicalize_tree_codes(
+                canonical_tree.loc[other_tree_mask, "parent_code"], other_aliases,
+            )
+            children = _children_map(canonical_tree, dataset, tree_axis)
+            other_children = _children_map(
+                canonical_tree, dataset, other_tree_axis,
+            )
             system_mapping[axis_col] = canonicalize_tree_codes(system_mapping[axis_col], aliases)
+            system_mapping[other_col] = canonicalize_tree_codes(
+                system_mapping[other_col], other_aliases,
+            )
             direct_index = {
                 key: group for key, group in system_mapping.groupby([axis_col, other_col], dropna=False)
             }
@@ -2438,7 +2591,9 @@ def build_failed_anchor_mapped_component_context_values(
                 # context using " + ". Resolve each constituent against the
                 # exact source mapping while preserving the grouped label.
                 mapping_other_values = [
-                    value.strip()
+                    canonicalize_tree_codes(
+                        pd.Series([value.strip()]), other_aliases,
+                    ).iloc[0]
                     for value in other_value.split(" + ")
                     if value.strip()
                 ] or [other_value]
@@ -2446,15 +2601,27 @@ def build_failed_anchor_mapped_component_context_values(
                     resolved_frames: list[pd.DataFrame] = []
                     missing: list[str] = []
                     for mapping_other_value in mapping_other_values:
-                        resolved_part, missing_part = _mapped_descendants(
-                            raw_child,
-                            mapping_other_value,
-                            children,
-                            direct_index,
-                            empty_mapping,
-                            cache,
-                            has_data_pairs,
-                        )
+                        if source_system == "ESTO" and validation_axis == "flow":
+                            resolved_part, missing_part = _mapped_descendants_with_other_axis_expansion(
+                                raw_child,
+                                mapping_other_value,
+                                children,
+                                other_children,
+                                direct_index,
+                                empty_mapping,
+                                cache,
+                                has_data_pairs,
+                            )
+                        else:
+                            resolved_part, missing_part = _mapped_descendants(
+                                raw_child,
+                                mapping_other_value,
+                                children,
+                                direct_index,
+                                empty_mapping,
+                                cache,
+                                has_data_pairs,
+                            )
                         resolved_frames.append(resolved_part)
                         missing.extend(missing_part)
                     resolved = (

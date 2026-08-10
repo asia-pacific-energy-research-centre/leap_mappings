@@ -324,6 +324,129 @@ def test_failed_anchor_mapped_context_expands_grouped_other_axis_values() -> Non
     ).any()
 
 
+def test_flow_anchor_expands_inert_product_subtotal_before_structure_only_flow_children() -> None:
+    """Detailed products should keep a valid combined ESTO flow atomic."""
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "F", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "C", "parent_code": "F"},
+        {"dataset": "esto", "axis": "flow", "code": "C.1", "parent_code": "C"},
+        {"dataset": "esto", "axis": "flow", "code": "C.2", "parent_code": "C"},
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+        {"dataset": "esto", "axis": "product", "code": "P.2", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "F", "source_product": "P", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "F", "source_product": "P.1", "value": 4},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "F", "source_product": "P.2", "value": 6},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "C", "source_product": "P", "value": 10},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "C", "source_product": "P.1", "value": 4},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "C", "source_product": "P.2", "value": 6},
+    ])
+    mappings = pd.DataFrame([
+        # These aggregate-product rows are structurally declared but have no
+        # Common ESTO comparison data. Descending the flow axis here would be
+        # wrong because C.1/C.2 do not exist in the raw ESTO export.
+        {"source_system": "ESTO", "source_flow": "C.1", "source_product": "P",
+         "component_esto_flow": "C.1", "component_esto_product": "P"},
+        {"source_system": "ESTO", "source_flow": "C.2", "source_product": "P",
+         "component_esto_flow": "C.2", "component_esto_product": "P"},
+        # The real Common ESTO rows are registered at detailed products while
+        # retaining the valid combined source flow C.
+        {"source_system": "ESTO", "source_flow": "C", "source_product": "P.1",
+         "component_esto_flow": "C", "component_esto_product": "P.1"},
+        {"source_system": "ESTO", "source_flow": "C", "source_product": "P.2",
+         "component_esto_flow": "C", "component_esto_product": "P.2"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "C",
+         "component_esto_product": "P.1", "common_row_id": "c1"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "C",
+         "component_esto_product": "P.2", "common_row_id": "c2"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E",
+         "scenario": "historical", "year": 2022, "common_row_id": "c1", "value": 4},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E",
+         "scenario": "historical", "year": 2022, "common_row_id": "c2", "value": 6},
+    ])
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    row = detail[
+        detail["validation_axis"].eq("flow")
+        & detail["parent_code"].eq("F")
+        & detail["other_axis_value"].eq("P")
+    ].iloc[0]
+
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 10
+    assert row["frontier_row_count"] == 2
+    assert row["missing_expected_child_count"] == 0
+
+    failed_copy = row.to_frame().T
+    failed_copy["status"] = "failed"
+    components = build_failed_anchor_mapped_component_context_values(
+        failed_copy, tree, mappings, common, comparison,
+    )
+    child_components = components[components["raw_child_code"].eq("C")]
+    assert set(child_components["common_row_id"]) == {"c1", "c2"}
+    assert set(child_components["resolved_source_flow"]) == {"C"}
+    assert not child_components["mapping_status"].str.startswith(
+        "missing_source_mapping"
+    ).any()
+
+
+def test_flow_anchor_preserves_exact_product_subtotal_with_real_data() -> None:
+    """Opposite-axis expansion is a fallback, never a replacement."""
+    tree = pd.DataFrame([
+        {"dataset": "esto", "axis": "flow", "code": "F", "parent_code": ""},
+        {"dataset": "esto", "axis": "flow", "code": "C", "parent_code": "F"},
+        {"dataset": "esto", "axis": "product", "code": "P", "parent_code": ""},
+        {"dataset": "esto", "axis": "product", "code": "P.1", "parent_code": "P"},
+    ])
+    source = pd.DataFrame([
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "F", "source_product": "P", "value": 100},
+        {"source_system": "ESTO", "economy": "E", "scenario": "historical", "year": 2022,
+         "source_flow": "C", "source_product": "P", "value": 100},
+    ])
+    mappings = pd.DataFrame([
+        {"source_system": "ESTO", "source_flow": "C", "source_product": "P",
+         "component_esto_flow": "C", "component_esto_product": "P"},
+        {"source_system": "ESTO", "source_flow": "C", "source_product": "P.1",
+         "component_esto_flow": "C", "component_esto_product": "P.1"},
+    ])
+    common = pd.DataFrame([
+        {"comparison_scope": "esto_only", "component_esto_flow": "C",
+         "component_esto_product": "P", "common_row_id": "aggregate"},
+        {"comparison_scope": "esto_only", "component_esto_flow": "C",
+         "component_esto_product": "P.1", "common_row_id": "detail"},
+    ])
+    comparison = pd.DataFrame([
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E",
+         "scenario": "historical", "year": 2022, "common_row_id": "aggregate", "value": 100},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "economy": "E",
+         "scenario": "historical", "year": 2022, "common_row_id": "detail", "value": 4},
+    ])
+
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+    row = detail[
+        detail["validation_axis"].eq("flow")
+        & detail["parent_code"].eq("F")
+        & detail["other_axis_value"].eq("P")
+    ].iloc[0]
+
+    assert row["status"] == "passed"
+    assert row["frontier_sum"] == 100
+    assert row["frontier_row_count"] == 1
+
+
 def test_unregistered_sibling_falls_back_to_raw_value_when_scope_partially_covers_parent() -> None:
     """A resolved child with no common_row_id anywhere still counts toward
     the frontier via its own raw value, as long as a sibling under the same

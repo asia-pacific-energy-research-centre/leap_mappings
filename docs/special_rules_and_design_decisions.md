@@ -778,3 +778,48 @@ fallback for TFC.
   ESTO pairs are historically zero-only, those targets were also registered as
   reviewed extras for ESTO and ESTO Extended; this lets the single-axis
   compiler generate the comparison rows without bypassing its temporal gate.
+
+## MAP-018: Expand inert ESTO product subtotals for flow-anchor validation
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Source-parent anchor validation boundary
+**Affected areas:** ESTO flow-anchor validation; failed-anchor mapped-component
+evidence; mapping diagnostics
+
+### Situation
+
+ESTO flow anchors are often displayed against an aggregate product such as
+`07 Petroleum products` or `08 Gas`, while Common ESTO registers the real
+comparison rows at the detailed product leaves. Exact aggregate-pair lookup
+therefore produced a zero mapped frontier and false missing-mapping messages
+even though the maintained detailed mappings were complete. This affected
+transformation, gas processing, liquefaction/regasification, Other sector, and
+Commercial flow checks.
+
+### Decision
+
+- For **ESTO flow validation only**, preserve an exact aggregate-product
+  mapping whenever it reaches real comparison data. If it is numerically
+  inert, retry the original flow node against the aggregate product's terminal
+  descendants.
+- Retry the original flow before descending its flow-tree children. This keeps
+  valid combined native ESTO rows such as `09.06.02
+  Liquefaction/regasification plants` atomic instead of inventing raw split
+  children that ESTO does not export.
+- Keep an expanded aggregate-product observation separate from its detailed
+  product observations during shared-frontier grouping. They reuse the same
+  Common ESTO rows but are distinct source observations; combining them would
+  double-count the raw parent.
+- Use the same resolver for the numerical anchor and its mapped-component
+  evidence so the dashboard explanation matches the calculation.
+- Do not apply this fallback to LEAP, Ninth, ESTO product validation, or ESTO
+  Extended. Their hierarchy/subtotal semantics remain unchanged.
+
+### Verification
+
+- 2026-08-10: Current APEC-first validation reduced ESTO flow failures from 34
+  scope rows to 4. LEAP, Ninth, and ESTO-product summary counts were unchanged.
+  Every false empty-frontier ESTO card in the reviewed diagnostics disappeared.
+  The four remaining ESTO flow rows all trace to the same `0.06029 PJ`
+  coal-products own-use residual and are not missing-mapping cases.
