@@ -773,5 +773,8 @@ fallback for TFC.
 - 2026-08-10: Russia exposed the boundary error: the former LEAP TFC total
   exceeded its domestic sector and fuel frontiers by exactly its mapped bunker
   demand. The same review identified missing registered source pairs for
-  Buildings/Crude oil and Other sector/Hydrogen; both were added to the
-  maintained key-pair registry.
+  Buildings/Crude oil and Other sector/Hydrogen. Their normalized LEAP source
+  pairs were added to the maintained key-pair registry. Because the matching
+  ESTO pairs are historically zero-only, those targets were also registered as
+  reviewed extras for ESTO and ESTO Extended; this lets the single-axis
+  compiler generate the comparison rows without bypassing its temporal gate.
