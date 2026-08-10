@@ -581,8 +581,8 @@ dedicated QA outputs are:
 | `qa_common_esto_non_expanding_rollups.csv` | `results/common_esto/` | Per scope and subtotal: rule sheets, mapped source systems, contributors, observed products, and output common-row IDs |
 | `qa_common_esto_non_expanding_frontier_check.csv` | `results/common_esto/` | Check that no non-expanding subtotal shares a common row with any other component (especially a declared child) |
 | `qa_common_esto_suppressed_graph_edges.csv` | `results/common_esto/` | Graph edges that `is_rollup_derived` / `esto_pair_is_subtotal` rows would have created but were deliberately suppressed, with source provenance |
-| `leap_source_branch_fallback_audit.csv` | `results/mapping_relationships/` | Interim-branch fallback preflight audit (`warn_and_zero_interim`): standard total, original/suppressed/retained interim totals, action, rule ID |
-| `leap_all_demand_aggregated_overlap_warnings.csv` | `results/mapping_relationships/` | Periods where `All demand aggregated` and a configured included demand sector are both non-zero (review warning; values unchanged) |
+| `leap_source_branch_fallback_audit.csv` | `results/mapping_relationships/` | Interim-branch fallback preflight audit (`warn_and_zero_interim`): standard total, original/suppressed/retained interim totals, action, rule ID. Any period containing both representations emits a prominent `LEAP SOURCE STRUCTURE OVERLAP [INTERIM + STANDARD]` warning; mapping suppresses the interim values in working data but never changes the raw export. |
+| `leap_all_demand_aggregated_overlap_warnings.csv` | `results/mapping_relationships/` | Periods where `All demand aggregated` and a configured included demand sector are both non-zero (values unchanged). Any such period emits a prominent `LEAP SOURCE STRUCTURE OVERLAP [AGGREGATED + DETAILED DEMAND]` warning because leaving both active can double count demand. |
 
 ### Rollup rule sheets
 

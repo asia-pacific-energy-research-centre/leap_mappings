@@ -1,5 +1,7 @@
 """Tests for the early LEAP source-branch preflight (interim fallback + All-demand warning)."""
 
+import json
+
 import pandas as pd
 
 from codebase.mapping_tools.source_branch_preflight import (
@@ -7,6 +9,7 @@ from codebase.mapping_tools.source_branch_preflight import (
     check_all_demand_aggregated_overlap,
     get_demand_sectors_without_detail,
     resolve_components_for_economy,
+    run_leap_source_branch_preflight,
 )
 
 
@@ -122,6 +125,55 @@ class TestScenario6AllDemandWarning:
         )
         warnings = check_all_demand_aggregated_overlap(leap_df, self._components())
         assert warnings.empty
+
+
+class TestStructuralOverlapConsoleWarnings:
+    def test_both_overlap_types_are_prominent_and_audited(self, tmp_path, capsys) -> None:
+        rules_path = tmp_path / "source_branch_fallback_rules.csv"
+        _rules().to_csv(rules_path, index=False)
+        components_path = tmp_path / "all_demand_aggregated_components.json"
+        components_path.write_text(
+            json.dumps(
+                {
+                    "aggregated_branch": "All demand aggregated",
+                    "components": [
+                        {
+                            "component_branch": "Industry",
+                            "include_by_default": True,
+                            "note": "Included in the aggregate placeholder.",
+                            "economy_overrides": {},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        leap_df = pd.concat(
+            [
+                _leap_rows(),
+                pd.DataFrame(
+                    [
+                        {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "All demand aggregated", "leap_product": "Electricity", "value": 100.0},
+                        {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Industry", "leap_product": "Electricity", "value": 30.0},
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+
+        run_leap_source_branch_preflight(
+            leap_df=leap_df,
+            fallback_rules_path=rules_path,
+            all_demand_components_path=components_path,
+            audit_output_dir=tmp_path,
+        )
+
+        output = capsys.readouterr().out
+        assert "LEAP SOURCE STRUCTURE OVERLAP [INTERIM + STANDARD]" in output
+        assert "LEAP SOURCE STRUCTURE OVERLAP [AGGREGATED + DETAILED DEMAND]" in output
+        assert "raw LEAP balance export was not changed" in output
+        assert (tmp_path / "leap_source_branch_fallback_audit.csv").exists()
+        assert (tmp_path / "leap_all_demand_aggregated_overlap_warnings.csv").exists()
 
 
 class TestEconomyScopedComponents:
