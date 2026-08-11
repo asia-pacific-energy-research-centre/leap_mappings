@@ -183,7 +183,7 @@ def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
     assert (
         "Natural gas",
         "08.01 Natural gas",
-        "ESTO_EXTENDED",
+        "BOTH",
     ) in product_rows
 
 

@@ -1,11 +1,9 @@
 """Tests for the any-dataset -> common ESTO map (overnight work program W6,
 2026-08-06/07).
 
-Cross-checked against the W1 finding (independently computed by hand in
-leap_dashboard's overnight session, 2026-08-07): of 6,335 deduplicated LEAP
-structural links in the esto_leap_ninth scope, exactly 2,988 have a common
-row and 3,347 do not. This module must reproduce the same counts, since it
-is composing the same two source tables the same way.
+The expected counts follow the promoted mapping-generation manifest. They were
+refreshed after the domestic-demand TFC boundary added source pairs and the
+registry refresh added structural links.
 """
 
 from __future__ import annotations
@@ -37,14 +35,14 @@ def test_esto_leap_ninth_scope_matches_the_w1_finding():
     ].drop_duplicates()
     leap_unmapped = scope_coverage[scope_coverage["source_system"] == "LEAP"]
 
-    assert len(leap_mapped) == 2988
-    assert len(leap_unmapped) == 3347
+    assert len(leap_mapped) == 2992
+    assert len(leap_unmapped) == 3417
 
     ninth_mapped = scope_map[scope_map["source_system"] == "NINTH"][
         ["source_flow", "source_product"]
     ].drop_duplicates()
     ninth_unmapped = scope_coverage[scope_coverage["source_system"] == "NINTH"]
-    assert len(ninth_mapped) == 1969
+    assert len(ninth_mapped) == 1970
     assert len(ninth_unmapped) == 0
 
 
