@@ -303,6 +303,9 @@ def run_mapping_chain(job: dict) -> dict:
     return {
         "comparison_data_path": str(work_dir / "common_esto_comparison_data.csv"),
         "common_rows_path": str(common_rows_path),
+        "power_interim_audit_path": str(
+            work_dir / "leap_source_branch_fallback_audit.csv"
+        ),
         "raw_leap_rows": raw_leap_rows,
         "converted_rows": converted_rows,
         "comparison_rows": comparison_rows,
