@@ -130,6 +130,14 @@ def apply_target_dataset_allocation(
     ]
 
     result.loc[rows["_original_index"], "allocation_share"] = rows["_computed_allocation_share"].to_numpy()
+    try:
+        result["allocation_share"] = pd.to_numeric(
+            result["allocation_share"],
+            errors="raise",
+        )
+    except (TypeError, ValueError):
+        # Mixed allocated and intentionally blank rows must retain object dtype.
+        pass
     return result
 
 

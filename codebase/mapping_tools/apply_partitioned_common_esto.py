@@ -65,6 +65,12 @@ def _partition_key(values: tuple[Any, ...]) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
 
+def _json_scalar(value: Any) -> Any:
+    """Convert pandas/numpy scalar values to JSON-compatible Python values."""
+    item = getattr(value, "item", None)
+    return item() if callable(item) else value
+
+
 def _normalise_source_chunk(chunk: pd.DataFrame, default_source_system: str = "") -> pd.DataFrame:
     rename_candidates = {
         "flows": "source_flow", "esto_flow": "source_flow", "leap_flow": "source_flow",
@@ -116,7 +122,13 @@ def prepare_partition_cache(
             directory.mkdir(parents=True, exist_ok=True)
             part_path = directory / f"part_{chunk_number:06d}.parquet"
             group.to_parquet(part_path, index=False)
-            record = partition_records.setdefault(key, {column: value for column, value in zip(PARTITION_COLUMNS, values)})
+            record = partition_records.setdefault(
+                key,
+                {
+                    column: _json_scalar(value)
+                    for column, value in zip(PARTITION_COLUMNS, values)
+                },
+            )
             record["partition_key"] = key
             record["row_count"] = int(record.get("row_count", 0)) + len(group)
     manifest = {

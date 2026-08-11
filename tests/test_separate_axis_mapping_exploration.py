@@ -31,6 +31,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     select_alias_candidate,
 )
 from codebase.mapping_tools.leap_pair_registry import (
+    FIXED_BALANCE_PRODUCTS,
     build_source_manifest,
     derive_leap_balance_structure,
     parse_leap_branch_paths_to_pairs,
@@ -133,7 +134,7 @@ def test_leap_balance_structure_derives_report_rows_and_fuel_catalogue() -> None
         "Electricity Generation",
         "Electricity Generation/Coal",
     }.issubset(set(flows["flow"]))
-    assert set(catalogue["product"]) == {"Natural gas"}
+    assert set(catalogue["product"]) == {"Natural gas", *FIXED_BALANCE_PRODUCTS}
 
 
 def test_leap_source_manifest_detects_content_and_timestamp_updates(
