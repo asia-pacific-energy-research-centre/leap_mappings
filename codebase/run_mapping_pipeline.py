@@ -1427,18 +1427,6 @@ def main() -> None:
         print("\n" + "=" * 60)
         print("Pipeline complete.")
         print("=" * 60)
-        _chime()
-
-
-def _chime() -> None:
-    try:
-        import time
-        import winsound  # type: ignore
-        for freq, dur in [(659, 90), (784, 90), (988, 140)]:
-            winsound.Beep(freq, dur)
-            time.sleep(0.04)
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":
