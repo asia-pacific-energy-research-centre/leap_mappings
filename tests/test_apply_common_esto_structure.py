@@ -164,7 +164,7 @@ def test_compact_source_tables_preserve_rows_and_shared_categories(
         check_dtype=False,
     )
     assert compact["source_system"].dtype.name == "category"
-    assert compact["source_system"].tolist() == ["ESTO", "NINTH"]
+    assert compact["source_system"].tolist() == ["ESTO", "ESTO", "NINTH"]
 
 
 def test_relevant_pair_filter_preserves_categorical_source_dtypes() -> None:
@@ -548,9 +548,9 @@ def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> No
         apply_common_structure(source_df, pd.DataFrame(rows))
 
 
-def test_should_ignore_missing_common_map_flow_for_known_ignored_flows() -> None:
-    assert should_ignore_missing_common_map_flow("06 Stock changes")
-    assert should_ignore_missing_common_map_flow("  11   Statistical discrepancy  ")
+def test_should_ignore_missing_common_map_flow_only_for_unmodelled_output_flows() -> None:
+    assert not should_ignore_missing_common_map_flow("06 Stock changes")
+    assert not should_ignore_missing_common_map_flow("  11   Statistical discrepancy  ")
     assert should_ignore_missing_common_map_flow("18.01 MAP electricity plants")
     assert should_ignore_missing_common_map_flow("19.01 MAP CHP plants")
     assert not should_ignore_missing_common_map_flow("09.01.01 Electricity plants")
@@ -582,12 +582,14 @@ def test_filter_missing_common_map_diagnostics_drops_ignored_flows_only() -> Non
     filtered_df = filter_missing_common_map_diagnostics(missing_map_df)
 
     assert filtered_df["esto_flow"].tolist() == [
+        "06 Stock changes",
+        "11 Statistical discrepancy",
         "09.01.01 Electricity plants",
         "16.09 Other sources",
     ]
 
 
-def test_filter_unmodelled_source_rows_handles_esto_and_ninth_flow_labels() -> None:
+def test_filter_unmodelled_source_rows_retains_balance_flows() -> None:
     source_df = pd.DataFrame(
         {
             "esto_flow": [
@@ -603,7 +605,11 @@ def test_filter_unmodelled_source_rows_handles_esto_and_ninth_flow_labels() -> N
 
     filtered_df = filter_unmodelled_source_rows(source_df)
 
-    assert filtered_df["esto_flow"].tolist() == ["09.01.01 Electricity plants"]
+    assert filtered_df["esto_flow"].tolist() == [
+        "06 Stock changes",
+        "11 Statistical discrepancy",
+        "09.01.01 Electricity plants",
+    ]
 
 
 def test_component_relevance_uses_esto_base_year_ninth_projections_and_leap_balances() -> None:

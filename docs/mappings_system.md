@@ -378,7 +378,14 @@ Stage 1 joins the rows to `leap_combined_esto`. It also accepts the singular
 The corresponding editable LEAP controls are structurally different from the
 flat balance rows. They live beneath their own top-level roots as
 `Stock Changes/Primary|Secondary/<fuel>` and
-`Statistical Differences/Primary|Secondary/<fuel>`. Their
+`Statistical Differences/Primary|Secondary/<fuel>`.
+
+Their balance-export rows are modelled comparison inputs. Flow `06 Stock changes`
+and flow `11 Statistical discrepancy` must therefore remain enabled in the
+Common ESTO source and missing-map checks. They are published in the
+`esto_leap` comparison scope for base-year balancing diagnostics; absence from
+the 9th Outlook is not interpreted as a zero value.
+
 Primary-versus-Secondary classification mirrors
 `Resources/Primary|Secondary/<fuel>` for Production, Imports, and Exports; the
 controls are not children of `Resources`. That location is an

@@ -9,6 +9,9 @@ from codebase.mapping_tools.leap_pair_registry import (
     FIXED_BALANCE_PRODUCTS,
     derive_leap_balance_structure,
 )
+from codebase.mapping_tools.build_energy_balance_relationships import (
+    build_default_coverage_exclusions,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +52,12 @@ def test_stock_and_statistical_flows_are_maintained_on_both_sector_axes() -> Non
         "Statistical Differences",
         "11_statistical_discrepancy",
     ) in ninth_rows
+
+
+def test_balancing_flows_are_not_default_coverage_exclusions() -> None:
+    exclusions = build_default_coverage_exclusions()
+
+    assert exclusions.empty
 
 
 def test_generated_balance_registry_uses_canonical_stock_flow_name() -> None:

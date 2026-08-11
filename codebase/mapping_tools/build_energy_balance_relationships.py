@@ -1155,22 +1155,14 @@ def normalise_optional_table(df: pd.DataFrame, columns: list[str]) -> pd.DataFra
 
 
 def build_default_coverage_exclusions() -> pd.DataFrame:
-    """Build default use-case-specific coverage exclusions."""
-    return pd.DataFrame(
-        [
-            {
-                "use_case": "leap_to_esto_balance_conversion",
-                "comparison_scope": "esto_leap",
-                "source_system": "LEAP",
-                "target_system": "ESTO",
-                "target_flow": "06 Stock changes",
-                "target_product": "",
-                "exclusion_reason": "not_represented_in_leap_conversion",
-                "notes": "Use-case-specific exclusion; do not apply globally.",
-            }
-        ],
-        columns=COVERAGE_EXCLUSION_COLUMNS,
-    )
+    """Return the empty default coverage-exclusion contract.
+
+    Stock changes used to be excluded here because older LEAP conversions did
+    not publish them. Current balance exports and maintained mappings cover
+    both stock changes and statistical differences, so neither balancing flow
+    belongs in the default exclusion set.
+    """
+    return pd.DataFrame(columns=COVERAGE_EXCLUSION_COLUMNS)
 
 
 def read_optional_config_table(
