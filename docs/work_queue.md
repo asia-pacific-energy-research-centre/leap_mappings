@@ -6,6 +6,14 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-045 — Use Russia's 2021 9th Outlook base year
+
+**Status: complete 2026-08-12.**
+
+The portable mapping chain now starts 9th Outlook projection relevance in 2022
+for `16_RUS`, reflecting its 2021 9th base year. Every other economy retains
+the standard 2023 projection start.
+
 ## MAPQ-044 â€” Correct the LEAP TFC domestic-demand boundary
 
 **Status: complete 2026-08-10.**

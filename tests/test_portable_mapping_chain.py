@@ -13,7 +13,16 @@ from pathlib import Path
 
 import pytest
 
-from codebase.portable_mapping_chain import run_mapping_chain
+from codebase.portable_mapping_chain import (
+    ninth_projection_start_year_for_economy,
+    run_mapping_chain,
+)
+
+
+def test_russia_ninth_projection_starts_after_its_2021_base_year() -> None:
+    assert ninth_projection_start_year_for_economy("16_RUS") == 2022
+    assert ninth_projection_start_year_for_economy("16RUS") == 2022
+    assert ninth_projection_start_year_for_economy("20_USA") == 2023
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPORT_DIR = (

@@ -70,6 +70,19 @@ if str(REPO_ROOT) not in sys.path:
 #: result line is the last line that does not carry it.
 PROGRESS_PREFIX = "@@step "
 
+# Russia's 9th Outlook issue is anchored in 2021, so its projection period
+# begins in 2022. Every other economy in the 9th dataset is anchored in 2022.
+NINTH_PROJECTION_START_YEAR_BY_ECONOMY = {"16RUS": 2022}
+
+
+def ninth_projection_start_year_for_economy(economy: object) -> int:
+    """Return the first 9th Outlook projection year for one economy."""
+    economy_key = str(economy or "").replace("_", "").strip().upper()
+    return NINTH_PROJECTION_START_YEAR_BY_ECONOMY.get(
+        economy_key,
+        NINTH_PROJECTION_START_YEAR,
+    )
+
 
 def report_step(key: str) -> None:
     """Announce that step *key* has started.
@@ -269,6 +282,7 @@ def run_mapping_chain(job: dict) -> dict:
 
     report_step("compare")
     common_rows_path = Path(artifacts["common_esto_rows_path"])
+    ninth_projection_start_year = ninth_projection_start_year_for_economy(economy)
     comparison_df, _wide_year_df, missing_map_df = run_common_esto_comparison_fast_path(
         source_paths={
             "LEAP": converted_path,
@@ -279,7 +293,7 @@ def run_mapping_chain(job: dict) -> dict:
         output_dir=work_dir,
         default_economy=economy,
         active_component_abs_tolerance=0.0,
-        ninth_projection_start_year=NINTH_PROJECTION_START_YEAR,
+        ninth_projection_start_year=ninth_projection_start_year,
         economies=[economy],
         run_id=job.get("run_id"),
         run_timestamp_utc=job.get("run_timestamp_utc"),
@@ -312,6 +326,7 @@ def run_mapping_chain(job: dict) -> dict:
         "scenarios": scenarios,
         "years": years,
         "notes": notes,
+        "ninth_projection_start_year": ninth_projection_start_year,
     }
 
 
