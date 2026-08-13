@@ -103,8 +103,7 @@ readiness passed, and page-noise analysis reported zero flags.
 
 ## MAPQ-043 — Run four-source mappings and all-economy dashboards
 
-**Priority / status:** P0 · `partial`; four-source mapping complete, all-economy
-dashboard render still pending.
+**Priority / status:** P0 · `complete_on_master` (2026-08-13).
 
 **Owner repositories:** `leap_mappings` + `leap_dashboard`
 
@@ -126,6 +125,26 @@ processed; every data-backed economy rendered; diagnostics and health outputs
 present; publication/page-noise checks reported; numerical QA findings retained
 without being misclassified as blockers or passes; no unrequested commits or
 pushes.
+
+**Completion evidence:** Final validated Stage 3 run
+`common_esto_20260813T040217899936Z` completed against ESTO, ESTO Extended,
+LEAP, and NINTH. All ten mapped scope/source totals retained 100% of mapped
+values (maximum absolute drift `1.1641532182693481e-10`). Source hierarchy
+validation reported zero NINTH sector and fuel findings. Deep validation kept
+numerical findings visible: source-parent anchors include 2,107 confirmed and
+36 unconfirmed failures, and every summary row satisfies
+`failed = confirmed_issue_failed + unconfirmed_failed`; zero-eligible groups
+remain explicitly `skipped`. Internal Common hierarchy findings remain QA
+findings (ESTO Extended flow 103 grouped mismatches, LEAP 12, NINTH 238), not
+hidden passes.
+
+The dashboard was then rerendered from that exact final run for all 21
+data-backed economies and both maintained comparison bases (15,166 charts).
+Publication readiness passed all 42 rendered roots; page-noise analysis wrote
+418 summary rows with zero flags; and the pipeline health report read all
+16/16 required artifacts. The standalone detailed coke/blast rows retained
+beside their inclusive rollups remain the separate MAPQ-046 human-review
+decision and do not invalidate this operational run.
 
 ## MAPQ-042 — Finish APEC-wide anchor-exception integration
 
@@ -407,7 +426,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-036 | P2 | `queued_after_separate_axis_promotion` | `leap_mappings` | MAPQ-034 | after production validation | 2026-07-30 |
 | MAPQ-037 | P1 | `review_in_progress` | `leap_mappings` + `leap_dashboard` | MAPQ-034 | current APEC anchor-validation work | 2026-08-03 |
 | MAPQ-042 | P1 | `verified_uncommitted_dashboard_follow_up` | `leap_mappings` + `leap_dashboard` | MAPQ-037 | later clean work window | 2026-08-05 |
-| MAPQ-043 | P0 | `not_started` | `leap_mappings` + `leap_dashboard` | user's separate-axis checkpoint | next production run | 2026-08-05 |
+| MAPQ-043 | P0 | `complete_on_master` | `leap_mappings` + `leap_dashboard` | user's separate-axis checkpoint | completed 2026-08-13 | 2026-08-05 |
 | MAPQ-045 | P1 | `needs_revalidation` | all three repositories | MAPQ-015, MAPQ-027 | W2 | 2026-07-29 |
 | MAPQ-046 | P1 | `needs_revalidation` | `leap_mappings` | MAPQ-027, MAPQ-045 | W2-W3 | 2026-07-29 |
 
