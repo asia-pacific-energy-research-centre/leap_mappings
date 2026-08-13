@@ -8,8 +8,8 @@
 
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 
-**Status: source rules and focused tests complete 2026-08-13; full pipeline
-execution and generated-output validation pending.**
+**Status: full pipeline rerun complete 2026-08-13; source conservation passes,
+but detail-retention policy now requires human review.**
 
 The four NINTH rules joining `09_08_01_coke_ovens` with
 `10_01_05_coke_ovens`, and `09_08_02_blast_furnaces` with
@@ -53,10 +53,24 @@ The run must validate all of the following:
 7. Review the pipeline log for failed stage completion or manifest/hash
    mismatch. A successful workbook generation alone is not sufficient evidence.
 
-The 2026-08-13 full run was deliberately stopped during `data_convert` at the
-user's request because other mapping changes were being developed concurrently.
-The `generate` stage completed and the focused 42-test mapping suite passed;
-the downstream generated-output assertions above remain outstanding.
+The first 2026-08-13 run was deliberately stopped during `data_convert` at the
+user's request. The resumed full four-source run then completed, exposed that
+the two rolled Ninth labels lacked direct inclusive ESTO targets, and led to two
+axis-contract rows mapping those rolled identities to the already-approved
+inclusive boundaries. Regeneration produced 22 product-level relationships;
+76 focused tests pass. The final `data_convert,3` rerun processed all 21 Ninth
+economies and preserved every mapped source at 100% (maximum numerical drift
+`1.1641532182693481e-10`).
+
+The final detail assertion does **not** pass: both three-way products retain
+`10.01.05 Coke ovens` and `10.01.07 Blast furnaces` alongside the inclusive
+rows for ESTO and NINTH. This matches the current generic source-rollup contract
+(`apply_source_rollups()` documents that original rows remain as a separate
+detailed view). Suppressing those rows would change every `NON_EXPANDING`
+boundary, or require a new per-rule replacement policy. Treat that as a
+priority-3 semantic decision; do not silently change it. The accepted choices
+are to approve detailed coexistence and revise assertions 3/6, or define a
+reviewed replacement-mode contract and its source-once/conservation tests.
 
 ## MAPQ-045 — Use Russia's 2021 9th Outlook base year
 
@@ -89,8 +103,8 @@ readiness passed, and page-noise analysis reported zero flags.
 
 ## MAPQ-043 — Run four-source mappings and all-economy dashboards
 
-**Priority / status:** P0 · `not_started`; pick up after the user's separate-axis
-work is committed at a stable checkpoint.
+**Priority / status:** P0 · `partial`; four-source mapping complete, all-economy
+dashboard render still pending.
 
 **Owner repositories:** `leap_mappings` + `leap_dashboard`
 
