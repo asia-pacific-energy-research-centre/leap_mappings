@@ -6,6 +6,58 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
+
+**Status: source rules and focused tests complete 2026-08-13; full pipeline
+execution and generated-output validation pending.**
+
+The four NINTH rules joining `09_08_01_coke_ovens` with
+`10_01_05_coke_ovens`, and `09_08_02_blast_furnaces` with
+`10_01_07_blast_furnaces`, had been left disabled as expanding rules even
+though the equivalent ESTO rules were active non-expanding boundaries. They
+are now active `NON_EXPANDING` rules targeting the two leaf-level
+`*_incl_own_use` identities. A workbook-level regression test protects the
+four exact inputs, targets, modes, and active flags.
+
+### Pending full-pipeline handoff
+
+Run this only after the other in-progress mapping changes have been incorporated,
+so one regeneration validates the combined mapping state:
+
+```powershell
+C:\Users\Work\miniconda3\python.exe codebase\run_mapping_pipeline.py `
+  --stages generate,1,2,data_convert,3 `
+  --skip leap_parse `
+  --skip-deep-validation `
+  --write-esto-extended-delta `
+  --use-esto-extended-delta
+```
+
+The run must validate all of the following:
+
+1. `config/outlook_mappings_single_axis.xlsx` remains the authority and the
+   generated `config/outlook_mappings_master.xlsx` retains all four NINTH rules
+   as active `NON_EXPANDING` rules.
+2. Run `pytest tests/test_coke_blast_rollup_config.py
+   tests/test_build_energy_balance_relationships.py -q`; all tests must pass.
+3. In both generated three-way comparison products (`esto_leap_ninth` and
+   `esto_extended_leap_ninth`), standalone Common rows corresponding to
+   `10.01.05 Coke ovens` and `10.01.07 Blast furnaces` must be absent.
+4. `09.08.01 Coke ovens (including own use)` must contain each source exactly
+   once: transformation `09.08.01` plus own use `10.01.05`.
+5. `09.08.02 Blast furnaces (including own use)` must contain each source
+   exactly once: transformation `09.08.02` plus own use `10.01.07`.
+6. No component may remain simultaneously in an inclusive leaf and a standalone
+   leaf; verify summed values before and after the rollup to catch duplication or
+   dropped energy.
+7. Review the pipeline log for failed stage completion or manifest/hash
+   mismatch. A successful workbook generation alone is not sufficient evidence.
+
+The 2026-08-13 full run was deliberately stopped during `data_convert` at the
+user's request because other mapping changes were being developed concurrently.
+The `generate` stage completed and the focused 42-test mapping suite passed;
+the downstream generated-output assertions above remain outstanding.
+
 ## MAPQ-045 — Use Russia's 2021 9th Outlook base year
 
 **Status: complete 2026-08-12.**
