@@ -51,6 +51,27 @@ the previous contract and records that decision in `common_esto_output_status.cs
 The legacy comparison remains unchanged while the dashboard loader migrates to the joined
 fact/metadata representation and verifies rendered equivalence.
 
+### Parquet migration measurement (2026-08-16)
+
+The current 3,845,371-row fact was compared with Parquet/Zstandard using exact
+full-frame and economy-filtered equivalence checks:
+
+| Measure | CSV.gz | Parquet/Zstandard |
+|---|---:|---:|
+| Bytes | 55,241,694 | 19,672,130 |
+| Full read | 6.627 s | 1.370 s |
+| Four-column read | 6.132 s | 0.993 s |
+| One-economy filtered read | 7.689 s | 0.254 s |
+| Candidate write | — | 4.616 s |
+
+The measured candidate is worthwhile, but the file is a published contract,
+not a disposable internal cache. CSV.gz remains authoritative during the
+cross-repository transition. Parquet may become authoritative only when the
+producer, delta workflow, all dashboard/review/portable consumers, tests,
+manifests, baselines, and deployment packaging support the same versioned
+contract and strict reconstruction passes. No old contract file is an archive
+candidate before that condition is met.
+
 ## Cleanup archives
 
 Multi-file cleanup archives live under:

@@ -8,7 +8,8 @@
 
 ## MAPQ-047 — Migrate machine-only mapping intermediates to typed columnar storage
 
-**Priority / status:** P2 · `planned`; coordinated by
+**Priority / status:** P2 · `inventory_complete_contract_transition_pending`
+(2026-08-16); coordinated by
 `leap_initialisation/docs/work_queue.md` [44].
 
 Inventory and benchmark mapping pipeline artifacts that are not edited or
@@ -45,6 +46,27 @@ migrated families have versioned manifests and compatibility tests; a full
 four-source pipeline and strict downstream reconstruction pass; measured
 benefits are documented; and superseded files are handled only through the
 separately approved MAPQ-013/P3-07 quarantine process.
+
+### 2026-08-16 inventory and benchmark checkpoint
+
+The generated cross-repository inventory is committed by the coordinating
+initialisation repository at `91937c6`. This repository contains no pickle
+producer and its disposable Stage 3 partition cache already writes Parquet.
+The remaining large tables are external inputs, human/audit evidence, or
+published mapping contracts copied into dashboard/review runtimes. They remain
+in place rather than being relabelled machine-only from code references alone.
+
+The current 3,845,371-row Common ESTO fact contract was benchmarked exactly:
+CSV.gz 55,241,694 bytes versus Parquet/Zstandard 19,672,130 bytes; full read
+6.627 versus 1.370 seconds; four-column read 6.132 versus 0.993 seconds; and
+single-economy filtered read 7.689 versus 0.254 seconds. Values, dtypes, keys,
+and row order round-tripped exactly. This supports a later contract migration,
+but does not by itself authorize one: `common_esto_comparison_fact.csv.gz` and
+the legacy denormalized CSV stay authoritative until every source, dashboard,
+review-tool, portable-runtime, delta-workflow, baseline, test, manifest, and
+documentation consumer moves atomically. The full anchor/broad-row detail
+families remain `retain_temporarily` under human-format decisions HF-003 and
+HF-004; their compact reviewer outputs remain CSV.
 
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 
