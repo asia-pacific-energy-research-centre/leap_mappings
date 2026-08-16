@@ -64,6 +64,7 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
     format_balance_export_discovery_report,
     resolve_balance_exports_root,
 )
+from codebase.mapping_tools.typed_output import write_manifested_parquet  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Default paths
@@ -990,14 +991,14 @@ def run_stage_3(
     validation_detail_row_count = len(detail_df)
 
     anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
-    anchor_full_detail_path = tree_output_dir / "source_parent_anchor_validation_full.csv.gz"
+    anchor_full_detail_path = tree_output_dir / "source_parent_anchor_validation_full.parquet"
     anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
     anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
-    anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.csv"
-    anchor_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_mapped_component_context_values.csv"
+    anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.parquet"
+    anchor_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_mapped_component_context_values.parquet"
     anchor_economy_examples_path = tree_output_dir / "source_parent_anchor_economy_examples.csv"
-    anchor_economy_child_context_values_path = tree_output_dir / "source_parent_anchor_economy_child_context_values.csv"
-    anchor_economy_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_economy_mapped_component_context_values.csv"
+    anchor_economy_child_context_values_path = tree_output_dir / "source_parent_anchor_economy_child_context_values.parquet"
+    anchor_economy_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_economy_mapped_component_context_values.parquet"
     leaf_reconciliation_candidates_path = tree_output_dir / "source_parent_anchor_leaf_reconciliation_candidates.csv"
     if skip_reason:
         anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
@@ -1189,14 +1190,32 @@ def run_stage_3(
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
     anchor_findings = select_source_parent_anchor_findings(anchor_detail)
     anchor_findings.to_csv(anchor_detail_path, index=False)
-    anchor_detail.to_csv(anchor_full_detail_path, index=False)
+    write_manifested_parquet(
+        anchor_detail,
+        anchor_full_detail_path,
+        artifact_type="source_parent_anchor_validation_full_detail",
+    )
     anchor_child_values.to_csv(anchor_child_values_path, index=False)
-    anchor_child_context_values.to_csv(anchor_child_context_values_path, index=False)
-    anchor_mapped_component_context_values.to_csv(anchor_mapped_component_context_values_path, index=False)
+    write_manifested_parquet(
+        anchor_child_context_values,
+        anchor_child_context_values_path,
+        artifact_type="source_parent_anchor_child_context_detail",
+    )
+    write_manifested_parquet(
+        anchor_mapped_component_context_values,
+        anchor_mapped_component_context_values_path,
+        artifact_type="source_parent_anchor_mapped_component_context_detail",
+    )
     anchor_economy_examples.to_csv(anchor_economy_examples_path, index=False)
-    anchor_economy_child_context_values.to_csv(anchor_economy_child_context_values_path, index=False)
-    anchor_economy_mapped_component_context_values.to_csv(
-        anchor_economy_mapped_component_context_values_path, index=False
+    write_manifested_parquet(
+        anchor_economy_child_context_values,
+        anchor_economy_child_context_values_path,
+        artifact_type="source_parent_anchor_economy_child_context_detail",
+    )
+    write_manifested_parquet(
+        anchor_economy_mapped_component_context_values,
+        anchor_economy_mapped_component_context_values_path,
+        artifact_type="source_parent_anchor_economy_mapped_component_context_detail",
     )
     leaf_reconciliation_candidates.to_csv(leaf_reconciliation_candidates_path, index=False)
     anchor_summary.to_csv(anchor_summary_path, index=False)

@@ -55,9 +55,9 @@ of a replaced comparison boundary.
 | Evidence | Path | Use |
 |---|---|---|
 | Anchor summary | `results/tree_structure/source_parent_anchor_validation_summary.csv` | First-pass counts by scope, source system, and axis |
-| Full validation detail | `results/tree_structure/source_parent_anchor_validation_full.csv.gz` | Compressed row-level anchor checks |
+| Full validation detail | `results/tree_structure/source_parent_anchor_validation_full.parquet` | Typed, compressed row-level anchor checks with a checksummed JSON manifest |
 | Detailed checks | `results/tree_structure/source_parent_anchor_validation.csv` | Row-level parent/child evidence |
-| Child/context values | `results/tree_structure/source_parent_anchor_child_values.csv`, `source_parent_anchor_child_context_values.csv` | Direct child frontier values and contexts |
+| Child/context values | `results/tree_structure/source_parent_anchor_child_values.csv`, `source_parent_anchor_child_context_values.parquet` | Compact direct-child values and complete typed contexts |
 | Economy examples | `results/tree_structure/source_parent_anchor_economy_examples.csv` | Economy-level examples for targeted review |
 | Exception review | `results/tree_structure/source_parent_anchor_exception_review.csv`, `source_parent_anchor_exception_set_review.csv` | Existing exception and allowlist context |
 | Reconciliation candidates | `results/tree_structure/source_parent_anchor_leaf_reconciliation_candidates.csv` | Candidate source/leaf reconciliation evidence |

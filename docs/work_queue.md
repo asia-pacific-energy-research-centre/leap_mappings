@@ -37,7 +37,7 @@ analysis reported zero flags.
 
 ## MAPQ-047 — Migrate machine-only mapping intermediates to typed columnar storage
 
-**Priority / status:** P2 · `inventory_complete_contract_transition_pending`
+**Priority / status:** P2 · `HF-003_and_HF-004_implemented_and_validated`
 (2026-08-16); coordinated by
 `leap_initialisation/docs/work_queue.md` [44].
 
@@ -94,8 +94,11 @@ but does not by itself authorize one: `common_esto_comparison_fact.csv.gz` and
 the legacy denormalized CSV stay authoritative until every source, dashboard,
 review-tool, portable-runtime, delta-workflow, baseline, test, manifest, and
 documentation consumer moves atomically. The full anchor/broad-row detail
-families remain `retain_temporarily` under human-format decisions HF-003 and
-HF-004; their compact reviewer outputs remain CSV.
+families were approved under human-format decisions HF-003 and HF-004 on
+2026-08-16. Complete broad-row and anchor detail now writes manifested
+Parquet/Zstandard; compact summaries, findings, examples, and samples remain
+CSV. The dashboard consumer reads the new anchor Parquet detail server-side
+with a temporary fallback for existing CSV result folders.
 
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 

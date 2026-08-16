@@ -37,7 +37,7 @@ during this review unless the user separately approves an implementation step.
 ### A. Anchor validation first
 
 Review `results/tree_structure/source_parent_anchor_validation_summary.csv`,
-then drill into `source_parent_anchor_validation_full.csv.gz`, the detailed
+then drill into `source_parent_anchor_validation_full.parquet`, the detailed
 validation file, child/context values, and exception-review files. Assign each grouped
 finding one of:
 

@@ -21,6 +21,7 @@ SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(SCRIPT_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_REPO_ROOT))
 
+from codebase.mapping_tools.typed_output import write_manifested_parquet
 from codebase.mapping_issue_exceptions import (
     filter_unmodelled_source_rows,
     row_is_allowed,
@@ -1383,13 +1384,46 @@ def save_broad_common_row_diagnostics(
     diagnostics: dict[str, pd.DataFrame],
     output_dir: Path,
 ) -> None:
-    """Write broad common row diagnostics as CSVs and one workbook."""
+    """Write full affected output as Parquet and compact reviewer surfaces."""
     diagnostics_dir = output_dir / "diagnostics"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     for name, df in diagnostics.items():
+        if name == "broad_common_row_affected_output":
+            write_manifested_parquet(
+                df,
+                diagnostics_dir / f"{name}.parquet",
+                artifact_type="broad_common_row_affected_output_detail",
+            )
+            continue
         df.to_csv(diagnostics_dir / f"{name}.csv", index=False)
+    affected = diagnostics["broad_common_row_affected_output"]
+    sample_group_columns = [
+        column
+        for column in ("common_row_id", "source_system")
+        if column in affected.columns
+    ]
+    if affected.empty:
+        affected_sample = affected.copy()
+    elif sample_group_columns:
+        affected_sample = (
+            affected.groupby(sample_group_columns, dropna=False, sort=True)
+            .head(5)
+            .reset_index(drop=True)
+        )
+    else:
+        affected_sample = affected.head(100).reset_index(drop=True)
+    affected_sample.to_csv(
+        diagnostics_dir / "broad_common_row_affected_output_sample.csv",
+        index=False,
+    )
     with pd.ExcelWriter(diagnostics_dir / "broad_common_row_diagnostics.xlsx", engine="openpyxl") as writer:
-        for name, df in diagnostics.items():
+        workbook_frames = {
+            name: frame
+            for name, frame in diagnostics.items()
+            if name != "broad_common_row_affected_output"
+        }
+        workbook_frames["affected_output_sample"] = affected_sample
+        for name, df in workbook_frames.items():
             df.to_excel(writer, sheet_name=name[:31], index=False)
 
 

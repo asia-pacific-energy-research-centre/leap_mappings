@@ -15,15 +15,17 @@ are unchanged, and `pandas.read_csv()` reads them directly:
 - `results/mapping_relationships/ninth_source_to_esto_component_lineage.csv.gz`
 - `results/common_esto/esto_component_to_common_row_lineage.csv.gz`
 
-The anchor validator has two detail outputs:
+The anchor validator separates compact reviewer evidence from complete typed detail:
 
 - `results/tree_structure/source_parent_anchor_validation.csv` is the primary reviewer and
   dashboard view. It contains numerical failures, rows with
   `source_non_additivity_observed = true`, and exact user-confirmed source
   issues. Automatic source observations and confirmed issues annotate the
   original numerical result; neither changes `status` or `reason`.
-- `results/tree_structure/source_parent_anchor_validation_full.csv.gz` retains the complete audit,
-  including routine passes and structural skips.
+- `results/tree_structure/source_parent_anchor_validation_full.parquet` retains the complete audit,
+  including routine passes and structural skips. The child, mapped-component,
+  economy-child, and economy-mapped-component context detail tables are also
+  Parquet. Each Parquet artifact has a checksummed JSON storage manifest.
 
 `source_parent_anchor_validation_summary.csv` is always calculated from the complete audit before
 the compact findings view is selected. It reports total numerical failures,
@@ -98,9 +100,16 @@ below passed a complete decompression/CRC read after the run.
 | Common-row lineage | 1,316.6 MB | 118.8 MB | 91.0% |
 | **Total** | **4,428.7 MB** | **391.3 MB** | **91.2%** |
 
-The compact anchor findings file contains 10,837 rows and is 5.6 MB. The complete 1,345,038-row
-audit is retained in `source_parent_anchor_validation_full.csv.gz` at 18.7 MB; its decompressed
-CSV is about 1,057.4 MB.
+The historical compact anchor findings file contained 10,837 rows and was 5.6 MB. The complete
+1,345,038-row audit was previously retained in `source_parent_anchor_validation_full.csv.gz` at
+18.7 MB (about 1,057.4 MB decompressed). New runs write the complete audit as manifested
+Parquet/Zstandard while keeping the compact findings and summary CSVs.
+
+The Common ESTO broad-row diagnostic follows the same split:
+`broad_common_row_affected_output.parquet` contains the complete affected-row
+evidence, while `broad_common_row_affected_output_summary.csv`,
+`broad_common_row_components.csv`, and
+`broad_common_row_affected_output_sample.csv` remain directly reviewable.
 
 The six stale plain CSVs were archived before removal from their live paths:
 

@@ -17,10 +17,42 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     load_latest_vintage_endpoint_rows,
     normalise_source_columns,
     read_source_tables,
+    save_broad_common_row_diagnostics,
     should_ignore_missing_common_map_flow,
     tagged_output_path,
 )
+from codebase.mapping_tools.typed_output import read_manifested_parquet
 from codebase.mapping_issue_exceptions import filter_unmodelled_source_rows
+
+
+def test_broad_output_detail_is_parquet_with_compact_review_sample(tmp_path: Path) -> None:
+    affected = pd.DataFrame(
+        [
+            {
+                "common_row_id": "broad_1",
+                "source_system": "ESTO",
+                "economy": f"E{index:02d}",
+                "value": float(index),
+            }
+            for index in range(20)
+        ]
+    )
+    diagnostics = {
+        "broad_common_row_summary": pd.DataFrame([{"common_row_id": "broad_1"}]),
+        "broad_common_row_components": pd.DataFrame([{"common_row_id": "broad_1"}]),
+        "broad_common_row_affected_output": affected,
+    }
+
+    save_broad_common_row_diagnostics(diagnostics, tmp_path)
+
+    detail_path = tmp_path / "diagnostics" / "broad_common_row_affected_output.parquet"
+    restored = read_manifested_parquet(detail_path)
+    pd.testing.assert_frame_equal(restored, affected)
+    sample = pd.read_csv(
+        tmp_path / "diagnostics" / "broad_common_row_affected_output_sample.csv"
+    )
+    assert len(sample) == 5
+    assert not (tmp_path / "diagnostics" / "broad_common_row_affected_output.csv").exists()
 
 
 def test_wide_output_uses_canonical_common_pair_subtotal_classification(

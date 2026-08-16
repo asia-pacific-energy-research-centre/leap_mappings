@@ -38,14 +38,14 @@ For each grouped failure:
 1. Start with `source_parent_anchor_validation_summary.csv` and identify the
    scope, source system, axis, and confirmed/unconfirmed status.
 2. Open the matching rows in
-   `source_parent_anchor_validation_full.csv.gz` or
+   `source_parent_anchor_validation_full.parquet` or
    `source_parent_anchor_validation.csv` to identify economy, scenario, year,
    parent, and child frontier.
 3. Inspect the row-level evidence in
    `source_parent_anchor_validation.csv`.
 4. If the finding is marked source-related, inspect
    `source_parent_anchor_child_values.csv`,
-   `source_parent_anchor_child_context_values.csv`, and the relevant rows in
+   `source_parent_anchor_child_context_values.parquet`, and the relevant rows in
    `source_parent_anchor_economy_examples.csv`; compare the raw parent against
    the independent child sum.
 5. Check the active rollup rule and the Common rollup explanation. A

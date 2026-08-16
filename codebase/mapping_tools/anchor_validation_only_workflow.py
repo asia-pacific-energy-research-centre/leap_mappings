@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mapping_tools.typed_output import write_manifested_parquet
+
 from codebase.mapping_tools.mapping_issue_exceptions import (
     load_unmodelled_source_codes,
 )
@@ -234,11 +236,24 @@ def run_anchor_validation_only(
         ),
         "source_parent_anchor_leaf_reconciliation_candidates": leaf_candidates,
     }
+    parquet_detail_names = {
+        "source_parent_anchor_validation_full",
+        "source_parent_anchor_child_context_values",
+        "source_parent_anchor_mapped_component_context_values",
+        "source_parent_anchor_economy_child_context_values",
+        "source_parent_anchor_economy_mapped_component_context_values",
+    }
     for name, frame in frames.items():
         published = frame.copy()
         published.insert(0, "run_id", run_id)
-        suffix = ".csv.gz" if name.endswith("_full") else ".csv"
-        published.to_csv(output_dir / f"{name}{suffix}", index=False)
+        if name in parquet_detail_names:
+            write_manifested_parquet(
+                published,
+                output_dir / f"{name}.parquet",
+                artifact_type=f"{name}_detail",
+            )
+        else:
+            published.to_csv(output_dir / f"{name}.csv", index=False)
     return detail, summary
 
 
