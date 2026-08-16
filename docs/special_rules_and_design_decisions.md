@@ -24,15 +24,28 @@ Transformation output and own use remain one comparison leaf for these two
 modules. Coke ovens combine `09.08.01` with `10.01.05` as
 `09.08.01 Coke ovens (including own use)`; blast furnaces combine `09.08.02`
 with `10.01.07` as `09.08.02 Blast furnaces (including own use)`. Both source
-axes use active `NON_EXPANDING` rules at these leaf boundaries. The standalone
-`10.01.05` and `10.01.07` identities must not be emitted as additional Common
-ESTO comparison sections when the inclusive leaves are available.
+axes use active `NON_EXPANDING` rules at these leaf boundaries.
+
+The generic source-rollup contract retains the original transformation and
+own-use identities as detailed mapping and lineage views. Their coexistence
+with the inclusive identities is intentional. Production consumers must select
+one non-overlapping frontier: ordinary dashboard comparisons use the inclusive
+leaves and suppress the parallel plain transformation and standalone own-use
+views. Consumers must not sum the inclusive and component layers together.
 
 ### Validation
 
 The canonical-workbook regression test checks the four NINTH component rules.
 After a mapping rebuild, each inclusive leaf must equal its two raw components
-exactly once, with no separate own-use leaf remaining in the comparison output.
+exactly once and the non-expanding frontier QA must pass. Dashboard regression
+coverage verifies that detailed coexistence upstream still produces only the
+inclusive leaves in ordinary Coke ovens and Blast furnaces charts.
+
+### History
+
+- 2026-08-16: P3-01 confirmed detailed coexistence in mapping/lineage outputs
+  and inclusive-only presentation in ordinary dashboard comparisons, matching
+  the established Gas works plants and Oil refineries behavior.
 
 ## MAP-007: Empty validation detail is not pass evidence
 

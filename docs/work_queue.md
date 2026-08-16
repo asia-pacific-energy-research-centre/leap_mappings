@@ -8,8 +8,9 @@
 
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 
-**Status: full pipeline rerun complete 2026-08-13; source conservation passes,
-but detail-retention policy now requires human review.**
+**Status: complete 2026-08-16. Full pipeline and conservation verification
+passed; P3-01 approved detailed coexistence with an inclusive consumer
+frontier.**
 
 The four NINTH rules joining `09_08_01_coke_ovens` with
 `10_01_05_coke_ovens`, and `09_08_02_blast_furnaces` with
@@ -41,15 +42,16 @@ The run must validate all of the following:
 2. Run `pytest tests/test_coke_blast_rollup_config.py
    tests/test_build_energy_balance_relationships.py -q`; all tests must pass.
 3. In both generated three-way comparison products (`esto_leap_ninth` and
-   `esto_extended_leap_ninth`), standalone Common rows corresponding to
-   `10.01.05 Coke ovens` and `10.01.07 Blast furnaces` must be absent.
+   `esto_extended_leap_ninth`), the standalone Common rows corresponding to
+   `10.01.05 Coke ovens` and `10.01.07 Blast furnaces` may remain as detailed
+   mapping/lineage views. Ordinary consumers must select the inclusive leaves.
 4. `09.08.01 Coke ovens (including own use)` must contain each source exactly
    once: transformation `09.08.01` plus own use `10.01.05`.
 5. `09.08.02 Blast furnaces (including own use)` must contain each source
    exactly once: transformation `09.08.02` plus own use `10.01.07`.
-6. No component may remain simultaneously in an inclusive leaf and a standalone
-   leaf; verify summed values before and after the rollup to catch duplication or
-   dropped energy.
+6. A component may coexist with its inclusive leaf across different views, but
+   no selected comparison frontier may count it twice. Verify source-once sums
+   before and after the rollup to catch duplication or dropped energy.
 7. Review the pipeline log for failed stage completion or manifest/hash
    mismatch. A successful workbook generation alone is not sufficient evidence.
 
@@ -62,15 +64,14 @@ inclusive boundaries. Regeneration produced 22 product-level relationships;
 economies and preserved every mapped source at 100% (maximum numerical drift
 `1.1641532182693481e-10`).
 
-The final detail assertion does **not** pass: both three-way products retain
+The final detail assertion exposed both three-way products retaining
 `10.01.05 Coke ovens` and `10.01.07 Blast furnaces` alongside the inclusive
-rows for ESTO and NINTH. This matches the current generic source-rollup contract
-(`apply_source_rollups()` documents that original rows remain as a separate
-detailed view). Suppressing those rows would change every `NON_EXPANDING`
-boundary, or require a new per-rule replacement policy. Treat that as a
-priority-3 semantic decision; do not silently change it. The accepted choices
-are to approve detailed coexistence and revise assertions 3/6, or define a
-reviewed replacement-mode contract and its source-once/conservation tests.
+rows for ESTO and NINTH. P3-01 approved that result on 2026-08-16: it matches
+the generic `apply_source_rollups()` contract, preserves audit evidence, and
+avoids a special replacement mode. The dashboard selects the inclusive Coke
+ovens and Blast furnaces leaves and suppresses their parallel detail in ordinary
+charts, matching Gas works plants and Oil refineries. Mapping diagnostics retain
+the components. Assertions 3 and 6 above record the accepted contract.
 
 ## MAPQ-045 — Use Russia's 2021 9th Outlook base year
 
