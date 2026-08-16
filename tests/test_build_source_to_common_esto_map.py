@@ -2,8 +2,9 @@
 2026-08-06/07).
 
 The expected counts follow the promoted mapping-generation manifest. They were
-refreshed after the domestic-demand TFC boundary added source pairs and the
-registry refresh added structural links.
+refreshed after the domestic-demand TFC boundary added source pairs, the
+registry refresh added structural links, and MAPQ-048 retained components
+supported by the endpoint year of any maintained ESTO vintage.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def test_esto_leap_ninth_scope_matches_the_w1_finding():
         ["source_flow", "source_product"]
     ].drop_duplicates()
     ninth_unmapped = scope_coverage[scope_coverage["source_system"] == "NINTH"]
-    assert len(ninth_mapped) == 1970
+    assert len(ninth_mapped) == 1980
     assert len(ninth_unmapped) == 0
 
 

@@ -71,7 +71,7 @@ def test_run_mapping_chain_12_nz(tmp_path):
 
     assert result["raw_leap_rows"] == 385_035
     assert result["converted_rows"] == 45_409
-    assert result["comparison_rows"] == 186_211
+    assert result["comparison_rows"] == 188_452
     assert Path(result["comparison_data_path"]).exists()
     assert Path(result["common_rows_path"]).exists()
     assert "12_NZ" not in result["scenarios"]  # scenario codes, not the economy
