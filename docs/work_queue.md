@@ -6,6 +6,35 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-048 — Retain components active at any maintained ESTO-vintage endpoint
+
+**Priority / status:** P1 · `complete_on_master` (2026-08-16).
+
+Stage 3 now evaluates `latest_available_year` separately for each dataset and
+maintained ESTO vintage. The configured 2024 ESTO table remains the sole
+ordinary ESTO value source; the 2025 table, and future files matching
+`data/00APEC_*_low_with_subtotals.csv`, contribute only their final-year
+non-zero flow/product pairs as component-relevance evidence. They cannot create
+another comparison series or duplicate values.
+
+Real-data measurement retains the previously pruned China 2022
+`10.01.01 Electricity, CHP and heat plants / 02.07 Coal tar` pair and adds
+1,112 endpoint-supported pairs relative to per-dataset relevance without the
+supplemental 2025 vintage. This is the intended multi-vintage policy, not an
+all-historical-years expansion.
+
+**Verification:** 43 registry/relevance/fast-path and synthetic-onboarding tests
+passed. Full
+Stage 3 run `common_esto_20260816T062433503628Z` completed with 4,331 relevant
+pairs and retained 100% of mapped values in all ten scope/source combinations
+(maximum drift `1.1641532182693481e-10`). ESTO flow anchors passed 465/465 in
+`esto_leap` and 405/405 in `esto_leap_ninth`, with zero failures. The shared
+dashboard diagnostics page contains zero ESTO flow issue cards and no new
+exception. The dashboard's 141 focused regression tests passed. USA and Brunei
+Darussalam smoke renders wrote 1,361 charts;
+publication readiness passed all 42 existing dashboard roots and page-noise
+analysis reported zero flags.
+
 ## MAPQ-047 — Migrate machine-only mapping intermediates to typed columnar storage
 
 **Priority / status:** P2 · `inventory_complete_contract_transition_pending`

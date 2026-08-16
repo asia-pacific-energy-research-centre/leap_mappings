@@ -23,6 +23,9 @@ from codebase.mapping_tools.apply_common_esto_structure import (  # noqa: E402
     run_common_esto_comparison_fast_path,
 )
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path  # noqa: E402
+from codebase.mapping_tools.value_adapter_registry import (  # noqa: E402
+    get_component_relevance_reference_paths,
+)
 
 #%%
 # Stable paths.
@@ -71,6 +74,9 @@ if __name__ == "__main__":
                 economies=ECONOMIES,
                 run_id=RUN_ID,
                 run_timestamp_utc=RUN_TIMESTAMP.isoformat(),
+                relevance_reference_paths=get_component_relevance_reference_paths(
+                    REPO_ROOT
+                ),
             )
         else:
             print("Set RUN_REGEN_COMMON_ESTO_FAST_PATH = True after checking cached inputs.")

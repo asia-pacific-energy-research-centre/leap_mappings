@@ -12,7 +12,10 @@ comparison membership:
 - `rollup_sheet_registry.csv` declares how dataset-specific rollup columns
   compile into the normalized rollup-rule surface.
 - `value_adapter_registry.csv` declares native adapter execution order and the
-  normalized artifacts admitted to Stage 3.
+  normalized artifacts admitted to Stage 3. Its optional
+  `relevance_reference_glob` admits source files for component-relevance
+  evidence only: their latest year can keep a mapped pair active, but their
+  values do not become another Stage 3 source or dashboard series.
 
 Pipe (`|`) separates ordered values inside list fields. `default_order`
 preserves the current pipeline build order independently from the order of all

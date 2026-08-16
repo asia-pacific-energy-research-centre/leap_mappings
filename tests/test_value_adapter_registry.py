@@ -26,6 +26,10 @@ def test_bundled_value_adapters_preserve_order_and_paths(tmp_path: Path) -> None
         / "leap_results_converted_to_esto.csv"
     )
 
+    assert registry.set_index("dataset_id").loc[
+        "ESTO", "relevance_reference_glob"
+    ] == "data/00APEC_*_low_with_subtotals.csv"
+
 
 def test_registered_value_adapters_run_once_in_order() -> None:
     calls: list[str] = []

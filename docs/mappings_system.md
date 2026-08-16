@@ -1338,6 +1338,19 @@ mapped-universe preservation fails, the latest outputs are written with a
 `results/common_esto/common_esto_output_status.csv` to see which files belong to
 the latest run.
 
+Component relevance for sources configured with `latest_available_year` is
+evaluated at each dataset or maintained source vintage's own endpoint, not at
+one global maximum year. For ordinary ESTO, the active value input remains the
+configured 2024 vintage, while files matching
+`data/00APEC_*_low_with_subtotals.csv` provide endpoint-only relevance
+evidence. A flow/product pair is retained when it is non-zero in the last year
+of any maintained vintage (currently 2022 in the 2024 file or 2023 in the 2025
+file). Future 2026 and 2027 files join this check automatically when placed at
+the configured path. Supplemental vintages never add values or a source series
+to the comparison fact; they only prevent a structurally mapped pair from being
+pruned. This is deliberately narrower than treating every historical year as
+relevance evidence.
+
 After the canonical `common_esto_comparison_data.csv` is written successfully,
 `run_mapping_pipeline.py` immediately runs the Common ESTO product- and
 flow-hierarchy validations. Stage 3 remains responsible only for applying the

@@ -707,6 +707,7 @@ def run_stage_3(
     )
     from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
     from codebase.mapping_tools.value_adapter_registry import (
+        get_component_relevance_reference_paths,
         get_registered_stage3_source_paths,
     )
 
@@ -744,6 +745,7 @@ def run_stage_3(
         }
     )
     source_paths["ESTO_EXTENDED"] = esto_extended_stage3_path
+    relevance_reference_paths = get_component_relevance_reference_paths(REPO_ROOT)
     stage3_input_paths = [*source_paths.values(), COMMON_ROWS_PATH]
     missing = [path for path in stage3_input_paths if not path.exists()]
     if missing:
@@ -811,6 +813,10 @@ def run_stage_3(
             }
             for name, path in source_paths.items()
         },
+        "relevance_reference_files": {
+            source_system: [str(path.resolve()) for path in paths]
+            for source_system, paths in relevance_reference_paths.items()
+        },
         "mapping_workbook": str(WORKBOOK_PATH.resolve()),
         "mapping_workbook_sha256": _sha256(WORKBOOK_PATH),
         "mapping_generation": generation_manifest,
@@ -837,6 +843,7 @@ def run_stage_3(
         chunk_by_source_economy=chunk_value_application,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
+        relevance_reference_paths=relevance_reference_paths,
     )
     run_manifest["timings_seconds"]["apply_common_esto_structure"] = round(
         time.perf_counter() - apply_t0, 3

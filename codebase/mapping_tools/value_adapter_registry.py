@@ -35,6 +35,7 @@ VALUE_ADAPTER_REGISTRY_COLUMNS = [
     "relevance_period_policy",
     "relevance_evidence_column",
     "relevance_include_year_range",
+    "relevance_reference_glob",
     "lineage_relative_path",
     "owner",
     "notes",
@@ -179,6 +180,35 @@ def get_component_relevance_policies(
         }
         for row in selected.itertuples(index=False)
     ]
+
+
+def get_component_relevance_reference_paths(
+    repo_root: Path,
+    registry_path: Path = VALUE_ADAPTER_REGISTRY_PATH,
+    dataset_registry_path: Path = DATASET_REGISTRY_PATH,
+) -> dict[str, list[Path]]:
+    """Return supplemental relevance-only inputs, excluding active value inputs."""
+    registry = load_value_adapter_registry(
+        registry_path,
+        dataset_registry_path,
+    )
+    selected = registry[
+        registry["enabled"]
+        & registry["stage3_source"]
+        & registry["relevance_reference_glob"].astype(str).str.strip().ne("")
+    ]
+    root = Path(repo_root)
+    references: dict[str, list[Path]] = {}
+    for row in selected.itertuples(index=False):
+        active_input = (root / row.input_relative_path).resolve()
+        matches = sorted(
+            path.resolve()
+            for path in root.glob(row.relevance_reference_glob)
+            if path.is_file() and path.resolve() != active_input
+        )
+        if matches:
+            references[str(row.dataset_id)] = matches
+    return references
 
 
 def run_registered_value_adapters(

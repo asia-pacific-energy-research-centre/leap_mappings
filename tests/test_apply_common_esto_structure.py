@@ -14,6 +14,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     filter_source_to_relevant_pairs,
+    load_latest_vintage_endpoint_rows,
     normalise_source_columns,
     read_source_tables,
     should_ignore_missing_common_map_flow,
@@ -648,6 +649,84 @@ def test_component_relevance_uses_esto_base_year_ninth_projections_and_leap_bala
     assert evidence.loc["F2", "esto_base_year_abs_sum"] == 2
     assert evidence.loc["F4", "ninth_projection_first_nonzero_year"] == 2024
     assert evidence.loc["F4", "ninth_projection_max_abs_value"] == 4
+
+
+def test_component_relevance_uses_each_dataset_and_vintage_latest_year() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "_relevance_vintage": "ESTO:2024",
+                "year": 2022,
+                "esto_flow": "F1",
+                "esto_product": "P1",
+                "value": 5,
+            },
+            {
+                "source_system": "ESTO",
+                "_relevance_vintage": "ESTO:2025",
+                "year": 2023,
+                "esto_flow": "F2",
+                "esto_product": "P2",
+                "value": 6,
+            },
+            {
+                "source_system": "ESTO_EXTENDED",
+                "year": 2024,
+                "esto_flow": "F3",
+                "esto_product": "P3",
+                "value": 7,
+            },
+        ]
+    )
+
+    relevance_df, latest_year = build_component_relevance(
+        source_df=source_df,
+        active_component_abs_tolerance=0,
+        ninth_projection_start_year=2023,
+    )
+
+    assert latest_year == 2024
+    assert set(
+        zip(
+            relevance_df["component_esto_flow"],
+            relevance_df["component_esto_product"],
+        )
+    ) == {("F1", "P1"), ("F2", "P2"), ("F3", "P3")}
+
+
+def test_latest_vintage_endpoint_loader_reads_only_each_files_final_year(
+    tmp_path: Path,
+) -> None:
+    vintage_2024 = tmp_path / "00APEC_2024_low_with_subtotals.csv"
+    vintage_2025 = tmp_path / "00APEC_2025_low_with_subtotals.csv"
+    pd.DataFrame(
+        [{
+            "economy": "05PRC",
+            "flows": "F1",
+            "products": "P1",
+            "2021": 9,
+            "2022": 2,
+        }]
+    ).to_csv(vintage_2024, index=False)
+    pd.DataFrame(
+        [{
+            "economy": "05PRC",
+            "flows": "F2",
+            "products": "P2",
+            "2022": 8,
+            "2023": 3,
+        }]
+    ).to_csv(vintage_2025, index=False)
+
+    endpoints = load_latest_vintage_endpoint_rows(
+        {"ESTO": [vintage_2024, vintage_2025]}
+    )
+
+    assert endpoints[["esto_flow", "year", "value"]].to_dict("records") == [
+        {"esto_flow": "F1", "year": 2022, "value": 2},
+        {"esto_flow": "F2", "year": 2023, "value": 3},
+    ]
 
 
 def test_partial_coverage_keeps_only_missing_pairs_with_relevance_evidence() -> None:

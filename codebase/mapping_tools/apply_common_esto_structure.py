@@ -469,6 +469,67 @@ def filter_source_to_relevant_pairs(
     return source_df.loc[source_index.isin(relevant_index)].copy()
 
 
+def load_latest_vintage_endpoint_rows(
+    reference_paths: dict[str, list[Path]] | None,
+) -> pd.DataFrame:
+    """Read only the latest year from each relevance-only wide source file."""
+    frames: list[pd.DataFrame] = []
+    for source_system, paths in (reference_paths or {}).items():
+        for path in paths:
+            source_path = Path(path)
+            header = pd.read_csv(source_path, nrows=0).columns.tolist()
+            year_columns = sorted(
+                (int(column), str(column))
+                for column in header
+                if str(column).strip().isdigit()
+            )
+            if not year_columns:
+                raise ValueError(
+                    f"Relevance reference has no numeric year columns: {source_path}"
+                )
+            latest_year, latest_column = year_columns[-1]
+            required_columns = ["economy", "flows", "products", latest_column]
+            missing_columns = [
+                column for column in required_columns if column not in header
+            ]
+            if missing_columns:
+                raise ValueError(
+                    f"{source_path.name} is missing relevance columns: {missing_columns}"
+                )
+            endpoint = pd.read_csv(
+                source_path,
+                usecols=required_columns,
+                low_memory=False,
+            ).rename(
+                columns={
+                    "flows": "esto_flow",
+                    "products": "esto_product",
+                    latest_column: "value",
+                }
+            )
+            endpoint["source_system"] = str(source_system)
+            endpoint["scenario"] = "historical"
+            endpoint["year"] = latest_year
+            endpoint["_relevance_vintage"] = f"{source_system}:{source_path.name}"
+            frames.append(endpoint)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def source_with_vintage_endpoint_relevance(
+    source_df: pd.DataFrame,
+    reference_paths: dict[str, list[Path]] | None,
+) -> pd.DataFrame:
+    """Append relevance-only vintage endpoints without changing value inputs."""
+    endpoint_df = load_latest_vintage_endpoint_rows(reference_paths)
+    if endpoint_df.empty:
+        return source_df
+    working_df = source_df.copy()
+    working_df["_relevance_vintage"] = working_df["source_system"].astype(str)
+    return pd.concat([working_df, endpoint_df], ignore_index=True, sort=False)
+
+
 def build_component_relevance(
     source_df: pd.DataFrame,
     active_component_abs_tolerance: float,
@@ -513,6 +574,15 @@ def build_component_relevance(
         )
     if "economy" not in working_df.columns:
         working_df["economy"] = ""
+    if "_relevance_vintage" not in working_df.columns:
+        working_df["_relevance_vintage"] = working_df["source_system"]
+    else:
+        empty_vintage = working_df["_relevance_vintage"].isna() | working_df[
+            "_relevance_vintage"
+        ].astype(str).str.strip().eq("")
+        working_df.loc[empty_vintage, "_relevance_vintage"] = working_df.loc[
+            empty_vintage, "source_system"
+        ]
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
     latest_year_dataset_ids = {
@@ -537,7 +607,19 @@ def build_component_relevance(
         evidence_column = str(policy["evidence_column"])
         mask = working_df["source_system"].eq(dataset_id) & nonzero_mask
         if period_policy == "latest_available_year":
-            mask &= working_df["year"].eq(resolved_esto_base_year)
+            if esto_base_year is not None:
+                mask &= working_df["year"].eq(resolved_esto_base_year)
+            else:
+                dataset_mask = working_df["source_system"].eq(dataset_id)
+                latest_for_vintage = working_df.loc[dataset_mask].groupby(
+                    "_relevance_vintage",
+                    observed=True,
+                )["year"].transform("max")
+                latest_mask = pd.Series(False, index=working_df.index)
+                latest_mask.loc[dataset_mask] = working_df.loc[
+                    dataset_mask, "year"
+                ].eq(latest_for_vintage)
+                mask &= latest_mask
         elif period_policy == "from_projection_start":
             mask &= working_df["year"].ge(ninth_projection_start_year)
         elif period_policy != "all_periods":
@@ -1938,6 +2020,7 @@ def run_common_esto_comparison_fast_path(
     run_timestamp_utc: str | None = None,
     comparison_scope_systems: dict[str, set[str]] | None = None,
     outlook_mappings_path: Path | None = None,
+    relevance_reference_paths: dict[str, list[Path]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -1965,8 +2048,12 @@ def run_common_esto_comparison_fast_path(
         if column in common_rows_df.columns:
             common_rows_df[column] = common_rows_df[column].map(normalise_label)
 
+    relevance_source_df = source_with_vintage_endpoint_relevance(
+        source_df,
+        relevance_reference_paths,
+    )
     relevance_df, resolved_esto_base_year = build_component_relevance(
-        source_df=source_df,
+        source_df=relevance_source_df,
         active_component_abs_tolerance=active_component_abs_tolerance,
         ninth_projection_start_year=ninth_projection_start_year,
         esto_base_year=esto_base_year,
@@ -2044,6 +2131,7 @@ def run_apply_common_esto_structure(
     ),
     relevance_policies: list[dict[str, object]] | None = None,
     comparison_scope_systems: dict[str, set[str]] | None = None,
+    relevance_reference_paths: dict[str, list[Path]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(
@@ -2055,8 +2143,12 @@ def run_apply_common_esto_structure(
     for column in ["component_esto_flow", "component_esto_product"]:
         if column in common_rows_df.columns:
             common_rows_df[column] = common_rows_df[column].map(normalise_label)
+    relevance_source_df = source_with_vintage_endpoint_relevance(
+        source_df,
+        relevance_reference_paths,
+    )
     relevance_df, resolved_esto_base_year = build_component_relevance(
-        source_df=source_df,
+        source_df=relevance_source_df,
         active_component_abs_tolerance=active_component_abs_tolerance,
         ninth_projection_start_year=ninth_projection_start_year,
         esto_base_year=esto_base_year,
