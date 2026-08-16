@@ -6,6 +6,46 @@
 **Owner repository:** `leap_mappings`
 **Related repositories:** `leap_dashboard`, `leap_initialisation`
 
+## MAPQ-047 — Migrate machine-only mapping intermediates to typed columnar storage
+
+**Priority / status:** P2 · `planned`; coordinated by
+`leap_initialisation/docs/work_queue.md` [44].
+
+Inventory and benchmark mapping pipeline artifacts that are not edited or
+directly reviewed by people. Parquet with Zstandard compression is the default
+candidate; do not introduce pickle. Start with internal conversion, lineage,
+tree, and validation-detail tables. Existing `.csv.gz` artifacts already save
+substantial space and must remain when Parquet does not demonstrate a material
+end-to-end benefit.
+
+Preserve these boundaries during migration:
+
+- `outlook_mappings_single_axis.xlsx`, exception/review workbooks, compact QA
+  summaries, and other human-facing artifacts remain human-readable;
+- the Common ESTO v1 fact/metadata/manifest contract remains available until
+  every initialisation, dashboard, review-tool, and portable-runtime consumer
+  has a versioned replacement and proven equivalence;
+- browser/static dashboard assets remain JSON/HTML rather than requiring a
+  client-side Parquet reader;
+- the full anchor audit may migrate before its compact reviewer CSV, provided
+  the summary is still computed from the complete audit and all status counts
+  are identical;
+- no source input or published artifact is changed in place without an atomic
+  producer-and-consumer migration and rollback path.
+
+For every candidate, record producer/consumers, schema/key, size, human or
+contract role, regeneration cost, and current compression. Benchmark actual
+pipeline access patterns—not just whole-file synthetic reads—and report size,
+read/write time, peak memory, selected-column/filter performance, and dependency
+cost. Round-trip tests must cover keys, values, nulls, dtypes, required row
+order, hashes/manifests, mapped-value conservation, and dashboard reconstruction.
+
+**Complete when:** every mapping artifact has a retain/migrate decision;
+migrated families have versioned manifests and compatibility tests; a full
+four-source pipeline and strict downstream reconstruction pass; measured
+benefits are documented; and superseded files are handled only through the
+separately approved MAPQ-013/P3-07 quarantine process.
+
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 
 **Status: complete 2026-08-16. Full pipeline and conservation verification
