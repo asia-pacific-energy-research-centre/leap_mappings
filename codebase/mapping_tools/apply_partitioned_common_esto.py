@@ -16,6 +16,7 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.typed_output import read_manifested_parquet, write_manifested_parquet
 from codebase.mapping_tools.structural_resolver import build_tree_index
 
 
@@ -231,13 +232,17 @@ def apply_partitioned_common_esto(
     output_dir: Path,
     source_tree_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Process cached partitions and atomically publish CSV outputs."""
+    """Process cached partitions and atomically publish tabular outputs."""
     started = time.perf_counter()
     cache_dir, output_dir = Path(cache_dir), Path(output_dir)
     manifest = json.loads((cache_dir / "cache_manifest.json").read_text(encoding="utf-8"))
     if manifest.get("status") != "complete":
         raise ValueError("Partition cache is not complete.")
-    mapping = pd.read_csv(source_to_common_path, dtype=object)
+    mapping = (
+        read_manifested_parquet(source_to_common_path)
+        if Path(source_to_common_path).suffix.casefold() == ".parquet"
+        else pd.read_csv(source_to_common_path, dtype=object)
+    )
     source_tree = pd.read_csv(source_tree_path, dtype=object) if source_tree_path is not None else None
     staging = output_dir.with_name(output_dir.name + ".building")
     if staging.exists():
@@ -245,6 +250,8 @@ def apply_partitioned_common_esto(
     staging.mkdir(parents=True, exist_ok=True)
     lineage_dir = staging / "contribution_lineage_parquet"
     lineage_dir.mkdir()
+    final_parts_dir = staging / ".common_esto_comparison_parts"
+    final_parts_dir.mkdir()
     status_records: list[dict[str, Any]] = []
     try:
         for number, partition in enumerate(manifest["partitions"], start=1):
@@ -256,7 +263,7 @@ def apply_partitioned_common_esto(
             lineage, final, unmatched, accounting = apply_partition_frame(source, mapping, source_tree)
             lineage.to_parquet(lineage_dir / f"{key}.parquet", index=False)
             _append_csv(lineage, staging / "contribution_lineage.csv")
-            _append_csv(final, staging / "common_esto_comparison_data.csv")
+            final.to_parquet(final_parts_dir / f"{key}.parquet", index=False, compression="zstd")
             _append_csv(unmatched, staging / "unmatched_source_rows.csv")
             _append_csv(accounting, staging / "value_accounting.csv")
             status_records.append({**partition, "status": "complete", "lineage_rows": len(lineage), "final_rows": len(final)})
@@ -267,10 +274,16 @@ def apply_partitioned_common_esto(
         status.to_csv(staging / "partition_status.csv", index=False)
         # Re-aggregate across partitions only for deterministic ordering. Since
         # each partition key is a complete final group, no cross-partition sum is required.
-        final_path = staging / "common_esto_comparison_data.csv"
-        final = pd.read_csv(final_path)
+        final_path = staging / "common_esto_comparison_data.parquet"
+        final_parts = [pd.read_parquet(path) for path in sorted(final_parts_dir.glob("*.parquet"))]
+        final = pd.concat(final_parts, ignore_index=True) if final_parts else pd.DataFrame(columns=FINAL_COLUMNS)
         final = final.sort_values(FINAL_COLUMNS[:-1], kind="stable").reset_index(drop=True)
-        final.to_csv(final_path, index=False, float_format="%.12g")
+        write_manifested_parquet(
+            final,
+            final_path,
+            artifact_type="common_esto_comparison_data",
+        )
+        shutil.rmtree(final_parts_dir)
         run_manifest = {
             "status": "complete", "partition_count": len(status_records),
             "runtime_seconds": time.perf_counter() - started,
@@ -295,7 +308,7 @@ APPLY_PARTITIONED_VALUES = False
 
 SOURCE_PATH = REPO_ROOT / "results" / "mapping_relationships" / "raw_leap_results.csv"
 CACHE_DIR = REPO_ROOT / "results" / "common_esto" / "partition_cache" / "leap"
-STRUCTURAL_MAP_PATH = REPO_ROOT / "results" / "common_esto" / "structural_artifacts" / "source_pair_to_common_row.csv"
+STRUCTURAL_MAP_PATH = REPO_ROOT / "results" / "common_esto" / "structural_artifacts" / "source_pair_to_common_row.parquet"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto" / "partitioned_application"
 
 if PREPARE_SOURCE_CACHE:

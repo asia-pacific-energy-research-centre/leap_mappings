@@ -75,11 +75,18 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 import pandas as pd
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from codebase.mapping_tools.typed_output import read_manifested_parquet
+
 NINTH_PATH = Path("data/merged_file_energy_ALL_20251106.csv")
-ANCHOR_PATH = Path("results/tree_structure/source_parent_anchor_validation.csv")
+ANCHOR_PATH = Path("results/tree_structure/source_parent_anchor_validation.parquet")
 SECTOR_COLS = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
 TOLERANCE = 0.01
 PRODUCT_AXIS_FAMILIES = ["15_solid_biomass", "16_others", "08_gas", "09_06_gas_processing_plants"]
@@ -324,7 +331,7 @@ def main() -> None:
 
     print("Loading data...")
     ninth_df = pd.read_csv(args.ninth_path, dtype=object)
-    anchor_df = pd.read_csv(args.anchor_path, dtype=object)
+    anchor_df = read_manifested_parquet(args.anchor_path).astype(object)
 
     all_candidates = anchor_df[
         (anchor_df["status"] == "failed")

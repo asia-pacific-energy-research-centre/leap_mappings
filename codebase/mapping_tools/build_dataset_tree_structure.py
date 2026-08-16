@@ -66,7 +66,7 @@ LEAP_DATA_PATH        = REPO_ROOT / "results" / "mapping_relationships" / "raw_l
 LEGACY_LEAP_DATA_PATH = REPO_ROOT / "data" / "usa_leap_balance_long.csv"
 OUTLOOK_MAPPINGS_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 COMMON_ESTO_ROWS_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
-COMMON_ESTO_COMPARISON_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv"
+COMMON_ESTO_COMPARISON_PATH = REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.parquet"
 TREE_OUTPUT_DIR       = REPO_ROOT / "results" / "tree_structure"
 LEAP_VAR_BASE_YEAR    = 2022
 
@@ -2478,7 +2478,11 @@ def _validate_common_esto_axis_recursive_sums(
     if not comparison_data_path.exists():
         return _empty_common_esto_validation()
 
-    data = pd.read_csv(comparison_data_path, dtype=object)
+    data = (
+        pd.read_parquet(comparison_data_path)
+        if comparison_data_path.suffix.casefold() == ".parquet"
+        else pd.read_csv(comparison_data_path, dtype=object)
+    )
     required = {
         "comparison_scope",
         "source_system",

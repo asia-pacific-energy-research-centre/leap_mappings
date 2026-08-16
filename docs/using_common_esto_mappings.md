@@ -107,77 +107,30 @@ native ones:
 `leap_dashboard/codebase/hierarchy_subtotal_contract_loader.py` is a strict
 reference consumer.
 
-### Planned: carry the flags on the mapping outputs themselves
+### Row metadata stays separate
 
-Requiring every consumer to join a separate contract build just to learn which
-rows are parents is avoidable work, and a consumer that skips the join
-double-counts silently. The flags should ship **on the mapping outputs**, so one
-merge gives both the mapping and the information needed to aggregate it safely.
+The universal mapping CSV deliberately stays at seven columns. Subtotal and
+hierarchy properties belong in `common_esto_row_metadata.csv`, keyed by
+`(comparison_scope, common_row_id)`. Consumers that need a non-overlapping
+frontier join that metadata explicitly; consumers that only need category
+mapping do not carry structural-review columns on every source pair.
 
-Three files, with distinct jobs:
+## The any-dataset → common map
 
-- **`results/common_esto/common_esto_row_metadata.csv`** — the authority. One row
-  per `(comparison_scope, common_row_id)` (6,105 rows today), already the
-  row-properties file. Add the flags here.
-- **`results/common_esto/source_to_common_esto_map.csv`** — *does not exist yet;
-  see below.* The any-dataset map, and the file most consumers will merge on.
-  The flags must arrive with it.
-- **`results/common_esto/esto_to_common_esto_map.csv`** — the existing ESTO-only
-  map. Becomes the ESTO slice of the file above.
-
-## There is no any-dataset → common map today
-
-Worth stating plainly, because it is the most common wrong assumption about this
-repository. `esto_to_common_esto_map.csv` maps **ESTO components only**:
+`source_to_common_esto_map.csv` covers every dataset participating in each
+scope: ESTO or ESTO_EXTENDED, LEAP, and NINTH where applicable. It has one
+unique row per `(scope, system, source_flow, source_product)`
+and exactly seven columns:
 
 ```text
-comparison_scope, component_esto_flow, component_esto_product,
-common_row_id, common_flow_label, common_product_label, component_sign
+scope, system, source_flow, source_product,
+common_row_id, common_flow_label, common_product_label
 ```
 
-For LEAP and the 9th there is no equivalent. A consumer wanting
-`LEAP branch + fuel -> common row` or `9th sector + fuel -> common row` must
-either read the pre-converted `common_esto_comparison_data.csv` (a fact table,
-not a mapping) or compose two files themselves:
-
-- `results/mapping_relationships/{leap,ninth}_source_to_esto_component_lineage.csv.gz`
-- `results/common_esto/esto_to_common_esto_map.csv`
-
-**Planned:** publish `results/common_esto/source_to_common_esto_map.csv` — one
-per-scope table covering every participating dataset:
-
-```text
-comparison_scope, source_system, source_flow, source_product,
-common_row_id, common_flow_label, common_product_label,
-is_subtotal, common_flow_is_subtotal, common_product_is_subtotal,
-common_flow_hierarchy_status, common_product_hierarchy_status
-```
-
-Small — roughly 1,920 9th pairs + 1,108 LEAP pairs + the ESTO components per
-scope. This is the file that makes the one-merge contract real for every
-dataset rather than only ESTO, and it is safe to publish precisely because no
-participating source fans out at the common level (see above).
-
-Columns to add to both:
-
-| Column | Meaning |
-|---|---|
-| `common_flow_is_subtotal` | flow axis has declared children, so this row's flow is a subtotal |
-| `common_product_is_subtotal` | product axis has declared children |
-| `is_subtotal` | **true on either axis. Do not sum rows where this is true** — they contain other rows |
-| `common_flow_hierarchy_status` / `common_product_hierarchy_status` | `leaf`, `parent`, or `outside_declared_tree` |
-
-Sourced from `results/hierarchy_subtotal_contract/current/axis_nodes.csv`
-(`dataset_id = common_esto`), so the contract stays the single authority and
-these are a published projection of it.
-
-**The status column must be explicit, not null.** On scope `esto_leap_ninth`,
-of 1,500 common rows: 167 have a structural-parent flow axis, 0 have a
-structural-parent product axis, and **112 are outside the declared tree**
-(the generated spanning rollups below). If those 112 carried null flags, a
-consumer would read null as "not a parent", conclude "safe leaf", and
-double-count — which is precisely the failure this is meant to prevent.
-`outside_declared_tree` forces the consumer to decide.
+The complete component/rule derivation remains available for pipeline and audit
+use as manifested Parquet at
+`results/common_esto/structural_artifacts/source_pair_to_common_row.parquet`.
+Ordinary consumers should not need that 27-column table.
 
 ### Two caveats that remain regardless
 
@@ -221,9 +174,9 @@ expected to be **empty**. If it is not, fix the structure here.
 | The no-split / lowest-common-denominator guarantee | **Current**, asserted by `qa_common_esto_source_aggregates_split.csv` |
 | Declared common-axis hierarchy (`axis_nodes.csv`, `dataset_id = common_esto`) | **Current** |
 | ESTO → common map (`esto_to_common_esto_map.csv`) | **Current** |
-| LEAP → common and 9th → common maps | **Missing** — compose the lineage halves, or read the fact table |
-| `source_to_common_esto_map.csv` (any dataset, one merge) | **Planned** |
-| Subtotal/leaf flags carried on the mapping outputs | **Planned** |
+| LEAP → common and 9th → common maps | **Current** in the universal source map |
+| `source_to_common_esto_map.csv` (any dataset, one merge) | **Current**; seven columns, participating systems only |
+| Subtotal/leaf flags | **Separate** in `common_esto_row_metadata.csv` / hierarchy contract |
 
 See `leap_dashboard/docs/prompts/measure_aware_dashboard_and_mapping_inversion_plan.md`
 (Phase A step 6, Phase C) for the plan. Update this table when each lands.

@@ -121,7 +121,7 @@ CURRENT_ARTIFACT_SPECS = [
 HISTORICAL_STAGE_3_ARTIFACT_SPECS = [
     {
         "stage": "stage_3",
-        "relative_path": "results/common_esto/common_esto_comparison_data.csv",
+        "relative_path": "results/common_esto/common_esto_comparison_data.parquet",
         "format": "csv",
         "required": True,
     },

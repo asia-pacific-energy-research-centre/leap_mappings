@@ -57,13 +57,15 @@ def apply_source_to_common_esto_map(
     this scope (excluded structurally, or the source pair does not appear in
     this scope at all) are silently absent from the result rather than
     raising - the map's own coverage CSV
-    (``source_to_common_esto_map_coverage.csv``) is where that gap is listed
+    (``source_to_common_esto_map_coverage.parquet``) is where that gap is listed
     explicitly; a converter re-raising it on every call would be noise, not
     a new finding.
     """
+    scope_column = "scope" if "scope" in source_to_common_map.columns else "comparison_scope"
+    system_column = "system" if "system" in source_to_common_map.columns else "source_system"
     scoped_map = source_to_common_map[
-        (source_to_common_map["comparison_scope"] == comparison_scope)
-        & (source_to_common_map["source_system"] == source_system)
+        (source_to_common_map[scope_column] == comparison_scope)
+        & (source_to_common_map[system_column] == source_system)
     ][["source_flow", "source_product", *COMMON_AXIS_COLUMNS]].drop_duplicates()
 
     merged = values.merge(scoped_map, on=["source_flow", "source_product"], how="inner")

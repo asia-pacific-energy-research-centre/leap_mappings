@@ -5,6 +5,7 @@ import json
 import pandas as pd
 
 import codebase.separate_axis_mapping_stage3_shadow_workflow as stage3_shadow
+from codebase.mapping_tools import typed_output
 from codebase.separate_axis_mapping_shadow_validation_workflow import (
     _build_structural_source_once_diagnostic,
 )
@@ -185,11 +186,10 @@ def test_stage3_shadow_summary_records_pass_and_review_findings(
         common_dir / "common_esto_source_rows_missing_common_map.csv",
         index=False,
     )
-    pd.DataFrame(
-        [{"exact_component_count": 55}]
-    ).to_csv(
-        diagnostics_dir / "broad_common_row_summary.csv",
-        index=False,
+    typed_output.write_manifested_parquet(
+        pd.DataFrame([{"exact_component_count": 55}]),
+        diagnostics_dir / "broad_common_row_summary.parquet",
+        artifact_type="broad_common_row_summary",
     )
     for filename in [
         "qa_common_esto_unresolved_partial_coverage.csv",

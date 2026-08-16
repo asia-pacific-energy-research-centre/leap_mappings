@@ -18,34 +18,22 @@ if str(REPO_ROOT) not in sys.path:
 
 RESULTS_ROOT = REPO_ROOT / "results"
 COMMON_ESTO_ROOT = RESULTS_ROOT / "common_esto"
-STRUCTURAL_ARTIFACTS_ROOT = COMMON_ESTO_ROOT / "structural_artifacts"
 FOR_COLLEAGUES_ROOT = RESULTS_ROOT / "for_colleagues"
 COMMON_WIDE_PATH = COMMON_ESTO_ROOT / "common_esto_comparison_wide.csv"
-SOURCE_COMMON_PATH = STRUCTURAL_ARTIFACTS_ROOT / "source_pair_to_common_row.csv"
+SOURCE_COMMON_PATH = COMMON_ESTO_ROOT / "source_to_common_esto_map.csv"
 
 OUTPUT_WIDE_PATH = FOR_COLLEAGUES_ROOT / "common_esto_comparison_wide.csv"
-OUTPUT_SOURCE_PATH = FOR_COLLEAGUES_ROOT / "source_pair_to_common_row.csv"
+OUTPUT_SOURCE_PATH = FOR_COLLEAGUES_ROOT / "source_to_common_esto_map.csv"
 
 KEEP_COLUMNS = [
-    "comparison_scope",
-    "source_system",
+    "scope",
+    "system",
     "source_flow",
     "source_product",
-    "common_flow",
-    "common_product",
-    "common_row_is_subtotal",
-    "source_row_is_subtotal",
+    "common_row_id",
+    "common_flow_label",
+    "common_product_label",
 ]
-
-
-def _clean(value: object) -> str:
-    text = str(value if value is not None else "").strip()
-    return "" if text.lower() in {"", "nan", "none"} else text
-
-
-def _truthy(value: object) -> bool:
-    text = _clean(value).lower()
-    return text in {"true", "1", "yes", "y", "t"}
 
 
 def _resolve(path: str | Path) -> Path:
@@ -73,51 +61,15 @@ def build_for_colleagues_export() -> dict[str, Path]:
     FOR_COLLEAGUES_ROOT.mkdir(parents=True, exist_ok=True)
 
     wide_df = pd.read_csv(_resolve(COMMON_WIDE_PATH), dtype=object)
-    wide_lookup = wide_df[["flow", "product", "is_subtotal"]].copy()
-    wide_lookup = wide_lookup.rename(
-        columns={
-            "flow": "common_flow",
-            "product": "common_product",
-            "is_subtotal": "common_row_is_subtotal",
-        }
-    ).drop_duplicates()
     wide_output_path = write_csv_with_locked_fallback(wide_df, OUTPUT_WIDE_PATH)
 
     source_df = pd.read_csv(_resolve(SOURCE_COMMON_PATH), dtype=object)
-    source_df = source_df[
-        source_df["comparison_scope"].astype(str).eq("esto_leap")
-        & source_df["source_system"].astype(str).isin(["LEAP", "ESTO"])
-    ].copy()
-    source_df = source_df.rename(
-        columns={
-            "effective_source_flow": "source_flow",
-            "effective_source_product": "source_product",
-            "common_flow_label": "common_flow",
-            "common_product_label": "common_product",
-        }
-    )
-
-    source_df = source_df.merge(
-        wide_lookup,
-        on=["common_flow", "common_product"],
-        how="left",
-    )
-    source_df["common_row_is_subtotal"] = source_df["common_row_is_subtotal"].fillna(False).map(_truthy)
-    # This export describes membership in Common ESTO rows.  Its subtotal flags
-    # must therefore come from the new Common ESTO tree, not from the original
-    # source row's own hierarchy.  Keep the legacy column name for consumers.
-    source_df["source_row_is_subtotal"] = source_df["common_row_is_subtotal"]
-
     output = source_df[KEEP_COLUMNS].copy()
-    output = output.sort_values(
-        ["source_system", "source_flow", "source_product", "common_flow", "common_product"],
-        kind="stable",
-    ).reset_index(drop=True)
     output_path = write_csv_with_locked_fallback(output, OUTPUT_SOURCE_PATH)
 
     return {
         "common_esto_comparison_wide": wide_output_path,
-        "source_pair_to_common_row": output_path,
+        "source_to_common_esto_map": output_path,
     }
 
 

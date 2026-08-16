@@ -1,6 +1,6 @@
 # Common ESTO mapping outputs — a non-coder's guide
 
-Two files, both under `results/common_esto/` (generated, not tracked in git —
+Two public CSV files, both under `results/common_esto/` (generated, not tracked in git —
 regenerate with the commands at the bottom of this doc), produced by
 `codebase/mapping_tools/build_source_to_common_esto_map.py` and
 `codebase/mapping_tools/emissions_factor_resolution.py`. Both are plain
@@ -14,9 +14,9 @@ that row:
 
 | Column | What it means |
 |---|---|
-| `comparison_scope` | Which comparison this row applies to. There are four: `esto_leap`, `esto_leap_ninth`, `esto_extended_leap`, `esto_extended_leap_ninth`. **Filter to one scope before reading anything else** — the same native pair can map to a different common row in a different scope. |
-| `source_system` | `LEAP` or `NINTH` (the 9th edition). ESTO is not in this file — it has its own, separate map (`esto_to_common_esto_map.csv`), because ESTO is what everything else is being compared against. |
-| `source_flow` / `source_product` | The native LEAP or 9th-edition flow and product, exactly as that source reports it. |
+| `scope` | Which comparison this row applies to. There are four: `esto_leap`, `esto_leap_ninth`, `esto_extended_leap`, `esto_extended_leap_ninth`. **Filter to one scope before reading anything else** — the same native pair can map to a different common row in a different scope. |
+| `system` | The participating native dataset: `ESTO`, `ESTO_EXTENDED`, `LEAP`, or `NINTH`. Only systems belonging to the selected comparison scope appear. |
+| `source_flow` / `source_product` | The native flow and product exactly as that source reports it. |
 | `common_flow_label` / `common_product_label` | The common category this native pair rolls up to. This is the human-readable answer — most readers only need these two columns plus the two above. |
 | `common_row_id` | A stable internal ID for the common category. Only useful for joining this file to another one by code; ignore it if you are reading by eye. |
 
@@ -38,8 +38,9 @@ source aggregate unless there is an explicit allocation method." This map
 has none, on purpose.
 
 **What's *not* in this file:** rows the mapping system could not place
-anywhere. See `source_to_common_esto_map_coverage.csv` (next to the map) — it
-lists every excluded native pair with a reason, rather than silently
+anywhere. The manifested diagnostic
+`source_to_common_esto_map_coverage.parquet` (next to the map) lists every
+excluded native pair with a reason, rather than silently
 dropping them. Most of those are legitimate: parent/rollup/total rows whose
 detail is what actually gets mapped (e.g. "Total Primary Supply" is excluded
 because its components — Production, Imports, Exports — are each mapped
@@ -47,6 +48,10 @@ individually; including the total too would double-count). A minority need
 a human look before anyone builds further on this map — see
 `leap_dashboard/outputs/overnight_20260806/w1_finding_unmapped_leap_links.md`
 for the full breakdown and the specific pairs flagged for review.
+
+The complete 27-column derivation and rule evidence is intentionally separate
+at `structural_artifacts/source_pair_to_common_row.parquet`. It is an audit and
+pipeline artifact, not the consumer mapping CSV.
 
 ## `emissions_factor_resolution.csv` — "how much CO2e per unit of each fuel"
 

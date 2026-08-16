@@ -12,6 +12,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.typed_output import write_manifested_parquet
+
 from codebase.mapping_tools.build_dataset_tree_structure import build_common_esto_tree
 from codebase.mapping_tools.dataset_registry import load_dataset_registry
 from codebase.mapping_tools.rollup_sheet_registry import (
@@ -321,7 +323,7 @@ def compile_structural_mapping_artifacts(
     workbook_path: Path = DEFAULT_WORKBOOK_PATH,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, pd.DataFrame]:
-    """Read only structural inputs, compile artifacts, and write narrow CSVs."""
+    """Read structural inputs and write mapping contracts plus typed audit detail."""
     paths = [Path(relationships_path), Path(common_map_path), Path(workbook_path)]
     missing = [str(path) for path in paths if not path.exists()]
     if missing:
@@ -369,12 +371,27 @@ def compile_structural_mapping_artifacts(
     )
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    artifact_records: dict[str, dict[str, object]] = {}
     for name, frame in artifacts.items():
-        frame.to_csv(output_dir / f"{name}.csv", index=False)
+        if name == "source_pair_to_common_row":
+            artifact_records[name] = write_manifested_parquet(
+                frame,
+                output_dir / f"{name}.parquet",
+                artifact_type="source_pair_to_common_row_structural_detail",
+            )["artifact"]
+        else:
+            output_path = output_dir / f"{name}.csv"
+            frame.to_csv(output_path, index=False)
+            artifact_records[name] = {
+                "path": output_path.name,
+                "format": "csv",
+                "row_count": int(len(frame)),
+            }
     manifest = {
         "structural_schema_version": STRUCTURAL_SCHEMA_VERSION,
         "input_fingerprint": fingerprint,
         "inputs": [str(path.resolve()) for path in paths],
+        "artifacts": artifact_records,
     }
     (output_dir / "structural_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return artifacts

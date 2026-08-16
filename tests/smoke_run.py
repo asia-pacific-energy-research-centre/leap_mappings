@@ -109,10 +109,10 @@ show_csv_head(stage2_outputs[0])
 run(["python", "codebase/mapping_tools/apply_common_esto_structure.py"])
 
 stage3_outputs = [
-    REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv",
+    REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.parquet",
 ]
 assert_files_exist(stage3_outputs)
-show_csv_head(stage3_outputs[0])
+print(pd.read_parquet(stage3_outputs[0]).head())
 
 # %% [markdown]
 # ### End-to-end wrapper
@@ -127,7 +127,7 @@ run(["python", "codebase/run_mapping_pipeline.py"])
 summary_files = [
     REPO_ROOT / "results" / "mapping_relationships" / "energy_balance_relationships.csv",
     REPO_ROOT / "results" / "common_esto" / "common_esto_rows.csv",
-    REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv",
+    REPO_ROOT / "results" / "common_esto" / "common_esto_comparison_data.parquet",
 ]
 
 for path in summary_files:

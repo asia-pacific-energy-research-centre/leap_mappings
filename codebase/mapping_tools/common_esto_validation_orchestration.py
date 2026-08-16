@@ -38,6 +38,17 @@ from codebase.mapping_tools.value_adapter_registry import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+
+def _read_comparison_data(
+    comparison_data_path: Path,
+    columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """Read the canonical Parquet values artifact or a legacy CSV fixture."""
+    path = Path(comparison_data_path)
+    if path.suffix.casefold() == ".parquet":
+        return pd.read_parquet(path, columns=columns)
+    return pd.read_csv(path, dtype=object, usecols=columns)
+
 VALIDATION_SUMMARY_COLUMNS = [
     "run_id",
     "run_timestamp_utc",
@@ -366,7 +377,7 @@ def build_common_esto_child_diagnostics(
         empty_detail = pd.DataFrame(columns=CHILD_DIAGNOSTIC_COLUMNS)
         empty_patterns = pd.DataFrame(columns=PATTERN_COLUMNS)
         return empty_detail, empty_patterns, empty_detail.copy()
-    comparison = pd.read_csv(comparison_data_path, dtype=object)
+    comparison = _read_comparison_data(comparison_data_path)
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce").astype("Int64").astype(str)
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison["economy"] = comparison["economy"].map(_normalise_economy)
@@ -594,7 +605,7 @@ def validate_non_expanding_rollups(
     contributor_flows = {flow for entry in contributors.values() for flow in entry["contributors"]}
     keep_labels = tracked_labels | contributor_flows
 
-    data = pd.read_csv(comparison_data_path, dtype=object)
+    data = _read_comparison_data(comparison_data_path)
     required = {"comparison_scope", "source_system", "economy", "scenario", "year",
                 "common_flow_label", "common_product_label", "value"}
     if not required.issubset(data.columns):
@@ -749,7 +760,7 @@ def _count_eligible_checks(
 ) -> pd.DataFrame:
     """Count data groups eligible for the existing hierarchy validator."""
     source_specific_exclude_parents = source_specific_exclude_parents or {}
-    data = pd.read_csv(comparison_data_path, dtype=object)
+    data = _read_comparison_data(comparison_data_path)
     data["year"] = pd.to_numeric(data["year"], errors="coerce")
     data = data[data["year"] > int(leap_var_base_year)].copy()
     axis_col = "common_product_label" if axis == "product" else "common_flow_label"
@@ -893,7 +904,7 @@ def run_common_esto_validation_workflow(
         else:
             try:
                 source_systems = sorted(
-                    pd.read_csv(comparison_data_path, usecols=["source_system"])[
+                    _read_comparison_data(comparison_data_path, columns=["source_system"])[
                         "source_system"
                     ].dropna().astype(str).unique().tolist()
                 ) or ["ALL"]

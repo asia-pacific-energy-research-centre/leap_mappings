@@ -236,24 +236,14 @@ def run_anchor_validation_only(
         ),
         "source_parent_anchor_leaf_reconciliation_candidates": leaf_candidates,
     }
-    parquet_detail_names = {
-        "source_parent_anchor_validation_full",
-        "source_parent_anchor_child_context_values",
-        "source_parent_anchor_mapped_component_context_values",
-        "source_parent_anchor_economy_child_context_values",
-        "source_parent_anchor_economy_mapped_component_context_values",
-    }
     for name, frame in frames.items():
         published = frame.copy()
         published.insert(0, "run_id", run_id)
-        if name in parquet_detail_names:
-            write_manifested_parquet(
-                published,
-                output_dir / f"{name}.parquet",
-                artifact_type=f"{name}_detail",
-            )
-        else:
-            published.to_csv(output_dir / f"{name}.csv", index=False)
+        write_manifested_parquet(
+            published,
+            output_dir / f"{name}.parquet",
+            artifact_type=name,
+        )
     return detail, summary
 
 

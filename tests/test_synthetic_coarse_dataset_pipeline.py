@@ -390,8 +390,8 @@ def test_synthetic_fourth_dataset_end_to_end_acceptance(
 
     summary = run_synthetic_multi_dataset_acceptance(output_dir)
     checks = pd.read_csv(output_dir / "acceptance_checklist.csv")
-    comparison = pd.read_csv(
-        output_dir / "stage3" / "common_esto_comparison_data.csv"
+    comparison = pd.read_parquet(
+        output_dir / "stage3" / "common_esto_comparison_data.parquet"
     )
 
     assert summary["status"] == "passed"

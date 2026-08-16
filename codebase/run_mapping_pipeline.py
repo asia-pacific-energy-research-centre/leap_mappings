@@ -370,6 +370,11 @@ def run_stage_2(
     )
 
     compile_structural_mapping_artifacts()
+    from codebase.mapping_tools.build_source_to_common_esto_map import (
+        build_and_write_source_to_common_esto_map,
+    )
+
+    build_and_write_source_to_common_esto_map()
 
 
 # ---------------------------------------------------------------------------
@@ -877,7 +882,7 @@ def run_stage_3(
     comparison_status = stage3_status[
         stage3_status["artifact_name"] == "common_esto_comparison_data"
     ]
-    comparison_path = COMMON_ESTO_DIR / "common_esto_comparison_data.csv"
+    comparison_path = COMMON_ESTO_DIR / "common_esto_comparison_data.parquet"
     skip_reason = ""
     expected_mtime_ns: int | None = None
     if comparison_status.empty:
@@ -990,16 +995,16 @@ def run_stage_3(
     )
     validation_detail_row_count = len(detail_df)
 
-    anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.csv"
+    anchor_detail_path = tree_output_dir / "source_parent_anchor_validation.parquet"
     anchor_full_detail_path = tree_output_dir / "source_parent_anchor_validation_full.parquet"
-    anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.csv"
-    anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.csv"
+    anchor_summary_path = tree_output_dir / "source_parent_anchor_validation_summary.parquet"
+    anchor_child_values_path = tree_output_dir / "source_parent_anchor_child_values.parquet"
     anchor_child_context_values_path = tree_output_dir / "source_parent_anchor_child_context_values.parquet"
     anchor_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_mapped_component_context_values.parquet"
-    anchor_economy_examples_path = tree_output_dir / "source_parent_anchor_economy_examples.csv"
+    anchor_economy_examples_path = tree_output_dir / "source_parent_anchor_economy_examples.parquet"
     anchor_economy_child_context_values_path = tree_output_dir / "source_parent_anchor_economy_child_context_values.parquet"
     anchor_economy_mapped_component_context_values_path = tree_output_dir / "source_parent_anchor_economy_mapped_component_context_values.parquet"
-    leaf_reconciliation_candidates_path = tree_output_dir / "source_parent_anchor_leaf_reconciliation_candidates.csv"
+    leaf_reconciliation_candidates_path = tree_output_dir / "source_parent_anchor_leaf_reconciliation_candidates.parquet"
     if skip_reason:
         anchor_detail = pd.DataFrame(columns=["run_id"] + ANCHOR_COLUMNS)
         anchor_child_values = pd.DataFrame(columns=["run_id"] + ANCHOR_CHILD_VALUE_COLUMNS)
@@ -1189,13 +1194,21 @@ def run_stage_3(
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
     anchor_findings = select_source_parent_anchor_findings(anchor_detail)
-    anchor_findings.to_csv(anchor_detail_path, index=False)
+    write_manifested_parquet(
+        anchor_findings,
+        anchor_detail_path,
+        artifact_type="source_parent_anchor_validation_findings",
+    )
     write_manifested_parquet(
         anchor_detail,
         anchor_full_detail_path,
         artifact_type="source_parent_anchor_validation_full_detail",
     )
-    anchor_child_values.to_csv(anchor_child_values_path, index=False)
+    write_manifested_parquet(
+        anchor_child_values,
+        anchor_child_values_path,
+        artifact_type="source_parent_anchor_child_values",
+    )
     write_manifested_parquet(
         anchor_child_context_values,
         anchor_child_context_values_path,
@@ -1206,7 +1219,11 @@ def run_stage_3(
         anchor_mapped_component_context_values_path,
         artifact_type="source_parent_anchor_mapped_component_context_detail",
     )
-    anchor_economy_examples.to_csv(anchor_economy_examples_path, index=False)
+    write_manifested_parquet(
+        anchor_economy_examples,
+        anchor_economy_examples_path,
+        artifact_type="source_parent_anchor_economy_examples",
+    )
     write_manifested_parquet(
         anchor_economy_child_context_values,
         anchor_economy_child_context_values_path,
@@ -1217,8 +1234,16 @@ def run_stage_3(
         anchor_economy_mapped_component_context_values_path,
         artifact_type="source_parent_anchor_economy_mapped_component_context_detail",
     )
-    leaf_reconciliation_candidates.to_csv(leaf_reconciliation_candidates_path, index=False)
-    anchor_summary.to_csv(anchor_summary_path, index=False)
+    write_manifested_parquet(
+        leaf_reconciliation_candidates,
+        leaf_reconciliation_candidates_path,
+        artifact_type="source_parent_anchor_leaf_reconciliation_candidates",
+    )
+    write_manifested_parquet(
+        anchor_summary,
+        anchor_summary_path,
+        artifact_type="source_parent_anchor_validation_summary",
+    )
 
     detail_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation.csv"
     summary_path = REPO_ROOT / "results" / "tree_structure" / "common_esto_validation_summary.csv"

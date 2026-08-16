@@ -315,7 +315,7 @@ def run_mapping_chain(job: dict) -> dict:
     years = sorted(int(year) for year in comparison_df["year"].dropna().unique().tolist())
 
     return {
-        "comparison_data_path": str(work_dir / "common_esto_comparison_data.csv"),
+        "comparison_data_path": str(work_dir / "common_esto_comparison_data.parquet"),
         "common_rows_path": str(common_rows_path),
         "power_interim_audit_path": str(
             work_dir / "leap_source_branch_fallback_audit.csv"

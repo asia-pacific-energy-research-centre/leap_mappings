@@ -20,6 +20,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.typed_output import read_manifested_parquet
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -50,7 +52,7 @@ DIRECTION_CONFIG = {
     },
 }
 
-DEFAULT_STRUCTURAL_PATH = REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv"
+DEFAULT_STRUCTURAL_PATH = REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.parquet"
 DEFAULT_TREE_PATH = REPO_ROOT / "results/tree_structure/all_dataset_trees.csv"
 DEFAULT_NINTH_FUEL_VALIDATION_PATH = REPO_ROOT / "results/tree_structure/ninth_fuel_validation.csv"
 DEFAULT_TARGET_VARIANTS_PATH = REPO_ROOT / "config/inverted_conservation_target_variants.json"
@@ -877,7 +879,11 @@ def run_inverted_conservation_validation(
             f"received {sorted(requested_esto_years)}."
         )
     years_by_system["ESTO"] = {esto_base_year}
-    structural = pd.read_csv(structural_path, dtype=object)
+    structural = (
+        read_manifested_parquet(structural_path)
+        if Path(structural_path).suffix.casefold() == ".parquet"
+        else pd.read_csv(structural_path, dtype=object)
+    )
     tree = pd.read_csv(tree_path, dtype=object)
     ninth_fuel_validation = pd.read_csv(ninth_fuel_validation_path, dtype=object)
     target_variants = load_target_variants(target_variants_path)

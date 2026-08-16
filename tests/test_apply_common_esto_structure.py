@@ -48,11 +48,12 @@ def test_broad_output_detail_is_parquet_with_compact_review_sample(tmp_path: Pat
     detail_path = tmp_path / "diagnostics" / "broad_common_row_affected_output.parquet"
     restored = read_manifested_parquet(detail_path)
     pd.testing.assert_frame_equal(restored, affected)
-    sample = pd.read_csv(
-        tmp_path / "diagnostics" / "broad_common_row_affected_output_sample.csv"
+    sample = read_manifested_parquet(
+        tmp_path / "diagnostics" / "broad_common_row_affected_output_sample.parquet"
     )
     assert len(sample) == 5
     assert not (tmp_path / "diagnostics" / "broad_common_row_affected_output.csv").exists()
+    assert not (tmp_path / "diagnostics" / "broad_common_row_diagnostics.xlsx").exists()
 
 
 def test_wide_output_uses_canonical_common_pair_subtotal_classification(

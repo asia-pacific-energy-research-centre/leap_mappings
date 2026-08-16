@@ -1308,7 +1308,7 @@ scenario, or value tables. It writes deterministic CSVs to
 | --- | --- |
 | `source_pair_to_esto_component.csv` | Original and effective LEAP, Ninth, or ESTO source pair to an ESTO component, including relationship/rule evidence |
 | `esto_component_to_common_row.csv` | ESTO component to comparison-scope Common ESTO row |
-| `source_pair_to_common_row.csv` | Joined source-to-common membership used when applying values |
+| `source_pair_to_common_row.parquet` | Complete joined source-to-common derivation used for pipeline application and audit |
 | `common_row_to_source_pairs.csv` | Reverse membership for inspection; it does not allocate a common-row value back to source children |
 | `structural_compilation_summary.csv` | Versioned artifact row counts |
 | `qa_*_structural.csv` | Unresolved, ambiguous, cyclic, duplicate, and conflicting structural findings |
@@ -1324,7 +1324,7 @@ from a notebook through `compile_structural_mapping_artifacts()`.
 
 Maps LEAP/ESTO/9th data into comparison rows and aggregates values. It takes ESTO-shaped source data, maps rows with a known `common_row_id`, aggregates values within each common row, and writes a separate diagnostic for source rows that are outside the mapped universe.
 
-Output: `results/common_esto/common_esto_comparison_data.csv`
+Output: `results/common_esto/common_esto_comparison_data.parquet`
 
 Stage 3 uses a mapped-universe policy: final comparison outputs and total
 preservation checks are based on rows that map to the common structure. Unmapped
@@ -1351,7 +1351,7 @@ to the comparison fact; they only prevent a structurally mapped pair from being
 pruned. This is deliberately narrower than treating every historical year as
 relevance evidence.
 
-After the canonical `common_esto_comparison_data.csv` is written successfully,
+After the canonical `common_esto_comparison_data.parquet` is written successfully,
 `run_mapping_pipeline.py` immediately runs the Common ESTO product- and
 flow-hierarchy validations. Stage 3 remains responsible only for applying the
 Common structure; the post-write orchestrator calls the existing hierarchy
@@ -1385,7 +1385,7 @@ Stage 3 retains every mapped Common ESTO row, including exact parent rows and
 generated rollups whose display labels contain words such as `Total` or
 `Subtotal`. Display labels are presentation metadata and are not valid evidence
 that a row should be removed. Consequently,
-`common_esto_comparison_data.csv` is a canonical all-rows dataset, not an
+`common_esto_comparison_data.parquet` is a canonical all-rows dataset, not an
 automatically additive hierarchy frontier. Consumers must not sum arbitrary
 parent, child, and rolled rows together. The former
 `common_esto_subtotal_rows_filtered.csv` label-filter audit was retired because
@@ -1518,7 +1518,7 @@ one ESTO component pair must not join to multiple Common ESTO rows.
 
 The current implementation validates ESTO product and flow subtotals. For each non-leaf ESTO product node, the validation sums all immediate product children and compares against the parent product value by economy, flow, and year. For each non-leaf ESTO flow node, it sums all immediate flow children and compares against the parent flow value by economy, product, and year.
 
-Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.csv` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
+Common ESTO validation is also run when `results/common_esto/common_esto_comparison_data.parquet` exists. It uses parent/child rows that appear in both `common_esto_tree.csv` and the source ESTO tree, grouped by comparison scope, source system, economy, scenario, other axis, and year. Graph-generated aggregate labels, such as `09.01.01,09.02.01 Electricity plants`, and projection-only detail labels, such as datacentres, are treated as leaf-level because they do not have a source ESTO recursive hierarchy.
 
 Stage 3 implements both layers. `source_parent_anchor_validation.csv` compares
 eligible raw ESTO, LEAP, and 9th Outlook parents with mapped Common ESTO
@@ -1626,7 +1626,7 @@ did not match the mapped vocabulary. The reconciler instead compares two
 
 Both sides come from **different files**, so a fabricated mismatch on either
 side is detectable — the check is not a tautology. Boundaries are classified
-purely from the structural artifacts (`source_pair_to_common_row.csv`); the tree
+purely from the structural artifacts (`source_pair_to_common_row.parquet`); the tree
 is used only to enumerate parents, to sum a parent's raw descendants, and to
 detect subtotal overlap. No hierarchy or frontier is inferred from string
 prefixes.

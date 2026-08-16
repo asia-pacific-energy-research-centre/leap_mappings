@@ -1384,18 +1384,15 @@ def save_broad_common_row_diagnostics(
     diagnostics: dict[str, pd.DataFrame],
     output_dir: Path,
 ) -> None:
-    """Write full affected output as Parquet and compact reviewer surfaces."""
+    """Write every broad-row diagnostic as manifested Parquet."""
     diagnostics_dir = output_dir / "diagnostics"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     for name, df in diagnostics.items():
-        if name == "broad_common_row_affected_output":
-            write_manifested_parquet(
-                df,
-                diagnostics_dir / f"{name}.parquet",
-                artifact_type="broad_common_row_affected_output_detail",
-            )
-            continue
-        df.to_csv(diagnostics_dir / f"{name}.csv", index=False)
+        write_manifested_parquet(
+            df,
+            diagnostics_dir / f"{name}.parquet",
+            artifact_type=name,
+        )
     affected = diagnostics["broad_common_row_affected_output"]
     sample_group_columns = [
         column
@@ -1412,19 +1409,11 @@ def save_broad_common_row_diagnostics(
         )
     else:
         affected_sample = affected.head(100).reset_index(drop=True)
-    affected_sample.to_csv(
-        diagnostics_dir / "broad_common_row_affected_output_sample.csv",
-        index=False,
+    write_manifested_parquet(
+        affected_sample,
+        diagnostics_dir / "broad_common_row_affected_output_sample.parquet",
+        artifact_type="broad_common_row_affected_output_sample",
     )
-    with pd.ExcelWriter(diagnostics_dir / "broad_common_row_diagnostics.xlsx", engine="openpyxl") as writer:
-        workbook_frames = {
-            name: frame
-            for name, frame in diagnostics.items()
-            if name != "broad_common_row_affected_output"
-        }
-        workbook_frames["affected_output_sample"] = affected_sample
-        for name, df in workbook_frames.items():
-            df.to_excel(writer, sheet_name=name[:31], index=False)
 
 
 def raise_if_broad_common_rows(
@@ -1852,10 +1841,15 @@ def save_outputs(
             run_timestamp_utc=resolved_timestamp,
         )
         written_paths.extend(contract_paths)
-    written_paths.append(write_csv_with_locked_fallback(
+    comparison_output_path = error_tagged_path(
+        output_dir / "common_esto_comparison_data.parquet", error_occurred
+    )
+    write_manifested_parquet(
         legacy_comparison_df,
-        error_tagged_path(output_dir / "common_esto_comparison_data.csv", error_occurred),
-    ))
+        comparison_output_path,
+        artifact_type="common_esto_comparison_data",
+    )
+    written_paths.append(comparison_output_path)
     written_paths.append(write_csv_with_locked_fallback(
         wide_year_df,
         error_tagged_path(output_dir / "common_esto_comparison_wide.csv", error_occurred),
@@ -1984,15 +1978,17 @@ def save_fast_path_outputs(
     )
     written_paths = [
         *contract_paths,
-        write_csv_with_locked_fallback(
-            legacy_comparison_df,
-            output_dir / "common_esto_comparison_data.csv",
-        ),
+        output_dir / "common_esto_comparison_data.parquet",
         write_csv_with_locked_fallback(
             wide_year_df,
             output_dir / "common_esto_comparison_wide.csv",
         ),
     ]
+    write_manifested_parquet(
+        legacy_comparison_df,
+        output_dir / "common_esto_comparison_data.parquet",
+        artifact_type="common_esto_comparison_data",
+    )
     status_df = pd.DataFrame([
         {
             "run_id": resolved_run_id,

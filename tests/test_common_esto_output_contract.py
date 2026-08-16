@@ -305,7 +305,7 @@ def test_qa_failed_save_preserves_prior_contract_and_canonical_legacy(tmp_path: 
         FACT_FILENAME,
         METADATA_FILENAME,
         MANIFEST_FILENAME,
-        "common_esto_comparison_data.csv",
+        "common_esto_comparison_data.parquet",
     ]
     previous = {name: (tmp_path / name).read_bytes() for name in preserved_names}
 
@@ -322,7 +322,7 @@ def test_qa_failed_save_preserves_prior_contract_and_canonical_legacy(tmp_path: 
     )
 
     assert {name: (tmp_path / name).read_bytes() for name in preserved_names} == previous
-    assert (tmp_path / "common_esto_comparison_data_needs_mapping_review.csv").exists()
+    assert (tmp_path / "common_esto_comparison_data_needs_mapping_review.parquet").exists()
     contract_status = status[status["record_type"].eq("output_contract_publication")].iloc[0]
     assert contract_status["status"] == "preserved_previous_contract"
     assert contract_status["current_output_file"] == MANIFEST_FILENAME
@@ -367,7 +367,7 @@ def test_contract_construction_failure_cannot_replace_canonical_legacy(tmp_path:
         FACT_FILENAME,
         METADATA_FILENAME,
         MANIFEST_FILENAME,
-        "common_esto_comparison_data.csv",
+        "common_esto_comparison_data.parquet",
     ]
     previous = {name: (tmp_path / name).read_bytes() for name in preserved_names}
     invalid = _legacy_comparison(value=99)

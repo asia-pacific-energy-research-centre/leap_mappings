@@ -106,7 +106,8 @@ def test_fast_path_writes_final_outputs_without_qa_artifacts(tmp_path: Path) -> 
     assert len(comparison_df) == 3
     assert not wide_df.empty
     assert missing_map_df.empty
-    assert (common_dir / "common_esto_comparison_data.csv").exists()
+    assert (common_dir / "common_esto_comparison_data.parquet").exists()
+    assert (common_dir / "common_esto_comparison_data.parquet.manifest.json").exists()
     assert (common_dir / "common_esto_comparison_wide.csv").exists()
     assert (common_dir / "common_esto_comparison_fact.csv.gz").exists()
     assert (common_dir / "common_esto_row_metadata.csv").exists()
@@ -194,7 +195,7 @@ def test_fast_path_can_filter_to_one_economy(tmp_path: Path) -> None:
     assert set(comparison_df["economy"]) == {"02_BD"}
     assert set(wide_df["economy"]) == {"02_BD"}
     assert "20_USA" not in set(wide_df["economy"])
-    assert (common_dir / "common_esto_comparison_data.csv").exists()
+    assert (common_dir / "common_esto_comparison_data.parquet").exists()
     assert (common_dir / "common_esto_comparison_wide.csv").exists()
 
 

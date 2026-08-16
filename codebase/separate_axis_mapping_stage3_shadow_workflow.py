@@ -36,6 +36,7 @@ os.environ.setdefault(
 )
 
 import codebase.run_mapping_pipeline as pipeline  # noqa: E402
+from codebase.mapping_tools.typed_output import read_manifested_parquet  # noqa: E402
 from codebase.separate_axis_mapping_shadow_validation_workflow import (  # noqa: E402
     _build_structural_source_once_diagnostic,
 )
@@ -223,10 +224,15 @@ def write_stage3_shadow_gate_summary() -> dict[str, object]:
     )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
-    broad_rows = _read_optional_csv(
+    broad_summary_path = (
         COMMON_ESTO_DIR
         / "diagnostics"
-        / "broad_common_row_summary.csv"
+        / "broad_common_row_summary.parquet"
+    )
+    broad_rows = (
+        read_manifested_parquet(broad_summary_path)
+        if broad_summary_path.exists()
+        else pd.DataFrame()
     )
     partial_rows = _read_optional_csv(
         COMMON_ESTO_DIR

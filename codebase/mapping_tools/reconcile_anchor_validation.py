@@ -37,7 +37,7 @@ sufficient**, condition:
 The two sides are read from **different files** so the check is not a tautology:
 the left comes from raw source rows, the right from the converted output, and
 they can genuinely disagree. Boundaries are classified from the **structural
-artifacts** (``source_pair_to_common_row.csv`` / ``esto_component_to_common_row``),
+artifacts** (``source_pair_to_common_row.parquet`` / ``esto_component_to_common_row``),
 never from string prefixes or tree-reconstructed frontiers. The tree is used
 *only* to enumerate parents and to sum the raw descendants of a parent.
 """
@@ -54,6 +54,8 @@ from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 import pandas as pd
+
+from codebase.mapping_tools.typed_output import read_manifested_parquet
 
 from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 from codebase.mapping_tools.structural_resolver import build_tree_index
@@ -988,7 +990,11 @@ def run_anchor_reconciliation(
         raise ValueError(f"Unknown mode {mode!r}; expected {sorted(VALIDATION_MODES)}")
     converted_paths = converted_paths or DEFAULT_CONVERTED_PATHS
     raw_paths = raw_paths or DEFAULT_RAW_PATHS
-    structural = pd.read_csv(structural_path, dtype=object)
+    structural = (
+        read_manifested_parquet(structural_path)
+        if Path(structural_path).suffix.casefold() == ".parquet"
+        else pd.read_csv(structural_path, dtype=object)
+    )
     tree = pd.read_csv(tree_path, dtype=object)
 
     output_dir = Path(output_dir)
@@ -1133,7 +1139,11 @@ def run_anchor_contribution_breakdown(
     """
     converted_paths = converted_paths or DEFAULT_CONVERTED_PATHS
     raw_paths = raw_paths or DEFAULT_RAW_PATHS
-    structural = pd.read_csv(structural_path, dtype=object)
+    structural = (
+        read_manifested_parquet(structural_path)
+        if Path(structural_path).suffix.casefold() == ".parquet"
+        else pd.read_csv(structural_path, dtype=object)
+    )
     tree = pd.read_csv(tree_path, dtype=object)
 
     output_dir = Path(output_dir)
@@ -1232,7 +1242,7 @@ RECONCILIATION_ECONOMY = "20USA"
 if RUN_RECONCILIATION:
     RECONCILIATION_RESULT = run_anchor_reconciliation(
         mode=RECONCILIATION_MODE,
-        structural_path=REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv",
+        structural_path=REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.parquet",
         tree_path=REPO_ROOT / "results/tree_structure/all_dataset_trees.csv",
         output_dir=REPO_ROOT / "results/common_esto/anchor_reconciliation",
         economies={RECONCILIATION_ECONOMY} if RECONCILIATION_MODE != "full" else None,
@@ -1251,7 +1261,7 @@ CONTRIBUTION_SYSTEMS = SOURCE_SYSTEMS
 
 if RUN_CONTRIBUTION_BREAKDOWN:
     CONTRIBUTION_RESULT = run_anchor_contribution_breakdown(
-        structural_path=REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.csv",
+        structural_path=REPO_ROOT / "results/common_esto/structural_artifacts/source_pair_to_common_row.parquet",
         tree_path=REPO_ROOT / "results/tree_structure/all_dataset_trees.csv",
         output_dir=REPO_ROOT / "results/common_esto/anchor_contribution_breakdown",
         economies={CONTRIBUTION_ECONOMY},

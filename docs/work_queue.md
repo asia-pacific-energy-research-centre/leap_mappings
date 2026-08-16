@@ -100,6 +100,14 @@ Parquet/Zstandard; compact summaries, findings, examples, and samples remain
 CSV. The dashboard consumer reads the new anchor Parquet detail server-side
 with a temporary fallback for existing CSV result folders.
 
+The Common ESTO consumer boundary was simplified on 2026-08-16:
+`source_to_common_esto_map.csv` is the seven-column universal CSV for all
+participating datasets, while the 27-column derivation moved to manifested
+`structural_artifacts/source_pair_to_common_row.parquet` and its coverage report
+moved to Parquet. Generated real artifacts contain 26,654 consumer-map rows
+with zero duplicate keys or fan-out; structural detail reduced from 21,798,404
+bytes as CSV to 457,576 bytes as Parquet. Existing CSV files were not deleted.
+
 ## MAPQ-046 — Restore leaf-level coke-oven and blast-furnace own-use boundaries
 
 **Status: complete 2026-08-16. Full pipeline and conservation verification

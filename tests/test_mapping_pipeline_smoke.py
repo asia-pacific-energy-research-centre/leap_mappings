@@ -98,7 +98,10 @@ def test_real_pipeline_smoke_run() -> None:
     )
 
     run_stage_3()
-    comparison_df = _assert_csv_has_rows(COMMON_ESTO_DIR / "common_esto_comparison_data.csv")
+    comparison_path = COMMON_ESTO_DIR / "common_esto_comparison_data.parquet"
+    _assert_exists(comparison_path)
+    comparison_df = pd.read_parquet(comparison_path)
+    assert not comparison_df.empty
     component_lineage_df = _assert_csv_has_rows(ESTO_COMPONENT_LINEAGE_PATH)
     _assert_exists(TREE_DIR / "common_esto_validation.csv")
     validation_summary_df = _assert_csv_has_rows(TREE_DIR / "common_esto_validation_summary.csv")

@@ -8,6 +8,7 @@ from codebase.mapping_tools.compile_structural_mapping_artifacts import (
     compile_structural_frames,
     compile_structural_mapping_artifacts,
 )
+from codebase.mapping_tools.typed_output import read_manifested_parquet
 
 
 def _relationships() -> pd.DataFrame:
@@ -71,6 +72,11 @@ def test_runner_reads_only_structural_inputs(monkeypatch, tmp_path: Path) -> Non
         return real_read_csv(path, *args, **kwargs)
 
     monkeypatch.setattr(pd, "read_csv", guarded_read_csv)
-    compile_structural_mapping_artifacts(relationships_path, common_path, workbook_path, tmp_path / "out")
+    output_dir = tmp_path / "out"
+    compile_structural_mapping_artifacts(relationships_path, common_path, workbook_path, output_dir)
     assert reads[0] == relationships_path
     assert reads.count(common_path) == 2
+    detail_path = output_dir / "source_pair_to_common_row.parquet"
+    assert detail_path.exists()
+    assert not (output_dir / "source_pair_to_common_row.csv").exists()
+    assert not read_manifested_parquet(detail_path).empty

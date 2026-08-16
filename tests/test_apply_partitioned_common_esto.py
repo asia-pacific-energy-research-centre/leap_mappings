@@ -63,7 +63,7 @@ def test_chunked_cache_reuse_and_result_equivalence(tmp_path: Path, monkeypatch)
     assert second["cache_reused"]
     monkeypatch.undo()
     apply_partitioned_common_esto(cache_dir, map_path, output_dir)
-    result = pd.read_csv(output_dir / "common_esto_comparison_data.csv")
+    result = pd.read_parquet(output_dir / "common_esto_comparison_data.parquet")
     assert result["value"].tolist() == [6.0, 6.0]
     assert json.loads((output_dir / "application_manifest.json").read_text())["status"] == "complete"
 
@@ -76,4 +76,4 @@ def test_failed_run_never_publishes_final_output(tmp_path: Path) -> None:
         apply_partitioned_common_esto(cache_dir, tmp_path / "missing.csv", tmp_path / "output")
     except ValueError:
         pass
-    assert not (tmp_path / "output" / "common_esto_comparison_data.csv").exists()
+    assert not (tmp_path / "output" / "common_esto_comparison_data.parquet").exists()

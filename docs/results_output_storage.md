@@ -5,6 +5,21 @@ remaining output-reduction work.
 
 ## Current contract
 
+### Deliberately small public CSV surface
+
+The ordinary Common ESTO output surface has two primary products:
+
+- `results/common_esto/source_to_common_esto_map.csv` — the seven-column
+  universal category mapping;
+- `results/common_esto/common_esto_comparison_data.parquet` — the manifested
+  Common ESTO values dataset.
+
+Other tabular files are supporting contracts, pipeline intermediates,
+diagnostics, or historical/exploration evidence. New supporting outputs should
+not default to CSV: use manifested Parquet unless a named external consumer
+requires a CSV compatibility contract. This policy does not delete existing
+files and does not change editable mapping workbooks.
+
 The following internal pipeline artifacts are gzip-compressed CSVs. Their schemas and row semantics
 are unchanged, and `pandas.read_csv()` reads them directly:
 
@@ -17,7 +32,7 @@ are unchanged, and `pandas.read_csv()` reads them directly:
 
 The anchor validator separates compact reviewer evidence from complete typed detail:
 
-- `results/tree_structure/source_parent_anchor_validation.csv` is the primary reviewer and
+- `results/tree_structure/source_parent_anchor_validation.parquet` is the primary reviewer and
   dashboard view. It contains numerical failures, rows with
   `source_non_additivity_observed = true`, and exact user-confirmed source
   issues. Automatic source observations and confirmed issues annotate the
@@ -27,17 +42,16 @@ The anchor validator separates compact reviewer evidence from complete typed det
   economy-child, and economy-mapped-component context detail tables are also
   Parquet. Each Parquet artifact has a checksummed JSON storage manifest.
 
-`source_parent_anchor_validation_summary.csv` is always calculated from the complete audit before
+`source_parent_anchor_validation_summary.parquet` is always calculated from the complete audit before
 the compact findings view is selected. It reports total numerical failures,
 confirmed-issue failures, unconfirmed failures, and source-non-additivity
 observations separately.
 
 ## Compatibility boundary
 
-`results/common_esto/common_esto_comparison_data.csv` remains the canonical production dashboard
-input with its existing denormalized schema. It is intentionally not compressed or normalized in
-this transition because `leap_dashboard` and mapping diagnostics read its labels and structural
-fields directly.
+`results/common_esto/common_esto_comparison_data.parquet` is the canonical production dashboard
+input with its existing denormalized schema. It uses Zstandard compression and a checksummed JSON
+sidecar; `leap_dashboard`, mapping validation, and portable review tooling read Parquet directly.
 
 Stage 3 and the Common ESTO fast path now also publish an additive v1 output contract:
 
@@ -50,8 +64,8 @@ Stage 3 and the Common ESTO fast path now also publish an additive v1 output con
 Only certified, QA-successful runs replace this canonical contract. A review-tagged run preserves
 the previous contract and records that decision in `common_esto_output_status.csv`.
 
-The legacy comparison remains unchanged while the dashboard loader migrates to the joined
-fact/metadata representation and verifies rendered equivalence.
+The legacy CSV remains beside the Parquet during transition and is not deleted by the migration.
+The compressed fact/metadata contract remains available for its published compatibility boundary.
 
 ### Parquet migration measurement (2026-08-16)
 
@@ -66,13 +80,10 @@ full-frame and economy-filtered equivalence checks:
 | One-economy filtered read | 7.689 s | 0.254 s |
 | Candidate write | — | 4.616 s |
 
-The measured candidate is worthwhile, but the file is a published contract,
-not a disposable internal cache. CSV.gz remains authoritative during the
-cross-repository transition. Parquet may become authoritative only when the
-producer, delta workflow, all dashboard/review/portable consumers, tests,
-manifests, baselines, and deployment packaging support the same versioned
-contract and strict reconstruction passes. No old contract file is an archive
-candidate before that condition is met.
+The measured candidate justified migration of the denormalized primary
+dataset. The separate `common_esto_comparison_fact.csv.gz` published contract
+remains authoritative for its existing consumers until it receives an explicit
+versioned replacement. No old contract file is an archive candidate yet.
 
 ## Cleanup archives
 
@@ -107,9 +118,17 @@ Parquet/Zstandard while keeping the compact findings and summary CSVs.
 
 The Common ESTO broad-row diagnostic follows the same split:
 `broad_common_row_affected_output.parquet` contains the complete affected-row
-evidence, while `broad_common_row_affected_output_summary.csv`,
-`broad_common_row_components.csv`, and
-`broad_common_row_affected_output_sample.csv` remain directly reviewable.
+evidence, while `broad_common_row_summary.parquet`,
+`broad_common_row_components.parquet`, and
+`broad_common_row_affected_output_sample.parquet` provide compact review views.
+
+The public `source_to_common_esto_map.csv` is deliberately retained as a small,
+portable mapping contract. It has seven columns and covers ESTO,
+ESTO_EXTENDED, LEAP, and NINTH when they participate in a scope. Its complete
+27-column structural derivation is
+`structural_artifacts/source_pair_to_common_row.parquet`; the unmapped coverage
+diagnostic is `source_to_common_esto_map_coverage.parquet`. Both Parquet files
+carry checksummed JSON sidecars.
 
 The six stale plain CSVs were archived before removal from their live paths:
 
