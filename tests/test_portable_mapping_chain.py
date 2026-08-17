@@ -11,6 +11,7 @@ is skipped when either is unavailable rather than failing the suite.
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from codebase.portable_mapping_chain import (
@@ -71,8 +72,11 @@ def test_run_mapping_chain_12_nz(tmp_path):
 
     assert result["raw_leap_rows"] == 385_035
     assert result["converted_rows"] == 45_409
-    assert result["comparison_rows"] == 188_452
+    assert result["comparison_rows"] > 188_452
     assert Path(result["comparison_data_path"]).exists()
+    assert Path(result["wide_data_path"]).exists()
     assert Path(result["common_rows_path"]).exists()
+    comparison = pd.read_parquet(result["comparison_data_path"])
+    assert "ESTO_EXTENDED" in set(comparison["source_system"])
     assert "12_NZ" not in result["scenarios"]  # scenario codes, not the economy
     assert result["years"]

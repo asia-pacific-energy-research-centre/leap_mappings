@@ -288,6 +288,11 @@ def run_mapping_chain(job: dict) -> dict:
             "LEAP": converted_path,
             "NINTH": Path(artifacts["ninth_converted_path"]),
             "ESTO": esto_exact_rows_path,
+            # ESTO Extended inherits the selected vintage's base ESTO rows.
+            # Relabel the same exact-row artifact while reading it so the
+            # extended comparison scope contains historical values without
+            # materialising a second large intermediate file.
+            "ESTO_EXTENDED": esto_exact_rows_path,
         },
         common_rows_path=common_rows_path,
         output_dir=work_dir,
@@ -303,6 +308,7 @@ def run_mapping_chain(job: dict) -> dict:
         # REPO_ROOT being sys._MEIPASS when frozen, where that file does not
         # exist. Point it at the workbook this job was actually given.
         outlook_mappings_path=Path(config["mapping_workbook_path"]),
+        source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
     )
     comparison_rows = len(comparison_df)
     if not missing_map_df.empty:
@@ -316,6 +322,7 @@ def run_mapping_chain(job: dict) -> dict:
 
     return {
         "comparison_data_path": str(work_dir / "common_esto_comparison_data.parquet"),
+        "wide_data_path": str(work_dir / "common_esto_comparison_wide.csv"),
         "common_rows_path": str(common_rows_path),
         "power_interim_audit_path": str(
             work_dir / "leap_source_branch_fallback_audit.csv"

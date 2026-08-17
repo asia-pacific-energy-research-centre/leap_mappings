@@ -344,6 +344,7 @@ def read_source_tables(
     source_paths: dict[str, Path],
     default_economy: str,
     compact_dtypes: bool = False,
+    source_system_overrides: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     """Read and concatenate available ESTO-shaped source tables."""
     frames: list[pd.DataFrame] = []
@@ -359,6 +360,8 @@ def read_source_tables(
             default_source_system=source_system,
             default_economy=default_economy,
         )
+        if source_system_overrides and source_system in source_system_overrides:
+            normalised_df["source_system"] = source_system_overrides[source_system]
         del source_df
         filtered_df = filter_unmodelled_source_rows(normalised_df)
         filtered_count += len(normalised_df) - len(filtered_df)
@@ -2051,6 +2054,7 @@ def run_common_esto_comparison_fast_path(
     comparison_scope_systems: dict[str, set[str]] | None = None,
     outlook_mappings_path: Path | None = None,
     relevance_reference_paths: dict[str, list[Path]] | None = None,
+    source_system_overrides: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -2062,6 +2066,7 @@ def run_common_esto_comparison_fast_path(
     source_df = read_source_tables(
         source_paths,
         default_economy=default_economy,
+        source_system_overrides=source_system_overrides,
     )
     if economies is not None:
         economy_aliases = economy_filter_aliases(economies)

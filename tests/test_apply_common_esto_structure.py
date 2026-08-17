@@ -201,6 +201,31 @@ def test_compact_source_tables_preserve_rows_and_shared_categories(
     assert compact["source_system"].tolist() == ["ESTO", "ESTO", "NINTH"]
 
 
+def test_source_table_identity_can_be_relabelled_for_esto_extended(tmp_path) -> None:
+    source_path = tmp_path / "esto.csv"
+    pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "economy": "01AUS",
+                "scenario": "historical",
+                "year": 2022,
+                "esto_flow": "01 Production",
+                "esto_product": "01 Coal",
+                "value": 1.0,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+
+    result = read_source_tables(
+        {"ESTO_EXTENDED": source_path},
+        default_economy="01_AUS",
+        source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
+    )
+
+    assert result["source_system"].tolist() == ["ESTO_EXTENDED"]
+
+
 def test_relevant_pair_filter_preserves_categorical_source_dtypes() -> None:
     source_df = pd.DataFrame(
         [
