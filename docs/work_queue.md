@@ -1,5 +1,21 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-049 — Provide a portable source-data bundle workflow
+
+**Priority / status:** P1 · implemented; focused tests and clean-clone
+verification pending.
+
+Provide notebook-friendly `scripts/create_data_bundle.py` and
+`scripts/extract_data_bundle.py` workflows for collaborators who clone this
+repository without its ignored data. The bundle contains exactly the two
+maintained ESTO source tables and the all-economy 9th Outlook source table;
+tracked configuration and generated results remain outside the bundle.
+Extraction validates the embedded path/size manifest and ZIP CRCs, rejects
+unsafe paths, stages files before installation, and refuses to replace
+different local data unless explicitly enabled. The handoff is one ZIP; no
+separate checksum file, Git hook, Drive API, or additional `.gitkeep` files are
+required.
+
 **Snapshot date:** 2026-07-28
 **Last full verification:** 2026-07-28 (git state, worktrees, workbooks, code, and links re-checked directly)
 **Planning horizon:** four weeks, through 2026-08-24

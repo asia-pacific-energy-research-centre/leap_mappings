@@ -4,6 +4,21 @@ Only `data/README.md` (this file) and any `**/README.md`/`**/.gitkeep` are git-t
 `.gitignore`: `data/*` then explicit exceptions). Everything else here is restored from a shared
 archive/zip, not from git.
 
+## Portable Data Bundle
+
+To prepare the current handoff ZIP, run `scripts/create_data_bundle.py` from
+Jupyter or an IDE cell runner. It writes a dated, commit-labelled ZIP under
+`data_bundles/` containing exactly the three source tables listed below.
+Tracked mapping configuration and generated `results/` files are deliberately
+excluded.
+
+After cloning the repository, place that ZIP under `data_bundles/` and run
+`scripts/extract_data_bundle.py`. The extractor validates the embedded manifest
+and ZIP contents, refuses unsafe paths, and does not overwrite different local
+files unless `ALLOW_OVERWRITE` is deliberately changed to `True`. The ZIP is
+ignored by Git and is intended to be shared separately through restricted
+storage such as Google Drive.
+
 **Note:** an earlier version of this file described a much larger set of files and workflow
 scripts (`codebase/industry_workflow.py`, `full model export.xlsx`, per-sector LEAP import
 templates, etc.) that no longer match the current pipeline — none of those files or scripts exist
