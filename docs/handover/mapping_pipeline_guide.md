@@ -44,10 +44,12 @@ validation. See
 
 For a colleague using the committed mapping configuration, the ordinary run is
 `codebase/run_mapping_pipeline.py` with no arguments. It runs Stages 1–3 plus
-LEAP parsing and data conversion. It deliberately skips `generate` and the
-recursive/anchor deep audit. Run `generate` only after maintained mapping inputs
-change. Run `--deep-validation` only with enough time and free disk; the current
-full audit can exceed 100 GB of temporary data.
+LEAP parsing and data conversion for the bounded `20_USA` smoke economy. It
+deliberately skips `generate` and the recursive/anchor deep audit. Use
+`--leap-economies all` only for an intentional multi-economy refresh after
+checking memory. Run `generate` only after maintained mapping inputs change.
+Run `--deep-validation` only with enough time and free disk; the current full
+audit can exceed 100 GB of temporary data.
 
 ```mermaid
 flowchart LR

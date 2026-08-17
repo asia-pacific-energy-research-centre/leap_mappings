@@ -36,7 +36,9 @@ data/README.md` if useful for archaeology, but don't treat it as current; this r
 | `temp/new leap rows.xlsx` | Maintained LEAP branch inventory used by hierarchy and mapping refresh checks. |
 
 The default `codebase/run_mapping_pipeline.py` run uses the committed mapping
-configuration and skips the very large recursive/anchor audit. Maintainers run
+configuration, parses the bounded `20_USA` smoke economy, and skips the very
+large recursive/anchor audit. Pass `--leap-economies all` for an intentional
+multi-economy refresh after checking memory. Maintainers run
 `--stages generate,...` only after editing mapping inputs, and opt into the
 potentially 100+ GB audit with `--deep-validation` when the available disk and
 run time have been checked.

@@ -7,6 +7,7 @@ import pytest
 import codebase.run_mapping_pipeline as pipeline
 from codebase.run_mapping_pipeline import (
     _ALL_STAGES,
+    _DEFAULT_COLLEAGUE_LEAP_ECONOMIES,
     _DEFAULT_STAGES,
     _stage3_completion_status,
     build_registry_provenance,
@@ -29,6 +30,7 @@ def test_default_pipeline_excludes_retired_stage_zero() -> None:
 def test_colleague_default_uses_committed_mapping_configuration() -> None:
     assert _DEFAULT_STAGES == ["1", "2", "leap_parse", "data_convert", "3"]
     assert "generate" not in _DEFAULT_STAGES
+    assert _DEFAULT_COLLEAGUE_LEAP_ECONOMIES == ["20_USA"]
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:
