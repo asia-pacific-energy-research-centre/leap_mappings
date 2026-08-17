@@ -2,8 +2,7 @@
 
 ## MAPQ-049 — Provide a portable source-data bundle workflow
 
-**Priority / status:** P1 · implemented; focused tests and clean-clone
-verification pending.
+**Priority / status:** P1 · complete and clean-clone verified 2026-08-17.
 
 Provide notebook-friendly `scripts/create_data_bundle.py` and
 `scripts/extract_data_bundle.py` workflows for collaborators who clone this
@@ -15,6 +14,13 @@ unsafe paths, stages files before installation, and refuses to replace
 different local data unless explicitly enabled. The handoff is one ZIP; no
 separate checksum file, Git hook, Drive API, or additional `.gitkeep` files are
 required.
+
+Verification used a local clone at commit `7577fe4`. Its generated bundle held
+the three required tables (340.9 MB unpacked, 26.1 MB zipped). The extractor
+restored all three; pandas parsed their expected ESTO/9th schemas; mapping row
+selection ran against 500 real ESTO rows; and 31 focused bundle, pipeline
+selection, and dataset-tree tests passed. The clone remained Git-clean because
+the restored data and bundle ZIP are ignored inputs.
 
 **Snapshot date:** 2026-07-28
 **Last full verification:** 2026-07-28 (git state, worktrees, workbooks, code, and links re-checked directly)
