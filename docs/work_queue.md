@@ -1,5 +1,24 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-050 — Support mixed placeholder and detailed LEAP demand exports
+
+**Priority / status:** P1 · implementation in progress 2026-08-17.
+
+Allow one mapping and dashboard pipeline to process economies that still use
+`All demand aggregated/<sector>` placeholders alongside economies that have
+replacement detailed branches. Selection is structural and independent by
+economy, scenario, year, and placeholder component. A complete configured
+detailed replacement suppresses only its matching placeholder component in the
+mapping working copy; placeholder-only exports remain unchanged; partial
+replacements retain the placeholder and emit an audit warning. Road is the
+first configured replacement and requires both `Freight road` and
+`Passenger road`. The same configuration contract is intended for Buildings,
+Industry, non-road transport, and other future replacements.
+
+The AUS detailed export will provide the first authoritative observed LEAP
+branch/fuel pairs. Do not weaken the generated LEAP pair-universe gate or infer
+unobserved branch/fuel combinations before that export is reviewed.
+
 ## MAPQ-049 — Provide a portable source-data bundle workflow
 
 **Priority / status:** P1 · complete and clean-clone verified 2026-08-17.

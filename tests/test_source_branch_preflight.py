@@ -5,6 +5,7 @@ import json
 import pandas as pd
 
 from codebase.mapping_tools.source_branch_preflight import (
+    apply_all_demand_detail_fallbacks,
     apply_source_branch_fallbacks,
     check_all_demand_aggregated_overlap,
     get_demand_sectors_without_detail,
@@ -202,3 +203,91 @@ class TestEconomyScopedComponents:
         components_df = self._components()
         assert get_demand_sectors_without_detail(components_df, "02_BD") == ["Buildings", "Industry"]
         assert get_demand_sectors_without_detail(components_df, "20_USA") == ["Buildings"]
+
+
+class TestMixedPlaceholderAndDetailedDemand:
+    def _components(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "economy": "",
+                    "aggregated_branch": "All demand aggregated",
+                    "component_branch": "Road",
+                    "detailed_branches": "Freight road;Passenger road",
+                    "detail_activation": "all_present",
+                    "include": "True",
+                    "note": "",
+                }
+            ]
+        )
+
+    def test_placeholder_only_export_is_retained(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 9.0},
+            ]
+        )
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+        assert adjusted["value"].tolist() == [9.0]
+        assert audit.iloc[0]["status"] == "placeholder_only_retained"
+
+    def test_complete_detail_suppresses_only_the_road_placeholder(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 9.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Buildings", "leap_product": "Electricity", "value": 4.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Freight road", "leap_product": "Electricity", "value": 3.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Freight road/Trucks/BEV heavy", "leap_product": "Electricity", "value": 3.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Passenger road", "leap_product": "Electricity", "value": 6.0},
+            ]
+        )
+        snapshot = rows.copy(deep=True)
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+        pd.testing.assert_frame_equal(rows, snapshot)
+        assert adjusted.loc[adjusted["leap_flow"] == "All demand aggregated/Road", "value"].iloc[0] == 0.0
+        assert adjusted.loc[adjusted["leap_flow"] == "All demand aggregated/Buildings", "value"].iloc[0] == 4.0
+        assert adjusted.loc[adjusted["leap_flow"] == "Freight road", "value"].iloc[0] == 3.0
+        assert audit.iloc[0]["status"] == "detailed_preferred"
+        assert audit.iloc[0]["placeholder_total_suppressed"] == 9.0
+
+    def test_complete_detail_without_placeholder_is_available(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Freight road", "leap_product": "Electricity", "value": 3.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Passenger road", "leap_product": "Electricity", "value": 6.0},
+            ]
+        )
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+        pd.testing.assert_frame_equal(adjusted, rows)
+        assert audit.iloc[0]["status"] == "detailed_only_used"
+        assert audit.iloc[0]["placeholder_rows_zeroed"] == 0
+
+    def test_partial_detail_retains_placeholder(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 9.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Freight road", "leap_product": "Electricity", "value": 3.0},
+            ]
+        )
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+        assert adjusted.iloc[0]["value"] == 9.0
+        assert audit.iloc[0]["status"] == "partial_detail_placeholder_retained"
+
+    def test_selection_is_independent_for_each_economy(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 9.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Freight road", "leap_product": "Electricity", "value": 3.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Passenger road", "leap_product": "Electricity", "value": 6.0},
+                {"economy": "20_USA", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 8.0},
+            ]
+        )
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+        values = adjusted.set_index(["economy", "leap_flow"])["value"]
+        assert values.loc[("01_AUS", "All demand aggregated/Road")] == 0.0
+        assert values.loc[("20_USA", "All demand aggregated/Road")] == 8.0
+        statuses = audit.set_index("economy")["status"].to_dict()
+        assert statuses == {
+            "01_AUS": "detailed_preferred",
+            "20_USA": "placeholder_only_retained",
+        }

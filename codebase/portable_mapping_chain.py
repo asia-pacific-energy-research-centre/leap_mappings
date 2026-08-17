@@ -327,6 +327,9 @@ def run_mapping_chain(job: dict) -> dict:
         "power_interim_audit_path": str(
             work_dir / "leap_source_branch_fallback_audit.csv"
         ),
+        "demand_detail_selection_audit_path": str(
+            work_dir / "leap_all_demand_detail_selection_audit.csv"
+        ),
         "raw_leap_rows": raw_leap_rows,
         "converted_rows": converted_rows,
         "comparison_rows": comparison_rows,

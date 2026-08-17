@@ -4,38 +4,50 @@
   "components": [
     {
       "component_branch": "Buildings",
+      "detailed_branches": ["Buildings"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Buildings is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data.",
       "economy_overrides": {}
     },
     {
       "component_branch": "Road",
+      "detailed_branches": ["Freight road", "Passenger road"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. When both Freight road and Passenger road are present, only the Road placeholder component is suppressed in mapping working data.",
       "economy_overrides": {}
     },
     {
       "component_branch": "Industry",
+      "detailed_branches": ["Industry"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Industry is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data.",
       "economy_overrides": {}
     },
     {
       "component_branch": "Other sector",
+      "detailed_branches": ["Other sector"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Other sector is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data.",
       "economy_overrides": {}
     },
     {
       "component_branch": "Transport non road",
+      "detailed_branches": ["Transport non road"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. If Transport non road is also modelled in detail the preflight emits a review warning; nothing is zeroed automatically.",
+      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data.",
       "economy_overrides": {}
     },
     {
       "component_branch": "International transport",
+      "detailed_branches": ["International transport"],
+      "detail_activation": "all_present",
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. International marine and aviation bunker demand is kept separate from domestic non-road transport; values retain their source sign.",
+      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data; international transport retains its source sign.",
       "economy_overrides": {}
     }
   ]
