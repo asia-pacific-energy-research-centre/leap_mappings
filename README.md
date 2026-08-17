@@ -72,13 +72,17 @@ flowchart LR
 
 4. Run Stage 2 to build automatic common ESTO rows:
    - `codebase/mapping_tools/build_common_esto_structure.py`
-   - output: `results/common_esto/common_esto_rows.csv`
+   - output: `results/common_esto/common_esto_rows.csv` (the small
+     human-readable row catalogue)
    - output: `results/common_esto/esto_to_common_esto_map.csv`
 
 5. Run conversion and Stage 3 to apply the common structure to ESTO-shaped data:
    - `codebase/mapping_tools/apply_common_esto_structure.py`
-   - output: `results/common_esto/common_esto_comparison_data.csv`
-   - optional wide output: `results/common_esto/common_esto_comparison_wide.csv`
+   - production output:
+     `results/common_esto/common_esto_comparison_data.parquet`, with its
+     adjacent manifest
+   - selected small review/catalogue outputs remain CSV; large machine-only
+     diagnostics and anchor tables are manifested Parquet+Zstandard
 
 The dashboard should use common ESTO comparison data, not raw LEAP rows, raw 9th rows, or `relationship_id -> graph_id` links. `dashboard_chart` should not be treated as a required mapping use case.
 

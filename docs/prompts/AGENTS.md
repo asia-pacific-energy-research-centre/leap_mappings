@@ -39,20 +39,24 @@ prompt into a current decision without re-measuring them.
 
 ## Current inventory
 
-Verified against local `master` on 2026-07-29 after archiving the out-of-scope
-valid-pair authority investigation.
+Verified against local `master` on 2026-08-17.
 
 | Prompt | Status | Purpose / next use |
 |---|---|---|
 | `data_reliability_flag_and_diagnostic_consolidation_design_20260723.md` | Active design input | Reconcile reliability attribution, exception curation, output-contract evidence, and diagnostic retention under MAPQ-012. It is explicitly a proposal, not implemented authority. |
-| `complete_hierarchy_subtotal_contract_prompt.md` | Active implementation prompt | Complete MAPQ-030 with an adapter-based, mappings-owned structural contract; keep structural subtotal classification separate from numerical additivity, then integrate the dashboard and initialisation consumers. |
 | `admit_esto_extended_flows_to_common_structure_prompt.md` | Deferred — recheck on or after 2026-08-17 | The workbook maps 56 extended-only flows but `common_esto_tree.csv` defines Common ESTO rows for only 5, measured against run `common_esto_20260727T113042584213Z`. Parked as probable work-in-progress: the ESTO Extended dataset was still being built when this was measured. Do not start it without first re-measuring per `docs/revisit_mapping_diagnostics_20260817.md`; if the count has moved off 5 on its own, the premise has changed. |
 | `mirror_row_gap_exception_curation_handoff_20260727.md` | Paused | Resume the reviewed NINTH source-mismatch curation only after a clean baseline and the handoff's safety gate. |
 | `review_non_expanding_vs_detached_rollups_prompt.md` | Active review | Review every live manual rollup mode under MAPQ-010. Repoint any absent optional evidence to the canonical workbook before use. |
 | `run_mapping_pipeline_future_prompt.md` | Queued reusable production run | MAPQ-043: after the user's separate-axis checkpoint is committed, run all four mapping sources, render every data-backed economy and diagnostics page, poll only every 20 minutes, and complete the cross-repository verification checklist. |
 | `set_blank_ninth_fuel_mappings_prompt.md` | Active human decision | Review the three blank `ninth_fuel` rows under MAPQ-027; do not write the workbook without approval. |
 | `mappings_review_next_agent_20260804.md` | Active review prompt | Run the combined MAPQ-009/MAPQ-010/MAPQ-029/MAPQ-031, anchor-validation, and latest-output review against the 2026-08-03 baseline. |
-| `leap_review_tools_portable_release_implementation_prompt_20260803.md` | Active implementation prompt | Build a developer-linked launcher and reproducible portable-release workflow for dashboard and balance-review tools. |
+| `portable_three_repo_distribution_and_junction_safe_cleanup_20260731.md` | Pending cross-repository safety task | Prepare a portable three-repository distribution and perform only explicitly approved junction-safe cleanup. |
+| `recover_codex_runtime_and_harden_worktree_cleanup_20260731.md` | Paused recovery/safety prompt | Reuse only if the shared runtime or worktree cleanup safety needs another repair pass. |
+| `rerun_all_leap_processes_orchestration_20260731.md` | Reusable orchestration prompt | Coordinate the maintained mapping, initialisation and dashboard run prompts. |
+| `rerun_leap_mappings_full_pipeline_20260731.md` | Reusable run prompt | Run and review the current mapping pipeline after refreshing its prerequisites. |
+| `rerun_leap_initialisation_update_previews_20260731.md` | Reusable run prompt | Generate and inspect the current update previews after a reviewed mapping run. |
+| `rerun_leap_initialisation_baseline_seeds_11_economies_20260731.md` | Reusable long-run prompt | Generate the currently scoped real-template baseline seeds after upstream gates pass. |
+| `rerun_leap_dashboard_aus_prc_usa_20260731.md` | Reusable run prompt | Render and review AUS, PRC and USA after upstream runs complete. |
 
 `AGENTS.md` itself is an instruction/inventory file, not a runnable prompt.
 

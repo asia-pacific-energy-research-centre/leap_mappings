@@ -10,7 +10,7 @@ first. It does not replace the linked technical references.
 **Supersedes as the entry point:** `docs/handover/README.md`, which remains the
 maintained Level 1 connected-system overview
 
-**Last verified:** 2026-07-28
+**Last verified:** 2026-08-17
 
 ## The system in 60 seconds
 
@@ -81,8 +81,9 @@ override the canonical semantic references.
 2. Inspect `git status --short --branch` in every repository the task will
    touch. Separate unrelated dirty work before running or committing.
 3. Close the editable and generated mapping workbooks in Excel.
-4. Run the separate-axis generation gate, any applicable focused maintenance
-   review, and Stages 1–3 from one reviewed input state.
+4. Run the mapping orchestrator's `generate` stage (or the separate-axis
+   refresh directly), any applicable focused maintenance review, and Stages
+   1–3 from one reviewed input state. The generation manifest is a hard gate.
 5. Review status, manifest, hierarchy, cardinality, preservation, and
    review-only findings. A zero exit code is not the whole release gate.
 6. If LEAP preparation changed, generate and validate the initialisation

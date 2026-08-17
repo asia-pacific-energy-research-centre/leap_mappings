@@ -178,5 +178,7 @@ expected to be **empty**. If it is not, fix the structure here.
 | `source_to_common_esto_map.csv` (any dataset, one merge) | **Current**; seven columns, participating systems only |
 | Subtotal/leaf flags | **Separate** in `common_esto_row_metadata.csv` / hierarchy contract |
 
-See `leap_dashboard/docs/prompts/measure_aware_dashboard_and_mapping_inversion_plan.md`
-(Phase A step 6, Phase C) for the plan. Update this table when each lands.
+See the archived
+`leap_dashboard/docs/archive/dashboard_emissions_program_20260806/measure_aware_dashboard_and_mapping_inversion_plan.md`
+(Phase A step 6, Phase C) for the original plan. Re-scope any remaining work
+against the current manifested-parquet consumer rather than restarting it.

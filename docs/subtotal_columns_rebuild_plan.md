@@ -11,7 +11,7 @@ This is the detailed plan for MAPQ-030. It is a review plan only; no subtotal
 cells have been changed.
 
 The reusable end-to-end implementation prompt is
-[`prompts/complete_hierarchy_subtotal_contract_prompt.md`](prompts/complete_hierarchy_subtotal_contract_prompt.md).
+[`archive/hierarchy_subtotal_contract_20260728/complete_hierarchy_subtotal_contract_prompt.md`](archive/hierarchy_subtotal_contract_20260728/complete_hierarchy_subtotal_contract_prompt.md).
 
 ## What the current investigation found
 

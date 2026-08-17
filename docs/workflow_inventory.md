@@ -1,6 +1,6 @@
 # Workflow Inventory — `codebase/` navigation guide
 
-Last reviewed: 2026-07-29
+Last reviewed: 2026-08-17
 
 `codebase/` mixes several things that look similar at a glance but aren't: the live mapping
 pipeline, standalone maintenance/QA tools a researcher runs by hand, an explicitly-legacy
@@ -11,15 +11,17 @@ you don't have to read all of it to find the one script you need.
 
 ## Start here
 
-`codebase/run_mapping_pipeline.py` is the only script you need to run the whole pipeline
-end to end (`python codebase/run_mapping_pipeline.py`). Everything under "Live pipeline" below
-is reached from it.
+`codebase/run_mapping_pipeline.py` is the end-to-end orchestrator. Its first
+production stage is now the separate-axis generation gate: it calls
+`codebase/separate_axis_mapping_refresh_workflow.py` before Stages 1–3 and
+refuses to continue with an invalid generation manifest.
 
 ## Live pipeline (canonical — called by `run_mapping_pipeline.py`)
 
 | Script | Stage |
 |---|---|
 | `codebase/run_mapping_pipeline.py` | Orchestrator |
+| `codebase/separate_axis_mapping_refresh_workflow.py` | Preliminary `generate` stage: promotes the reviewed single-axis workbook into generated pair authority and the compatibility master, with a generation manifest |
 | `codebase/mapping_tools/build_energy_balance_relationships.py` | Stage 1 |
 | `codebase/mapping_tools/build_common_esto_structure.py` | Stage 2 |
 | `codebase/mapping_tools/parse_leap_balance_export.py` | `leap_parse` |
@@ -27,8 +29,12 @@ is reached from it.
 | `codebase/mapping_tools/apply_common_esto_structure.py`, `build_dataset_tree_structure.py`, `common_esto_validation_orchestration.py`, `source_parent_anchor_validation.py` | Stage 3 |
 | `codebase/mapping_tools/source_branch_preflight.py` | invoked from the `data_convert` LEAP conversion step |
 | `codebase/mapping_tools/non_expanding_rollups.py` | invoked directly from `run_mapping_pipeline.py`'s ESTO-exact-rows step |
-| `codebase/mapping_tools/result_storage.py` | resolves compressed `.csv.gz` inputs/outputs for the live pipeline |
+| `codebase/mapping_tools/typed_output.py` | Writes and validates manifested Parquet+Zstandard production tables. |
+| `codebase/mapping_tools/result_storage.py` | Resolves retained CSV/CSV.gz compatibility and human-review artifacts. |
 | `codebase/mapping_tools/common_esto_output_contract.py` | publishes and certifies the versioned Common ESTO contract used by Stage 3/dashboard consumers |
+| `codebase/mapping_tools/build_source_to_common_esto_map.py` | Publishes the zero-fan-out native-source-to-common map and coverage artifact. |
+| `codebase/mapping_tools/emissions_factor_resolution.py` | Publishes mapping-owned resolved emissions-factor evidence. |
+| `codebase/mapping_tools/esto_extended_delta.py` | Optional ESTO Extended delta contract used by the orchestrator's explicit delta flags. |
 | `codebase/mapping_tools/mapping_issue_exceptions.py`, `codebase/mapping_issue_exceptions.py` | shared library, read by relationship and maintenance tools (note: two similarly-named files — the one under `mapping_tools/` re-exports from the top-level one) |
 | `codebase/utilities/outlook_mappings_filters.py`, `codebase/utilities/leap_balance_export_resolver.py` | the only two `utilities/` modules the live pipeline actually imports |
 
@@ -71,10 +77,9 @@ imported by `run_mapping_pipeline.py`:
 - `verify_ninth_mirror_row_candidates.py` — verifies paused NINTH
   source-mismatch candidates against raw source rows; use with the active
   mirror-row-gap handoff rather than as an automatic exception writer.
-- `esto_extended_delta.py` — exact ESTO Extended delta/reconstruction support.
-  The module is committed, but integration into the main orchestrator remains
-  active in a separate worktree; do not classify it as a live Stage 0–3 path
-  until that work is integrated and verified.
+- `esto_extended_delta.py` is no longer standalone-only: the orchestrator owns
+  explicit `write_esto_extended_delta` and `use_esto_extended_delta` paths.
+  It remains opt-in and must not be mistaken for the default source path.
 
 Top-level standalone workflows: `codebase/propagate_esto_rows_workflow.py`,
 `codebase/missing_mapped_esto_rows_workflow.py` (review-only ESTO category and
