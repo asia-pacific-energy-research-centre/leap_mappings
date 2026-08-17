@@ -67,6 +67,24 @@ def test_prefix_scenario_filename_convention_is_discovered(tmp_path: Path) -> No
     assert scenario_code_from_balance_export_filename(aus_ref) == "REF"
 
 
+def test_bundled_date_first_filename_convention_is_discovered(tmp_path: Path) -> None:
+    usa_dir = tmp_path / "20_USA"
+    usa_dir.mkdir()
+    reference = usa_dir / "0805 REF.xlsx"
+    target = usa_dir / "0805 TGT.xlsx"
+    reference.touch()
+    target.touch()
+
+    discovery = discover_balance_export_workbooks(
+        economies=["20_USA"],
+        exports_root=tmp_path,
+    )
+
+    assert discovery[("20_USA", "REF")] == [reference]
+    assert discovery[("20_USA", "TGT")] == [target]
+    assert discover_available_economies(tmp_path) == ["20_USA"]
+
+
 def test_economy_prefix_is_discovered_and_newest_duplicate_wins(tmp_path: Path) -> None:
     rus_dir = tmp_path / "16_RUS"
     rus_dir.mkdir()

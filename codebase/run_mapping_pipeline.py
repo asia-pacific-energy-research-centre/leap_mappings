@@ -1325,6 +1325,7 @@ def run_stage_3(
 # ---------------------------------------------------------------------------
 
 _ALL_STAGES = ["generate", "1", "2", "leap_parse", "data_convert", "3"]
+_DEFAULT_STAGES = ["1", "2", "leap_parse", "data_convert", "3"]
 
 _STAGE_RUNNERS = {
     "generate":     run_separate_axis_refresh,
@@ -1362,8 +1363,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the LEAP->ESTO mapping pipeline.")
     parser.add_argument(
         "--stages",
-        default=",".join(_ALL_STAGES),
-        help="Comma-separated list of stages to run (default: all).",
+        default=",".join(_DEFAULT_STAGES),
+        help=(
+            "Comma-separated stages (default: the colleague-safe 1,2,leap_parse,"
+            "data_convert,3 sequence). Run 'generate' explicitly after editing "
+            "maintained mapping inputs."
+        ),
     )
     parser.add_argument(
         "--skip",
@@ -1405,10 +1410,19 @@ def main() -> None:
         default=None,
         help="Optional parsed raw-LEAP CSV override for a reproducible test slice.",
     )
-    parser.add_argument(
+    validation_group = parser.add_mutually_exclusive_group()
+    validation_group.add_argument(
+        "--deep-validation",
+        action="store_true",
+        help=(
+            "Opt in to the full recursive/anchor validation pass. This can create "
+            "more than 100 GB of temporary data; the default publication run skips it."
+        ),
+    )
+    validation_group.add_argument(
         "--skip-deep-validation",
         action="store_true",
-        help="Test mode: stop after common-structure application and skip the full recursive/anchor validation pass.",
+        help="Deprecated compatibility flag; deep validation is skipped by default.",
     )
     parser.add_argument(
         "--write-esto-extended-delta",
@@ -1469,7 +1483,7 @@ def main() -> None:
                 )
             elif stage == "3":
                 run_stage_3(
-                    skip_deep_validation=args.skip_deep_validation,
+                    skip_deep_validation=not args.deep_validation,
                     use_esto_extended_delta=args.use_esto_extended_delta,
                 )
             else:
