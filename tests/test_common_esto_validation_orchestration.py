@@ -165,6 +165,28 @@ def test_validate_non_expanding_rollups_reports_source_availability(tmp_path: Pa
     assert by_source.loc["NINTH", "status"] == "incomplete_contributors"
 
 
+def test_validate_non_expanding_rollups_omits_all_zero_structural_contexts(
+    tmp_path: Path,
+) -> None:
+    workbook_path = tmp_path / "mappings.xlsx"
+    _rollup_workbook(workbook_path)
+    comparison_path = tmp_path / "comparison.csv"
+    pd.DataFrame([
+        _row("LEAP", "09.07 Oil refineries (including own use)", 0.0),
+        _row("LEAP", "09.07 Oil refineries", 0.0),
+        _row("LEAP", "10.01.11 Oil refineries", 0.0),
+    ]).to_csv(comparison_path, index=False)
+
+    detail, summary = validation_module.validate_non_expanding_rollups(
+        comparison_data_path=comparison_path,
+        workbook_path=workbook_path,
+        run_id=RUN_ID,
+    )
+
+    assert detail.empty
+    assert summary.empty
+
+
 def test_diagnose_child_present_is_not_flagged_as_replaced() -> None:
     """A rollup-input child that is present in the output is present, not replaced."""
     rollup_inputs = {

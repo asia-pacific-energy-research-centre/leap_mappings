@@ -1932,6 +1932,29 @@ def compile_axis_relationships(
     allowed_target_pair_statuses: tuple[str, ...] = ("data_valid",),
 ) -> pd.DataFrame:
     """Compile target pairs from axes and exact source/target pair universes."""
+    # Fuel/product axes are commonly shared by ordinary ESTO and ESTO Extended
+    # and are therefore maintained once with scope BOTH. Reuse those rows in a
+    # concrete flow scope before the exact-scope merge. Keeping the original
+    # BOTH rows means ordinary shared relationships are still emitted once.
+    product_mappings_for_merge = product_mappings.copy()
+    both_products = product_mappings_for_merge[
+        product_mappings_for_merge["comparison_scope"].map(_clean).str.upper().eq("BOTH")
+    ].copy()
+    concrete_flow_contexts = flow_mappings.loc[
+        ~flow_mappings["comparison_scope"].map(_clean).str.upper().eq("BOTH"),
+        ["mapping_name", "source_system", "target_system", "comparison_scope"],
+    ].drop_duplicates()
+    if not both_products.empty and not concrete_flow_contexts.empty:
+        expanded_products = both_products.drop(columns=["comparison_scope"]).merge(
+            concrete_flow_contexts,
+            on=["mapping_name", "source_system", "target_system"],
+            how="inner",
+        )
+        product_mappings_for_merge = pd.concat(
+            [product_mappings_for_merge, expanded_products],
+            ignore_index=True,
+        ).drop_duplicates()
+
     if source_pair_universes is None:
         source_pairs = current_relationships[SOURCE_PAIR_COLUMNS].drop_duplicates()
         source_pairs["source_pair_exists_in_dataset"] = True
@@ -2000,7 +2023,9 @@ def compile_axis_relationships(
         validate="many_to_many",
     )
     compiled = compiled.merge(
-        product_mappings.drop(columns=["relationship_semantics", "notes"], errors="ignore"),
+        product_mappings_for_merge.drop(
+            columns=["relationship_semantics", "notes"], errors="ignore"
+        ),
         on=["mapping_name", "comparison_scope", "source_system", "source_product", "target_system"],
         how="left",
         validate="many_to_many",
@@ -3271,8 +3296,8 @@ def inventory_leap_templates(template_dir: Path) -> tuple[pd.DataFrame, pd.DataF
 
 def latest_leap_balance_exports(export_root: Path) -> list[Path]:
     """Select the latest top-level workbook per economy and scenario."""
-    from codebase.mapping_tools.parse_leap_balance_export import (
-        scenario_code_from_balance_export_filename,
+    from codebase.utilities.leap_balance_export_resolver import (
+        select_latest_balance_export_workbooks,
     )
 
     selected: list[Path] = []
@@ -3282,17 +3307,12 @@ def latest_leap_balance_exports(export_root: Path) -> list[Path]:
     for economy_dir in sorted(export_root.iterdir()):
         if not economy_dir.is_dir() or economy_dir.name == "00_APEC":
             continue
-        candidates = [
-            path
-            for path in economy_dir.glob("*.xlsx")
-            if not path.name.startswith("~$")
-        ]
-        by_scenario: dict[str, list[Path]] = defaultdict(list)
-        for path in candidates:
-            scenario = scenario_code_from_balance_export_filename(path) or "UNKNOWN"
-            by_scenario[scenario].append(path)
-        for paths in by_scenario.values():
-            selected.append(max(paths, key=lambda item: (item.stat().st_mtime_ns, item.name)))
+        selected.extend(
+            select_latest_balance_export_workbooks(
+                economy_dir,
+                economy=economy_dir.name,
+            )
+        )
     return sorted(selected)
 
 

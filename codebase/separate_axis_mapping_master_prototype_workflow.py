@@ -16,6 +16,7 @@ plus the temporary detailed demand/power branch inventory.
 #%%
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import traceback
@@ -37,6 +38,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     analyse_axis_components,
     annotate_pair_universe_temporal_evidence,
     assert_no_blocking_axis_components,
+    build_observed_leap_pair_evidence,
     build_compiled_mapping_sheet_frames,
     build_registry_scope_lookups,
     compare_compiled_relationships,
@@ -46,10 +48,12 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     load_active_mapping_contract,
     load_axis_component_exceptions,
     load_or_bootstrap_editable_axis_contract,
+    latest_leap_balance_exports,
     merge_reviewed_extra_pairs,
     remove_exact_duplicate_mapping_rows,
 )
 from codebase.mapping_tools.leap_pair_registry import (  # noqa: E402
+    add_observed_balance_pairs,
     load_or_refresh_leap_pair_registry,
 )
 
@@ -126,6 +130,14 @@ OBSERVED_LEAP_PAIR_EVIDENCE_PATH = (
     / "leap_authority"
     / "observed_pair_evidence.csv"
 )
+OBSERVED_LEAP_EXPORT_INVENTORY_PATH = (
+    EXPLORATION_RESULTS_ROOT
+    / "leap_authority"
+    / "observed_export_inventory.csv"
+)
+LEAP_BALANCE_EXPORT_ROOT = (
+    LEAP_INITIALISATION_ROOT / "data" / "leap balances exports"
+)
 
 EXTRA_PAIR_SHEET_SPECS = {
     "LEAP": {
@@ -164,6 +176,63 @@ def _write_csv(frame: pd.DataFrame, filename: str) -> Path:
 def _relative_output_path(path: Path) -> str:
     """Return a stable path relative to the workbook output root."""
     return Path(path).resolve().relative_to(OUTPUT_ROOT.resolve()).as_posix()
+
+
+def _sha256(path: Path) -> str:
+    """Return a source fingerprint without loading the workbook into memory."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _current_observed_export_inventory(export_root: Path) -> pd.DataFrame:
+    """Fingerprint the latest REF/TGT balance export for every economy."""
+    records = [
+        {
+            "economy": path.parent.name,
+            "file": path.name,
+            "source_fingerprint": _sha256(path),
+        }
+        for path in latest_leap_balance_exports(export_root)
+    ]
+    return pd.DataFrame(
+        records,
+        columns=["economy", "file", "source_fingerprint"],
+    ).sort_values(["economy", "file"], kind="stable").reset_index(drop=True)
+
+
+def load_or_refresh_observed_leap_pair_evidence(
+    export_root: Path = LEAP_BALANCE_EXPORT_ROOT,
+    evidence_path: Path = OBSERVED_LEAP_PAIR_EVIDENCE_PATH,
+    inventory_path: Path = OBSERVED_LEAP_EXPORT_INVENTORY_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+    """Reuse observed-pair evidence until the selected export set changes."""
+    current_inventory = _current_observed_export_inventory(export_root)
+    cached_available = evidence_path.exists() and inventory_path.exists()
+    if cached_available:
+        cached_inventory = pd.read_csv(inventory_path, low_memory=False)
+        comparison_columns = ["economy", "file", "source_fingerprint"]
+        cached_keys = (
+            cached_inventory[comparison_columns]
+            .astype(str)
+            .sort_values(["economy", "file"], kind="stable")
+            .reset_index(drop=True)
+        )
+        if current_inventory.astype(str).equals(cached_keys):
+            return (
+                pd.read_csv(evidence_path, low_memory=False),
+                cached_inventory,
+                False,
+            )
+
+    observed, inventory = build_observed_leap_pair_evidence(export_root)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    inventory_path.parent.mkdir(parents=True, exist_ok=True)
+    observed.to_csv(evidence_path, index=False)
+    inventory.to_csv(inventory_path, index=False)
+    return observed, inventory, True
 
 
 def _assert_inputs() -> None:
@@ -208,6 +277,13 @@ def _load_pair_universes(
         manifest_path=LEAP_REGISTRY_MANIFEST_PATH,
         diagnostics_path=LEAP_REGISTRY_DIAGNOSTICS_PATH,
         force_refresh=force_leap_registry_refresh,
+    )
+    observed_leap, observed_inventory, observed_refreshed = (
+        load_or_refresh_observed_leap_pair_evidence()
+    )
+    leap_registry, observed_pairs_added = add_observed_balance_pairs(
+        leap_registry,
+        observed_leap,
     )
     universes["LEAP"] = leap_registry
     rollup_specs = {
@@ -274,6 +350,12 @@ def _load_pair_universes(
         )
 
     leap_manifest = dict(leap_manifest)
+    leap_manifest["observed_balance_export_file_count"] = len(observed_inventory)
+    leap_manifest["observed_balance_pair_count"] = int(
+        observed_leap["pair_status"].astype(str).eq("observed_data_valid").sum()
+    )
+    leap_manifest["observed_pairs_added_to_registry"] = len(observed_pairs_added)
+    leap_manifest["observed_evidence_refreshed_this_run"] = observed_refreshed
     leap_manifest["rollup_pair_counts"] = rollup_counts
     leap_manifest["reviewed_extra_pair_counts"] = {
         dataset: len(frame)

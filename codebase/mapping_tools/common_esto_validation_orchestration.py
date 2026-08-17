@@ -42,11 +42,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _read_comparison_data(
     comparison_data_path: Path,
     columns: list[str] | None = None,
+    filters: list[list[tuple[str, str, object]]] | None = None,
 ) -> pd.DataFrame:
     """Read the canonical Parquet values artifact or a legacy CSV fixture."""
     path = Path(comparison_data_path)
     if path.suffix.casefold() == ".parquet":
-        return pd.read_parquet(path, columns=columns)
+        return pd.read_parquet(path, columns=columns, filters=filters)
     return pd.read_csv(path, dtype=object, usecols=columns)
 
 VALIDATION_SUMMARY_COLUMNS = [
@@ -605,9 +606,25 @@ def validate_non_expanding_rollups(
     contributor_flows = {flow for entry in contributors.values() for flow in entry["contributors"]}
     keep_labels = tracked_labels | contributor_flows
 
-    data = _read_comparison_data(comparison_data_path)
     required = {"comparison_scope", "source_system", "economy", "scenario", "year",
                 "common_flow_label", "common_product_label", "value"}
+    parquet_filters = [
+        [
+            ("year", ">", int(leap_var_base_year)),
+            ("value", ">", float(tolerance)),
+            ("common_flow_label", "in", sorted(keep_labels)),
+        ],
+        [
+            ("year", ">", int(leap_var_base_year)),
+            ("value", "<", -float(tolerance)),
+            ("common_flow_label", "in", sorted(keep_labels)),
+        ],
+    ]
+    data = _read_comparison_data(
+        comparison_data_path,
+        columns=sorted(required),
+        filters=parquet_filters,
+    )
     if not required.issubset(data.columns):
         return (
             pd.DataFrame(columns=ROLLUP_VALIDATION_COLUMNS),
@@ -617,6 +634,11 @@ def validate_non_expanding_rollups(
     data["year"] = pd.to_numeric(data["year"], errors="coerce")
     data = data[data["year"] > int(leap_var_base_year)].copy()
     data = data[data["common_flow_label"].astype(str).isin(keep_labels)]
+    # The Common output carries a large structural zero grid. Rollup
+    # reconciliation is numerical evidence, so only materially reported rows
+    # belong in this validator. This keeps the routine bounded by active data
+    # rather than by every possible product/year/scope combination.
+    data = data[data["value"].abs().gt(tolerance)]
     if data.empty:
         return (
             pd.DataFrame(columns=ROLLUP_VALIDATION_COLUMNS),
@@ -626,7 +648,11 @@ def validate_non_expanding_rollups(
     group_cols = ["comparison_scope", "source_system", "economy", "scenario",
                   "common_product_label", "year"]
     grouped = (
-        data.groupby(group_cols + ["common_flow_label"], dropna=False)["value"]
+        data.groupby(
+            group_cols + ["common_flow_label"],
+            dropna=False,
+            observed=True,
+        )["value"]
         .sum()
         .reset_index()
     )
@@ -638,9 +664,8 @@ def validate_non_expanding_rollups(
     rows: list[dict[str, object]] = []
     for key, flow_values in values_by_group.items():
         scope, source_system, economy, scenario, product, year = key
-        for rolled_label, entry in contributors.items():
-            if rolled_label not in flow_values:
-                continue
+        for rolled_label in tracked_labels.intersection(flow_values):
+            entry = contributors[rolled_label]
             declared = entry["contributors"]
             present = [flow for flow in declared if flow in flow_values]
             missing = [flow for flow in declared if flow not in flow_values]
@@ -670,7 +695,11 @@ def validate_non_expanding_rollups(
     detail = pd.DataFrame(rows, columns=ROLLUP_VALIDATION_COLUMNS)
     if detail.empty:
         return detail, pd.DataFrame(columns=ROLLUP_VALIDATION_SUMMARY_COLUMNS)
-    summary = detail.groupby(["rollup_label", "rollup_mode", "rollup_id", "source_system"], dropna=False).agg(
+    summary = detail.groupby(
+        ["rollup_label", "rollup_mode", "rollup_id", "source_system"],
+        dropna=False,
+        observed=True,
+    ).agg(
         checks=("status", "size"),
         passed=("status", lambda s: int((s == "passed").sum())),
         failed=("status", lambda s: int((s == "failed").sum())),

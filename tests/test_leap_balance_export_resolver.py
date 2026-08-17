@@ -92,6 +92,29 @@ def test_economy_prefix_is_discovered_and_newest_duplicate_wins(tmp_path: Path) 
     assert selected == [new_ref, target]
 
 
+def test_date_economy_scenario_is_discovered_without_generated_reviews(tmp_path: Path) -> None:
+    aus_dir = tmp_path / "01_AUS"
+    aus_dir.mkdir()
+    reference = aus_dir / "1708 AUS REF.xlsx"
+    target = aus_dir / "1708 AUS TGT.xlsx"
+    generated_review = aus_dir / "balance_review_01_AUS_tgt_2022.xlsx"
+    for path in [reference, target, generated_review]:
+        path.touch()
+
+    discovery = discover_balance_export_workbooks(
+        economies=["01_AUS"],
+        exports_root=tmp_path,
+    )
+
+    assert discovery[("01_AUS", "REF")] == [reference]
+    assert discovery[("01_AUS", "TGT")] == [target]
+    assert scenario_code_from_balance_export_filename(target) == "TGT"
+    assert select_latest_balance_export_workbooks(
+        aus_dir,
+        economy="01_AUS",
+    ) == [reference, target]
+
+
 def test_short_ddmm_export_can_be_newer_than_full_ddmmyyyy_name(tmp_path: Path) -> None:
     rus_dir = tmp_path / "16_RUS"
     rus_dir.mkdir()

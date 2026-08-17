@@ -30,7 +30,7 @@ FUEL_ROLE_LABELS = {
     "Output Fuels",
 }
 LEGACY_BRANCH_SUFFIX = "_do not use"
-LEAP_PAIR_REGISTRY_VERSION = 5
+LEAP_PAIR_REGISTRY_VERSION = 6
 FIXED_BALANCE_FLOWS = {
     "Production",
     "Imports",
@@ -816,6 +816,102 @@ def build_leap_pair_registry(
         "excluded_leaf_count": len(diagnostics),
     }
     return registry, diagnostics, summary
+
+
+def add_observed_balance_pairs(
+    registry: pd.DataFrame,
+    observed_evidence: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Add non-zero pairs observed in current balance exports to the registry.
+
+    Templates remain structural authority for models that have not yet been
+    exported. Actual balance exports extend that authority without requiring a
+    template update whenever one economy replaces a placeholder branch. Only
+    pairs with non-zero evidence are promoted; zero-only grid cells remain QA
+    evidence and cannot create speculative mapping relationships.
+    """
+    if observed_evidence is None or observed_evidence.empty:
+        return registry.copy(), pd.DataFrame(columns=PAIR_COLUMNS)
+
+    required = {"flow", "product", "pair_status"}
+    missing = sorted(required - set(observed_evidence.columns))
+    if missing:
+        raise ValueError(f"Observed LEAP pair evidence is missing columns: {missing}")
+
+    active = observed_evidence[
+        observed_evidence["pair_status"].astype(str).eq("observed_data_valid")
+    ].copy()
+    active["flow"] = active["flow"].map(_clean)
+    active["product"] = active["product"].map(_clean)
+    active = active[active["flow"].ne("") & active["product"].ne("")]
+    active = active.drop_duplicates(["flow", "product"])
+    if active.empty:
+        return registry.copy(), pd.DataFrame(columns=PAIR_COLUMNS)
+
+    existing_keys = set(
+        registry[["flow", "product"]].astype(str).itertuples(index=False, name=None)
+    )
+    active = active[
+        ~active[["flow", "product"]]
+        .apply(tuple, axis=1)
+        .isin(existing_keys)
+    ].copy()
+    if active.empty:
+        return registry.copy(), pd.DataFrame(columns=PAIR_COLUMNS)
+
+    added = pd.DataFrame(
+        {
+            "dataset": "LEAP",
+            "flow": active["flow"],
+            "product": active["product"],
+            "flow_is_parent": False,
+            "product_is_parent": False,
+            "pair_is_subtotal": False,
+            "pair_exists_in_dataset": True,
+            "pair_universe_member": True,
+            "pair_status": "observed_data_valid",
+            "temporal_evidence_status": "observed_data_valid",
+            "pair_universe_authority": "observed_nonzero_balance_export",
+            "authority_layer": "observed_balance_export",
+            "source_kind": "observed_balance_export",
+            "template_support_count": 0,
+            "template_files": "",
+            "new_rows_sheet_count": 0,
+            "new_rows_sheets": "",
+            "source_path_count": active.get(
+                "economy_support_count", pd.Series(0, index=active.index)
+            ).fillna(0).astype(int),
+            "source_paths": "",
+        }
+    )[PAIR_COLUMNS]
+
+    combined = pd.concat([registry[PAIR_COLUMNS], added], ignore_index=True)
+    combined = combined.drop_duplicates(["flow", "product"], keep="first")
+    flows = set(combined["flow"].astype(str))
+    products = set(combined["product"].astype(str))
+    flow_parents = {
+        flow
+        for flow in flows
+        if any(other.startswith(flow + "/") for other in flows if other != flow)
+    }
+    product_parents = {
+        product
+        for product in products
+        if any(
+            other.startswith(product + "/")
+            for other in products
+            if other != product
+        )
+    }
+    combined["flow_is_parent"] = combined["flow"].isin(flow_parents)
+    combined["product_is_parent"] = combined["product"].isin(product_parents)
+    combined["pair_is_subtotal"] = (
+        combined["flow_is_parent"] | combined["product_is_parent"]
+    )
+    combined = combined[PAIR_COLUMNS].sort_values(
+        ["flow", "product"], kind="stable"
+    ).reset_index(drop=True)
+    return combined, added.reset_index(drop=True)
 
 
 # --- Cached refresh ---------------------------------------------------------

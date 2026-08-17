@@ -524,6 +524,70 @@ def test_axis_compiler_provisionally_accepts_cartesian_pairs() -> None:
     )
 
 
+def test_axis_compiler_reuses_both_product_axis_in_extended_flow_scope() -> None:
+    current = pd.DataFrame(columns=RELATIONSHIP_KEY_COLUMNS)
+    flow = pd.DataFrame(
+        [
+            {
+                "mapping_name": "leap_to_esto",
+                "comparison_scope": "ESTO_EXTENDED",
+                "source_system": "LEAP",
+                "source_flow": "Freight road",
+                "target_system": "ESTO",
+                "target_flow": "15.02.01 Freight road",
+            }
+        ]
+    )
+    product = pd.DataFrame(
+        [
+            {
+                "mapping_name": "leap_to_esto",
+                "comparison_scope": "BOTH",
+                "source_system": "LEAP",
+                "source_product": "Electricity",
+                "target_system": "ESTO",
+                "target_product": "17 Electricity",
+            }
+        ]
+    )
+    source_universe = pd.DataFrame(
+        [
+            {
+                "dataset": "LEAP",
+                "flow": "Freight road",
+                "product": "Electricity",
+                "pair_exists_in_dataset": True,
+                "pair_universe_authority": "observed_nonzero_balance_export",
+            }
+        ]
+    )
+    extended_registry = pd.DataFrame(
+        [
+            {
+                "flow": "15.02.01 Freight road",
+                "product": "17 Electricity",
+                "pair_status": "data_valid",
+            }
+        ]
+    )
+
+    compiled = compile_axis_relationships(
+        current,
+        flow,
+        product,
+        build_registry_scope_lookups(
+            pd.DataFrame(),
+            pd.DataFrame(),
+            extended_registry,
+        ),
+        source_pair_universes={"LEAP": source_universe},
+    )
+
+    assert len(compiled) == 1
+    assert compiled.iloc[0]["comparison_scope"] == "ESTO_EXTENDED"
+    assert bool(compiled.iloc[0]["registry_allowed"])
+
+
 def test_editable_axis_rows_are_the_compiler_authority() -> None:
     sheets = {
         "leap_sector_to_esto": pd.DataFrame(
