@@ -22,7 +22,9 @@ if str(REPO_ROOT) not in sys.path:
 from codebase.mapping_tools.build_esto_extended_test import build_esto_extended
 
 
-VINTAGE_PATTERN = re.compile(r"^00APEC_(?P<vintage>\d{4})_low_with_subtotals\.csv$")
+VINTAGE_PATTERN = re.compile(
+    r"^00APEC_(?P<vintage>\d{4})_low_with_subtotals(?P<preliminary>_PRELIMINARY)?\.csv$"
+)
 DATA_DIR = REPO_ROOT / "data"
 LEAP_INITIALISATION_ROOT = Path(r"C:\Users\Work\github\leap_initialisation")
 TEMPLATE_DIR = LEAP_INITIALISATION_ROOT / "data" / "leap_export_templates"
@@ -30,19 +32,29 @@ MAPPING_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 AUDIT_ROOT = REPO_ROOT / "results" / "esto_extended_vintages"
 
 
-def available_esto_vintages(data_dir: Path = DATA_DIR) -> list[tuple[int, Path]]:
-    """Return available raw ESTO issues in ascending issue order."""
-    found: list[tuple[int, Path]] = []
-    for path in sorted(data_dir.glob("00APEC_*_low_with_subtotals.csv")):
+def available_esto_vintages(data_dir: Path = DATA_DIR) -> list[tuple[int, Path, bool]]:
+    """Return available raw ESTO issues in ascending issue order.
+
+    Each entry is ``(vintage, base_path, is_preliminary)``. A ``_PRELIMINARY``
+    suffix (e.g. ``00APEC_2026_low_with_subtotals_PRELIMINARY.csv``) marks an
+    issue still missing economies or carrying backfilled/proxy figures — the
+    Extended table built from it stays tagged the same way so it is never
+    mistaken for a complete, reviewed vintage downstream.
+    """
+    found: list[tuple[int, Path, bool]] = []
+    for path in sorted(data_dir.glob("00APEC_*_low_with_subtotals*.csv")):
         match = VINTAGE_PATTERN.match(path.name)
         if match:
-            found.append((int(match.group("vintage")), path))
+            found.append((int(match.group("vintage")), path, bool(match.group("preliminary"))))
     return found
 
 
-def extended_path_for_vintage(vintage: int, data_dir: Path = DATA_DIR) -> Path:
+def extended_path_for_vintage(
+    vintage: int, data_dir: Path = DATA_DIR, is_preliminary: bool = False
+) -> Path:
     """Return the stable filename used by the dashboard release."""
-    return data_dir / f"esto_extended_{vintage}_low_with_subtotals.csv"
+    suffix = "_PRELIMINARY" if is_preliminary else ""
+    return data_dir / f"esto_extended_{vintage}_low_with_subtotals{suffix}.csv"
 
 
 def _add_reviewed_green_electricity_rows(
@@ -84,9 +96,9 @@ def build_all_esto_extended_vintages(
 ) -> pd.DataFrame:
     """Build and register all raw ESTO vintages currently present."""
     rows: list[dict[str, object]] = []
-    for vintage, base_path in available_esto_vintages(data_dir):
-        output_path = extended_path_for_vintage(vintage, data_dir)
-        audit_dir = audit_root / str(vintage)
+    for vintage, base_path, is_preliminary in available_esto_vintages(data_dir):
+        output_path = extended_path_for_vintage(vintage, data_dir, is_preliminary=is_preliminary)
+        audit_dir = audit_root / (f"{vintage}_PRELIMINARY" if is_preliminary else str(vintage))
         build_esto_extended(
             base_esto_path=base_path,
             template_dir=TEMPLATE_DIR,
@@ -102,6 +114,7 @@ def build_all_esto_extended_vintages(
         rows.append(
             {
                 "vintage": vintage,
+                "is_preliminary": is_preliminary,
                 "base_year": max(years),
                 "base_path": str(base_path.relative_to(REPO_ROOT)),
                 "extended_path": str(output_path.relative_to(REPO_ROOT)),
@@ -109,7 +122,18 @@ def build_all_esto_extended_vintages(
                 "reviewed_structural_rows_added": reviewed_rows,
             }
         )
-    registry = pd.DataFrame(rows, columns=["vintage", "base_year", "base_path", "extended_path", "extended_builder"])
+    registry = pd.DataFrame(
+        rows,
+        columns=[
+            "vintage",
+            "is_preliminary",
+            "base_year",
+            "base_path",
+            "extended_path",
+            "extended_builder",
+            "reviewed_structural_rows_added",
+        ],
+    )
     registry.to_csv(data_dir / "esto_extended_vintage_registry.csv", index=False)
     return registry
 
