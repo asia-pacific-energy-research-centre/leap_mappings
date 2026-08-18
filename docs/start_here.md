@@ -14,22 +14,35 @@ maintained Level 1 connected-system overview
 
 ## The system in 60 seconds
 
-Three repositories share one workflow:
+Four repositories and LEAP share one workflow. Solid arrows show the normal
+order of operations; dotted arrows show reviewed data, runtime, or deployment
+dependencies rather than another processing stage:
 
 ```mermaid
 flowchart LR
-    SOURCE["ESTO, 9th Outlook, and LEAP source data"]
-    MAP["leap_mappings\nmapping meaning and Common ESTO"]
-    INIT["leap_initialisation\nLEAP preparation and reconciliation"]
-    LEAP["Human LEAP import, recalculate, and export"]
-    DASH["leap_dashboard\npresentation and publication"]
+    SOURCE["ESTO, 9th Outlook,<br/>and LEAP source data"]
+    MAP["leap_mappings<br/>Mapping semantics, Common ESTO,<br/>and comparison QA"]
+    INIT["leap_initialisation<br/>LEAP preparation, reconciliation,<br/>and import workbooks"]
+    LEAP["Human LEAP<br/>Import, recalculate, and export"]
+    DASH["leap_dashboard<br/>Common ESTO presentation<br/>and publication"]
+    REVIEW["leap_review_tools<br/>Review workflow, workbook, and<br/>runtime-snapshot assembly"]
+    WEB["LEAP review web app<br/>User-facing deployed interface"]
 
     SOURCE --> MAP
     SOURCE --> INIT
     MAP -. "reviewed mapping semantics" .-> INIT
     INIT --> LEAP
-    LEAP -. "LEAP results" .-> MAP
+    LEAP -. "balance exports" .-> MAP
     MAP --> DASH
+
+    INIT -. "diagnostics and workbook builder" .-> REVIEW
+    MAP -. "mapping chain" .-> REVIEW
+    DASH -. "dashboard renderer" .-> REVIEW
+    LEAP -. "balance export supplied for review" .-> REVIEW
+    REVIEW --> WEB
+    INIT -. "runtime dependency" .-> WEB
+    MAP -. "runtime dependency" .-> WEB
+    DASH -. "runtime dependency" .-> WEB
 ```
 
 - `leap_mappings` owns relationships, rollups, comparison scopes, and Common
@@ -39,6 +52,9 @@ flowchart LR
 - `leap_dashboard` owns page routing, display signs, charts, diagnostics
   presentation, and publication checks. It also provides a visual way to inspect
   mapping diagnostics and compare data across datasets.
+- `leap_review_tools` owns the review interface and deployment/runtime assembly;
+  it consumes the three source repositories rather than duplicating their
+  analysis. The LEAP review web app is its user-facing deployment.
 
 If a problem crosses repositories, establish the mapping or source-data truth
 first. Do not repair mapping semantics in dashboard configuration or repair
