@@ -40,6 +40,9 @@ SOURCE_PATHS = {
     "ESTO": prefer_compressed_csv_path(
         RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz"
     ),
+    "ESTO_EXTENDED": prefer_compressed_csv_path(
+        RELATIONSHIP_DIR / "esto_results_exact_rows.csv.gz"
+    ),
 }
 COMMON_ROWS_PATH = COMMON_ESTO_DIR / "common_esto_rows.csv"
 OUTPUT_DIR = COMMON_ESTO_DIR
@@ -77,6 +80,7 @@ if __name__ == "__main__":
                 relevance_reference_paths=get_component_relevance_reference_paths(
                     REPO_ROOT
                 ),
+                source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
             )
         else:
             print("Set RUN_REGEN_COMMON_ESTO_FAST_PATH = True after checking cached inputs.")

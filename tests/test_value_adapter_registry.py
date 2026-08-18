@@ -19,6 +19,7 @@ def test_bundled_value_adapters_preserve_order_and_paths(tmp_path: Path) -> None
         "SYNTH_BALANCE",
     ]
     assert list(paths) == ["ESTO", "ESTO_EXTENDED", "LEAP", "NINTH"]
+    assert paths["ESTO_EXTENDED"] == paths["ESTO"]
     assert paths["LEAP"] == (
         tmp_path
         / "results"

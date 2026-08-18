@@ -708,10 +708,6 @@ def run_stage_3(
     stage3_source_paths: dict[str, Path] | None = None,
 ) -> None:
     import time
-    from codebase.mapping_tools.esto_extended_delta import (
-        prepare_esto_extended_stage3_path,
-    )
-    from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
     from codebase.mapping_tools.value_adapter_registry import (
         get_component_relevance_reference_paths,
         get_registered_stage3_source_paths,
@@ -722,26 +718,6 @@ def run_stage_3(
     print("STAGE 3  Apply common ESTO structure to source data")
     print("=" * 60)
 
-    esto_extended_stage3_path, esto_extended_temp_dir, esto_extended_storage = (
-        prepare_esto_extended_stage3_path(
-            esto_base_path=ESTO_ROWS_PATH,
-            full_extended_path=ESTO_EXTENDED_ROWS_PATH,
-            delta_path=ESTO_EXTENDED_DELTA_PATH,
-            manifest_path=ESTO_EXTENDED_DELTA_MANIFEST_PATH,
-            use_delta=use_esto_extended_delta,
-        )
-    )
-    # Keep the TemporaryDirectory referenced until every Stage 3 reader has
-    # finished. It cleans itself on normal return or exception unwinding.
-    _ = esto_extended_temp_dir
-    if esto_extended_storage["mode"] == "full_fallback":
-        print(
-            "  WARNING: ESTO Extended delta validation failed; using the full "
-            f"artifact instead. {esto_extended_storage['fallback_reason']}"
-        )
-    elif esto_extended_storage["mode"] == "delta":
-        print("  ESTO Extended input: verified base-plus-delta reconstruction.")
-
     source_paths = (
         get_registered_stage3_source_paths(REPO_ROOT)
         if stage3_source_paths is None
@@ -750,7 +726,14 @@ def run_stage_3(
             for source_system, source_path in stage3_source_paths.items()
         }
     )
-    source_paths["ESTO_EXTENDED"] = esto_extended_stage3_path
+    # ESTO Extended changes only the structural category basis. Historical
+    # values always come from the ordinary ESTO exact-row artifact.
+    source_paths["ESTO_EXTENDED"] = source_paths["ESTO"]
+    esto_extended_storage = {
+        "mode": "ordinary_esto_history",
+        "base_path": str(source_paths["ESTO"].resolve()),
+        "deprecated_delta_requested": bool(use_esto_extended_delta),
+    }
     relevance_reference_paths = get_component_relevance_reference_paths(REPO_ROOT)
     stage3_input_paths = [*source_paths.values(), COMMON_ROWS_PATH]
     missing = [path for path in stage3_input_paths if not path.exists()]
@@ -850,6 +833,7 @@ def run_stage_3(
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
         relevance_reference_paths=relevance_reference_paths,
+        source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
     )
     run_manifest["timings_seconds"]["apply_common_esto_structure"] = round(
         time.perf_counter() - apply_t0, 3

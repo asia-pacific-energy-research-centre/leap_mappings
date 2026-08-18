@@ -153,12 +153,18 @@ def get_registered_stage3_source_paths(
         dataset_registry_path,
     )
     sources = registry[registry["enabled"] & registry["stage3_source"]]
-    return {
+    paths = {
         row.dataset_id: prefer_compressed_csv_path(
             Path(repo_root) / row.output_relative_path
         )
         for row in sources.itertuples(index=False)
     }
+    # ESTO Extended is a structural comparison basis, not an independently
+    # estimated historical series. Stage 3 maps the ordinary ESTO exact rows
+    # through both the ordinary and Extended structures.
+    if "ESTO" in paths and "ESTO_EXTENDED" in paths:
+        paths["ESTO_EXTENDED"] = paths["ESTO"]
+    return paths
 
 
 def get_component_relevance_policies(

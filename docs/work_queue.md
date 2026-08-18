@@ -573,6 +573,7 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 | MAPQ-043 | P0 | `complete_on_master` | `leap_mappings` + `leap_dashboard` | user's separate-axis checkpoint | completed 2026-08-13 | 2026-08-05 |
 | MAPQ-045 | P1 | `needs_revalidation` | all three repositories | MAPQ-015, MAPQ-027 | W2 | 2026-07-29 |
 | MAPQ-046 | P1 | `needs_revalidation` | `leap_mappings` | MAPQ-027, MAPQ-045 | W2-W3 | 2026-07-29 |
+| MAPQ-051 | P1 | `complete_on_master` | `leap_mappings` + `leap_dashboard` | — | completed 2026-08-18 | 2026-08-18 |
 
 ---
 
@@ -812,6 +813,23 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Evidence (2026-08-03):** The current canonical workbook contains `ninth_fuel = 02_coal_products` for both approved Gas works rows. The full 2026-08-03 pipeline rerun consumed that state. The related Heat plant interim + Bitumen row also contains `07_x_other_petroleum_products`.
 - **Next action:** None. Retain the variant comparison as historical review evidence; do not import its inactive rows.
 - **Completion criteria:** Met for the approved rows; the current full-run evidence is the required validation record.
+
+### MAPQ-051 — Reuse ordinary ESTO history in Extended comparison scopes
+
+- **Priority / status / week:** P1 · `complete_on_master` · 2026-08-18
+- **Scope:** Stage 3 and fast-path comparison builders use the ordinary ESTO
+  exact-row artifact for both `ESTO` and `ESTO_EXTENDED`, relabelling only the
+  latter read. The separate Extended exact-row artifact remains available for
+  mapping-development QA but is no longer an authoritative historical input.
+- **Acceptance:** ordinary and Extended source inputs are the same path at the
+  Stage 3 boundary; generated comparison values reconcile wherever the
+  structural mapping produces the same common category.
+- **Verification:** 25 focused Stage 3/value-adapter tests pass. The real AUS
+  1808 comparison contains 49,877 overlapping ordinary/Extended historical
+  rows with maximum absolute value difference 0.0 PJ. The portable 12_NZ chain
+  exercised both identities from the same 5,472,621-row ESTO input; its only
+  failure was a pre-existing converted-row fixture count drift (45,417 actual
+  versus 45,409 expected), before the comparison assertion.
 
 ### MAPQ-028 — Rewrite the workbook Guide and adopt directional mapping-sheet names
 

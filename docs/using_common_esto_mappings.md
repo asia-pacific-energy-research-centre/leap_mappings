@@ -86,6 +86,11 @@ consumer contract.
 The structure is the lowest common denominator **for the datasets participating
 in that scope**, so a mapping is only valid for its own scope:
 
+For the Extended scopes, use the same ordinary ESTO historical rows and relabel
+their source identity to `ESTO_EXTENDED` before applying the mapping. Extended
+changes the available common categories; it does not supply a second set of
+historical ESTO values or license allocation into the added children.
+
 - `esto_leap_ninth` — built to accommodate ESTO, LEAP and the 9th.
 - `esto_leap` — built to accommodate ESTO and LEAP only. The 9th is not a
   participant, and does **not** map cleanly here: 151 of its source pairs fan

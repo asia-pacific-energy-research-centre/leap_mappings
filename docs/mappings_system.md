@@ -1395,18 +1395,18 @@ This stage is separate from Stage 2 because Stage 2 defines which comparison row
 
 ### ESTO and ESTO Extended source identity
 
-`ESTO` and `ESTO_EXTENDED` are separate source axes. The Extended input can
-contain both ordinary rows and generated rollup rows, but all rows produced
-while building its exact-row artifact must carry `source_system = ESTO_EXTENDED`.
-This is essential: Stage 3 reads ordinary ESTO and Extended ESTO inputs together,
-then admits each source only to the comparison scopes configured for that source.
-If an Extended-derived rollup is labelled `ESTO`, it is added to the ordinary
-ESTO scope as a second copy of the same rollup value.
+`ESTO_EXTENDED` is a structural comparison axis, not a separately estimated
+historical dataset. Stage 3 reads the ordinary ESTO exact-row artifact twice:
+once as `ESTO` for ordinary scopes and once relabelled `ESTO_EXTENDED` for
+Extended scopes. The values and vintage are therefore identical before the two
+sources are merged and aggregated through their scope-specific mappings.
 
-The exact-row builder therefore passes its requested source-system identity into
-`build_esto_non_expanding_subtotal_rows()`. When reviewing a regenerated
-`esto_extended_results_exact_rows.csv`, verify that derived rows with a
-non-empty `non_expanding_rollup_id` are labelled `ESTO_EXTENDED`.
+The separately prepared `esto_extended_results_exact_rows.csv` remains a useful
+mapping-development and structural-validation artifact, and its rows must still
+carry `source_system = ESTO_EXTENDED`. It is not an authoritative Stage 3 value
+input. This separation prevents a structural extension or generated rollup from
+silently changing published ESTO history.
+
 ### Stage 4 - Dashboard / comparison tools
 
 The dashboard and comparison tools consume the final common comparison dataset. They should not consume raw LEAP rows, raw 9th rows, or direct `relationship_id -> graph_id` links.

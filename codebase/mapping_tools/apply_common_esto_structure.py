@@ -2167,12 +2167,14 @@ def run_apply_common_esto_structure(
     relevance_policies: list[dict[str, object]] | None = None,
     comparison_scope_systems: dict[str, set[str]] | None = None,
     relevance_reference_paths: dict[str, list[Path]] | None = None,
+    source_system_overrides: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
     source_df = read_source_tables(
         source_paths,
         default_economy=default_economy,
         compact_dtypes=chunk_by_source_economy,
+        source_system_overrides=source_system_overrides,
     )
     common_rows_df = pd.read_csv(common_rows_path, dtype=str).fillna("")
     for column in ["component_esto_flow", "component_esto_product"]:
