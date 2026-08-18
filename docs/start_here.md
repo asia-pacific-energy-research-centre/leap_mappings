@@ -14,9 +14,29 @@ maintained Level 1 connected-system overview
 
 ## The system in 60 seconds
 
-Four repositories and LEAP share one workflow. Solid arrows show the normal
-order of operations; dotted arrows show reviewed data, runtime, or deployment
-dependencies rather than another processing stage:
+The compact core workflow is useful for a quick orientation:
+
+```mermaid
+flowchart LR
+    SOURCE["ESTO, 9th Outlook, and LEAP source data"]
+    MAP["leap_mappings\nmapping meaning and Common ESTO"]
+    INIT["leap_initialisation\nLEAP preparation and reconciliation"]
+    LEAP["Human LEAP import, recalculate, and export"]
+    DASH["leap_dashboard\npresentation and publication"]
+
+    SOURCE --> MAP
+    SOURCE --> INIT
+    MAP -. "reviewed mapping semantics" .-> INIT
+    INIT --> LEAP
+    LEAP -. "LEAP results" .-> MAP
+    MAP --> DASH
+```
+
+### Full dependency view
+
+Four repositories and LEAP share the wider workflow. Solid arrows show the
+normal order of operations; dotted arrows show reviewed data, runtime, or
+deployment dependencies rather than another processing stage:
 
 ```mermaid
 flowchart LR
