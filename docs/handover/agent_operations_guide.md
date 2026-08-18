@@ -157,6 +157,13 @@ actual workflow and keep its command line visible in run notes. Do not kill a
 long Stage 3 merely because it is quiet. Inspect `results/logs/mapping_pipeline.log`
 and process CPU/command line without modifying outputs.
 
+New pipeline runs also sample the mapping process RSS every five seconds and
+write `results/logs/mapping_pipeline_resource_usage.json`. The file contains
+the timestamped samples, the stage active at each sample, and average, minimum,
+and peak RSS in bytes. This monitoring is observational only; it does not
+change stage scheduling or interrupt a run. It is available when `psutil` is
+installed; otherwise the file records `psutil_unavailable`.
+
 ### 4.4 Workbook and output behavior
 
 - Optional hierarchy and missing-row workflows are review-only and are not

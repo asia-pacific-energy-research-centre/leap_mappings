@@ -122,17 +122,18 @@ Full published columns are in
 ## Outputs to inspect in order
 
 1. `results/logs/mapping_pipeline.log`;
-2. Stage 1 QA and relationship catalogue;
-3. Stage 2 structure summary, partial coverage, intersections, and
+2. `results/logs/mapping_pipeline_resource_usage.json` for average/peak RSS;
+3. Stage 1 QA and relationship catalogue;
+4. Stage 2 structure summary, partial coverage, intersections, and
    non-expanding frontier QA;
-4. `results/common_esto/common_esto_output_status.csv`;
-5. `results/common_esto/stage3_run_manifest.json`;
-6. for a QA-successful publication,
+5. `results/common_esto/common_esto_output_status.csv`;
+6. `results/common_esto/stage3_run_manifest.json`;
+7. for a QA-successful publication,
    `common_esto_output_contract.json` and its declared/hash-verified fact and
    metadata members;
-7. recursive and source-anchor summaries;
-8. material missing-map/candidate diagnostics;
-9. representative lineage.
+8. recursive and source-anchor summaries;
+9. material missing-map/candidate diagnostics;
+10. representative lineage.
 
 ## Overwrite and lock behavior
 

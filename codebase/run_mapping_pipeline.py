@@ -34,8 +34,10 @@ import gc
 import gzip
 import hashlib
 import json
+import os
 import sys
 import tempfile
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -141,6 +143,81 @@ if not LEAP_EXPORTS_ROOT.is_dir():
 # Output logging
 # ---------------------------------------------------------------------------
 _PIPELINE_LOG_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline.log"
+_RESOURCE_USAGE_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline_resource_usage.json"
+
+
+class _ResourceUsageMonitor:
+    """Sample this process's RSS without adding a hard runtime dependency."""
+
+    def __init__(self, output_path: Path, interval_seconds: float = 5.0):
+        self.output_path = output_path
+        self.interval_seconds = interval_seconds
+        self.stage = "startup"
+        self.samples: list[dict[str, object]] = []
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        try:
+            import psutil
+        except ImportError:
+            psutil = None
+        self._process = psutil.Process(os.getpid()) if psutil else None
+
+    def set_stage(self, stage: str) -> None:
+        self.stage = stage
+
+    def _sample(self) -> None:
+        if self._process is None:
+            return
+        memory = self._process.memory_info()
+        self.samples.append(
+            {
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "stage": self.stage,
+                "rss_bytes": int(memory.rss),
+            }
+        )
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            self._sample()
+
+    def __enter__(self):
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._process is not None:
+            self._sample()
+            self._thread = threading.Thread(
+                target=self._run,
+                name="mapping-pipeline-resource-monitor",
+                daemon=True,
+            )
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.interval_seconds + 1)
+        self._sample()
+        values = [int(item["rss_bytes"]) for item in self.samples]
+        summary: dict[str, object] = {
+            "status": "recorded" if self._process is not None else "psutil_unavailable",
+            "sampling_interval_seconds": self.interval_seconds,
+            "sample_count": len(values),
+            "average_rss_bytes": round(sum(values) / len(values)) if values else None,
+            "peak_rss_bytes": max(values) if values else None,
+            "minimum_rss_bytes": min(values) if values else None,
+            "samples": self.samples,
+        }
+        self.output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        if values:
+            print(
+                "[resource] RSS average: "
+                f"{summary['average_rss_bytes'] / 1024**3:.2f} GB; "
+                f"peak: {summary['peak_rss_bytes'] / 1024**3:.2f} GB; "
+                f"samples: {len(values)}"
+            )
+        else:
+            print("[resource] RSS sampling unavailable; install psutil to enable it.")
 
 
 def _sha256(path: Path) -> str:
@@ -1444,24 +1521,26 @@ def main() -> None:
             if args.leap_economies
             else None
         )
-        for stage in stages_to_run:
-            if stage == "leap_parse":
-                run_leap_parse(economies=leap_economies)
-            elif stage == "data_convert":
-                run_data_convert(
-                    write_esto_extended_delta=args.write_esto_extended_delta
-                )
-            elif stage == "3":
-                run_stage_3(
-                    skip_deep_validation=args.skip_deep_validation,
-                    use_esto_extended_delta=args.use_esto_extended_delta,
-                )
-            else:
-                _STAGE_RUNNERS[stage]()
+        with _ResourceUsageMonitor(_RESOURCE_USAGE_PATH) as resource_monitor:
+            for stage in stages_to_run:
+                resource_monitor.set_stage(stage)
+                if stage == "leap_parse":
+                    run_leap_parse(economies=leap_economies)
+                elif stage == "data_convert":
+                    run_data_convert(
+                        write_esto_extended_delta=args.write_esto_extended_delta
+                    )
+                elif stage == "3":
+                    run_stage_3(
+                        skip_deep_validation=args.skip_deep_validation,
+                        use_esto_extended_delta=args.use_esto_extended_delta,
+                    )
+                else:
+                    _STAGE_RUNNERS[stage]()
 
-        print("\n" + "=" * 60)
-        print("Pipeline complete.")
-        print("=" * 60)
+            print("\n" + "=" * 60)
+            print("Pipeline complete.")
+            print("=" * 60)
 
 
 if __name__ == "__main__":
