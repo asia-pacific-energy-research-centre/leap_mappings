@@ -39,6 +39,7 @@ normal order of operations; dotted arrows show reviewed data, runtime, or
 deployment dependencies rather than another processing stage:
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 65, "rankSpacing": 80, "diagramPadding": 16}} }%%
 flowchart LR
     SOURCE["ESTO, 9th Outlook,<br/>and LEAP source data"]
     MAP["leap_mappings<br/>Mapping semantics, Common ESTO,<br/>and comparison QA"]
