@@ -177,6 +177,50 @@ def prepare_esto_exact_rows(
     return cached
 
 
+def prepare_esto_extended_exact_rows(
+    *,
+    bundled_exact_rows: Path,
+    esto_extended_table: Path | None,
+    relationships_path: Path,
+    mapping_workbook_path: Path,
+    work_dir: Path,
+    notes: list[str],
+) -> Path:
+    """Extract Extended exact rows from the matching vintage when available.
+
+    Older releases do not carry a materialised Extended table, so retaining
+    the bundled fallback keeps those releases runnable while newer releases
+    can select a vintage-specific Extended source explicitly.
+    """
+    if esto_extended_table is None or not Path(esto_extended_table).is_file():
+        return bundled_exact_rows
+
+    esto_extended_table = Path(esto_extended_table)
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint = _fingerprint(
+        [esto_extended_table, relationships_path, mapping_workbook_path]
+    )
+    cached = work_dir / f"esto_extended_results_exact_rows_{fingerprint}.csv.gz"
+    if cached.is_file():
+        notes.append(f"Reused cached ESTO Extended exact rows ({cached.name}).")
+        return cached
+
+    from codebase.mapping_tools.esto_exact_rows import run_esto_exact_rows_for_path
+
+    run_esto_exact_rows_for_path(
+        esto_extended_table,
+        cached,
+        "ESTO_EXTENDED",
+        relationships_path=relationships_path,
+        mapping_workbook_path=mapping_workbook_path,
+    )
+    notes.append(
+        f"Extracted ESTO Extended exact rows from {esto_extended_table.name}."
+    )
+    return cached
+
+
 def _fingerprint(paths: list[Path | None]) -> str:
     """Return a short digest identifying a set of input files."""
     import hashlib
@@ -257,6 +301,20 @@ def run_mapping_chain(job: dict) -> dict:
         work_dir=work_dir,
         notes=notes,
     )
+    esto_extended_exact_rows_path = prepare_esto_extended_exact_rows(
+        bundled_exact_rows=Path(
+            artifacts.get("esto_extended_exact_rows_path", artifacts["esto_exact_rows_path"])
+        ),
+        esto_extended_table=(
+            Path(config["esto_extended_table_path"])
+            if config.get("esto_extended_table_path")
+            else None
+        ),
+        relationships_path=Path(artifacts["relationships_path"]),
+        mapping_workbook_path=Path(config["mapping_workbook_path"]),
+        work_dir=work_dir,
+        notes=notes,
+    )
 
     raw_leap_path = work_dir / "raw_leap_results.csv"
     converted_path = work_dir / "leap_results_converted_to_esto.csv"
@@ -288,11 +346,7 @@ def run_mapping_chain(job: dict) -> dict:
             "LEAP": converted_path,
             "NINTH": Path(artifacts["ninth_converted_path"]),
             "ESTO": esto_exact_rows_path,
-            # ESTO Extended inherits the selected vintage's base ESTO rows.
-            # Relabel the same exact-row artifact while reading it so the
-            # extended comparison scope contains historical values without
-            # materialising a second large intermediate file.
-            "ESTO_EXTENDED": esto_exact_rows_path,
+            "ESTO_EXTENDED": esto_extended_exact_rows_path,
         },
         common_rows_path=common_rows_path,
         output_dir=work_dir,

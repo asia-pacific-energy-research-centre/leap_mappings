@@ -198,7 +198,11 @@ def _with_provenance_columns(df: pd.DataFrame) -> pd.DataFrame:
 def read_leap_template_branch_inventory(template_dir: Path) -> pd.DataFrame:
     """Extract branch paths and ancestor paths from current LEAP templates."""
     rows: list[dict[str, Any]] = []
-    template_paths = sorted(template_dir.glob("leap_export_template *.xlsx"))
+    # Current clean-slate exports use economy-labelled filenames; older
+    # releases used the ``leap_export_template`` prefix.  Both are valid
+    # template inputs, while the archived subdirectory is intentionally not
+    # traversed.
+    template_paths = sorted(template_dir.glob("*.xlsx"))
     if not template_paths:
         raise FileNotFoundError(f"No LEAP export templates found in {template_dir}")
 
@@ -1536,6 +1540,7 @@ def build_esto_extended(
     template_dir: Path,
     mapping_workbook_path: Path,
     output_dir: Path,
+    production_dataset_path: Path | None = None,
 ) -> dict[str, Path]:
     """Build the test dataset and its audit files without changing inputs."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1603,7 +1608,7 @@ def build_esto_extended(
 
     output_paths = {
         "dataset": output_dir / "esto_extended_test.csv",
-        "data_dataset": REPO_ROOT / "data" / "esto_extended.csv",
+        "data_dataset": production_dataset_path or REPO_ROOT / "data" / "esto_extended.csv",
         "branch_inventory": output_dir / "leap_template_branch_inventory.csv",
         "unmapped_candidates": output_dir / "unmapped_leap_branch_candidates.csv",
         "generated_rows": output_dir / "esto_extended_generated_rows.csv",

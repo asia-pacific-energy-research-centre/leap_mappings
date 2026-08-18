@@ -115,7 +115,10 @@ def run_esto_exact_rows_for_path(
         print(f"  WARNING: {data_path.name} not found.")
         return
 
-    df = pd.read_csv(data_path, dtype=object)
+    if Path(data_path).suffix.casefold() == ".parquet":
+        df = pd.read_parquet(data_path)
+    else:
+        df = pd.read_csv(data_path, dtype=object)
     year_cols = [c for c in df.columns if str(c).isdigit()]
     for col in year_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
