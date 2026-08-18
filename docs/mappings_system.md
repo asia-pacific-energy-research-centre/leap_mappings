@@ -1841,6 +1841,7 @@ All demand aggregated/Industry           →   Total final consumption
 All demand aggregated/Road               →   Total final consumption
 All demand aggregated/Transport non road →   Total final consumption
 All demand aggregated/Other sector       →   Total final consumption
+All demand aggregated/Non Energy Use      →   Total final consumption
 ```
 
 The `All demand aggregated` parent is deliberately not a TFC contributor. It

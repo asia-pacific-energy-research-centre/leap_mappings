@@ -287,20 +287,21 @@ ESTO detached target:
   + 16.04 Fishing
   + 16.05 Non-specified others
   + 17 Non-energy use
-  = 16.03-16.05,17 Other sector including non-energy (all demand aggregate)
+  = retired combined Other-sector subtotal (post clean-slate cutover)
 
 NINTH detached source subtotal:
   16_02_agriculture_and_fishing
   + 16_05_nonspecified_others
   + 17_nonenergy_use
-  = 16_02-16_05,17 Other sector including non-energy (all demand aggregate)
+  = retired combined Other-sector subtotal (post clean-slate cutover)
 ```
 
 Flow `17 Non-energy use` is not structurally below `16 Other sector`, so an
-expanding hierarchy rollup would state a false parent/child relationship. A
-detached rollup gives LEAP's aggregate Other-sector row the matching source
-total without requiring a new Non-energy subsector to be created and pushed
-through every relevant LEAP template and economy.
+expanding hierarchy rollup would state a false parent/child relationship. The
+former detached subtotal was appropriate while LEAP's aggregate Other-sector
+row included non-energy use. It is disabled after the clean-slate cutover:
+the new LEAP branch maps directly to flow 17 and the aggregate Other-sector
+row maps only to 16.03–16.05.
 
 Rules for this pattern:
 
@@ -309,9 +310,10 @@ Rules for this pattern:
   label.
 - Declare every contributor once in the detached group and leave products
   blank when the subtotal should be calculated independently for every product.
-- Point the aggregate LEAP mapping to the synthetic target exactly once. Keep
-  the detailed `Non-energy use -> 17 Non-energy use` mapping for the detailed
-  view.
+- For historical aggregate-only exports, point the aggregate LEAP mapping to
+  the synthetic target exactly once. For current clean-slate exports, map
+  `All demand aggregated/Non Energy Use -> 17 Non-energy use` directly and
+  map the aggregate Other-sector branch only to 16.03–16.05.
 - A contributor may therefore appear in its ordinary detailed row and in the
   detached subtotal. This is intentional reuse across alternative comparison
   views, not an allocation relationship. Never add the detached subtotal and

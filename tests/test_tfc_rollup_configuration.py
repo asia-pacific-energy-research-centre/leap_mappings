@@ -12,6 +12,7 @@ EXPECTED_TFC_CONTRIBUTORS = {
     "All demand aggregated/Road",
     "All demand aggregated/Transport non road",
     "All demand aggregated/Other sector",
+    "All demand aggregated/Non Energy Use",
 }
 
 
@@ -65,11 +66,7 @@ def test_russia_missing_demand_pairs_are_registered() -> None:
 def test_russia_missing_demand_targets_are_registered_for_esto_scopes() -> None:
     expected_targets = {
         ("16.01-16.02 Buildings", "06.01 Crude oil"),
-        (
-            "16.03-16.05,17 Other sector including non-energy "
-            "(all demand aggregate)",
-            "16.12 Hydrogen",
-        ),
+        ("16.03-16.05 Other sector (all demand aggregate)", "16.12 Hydrogen"),
     }
 
     for sheet_name in ["extra_esto_key_pairs", "extra_esto_extended_pairs"]:
