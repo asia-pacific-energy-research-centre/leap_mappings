@@ -1,5 +1,97 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-052 — Reduce Stage 3 deep-validation peak memory (anchor + recursive checks)
+
+**Priority / status:** P1 · findings recorded 2026-08-19, not yet implemented.
+
+Stage 3's deep validation (`source_parent_anchor_validation` and the internal
+Common ESTO parent/child consistency check in
+`common_esto_validation_orchestration.py`) peaked at **17.9GB RSS** on a
+2026-08-18 run and, on a second run the same day, the whole
+`run_mapping_pipeline.py` process was silently killed by the OS during this
+same phase (system free memory had dropped to ~0.4GB shortly before; no
+Python traceback, no caught `MemoryError` — consistent with a hard OS-level
+kill on failed allocation). A code-level audit of both files (not yet acted
+on) found seven concrete opportunities, ranked by impact:
+
+1. **(Highest impact, low risk)** `apec_anchor_validation.py:184-197` —
+   `validate_source_parent_anchors_apec_first`'s economy-detail retry (fired
+   whenever the cheap APEC-aggregate pass finds any failures) reruns the full
+   per-`(source_system, axis)` pipeline over **all economies**, and only
+   applies `issue_filter` *after* the expensive cross-join has already run at
+   full scale (`source_parent_anchor_validation.py:625-865`, filter applied at
+   line 826). Move the existing `issue_filter` restriction earlier — into
+   `system_source`/`axis_source` construction around line 625/689 — so the
+   detail pass only processes the (normally small) set of already-failing
+   branch contexts. This targets the dominant ~73-minute/majority-of-peak-RSS
+   cost directly and reuses an existing filter rather than inventing new
+   chunking.
+2. **(High impact, low risk)** `common_esto_comparison_data.parquet`
+   (~3.9M rows) is read into memory in full, 3-4 separate times, with no
+   column pruning: `common_esto_validation_orchestration.py:2482` (bare
+   `pd.read_parquet`, ignores the existing `_read_comparison_data(columns=...)`
+   helper), `common_esto_validation_orchestration.py:381`
+   (`build_common_esto_child_diagnostics`, another full read), and
+   `run_mapping_pipeline.py:1102` (`read_manifested_parquet`, which has no
+   `columns=` support at all). Route all three through
+   `_read_comparison_data(path, columns=[...])`, add column-subsetting to
+   `read_manifested_parquet` (`typed_output.py:87-111`; it already does
+   per-column dtype restoration via `isetitem`, so this is a small change),
+   and have `run_common_esto_validation_workflow` read the comparison data
+   once and pass the frame into both downstream consumers instead of each
+   reopening the file.
+3. **(Medium-high impact, low effort)**
+   `build_dataset_tree_structure.py:2481-2545` — the full-size `data` frame
+   from `_validate_common_esto_axis_recursive_sums` is never referenced again
+   after `grouped = data.groupby(...)` but has no `del data`, so it stays
+   alive (and in memory) alongside `grouped` and the subsequent
+   `groups_by_source_parent` dict-of-lists. Add `del data` right after
+   building `grouped`.
+4. **(Medium impact, medium effort — likely explains the reported ~25GB
+   attempted allocation)** `build_dataset_tree_structure.py:2536-2545` and
+   `common_esto_validation_orchestration.py:390-416`
+   (`build_common_esto_child_diagnostics`) build a full nested
+   `dict[tuple, dict[str, float]]` by iterating every grouped row in Python
+   (`row._asdict()`), for both the `flow` and `product` axis simultaneously
+   (both held in memory at once, line 385-399). A `dict` costs ~200+ bytes of
+   pure interpreter overhead per row versus a few bytes in a columnar frame —
+   at several-hundred-thousand-to-million grouped rows this plausibly is the
+   catastrophic-allocation source. Replace with a `set_index([...])`-based
+   multi-index lookup or `pivot_table`/`groupby().unstack()`, keeping the data
+   columnar.
+5. **(Medium impact, low risk)**
+   `common_esto_validation_orchestration.py:290-316` (`_load_diagnostic_source_values`,
+   called from `build_common_esto_child_diagnostics:400`) unconditionally
+   loads every registered Stage-3 source path in full as `dtype=object`
+   (~18.7M raw rows) whenever there is even one failed check anywhere,
+   purely to build diagnostic evidence for what's typically a much smaller
+   failing-row set. Filter to only the `(economy, scenario, year,
+   esto_flow/esto_product)` combinations actually referenced by
+   `validation_df[validation_df.status.eq("failed")]` before the full load.
+6. **(Lower impact, robustness)**
+   `common_esto_validation_orchestration.py:1020-1031` — the
+   `except Exception` wrapping each axis's validation swallows `MemoryError`
+   with no retry, recording `checks_performed=0` for every source system (the
+   exact "0 grouped checks" symptom seen in production). Catch `MemoryError`
+   specifically and retry chunked by `source_system` (already enumerated at
+   line 935), concatenating partial results, mirroring but improving on the
+   existing bare-skip fallback already used in the anchor validator.
+7. **(Lower impact, needs verification)**
+   `source_parent_anchor_validation.py:609-613` — the `comparison` frame's key
+   columns (`comparison_scope`, `source_system`, `economy`, `scenario`) are not
+   cast to `category`, unlike the equivalent raw-source columns at line
+   2349-2350 in the same file (`source[column] = source[column].astype("category")`)
+   — an existing, proven convention this frame doesn't reuse. Also check
+   whether `axis_source[axis_col] = canonicalize_tree_codes(...)` at line 690
+   silently reverts an already-categorical column back to `object`.
+
+Findings #1 and #2 are the recommended first pass: both are surgical,
+low-risk, and reuse code that already exists rather than requiring new
+chunking infrastructure. #4 is the most likely explanation for the reported
+near-OOM attempted allocation and should follow once #1/#2 land. Retest with
+the same `results/logs/mapping_pipeline_resource_usage.json` RSS sampling
+this repo already has, comparing peak/average RSS before and after.
+
 ## MAPQ-050 — Support mixed placeholder and detailed LEAP demand exports
 
 **Priority / status:** P1 · implementation in progress 2026-08-17.
