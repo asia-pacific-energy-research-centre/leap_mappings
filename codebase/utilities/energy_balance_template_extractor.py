@@ -9,6 +9,7 @@ import openpyxl
 import pandas as pd
 
 from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
+from codebase.utilities.source_label_aliases import load_source_label_aliases
 from codebase.utilities.workflow_outputs import build_workflow_output_layout, write_output_manifest
 
 
@@ -288,21 +289,8 @@ class TemplateBalanceExtractor:
         self._flow_esto_cache: dict[str, list[str]] = {}
         self._fuel_esto_cache: dict[str, list[str]] = {}
         self._alias_map = {
-            "total primary supply": "total primary energy supply",
-            "total final energy demand": "total final energy consumption",
-            "total transformation": "total transformation sector",
-            "transmission and distribution": "transmission and distribution losses",
-            "non specified transformation": "Transfers nonspecified",
-            "ng liquefaction": "liquefaction regasification plants",
-            "lng regasification": "liquefaction regasification plants",
-            "oil refining": "oil refineries",
-            "heat production": "heat plants",
-            "electricity generation": "electricity plants",
-            "industry": "industry sector",
-            "transport non road": "transport sector",
-            "freight road": "transport sector",
-            "passenger road": "transport sector",
-            "coal sub bituminous": "sub bituminous coal",
+            **load_source_label_aliases("template_balance_extractor", "flow"),
+            **load_source_label_aliases("template_balance_extractor", "fuel"),
         }
 
     def _read_mapping_pairs_table(self, sheet_name: str, **kwargs: object) -> pd.DataFrame:
@@ -947,7 +935,7 @@ class TemplateBalanceExtractor:
 
     def _canonicalize_label(self, label: str) -> str:
         key = _normalize_text(label)
-        return self._alias_map.get(key, key)
+        return _normalize_text(self._alias_map.get(key, key))
 
     def _canonicalize_path_key(self, path: object) -> str:
         parts = [part.strip() for part in str(path or "").split("/") if part.strip()]

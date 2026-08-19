@@ -1,0 +1,22 @@
+alias_scope,label_axis,raw_label,canonical_label,enabled,rationale
+mapping_chain_parser,fuel,Fuelwood & woodwaste,Fuelwood and woodwaste,TRUE,Accept either punctuation spelling while preserving the canonical mapping-source label.
+mapping_chain_parser,fuel,Black liqour,Black liquor,TRUE,Correct recurring LEAP export typo.
+mapping_chain_parser,fuel,of which Photovoltaics,Solar photovoltaics,TRUE,Align abbreviated LEAP export header to canonical mapping-source label.
+mapping_chain_parser,fuel,Solar Photovoltaics,Solar photovoltaics,TRUE,Align capitalised PHL export header to canonical mapping-source label.
+mapping_chain_parser,flow,From Stocks,Stock Changes,TRUE,Align LEAP balance flow label to canonical mapping-source label.
+mapping_chain_parser,flow,Statistical discrepancy,Statistical Differences,TRUE,Align singular LEAP balance flow label to canonical mapping-source label.
+template_balance_extractor,flow,Total Primary Supply,Total Primary Energy Supply,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Total Final Energy Demand,Total Final Energy Consumption,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Total Transformation,Total Transformation Sector,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Transmission and Distribution,Transmission and Distribution Losses,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Non specified transformation,Transfers nonspecified,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,NG liquefaction,Liquefaction regasification plants,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,LNG regasification,Liquefaction regasification plants,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Oil refining,Oil refineries,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Heat production,Heat plants,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Electricity generation,Electricity plants,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Industry,Industry sector,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Transport non road,Transport sector,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Freight road,Transport sector,TRUE,Legacy balance-template alias.
+template_balance_extractor,flow,Passenger road,Transport sector,TRUE,Legacy balance-template alias.
+template_balance_extractor,fuel,Coal Sub bituminous,Sub bituminous coal,TRUE,Legacy balance-template alias.

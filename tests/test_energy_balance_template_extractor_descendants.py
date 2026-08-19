@@ -83,6 +83,18 @@ def _parent_row() -> pd.Series:
     )
 
 
+def test_legacy_label_aliases_are_loaded_from_configuration() -> None:
+    extractor = TemplateBalanceExtractor(
+        template_sheet="EBal|2060",
+        mapping_pairs_path=Path("config/leap_mappings.xlsx"),
+        codebook_path=Path("config/esto_9th_leap_codebook.xlsx"),
+        explicit_pair_mappings_only=True,
+    )
+
+    assert extractor._canonicalize_label("LNG regasification") == "liquefaction regasification plants"
+    assert extractor._canonicalize_label("Coal Sub bituminous") == "sub bituminous coal"
+
+
 def test_non_explicit_mode_uses_absent_child_descendant_mapping_by_default() -> None:
     extractor = _make_extractor(explicit_pair_mappings_only=False, present_child=False)
 

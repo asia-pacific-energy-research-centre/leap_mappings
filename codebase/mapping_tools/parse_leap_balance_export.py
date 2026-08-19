@@ -40,6 +40,10 @@ from codebase.utilities.leap_balance_export_resolver import (
     scenario_code_from_balance_export_filename,
     select_latest_balance_export_workbooks,
 )
+from codebase.utilities.source_label_aliases import (
+    load_source_label_aliases,
+    normalise_source_label_key,
+)
 
 # Internal "Scenario:" subtitle text these filename-derived REF/TGT codes
 # should be trusted to mean, when BALANCE_EXPORT_TRUST_FILENAME_SCENARIO
@@ -65,14 +69,7 @@ REPO_ROOT = _find_repo_root()
 # Fuel name normalization: LEAP export column → raw_leap_fuel_name in workbook
 # ---------------------------------------------------------------------------
 
-_FUEL_NAME_MAP = {
-    # Keep one canonical source label for mappings regardless of whether an
-    # export uses an ampersand or the word "and" (PHL uses the latter).
-    "Fuelwood & woodwaste": "Fuelwood and woodwaste",
-    "Black liqour":           "Black liquor",        # typo in LEAP export
-    "of which Photovoltaics": "Solar photovoltaics",
-    "Solar Photovoltaics":    "Solar photovoltaics",
-}
+_FUEL_NAME_MAP = load_source_label_aliases("mapping_chain_parser", "fuel")
 
 # Columns to drop — aggregates or "DO NOT USE" placeholders
 _DROP_FUEL_COLS = {
@@ -85,10 +82,7 @@ _DROP_FUEL_COLS = {
 # LEAP balance exports do not always use the semantic branch labels maintained
 # in the canonical mapping workbook. Normalize these aliases at the parser
 # boundary so every downstream mapping stage sees one stable source key.
-_FLOW_NAME_MAP = {
-    "from stocks": "Stock Changes",
-    "statistical discrepancy": "Statistical Differences",
-}
+_FLOW_NAME_MAP = load_source_label_aliases("mapping_chain_parser", "flow")
 
 # ---------------------------------------------------------------------------
 # Header parsing
@@ -144,7 +138,7 @@ def _fuel_columns(raw: pd.DataFrame) -> list[str]:
     ]
     normalized = []
     for name in raw_names:
-        name = _FUEL_NAME_MAP.get(name, name)
+        name = _FUEL_NAME_MAP.get(normalise_source_label_key(name), name)
         if name not in _DROP_FUEL_COLS:
             normalized.append(name)
         else:
@@ -163,7 +157,7 @@ def _indentation(s: str) -> int:
 def _normalize_flow_name(name: object) -> str:
     """Return the canonical mapping label for one LEAP balance-flow segment."""
     cleaned = " ".join(str(name or "").strip().split())
-    return _FLOW_NAME_MAP.get(cleaned.casefold(), cleaned)
+    return _FLOW_NAME_MAP.get(normalise_source_label_key(cleaned), cleaned)
 
 
 def _reconstruct_transformation_paths(
