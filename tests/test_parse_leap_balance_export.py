@@ -75,17 +75,18 @@ def test_parse_leap_balance_xlsx_uses_mapping_workbook_fuel_spellings(
     workbook_path = tmp_path / "fuel_spellings.xlsx"
     raw = pd.DataFrame(
         [
-            ['Energy Balance for Area "Test Area"', None, None, None, None],
-            ["Scenario: Reference, Year: 2060, Units: Petajoule", None, None, None, None],
+            ['Energy Balance for Area "Test Area"', None, None, None, None, None],
+            ["Scenario: Reference, Year: 2060, Units: Petajoule", None, None, None, None, None],
             [
                 None,
                 "Fuelwood and woodwaste",
+                "Fuelwood & woodwaste",
                 "Black liqour",
                 "of which Photovoltaics",
-                "Solar",
+                "Solar Photovoltaics",
             ],
-            ["Production", 1.0, 2.0, 3.0, 4.0],
-            ["Total Transformation", 1.0, 2.0, 3.0, 4.0],
+            ["Production", 1.0, 2.0, 3.0, 4.0, 5.0],
+            ["Total Transformation", 1.0, 2.0, 3.0, 4.0, 5.0],
         ]
     )
     with pd.ExcelWriter(workbook_path) as writer:
@@ -94,10 +95,9 @@ def test_parse_leap_balance_xlsx_uses_mapping_workbook_fuel_spellings(
     parsed = parse_leap_balance_xlsx(workbook_path, economy_override="20_USA")
 
     assert set(parsed["leap_product"]) == {
-        "Fuelwood & woodwaste",
+        "Fuelwood and woodwaste",
         "Black liquor",
         "Solar photovoltaics",
-        "Solar",
     }
 
 

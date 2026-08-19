@@ -66,9 +66,12 @@ REPO_ROOT = _find_repo_root()
 # ---------------------------------------------------------------------------
 
 _FUEL_NAME_MAP = {
-    "Fuelwood and woodwaste": "Fuelwood & woodwaste",
+    # Keep one canonical source label for mappings regardless of whether an
+    # export uses an ampersand or the word "and" (PHL uses the latter).
+    "Fuelwood & woodwaste": "Fuelwood and woodwaste",
     "Black liqour":           "Black liquor",        # typo in LEAP export
     "of which Photovoltaics": "Solar photovoltaics",
+    "Solar Photovoltaics":    "Solar photovoltaics",
 }
 
 # Columns to drop — aggregates or "DO NOT USE" placeholders
