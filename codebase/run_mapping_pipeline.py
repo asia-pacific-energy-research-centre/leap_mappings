@@ -66,7 +66,10 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
     format_balance_export_discovery_report,
     resolve_balance_exports_root,
 )
-from codebase.mapping_tools.typed_output import write_manifested_parquet  # noqa: E402
+from codebase.mapping_tools.typed_output import (  # noqa: E402
+    read_manifested_parquet,
+    write_manifested_parquet,
+)
 
 # ---------------------------------------------------------------------------
 # Default paths
@@ -1096,7 +1099,7 @@ def run_stage_3(
                 anchor_target_years=set(range(2030, 2071, 10)),
             )
             common_rows = pd.read_csv(COMMON_ROWS_PATH, dtype=object)
-            comparison_data = pd.read_csv(comparison_path, dtype=object)
+            comparison_data = read_manifested_parquet(comparison_path)
             from codebase.mapping_tools.mapping_issue_exceptions import (
                 load_unmodelled_source_codes,
             )
