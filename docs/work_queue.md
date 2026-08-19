@@ -112,6 +112,64 @@ historical peak as an incident report, not a reproducible baseline.
   must not alter mapping rows, Common ESTO membership, rollup rules, or the
   published fact values.
 
+### Follow-on: reduce ordinary Stage 3 memory, not only deep validation
+
+The deep-validation work above is the immediate safety priority. The ordinary
+Stage 3 application path has separate, larger-scale opportunities which should
+be designed as one streaming change after that first pass is proven equivalent.
+They are intentionally not folded into the low-risk validation patch.
+
+1. **Make source/economy chunking genuinely streaming (highest expected
+   benefit).** `run_apply_common_esto_structure()` currently reads all four
+   converted sources before `apply_common_structure_by_source_economy()` splits
+   them into chunks. It also retains every comparison, missing-map, and total
+   frame in lists and concatenates them at the end. Replace this with a
+   two-pass, partitioned workflow: first stream compact pair-relevance and
+   source-total summaries; then reread one source/economy partition at a time,
+   apply the map, write a partitioned Parquet fact shard/lineage shard, update
+   small QA accumulators, and release it. Final publication must consume the
+   staged partition set transactionally rather than rebuilding a second
+   full-size in-memory comparison table.
+2. **Do not duplicate ordinary ESTO history for ESTO Extended.** Stage 3
+   deliberately uses the same ESTO history file for `ESTO` and
+   `ESTO_EXTENDED`, but currently materialises it under both source-system
+   labels. Read and filter one ESTO partition once, then apply the two scope
+   identities from that partition. Preserve separate emitted source-system
+   labels and all current value/lineage semantics; this is source-frame reuse,
+   not a scope merger.
+3. **Use typed, projected source reads.** Large Stage 3 paths still use
+   `dtype=object`. Define one tested schema for source identifiers, category
+   keys, year, and value; project only columns used by each pass. Use
+   categories only for stable, repeated low-cardinality identifiers. A
+   conversion to Parquet for the large converted source/lineage artifacts is
+   worthwhile only when it enables projected/predicate reads and is backed by
+   exact contract and value-conservation tests; keep CSV exports only where a
+   human-facing consumer requires them.
+4. **Consolidate Ninth hierarchy processing.** The runner holds the wide Ninth
+   table while three recursive validators take separate working copies. Compare
+   the current shared-read design with a single partitioned pass that emits the
+   ordinary, sector, and fuel findings together, or with sequential narrow
+   reads that release memory between validators. Select the lower peak-RSS
+   option, not merely the faster I/O option.
+5. **Restrict compatibility outputs.** The legacy
+   `common_esto_comparison_data.csv` is about 960 MB, while the Parquet value
+   artifact is about 25 MB and the published fact/metadata contract already
+   serves machine consumers. Inventory all readers before changing it; then
+   make the legacy CSV an explicit compatibility export (or retire it) rather
+   than an unconditional default output. This primarily reduces disk and I/O,
+   but also prevents accidental full-CSV reads in downstream workflows.
+6. **Reuse static validation state, not data frames.** Cache the small tree
+   indexes, aliases, rollup maps, and mapping indexes across the APEC and
+   economy-detail passes. Do not cache raw sources, comparison frames, or
+   grouped value tables, because doing so recreates the peak-memory problem.
+
+**Follow-on acceptance:** preserve the current source-once delivery check,
+mapped-value totals, lineage keys, Common ESTO output-contract reconstruction,
+and byte-stable outputs after declared key sorting. Benchmark a complete Stage
+3 run with source/economy peak RSS, application/validation elapsed time, and
+temporary-disk usage. Do not begin this redesign until the MAPQ-052
+deep-validation first pass has passed its equivalence tests.
+
 ## MAPQ-050 — Support mixed placeholder and detailed LEAP demand exports
 
 **Priority / status:** P1 · implementation in progress 2026-08-17.
