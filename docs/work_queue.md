@@ -2,95 +2,115 @@
 
 ## MAPQ-052 — Reduce Stage 3 deep-validation peak memory (anchor + recursive checks)
 
-**Priority / status:** P1 · findings recorded 2026-08-19, not yet implemented.
+**Priority / status:** P1 · reviewed and implementation plan refined 2026-08-19.
 
-Stage 3's deep validation (`source_parent_anchor_validation` and the internal
-Common ESTO parent/child consistency check in
-`common_esto_validation_orchestration.py`) peaked at **17.9GB RSS** on a
-2026-08-18 run and, on a second run the same day, the whole
-`run_mapping_pipeline.py` process was silently killed by the OS during this
-same phase (system free memory had dropped to ~0.4GB shortly before; no
-Python traceback, no caught `MemoryError` — consistent with a hard OS-level
-kill on failed allocation). A code-level audit of both files (not yet acted
-on) found seven concrete opportunities, ranked by impact:
+Stage 3 deep validation (`source_parent_anchor_validation` plus the recursive
+Common ESTO parent/child check) peaked at **17.9 GB RSS** on one 2026-08-18
+run. A second run was silently killed by Windows while system free memory was
+about 0.4 GB; there was no Python traceback, which is consistent with an
+OS-level allocation kill. The checked-in resource sampler is useful for
+normal runs, but the latest JSON ends in Stage 2 after the killed run, so it
+does **not** quantify the Stage 3 peak. The plan below therefore treats the
+historical peak as an incident report, not a reproducible baseline.
 
-1. **(Highest impact, low risk)** `apec_anchor_validation.py:184-197` —
-   `validate_source_parent_anchors_apec_first`'s economy-detail retry (fired
-   whenever the cheap APEC-aggregate pass finds any failures) reruns the full
-   per-`(source_system, axis)` pipeline over **all economies**, and only
-   applies `issue_filter` *after* the expensive cross-join has already run at
-   full scale (`source_parent_anchor_validation.py:625-865`, filter applied at
-   line 826). Move the existing `issue_filter` restriction earlier — into
-   `system_source`/`axis_source` construction around line 625/689 — so the
-   detail pass only processes the (normally small) set of already-failing
-   branch contexts. This targets the dominant ~73-minute/majority-of-peak-RSS
-   cost directly and reuses an existing filter rather than inventing new
-   chunking.
-2. **(High impact, low risk)** `common_esto_comparison_data.parquet`
-   (~3.9M rows) is read into memory in full, 3-4 separate times, with no
-   column pruning: `common_esto_validation_orchestration.py:2482` (bare
-   `pd.read_parquet`, ignores the existing `_read_comparison_data(columns=...)`
-   helper), `common_esto_validation_orchestration.py:381`
-   (`build_common_esto_child_diagnostics`, another full read), and
-   `run_mapping_pipeline.py:1102` (`read_manifested_parquet`, which has no
-   `columns=` support at all). Route all three through
-   `_read_comparison_data(path, columns=[...])`, add column-subsetting to
-   `read_manifested_parquet` (`typed_output.py:87-111`; it already does
-   per-column dtype restoration via `isetitem`, so this is a small change),
-   and have `run_common_esto_validation_workflow` read the comparison data
-   once and pass the frame into both downstream consumers instead of each
-   reopening the file.
-3. **(Medium-high impact, low effort)**
-   `build_dataset_tree_structure.py:2481-2545` — the full-size `data` frame
-   from `_validate_common_esto_axis_recursive_sums` is never referenced again
-   after `grouped = data.groupby(...)` but has no `del data`, so it stays
-   alive (and in memory) alongside `grouped` and the subsequent
-   `groups_by_source_parent` dict-of-lists. Add `del data` right after
-   building `grouped`.
-4. **(Medium impact, medium effort — likely explains the reported ~25GB
-   attempted allocation)** `build_dataset_tree_structure.py:2536-2545` and
-   `common_esto_validation_orchestration.py:390-416`
-   (`build_common_esto_child_diagnostics`) build a full nested
-   `dict[tuple, dict[str, float]]` by iterating every grouped row in Python
-   (`row._asdict()`), for both the `flow` and `product` axis simultaneously
-   (both held in memory at once, line 385-399). A `dict` costs ~200+ bytes of
-   pure interpreter overhead per row versus a few bytes in a columnar frame —
-   at several-hundred-thousand-to-million grouped rows this plausibly is the
-   catastrophic-allocation source. Replace with a `set_index([...])`-based
-   multi-index lookup or `pivot_table`/`groupby().unstack()`, keeping the data
-   columnar.
-5. **(Medium impact, low risk)**
-   `common_esto_validation_orchestration.py:290-316` (`_load_diagnostic_source_values`,
-   called from `build_common_esto_child_diagnostics:400`) unconditionally
-   loads every registered Stage-3 source path in full as `dtype=object`
-   (~18.7M raw rows) whenever there is even one failed check anywhere,
-   purely to build diagnostic evidence for what's typically a much smaller
-   failing-row set. Filter to only the `(economy, scenario, year,
-   esto_flow/esto_product)` combinations actually referenced by
-   `validation_df[validation_df.status.eq("failed")]` before the full load.
-6. **(Lower impact, robustness)**
-   `common_esto_validation_orchestration.py:1020-1031` — the
-   `except Exception` wrapping each axis's validation swallows `MemoryError`
-   with no retry, recording `checks_performed=0` for every source system (the
-   exact "0 grouped checks" symptom seen in production). Catch `MemoryError`
-   specifically and retry chunked by `source_system` (already enumerated at
-   line 935), concatenating partial results, mirroring but improving on the
-   existing bare-skip fallback already used in the anchor validator.
-7. **(Lower impact, needs verification)**
-   `source_parent_anchor_validation.py:609-613` — the `comparison` frame's key
-   columns (`comparison_scope`, `source_system`, `economy`, `scenario`) are not
-   cast to `category`, unlike the equivalent raw-source columns at line
-   2349-2350 in the same file (`source[column] = source[column].astype("category")`)
-   — an existing, proven convention this frame doesn't reuse. Also check
-   whether `axis_source[axis_col] = canonicalize_tree_codes(...)` at line 690
-   silently reverts an already-categorical column back to `object`.
+### Review corrections
 
-Findings #1 and #2 are the recommended first pass: both are surgical,
-low-risk, and reuse code that already exists rather than requiring new
-chunking infrastructure. #4 is the most likely explanation for the reported
-near-OOM attempted allocation and should follow once #1/#2 land. Retest with
-the same `results/logs/mapping_pipeline_resource_usage.json` RSS sampling
-this repo already has, comparing peak/average RSS before and after.
+- The economy-detail retry already passes `issue_filter`, and the anchor
+  validator applies it before its frontier-resolution merge. It is still too
+  late: the retry has already copied/canonicalised every source row and built
+  raw-pair/source-evidence structures. Filter scenario/year before that work,
+  then filter canonical `(parent_code, other_axis_value)` contexts immediately
+  after canonicalisation. Do not filter economies: the APEC issue represents
+  an aggregate and the retry must identify its member-economy examples.
+- The recursive validator's full parquet read is in
+  `build_dataset_tree_structure.py`, not the orchestration module. It runs
+  separately for product and flow, so a shared in-memory full frame may
+  *increase* peak RSS by surviving into diagnostics. First use column pruning
+  and release each axis frame before continuing; only share a frame after a
+  measured peak-RSS comparison proves it helps.
+- Child diagnostics currently construct both axis lookup dictionaries from the
+  entire comparison output and then read every converted source file whenever
+  any check fails. These are more credible peak-memory candidates than parquet
+  open count alone. They need a failure-context-driven design, not merely
+  faster reads.
+- Catching `MemoryError` after a failed full-axis operation is not a recovery
+  strategy. A bounded per-source-system mode must be implemented and tested
+  before it becomes a fallback; do not silently publish a `checks_performed=0`
+  pseudo-success.
+
+### Tomorrow's implementation order
+
+1. **Establish a trustworthy baseline (no functional change).** Add phase
+   markers and per-phase RSS/timing to the existing pipeline resource record:
+   recursive product read/group/lookup, recursive flow read/group/lookup,
+   child diagnostics, raw diagnostic-source load, APEC pass, and economy retry.
+   Sample at one second during deep validation, retain the final sample in a
+   `finally` block, and record `completed`, `MemoryError`, or
+   `process_interrupted` honestly. Run the existing focused tests first, then
+   one bounded real-data Stage 3/deep-validation run by itself (never alongside
+   baseline-seed work).
+2. **Land the safe, measurable first pass.**
+   - Add `columns=` support to `read_manifested_parquet`, validating requested
+     columns against the manifest and restoring dtypes by column name rather
+     than original position. Use it for the anchor comparison read.
+   - Make the recursive validator request only its eight required columns,
+     then `del data` immediately after the groupby result exists. It must not
+     retain source rows while building lookup state.
+   - Make child diagnostics read only its required comparison columns and
+     return empty diagnostic artifacts without opening raw sources when there
+     are no failed checks.
+   - Apply the APEC retry's scenario/year restriction before normalisation;
+     apply its canonical context restriction before source-evidence and
+     raw-pair lookup construction. Preserve the full APEC pass unchanged.
+3. **Prove equivalence before combining changes.** For a committed small
+   fixture and for one bounded real-data slice, compare old/new outputs after
+   stable sorting on their declared keys: recursive detail, grouped checks,
+   validation summary, APEC issues, and selected economy examples. Require
+   identical statuses/reasons/counts and values within the existing tolerance;
+   verify the full retry finds examples from all eligible economies. Add tests
+   for requested-parquet column/dtype validation, no-failure diagnostics (no
+   raw-source load), and early retry filtering. Commit this first pass alone.
+4. **Replace Python dict-of-dicts only after the first-pass measurement.**
+   Refactor one consumer at a time. The recursive validator should retain a
+   grouped columnar table indexed by its exact slice keys; child diagnostics
+   should build lookup state only for failed `(axis, scope, source, economy,
+   scenario, other-axis, year)` contexts. Avoid `pivot_table` unless measured:
+   a dense pivot can allocate a larger cross-product than the current sparse
+   dictionaries. Add a high-cardinality synthetic regression test and compare
+   emitted diagnostics byte-for-byte after key sorting.
+5. **Make raw diagnostic evidence bounded.** Derive required keys from failed
+   checks, read source CSVs in chunks, retain/group only matching rows, and
+   process one source system and one axis at a time. Do not load all four
+   18.7M-row sources because a single unrelated validation failed. Include a
+   test where a failure in one source cannot cause another source file to be
+   opened.
+6. **Add a genuine bounded fallback last.** Extend recursive validation with
+   an explicit `source_system` filter and run systems sequentially if the
+   normal full-axis attempt raises `MemoryError`. Record per-system completion
+   and error status; concatenate only completed detail. A failed system remains
+   `error`, never `skipped` or `passed`. Test normal and forced-fallback paths
+   before relying on this in production.
+7. **Evaluate categories last.** Measure object versus category memory after
+   canonicalisation, because canonicalising currently may recreate object
+   columns. Apply categories only to repeated low-cardinality keys and only if
+   the benchmark reduces peak RSS without changing merge/groupby behaviour.
+
+### Acceptance and stop conditions
+
+- Functional: all existing focused Stage 3/anchor/typed-output tests pass;
+  new equivalence tests pass; mapped-value and output-contract checks remain
+  unchanged; no diagnostic artifact is silently omitted.
+- Resource: record phase peak RSS, total elapsed time, and rows/groups/context
+  counts. The target is a completed deep-validation run without paging/OOM and
+  materially below the 17.9 GB incident peak; do not claim a percentage saving
+  until a comparable completed baseline exists.
+- Safety: stop and investigate if any previously reported failure disappears,
+  checks collapse to zero, APEC attribution loses an economy example, or the
+  output schema/hash contract changes unexpectedly. Do not run a full mapping
+  refresh until the bounded Stage 3 run is equivalent.
+- Scope: this item changes validation execution and observability only. It
+  must not alter mapping rows, Common ESTO membership, rollup rules, or the
+  published fact values.
 
 ## MAPQ-050 — Support mixed placeholder and detailed LEAP demand exports
 
