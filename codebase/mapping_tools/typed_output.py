@@ -87,6 +87,11 @@ def write_manifested_parquet(
 def read_manifested_parquet(
     path: Path,
     columns: list[str] | None = None,
+    filters: (
+        list[tuple[str, str, object]]
+        | list[list[tuple[str, str, object]]]
+        | None
+    ) = None,
 ) -> pd.DataFrame:
     """Read selected Parquet columns after validating its sidecar and hash."""
     path = Path(path)
@@ -117,13 +122,26 @@ def read_manifested_parquet(
             )
     else:
         requested_columns = None
-    frame = pd.read_parquet(path, columns=requested_columns)
+    if filters:
+        filter_groups = filters if isinstance(filters[0], list) else [filters]
+        filter_columns = {
+            str(filter_item[0])
+            for filter_group in filter_groups
+            for filter_item in filter_group
+        }
+        missing_filter_columns = sorted(filter_columns.difference(expected_columns))
+        if missing_filter_columns:
+            raise ValueError(
+                "Parquet filters reference absent artifact columns: "
+                f"{missing_filter_columns}"
+            )
+    frame = pd.read_parquet(path, columns=requested_columns, filters=filters)
     dtype_by_column = dict(zip(expected_columns, expected_dtypes))
     for column in frame.columns:
         dtype_name = dtype_by_column[str(column)]
         if str(frame[column].dtype) != dtype_name:
             frame[column] = frame[column].astype(dtype_name)
-    if len(frame) != int(artifact.get("row_count", -1)):
+    if filters is None and len(frame) != int(artifact.get("row_count", -1)):
         raise ValueError(f"Parquet artifact row-count mismatch: {path}")
     return frame
 

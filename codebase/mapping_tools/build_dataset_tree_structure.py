@@ -2455,6 +2455,7 @@ def _validate_common_esto_axis_recursive_sums(
     detached_labels: set[str] | None = None,
     rollup_modes: dict[str, str] | None = None,
     source_specific_exclude_parents: dict[str, set[str]] | None = None,
+    source_system_filter: str | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -2492,12 +2493,24 @@ def _validate_common_esto_axis_recursive_sums(
         "common_product_label",
         "value",
     ]
-    with profile_pipeline_section(f"recursive_{axis}_read"):
+    section_suffix = (
+        f"_{source_system_filter.casefold()}" if source_system_filter else ""
+    )
+    with profile_pipeline_section(f"recursive_{axis}{section_suffix}_read"):
         data = (
-            read_manifested_parquet(comparison_data_path, columns=required_columns)
+            read_manifested_parquet(
+                comparison_data_path,
+                columns=required_columns,
+                filters=(
+                    [("source_system", "==", source_system_filter)]
+                    if source_system_filter else None
+                ),
+            )
             if comparison_data_path.suffix.casefold() == ".parquet"
             else pd.read_csv(comparison_data_path, dtype=object, usecols=required_columns)
         )
+    if source_system_filter and comparison_data_path.suffix.casefold() != ".parquet":
+        data = data[data["source_system"].astype(str).eq(source_system_filter)]
     missing = set(required_columns).difference(data.columns)
     if missing:
         raise ValueError(
@@ -2532,7 +2545,7 @@ def _validate_common_esto_axis_recursive_sums(
     # every parent and every source slice, which made rollup-aware validation
     # disproportionately expensive on the full NINTH dataset.
     sub_group_cols = ["comparison_scope", "economy", "scenario", other_axis_col, "year"]
-    with profile_pipeline_section(f"recursive_{axis}_group"):
+    with profile_pipeline_section(f"recursive_{axis}{section_suffix}_group"):
         grouped = (
             data.groupby(["source_system", *sub_group_cols, axis_col], dropna=False, sort=False)["value"]
             .sum()
@@ -2542,7 +2555,7 @@ def _validate_common_esto_axis_recursive_sums(
     gc.collect()
     parent_codes = set(children_map)
     groups_by_source_parent: dict[tuple[str, str], list[tuple[tuple[str, ...], dict[str, float], set[str]]]] = {}
-    with profile_pipeline_section(f"recursive_{axis}_lookup"):
+    with profile_pipeline_section(f"recursive_{axis}{section_suffix}_lookup"):
         for group_key, group_rows in grouped.groupby(["source_system", *sub_group_cols], dropna=False, sort=False):
             source_system = str(group_key[0])
             idx = tuple(str(value) for value in group_key[1:])
@@ -2688,37 +2701,40 @@ def validate_common_esto_recursive_sums(
     validation for one source system only -- see
     ``_validate_common_esto_axis_recursive_sums``.
     """
-    result = pd.concat(
-        [
-            _validate_common_esto_axis_recursive_sums(
-                tree_df,
-                comparison_data_path,
-                "product",
-                tolerance,
-                source_inconsistencies,
-                leap_var_base_year,
-                source_frontier=source_frontier,
-                exclude_parents=exclude_parents,
-                detached_labels=detached_labels,
-                rollup_modes=rollup_modes,
-                source_specific_exclude_parents=source_specific_exclude_parents,
-            ),
-            _validate_common_esto_axis_recursive_sums(
-                tree_df,
-                comparison_data_path,
-                "flow",
-                tolerance,
-                source_inconsistencies,
-                leap_var_base_year,
-                source_frontier=source_frontier,
-                exclude_parents=exclude_parents,
-                detached_labels=detached_labels,
-                rollup_modes=rollup_modes,
-                source_specific_exclude_parents=source_specific_exclude_parents,
-            ),
-        ],
-        ignore_index=True,
+    if not comparison_data_path.exists():
+        return _empty_common_esto_validation()
+    source_system_data = (
+        read_manifested_parquet(comparison_data_path, columns=["source_system"])
+        if comparison_data_path.suffix.casefold() == ".parquet"
+        else pd.read_csv(comparison_data_path, dtype=object, usecols=["source_system"])
     )
+    source_systems = sorted(
+        source_system_data["source_system"].dropna().astype(str).unique()
+    )
+    del source_system_data
+    gc.collect()
+    if not source_systems:
+        return _empty_common_esto_validation()
+    result_frames: list[pd.DataFrame] = []
+    for axis in ["product", "flow"]:
+        for source_system in source_systems:
+            result_frames.append(
+                _validate_common_esto_axis_recursive_sums(
+                    tree_df,
+                    comparison_data_path,
+                    axis,
+                    tolerance,
+                    source_inconsistencies,
+                    leap_var_base_year,
+                    source_frontier=source_frontier,
+                    exclude_parents=exclude_parents,
+                    detached_labels=detached_labels,
+                    rollup_modes=rollup_modes,
+                    source_specific_exclude_parents=source_specific_exclude_parents,
+                    source_system_filter=source_system,
+                )
+            )
+    result = pd.concat(result_frames, ignore_index=True)
     if result.empty:
         return _empty_common_esto_validation()
     return result.sort_values([

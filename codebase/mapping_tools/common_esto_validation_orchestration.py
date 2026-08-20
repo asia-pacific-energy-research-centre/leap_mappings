@@ -49,9 +49,7 @@ def _read_comparison_data(
     """Read the canonical Parquet values artifact or a legacy CSV fixture."""
     path = Path(comparison_data_path)
     if path.suffix.casefold() == ".parquet":
-        if filters is None:
-            return read_manifested_parquet(path, columns=columns)
-        return pd.read_parquet(path, columns=columns, filters=filters)
+        return read_manifested_parquet(path, columns=columns, filters=filters)
     return pd.read_csv(path, dtype=object, usecols=columns)
 
 VALIDATION_SUMMARY_COLUMNS = [
@@ -291,7 +289,10 @@ def build_source_comparison_frontier(
     return pd.DataFrame(rows, columns=FRONTIER_COLUMNS).drop_duplicates()
 
 
-def _load_diagnostic_source_values(output_dir: Path) -> dict[str, pd.DataFrame]:
+def _load_diagnostic_source_values(
+    output_dir: Path,
+    failed_contexts: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
     """Load converted ESTO-shaped source rows used for child-level evidence."""
     from codebase.mapping_tools.result_storage import prefer_compressed_csv_path
 
@@ -304,7 +305,10 @@ def _load_diagnostic_source_values(output_dir: Path) -> dict[str, pd.DataFrame]:
     }
     result: dict[str, pd.DataFrame] = {}
     group_cols = ["economy", "scenario", "year", "esto_flow", "esto_product"]
+    failed_systems = set(failed_contexts["source_system"].dropna().astype(str))
     for system, path in paths.items():
+        if system not in failed_systems:
+            continue
         path = prefer_compressed_csv_path(path)
         if not path.exists():
             continue
@@ -312,11 +316,58 @@ def _load_diagnostic_source_values(output_dir: Path) -> dict[str, pd.DataFrame]:
         required = set(group_cols + ["value"])
         if not required.issubset(columns):
             continue
-        data = pd.read_csv(path, usecols=sorted(required), dtype=object)
-        data["economy"] = data["economy"].map(_normalise_economy)
-        data["year"] = pd.to_numeric(data["year"], errors="coerce").astype("Int64").astype(str)
-        data["value"] = pd.to_numeric(data["value"], errors="coerce").fillna(0.0)
-        result[system] = data.groupby(group_cols, dropna=False, as_index=False)["value"].sum()
+        system_contexts = failed_contexts[
+            failed_contexts["source_system"].astype(str).eq(system)
+        ].copy()
+        system_contexts["economy"] = system_contexts["economy"].map(_normalise_economy)
+        system_contexts["year"] = (
+            pd.to_numeric(system_contexts["year"], errors="coerce")
+            .astype("Int64")
+            .astype(str)
+        )
+        retained_chunks: list[pd.DataFrame] = []
+        for data in pd.read_csv(
+            path,
+            usecols=sorted(required),
+            dtype=object,
+            chunksize=250_000,
+        ):
+            data["economy"] = data["economy"].map(_normalise_economy)
+            data["year"] = (
+                pd.to_numeric(data["year"], errors="coerce").astype("Int64").astype(str)
+            )
+            keep = pd.Series(False, index=data.index)
+            for axis_name, raw_other_column in [
+                ("flow", "esto_product"),
+                ("product", "esto_flow"),
+            ]:
+                axis_contexts = system_contexts[
+                    system_contexts["validation_axis"].astype(str).eq(axis_name)
+                ]
+                if axis_contexts.empty:
+                    continue
+                context_keys = axis_contexts[
+                    ["economy", "scenario", "year", "other_axis_value"]
+                ].rename(columns={"other_axis_value": raw_other_column})
+                keep |= pd.MultiIndex.from_frame(
+                    data[["economy", "scenario", "year", raw_other_column]].astype(str)
+                ).isin(pd.MultiIndex.from_frame(context_keys.astype(str)))
+            if keep.any():
+                retained = data.loc[keep].copy()
+                retained["value"] = pd.to_numeric(
+                    retained["value"], errors="coerce"
+                ).fillna(0.0)
+                retained_chunks.append(
+                    retained.groupby(
+                        group_cols, dropna=False, as_index=False
+                    )["value"].sum()
+                )
+        if not retained_chunks:
+            continue
+        retained = pd.concat(retained_chunks, ignore_index=True)
+        result[system] = retained.groupby(
+            group_cols, dropna=False, as_index=False
+        )["value"].sum()
     return result
 
 
@@ -393,10 +444,44 @@ def build_common_esto_child_diagnostics(
         comparison = _read_comparison_data(
             comparison_data_path,
             columns=comparison_columns,
+            filters=[(
+                "source_system",
+                "in",
+                sorted(set(failed_validation["source_system"].dropna().astype(str))),
+            )],
         )
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce").astype("Int64").astype(str)
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison["economy"] = comparison["economy"].map(_normalise_economy)
+    failed_validation = failed_validation.copy()
+    failed_validation["economy"] = failed_validation["economy"].map(_normalise_economy)
+    failed_validation["year"] = (
+        pd.to_numeric(failed_validation["year"], errors="coerce")
+        .astype("Int64")
+        .astype(str)
+    )
+    comparison_keep = pd.Series(False, index=comparison.index)
+    for axis_name, comparison_other_column in [
+        ("flow", "common_product_label"),
+        ("product", "common_flow_label"),
+    ]:
+        axis_contexts = failed_validation[
+            failed_validation["validation_axis"].astype(str).eq(axis_name)
+        ]
+        if axis_contexts.empty:
+            continue
+        context_keys = axis_contexts[[
+            "comparison_scope", "source_system", "economy", "scenario",
+            "other_axis_value", "year",
+        ]].rename(columns={"other_axis_value": comparison_other_column})
+        lookup_columns = [
+            "comparison_scope", "source_system", "economy", "scenario",
+            comparison_other_column, "year",
+        ]
+        comparison_keep |= pd.MultiIndex.from_frame(
+            comparison[lookup_columns].astype(str)
+        ).isin(pd.MultiIndex.from_frame(context_keys[lookup_columns].astype(str)))
+    comparison = comparison.loc[comparison_keep]
     comparison_lookups: dict[str, dict[tuple[str, ...], dict[str, float]]] = {}
     for axis_name, axis_column, other_column in [
         ("flow", "common_flow_label", "common_product_label"),
@@ -413,7 +498,7 @@ def build_common_esto_child_diagnostics(
             lookup.setdefault(prefix, {})[str(values[axis_column])] = float(values["value"])
         comparison_lookups[axis_name] = lookup
     with profile_pipeline_section("child_diagnostics_raw_source_load"):
-        source_values = _load_diagnostic_source_values(output_dir)
+        source_values = _load_diagnostic_source_values(output_dir, failed_validation)
     raw_lookups: dict[str, dict[str, dict[tuple[str, ...], dict[str, float]]]] = {}
     for system, raw in source_values.items():
         raw_lookups[system] = {}
@@ -986,19 +1071,29 @@ def run_common_esto_validation_workflow(
 
         try:
             with profile_pipeline_section(f"recursive_{axis}"):
-                axis_detail = _validate_common_esto_axis_recursive_sums(
-                    tree_df=tree_df,
-                    comparison_data_path=comparison_data_path,
-                    axis=axis,
-                    tolerance=tolerance,
-                    source_inconsistencies=source_inconsistencies,
-                    leap_var_base_year=leap_var_base_year,
-                    record_all_checks=True,
-                    source_frontier=source_frontier,
-                    exclude_parents=excluded_rollup_parents,
-                    detached_labels=detached_rollup_parents,
-                    rollup_modes=rollup_modes,
-                    source_specific_exclude_parents=source_specific_exclude_parents,
+                source_detail_frames = [
+                    _validate_common_esto_axis_recursive_sums(
+                        tree_df=tree_df,
+                        comparison_data_path=comparison_data_path,
+                        axis=axis,
+                        tolerance=tolerance,
+                        source_inconsistencies=source_inconsistencies,
+                        leap_var_base_year=leap_var_base_year,
+                        record_all_checks=True,
+                        source_frontier=source_frontier,
+                        exclude_parents=excluded_rollup_parents,
+                        detached_labels=detached_rollup_parents,
+                        rollup_modes=rollup_modes,
+                        source_specific_exclude_parents=source_specific_exclude_parents,
+                        source_system_filter=(
+                            None if source_system == "ALL" else source_system
+                        ),
+                    )
+                    for source_system in source_systems
+                ]
+                axis_detail = pd.concat(
+                    source_detail_frames,
+                    ignore_index=True,
                 )
             grouped_axis_detail = build_validation_check_groups(axis_detail)
             detail_frames.append(axis_detail)

@@ -302,6 +302,46 @@ def test_passed_checks_skip_comparison_and_raw_diagnostic_reads(
     assert rollups.empty
 
 
+def test_raw_diagnostics_open_only_failed_source_and_matching_context(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_dir = tmp_path / "results" / "common_esto"
+    relationship_dir = output_dir.parent / "mapping_relationships"
+    relationship_dir.mkdir(parents=True)
+    esto_path = relationship_dir / "esto.csv"
+    ninth_path = relationship_dir / "ninth.csv"
+    pd.DataFrame([
+        {
+            "economy": "20USA", "scenario": "historical", "year": 2023,
+            "esto_flow": "F", "esto_product": "P", "value": 4.0,
+        },
+        {
+            "economy": "01AUS", "scenario": "historical", "year": 2023,
+            "esto_flow": "F", "esto_product": "P", "value": 99.0,
+        },
+    ]).to_csv(esto_path, index=False)
+    ninth_path.write_text("this file must not be opened", encoding="utf-8")
+    monkeypatch.setattr(
+        validation_module,
+        "get_registered_stage3_source_paths",
+        lambda _root: {
+            "ESTO": Path("unused") / esto_path.name,
+            "NINTH": Path("unused") / ninth_path.name,
+        },
+    )
+    failed = pd.DataFrame([{
+        "source_system": "ESTO", "validation_axis": "flow",
+        "economy": "20_USA", "scenario": "historical", "year": "2023",
+        "other_axis_value": "P",
+    }])
+
+    result = validation_module._load_diagnostic_source_values(output_dir, failed)
+
+    assert set(result) == {"ESTO"}
+    assert result["ESTO"]["value"].tolist() == [4.0]
+
+
 def test_eligible_checks_with_mismatches_fail(tmp_path: Path) -> None:
     comparison_path = tmp_path / "comparison.csv"
     _write_comparison(comparison_path, parent_value=11.0)
@@ -419,6 +459,38 @@ def test_validation_exception_is_recorded_as_error(tmp_path: Path, monkeypatch) 
     assert detail.empty
     assert set(summary["status"]) == {"error"}
     assert summary["reason"].str.contains("test validation failure").all()
+
+
+def test_validation_orchestration_runs_each_source_system_separately(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    comparison_path = tmp_path / "comparison.csv"
+    _write_comparison(comparison_path, parent_value=10.0)
+    comparison = pd.read_csv(comparison_path)
+    ninth = comparison.copy()
+    ninth["source_system"] = "NINTH"
+    pd.concat([comparison, ninth], ignore_index=True).to_csv(comparison_path, index=False)
+    calls: list[tuple[str, str | None]] = []
+
+    def record_call(*_args, **kwargs):
+        calls.append((kwargs["axis"], kwargs.get("source_system_filter")))
+        return pd.DataFrame(columns=validation_module.COMMON_ESTO_VALIDATION_COLS)
+
+    monkeypatch.setattr(
+        validation_module,
+        "_validate_common_esto_axis_recursive_sums",
+        record_call,
+    )
+
+    _run(tmp_path, comparison_path)
+
+    assert calls == [
+        ("product", "ESTO"),
+        ("product", "NINTH"),
+        ("flow", "ESTO"),
+        ("flow", "NINTH"),
+    ]
 
 
 def test_stale_input_mtime_cannot_be_reported_as_current(tmp_path: Path) -> None:

@@ -14,14 +14,23 @@ fixture-verified 2026-08-20; bounded real-data measurement pending.
 - Child diagnostics now return their correctly shaped empty artifacts before
   opening the comparison table or any converted raw source whenever there are
   no failed checks. When failures exist, the comparison read is projected to
-  the eight diagnostic columns.
+  the eight diagnostic columns and filtered to implicated source systems and
+  exact failed contexts. Raw diagnostic evidence opens only implicated source
+  files, scans them in 250,000-row chunks, and aggregates matching contexts
+  within each chunk instead of retaining full converted source tables.
+- Recursive product and flow validation now runs one source system at a time,
+  using Parquet predicate reads. Its grouped values and sparse lookup state
+  therefore contain only one of ESTO, ESTO Extended, Ninth, or LEAP at once;
+  detailed validation records are combined only after each source-specific
+  lookup has been released.
 - The APEC economy retry now restricts raw source and comparison rows to the
   failed source/scenario/year contexts before full-frame copying and
   normalisation. After tree-code canonicalisation, it retains only the failed
   parent/other-axis branches and their descendants before source-evidence and
   raw-pair lookup construction. It deliberately retains every economy.
-- Low-memory verification passed: 80 focused typed-output, recursive,
-  diagnostic, and anchor tests plus 4 APEC retry tests. A real-data Stage 3 or
+- Low-memory fixture verification covers typed projection/predicate reads,
+  source-sequential recursion, exact diagnostic context filtering, unopened
+  unrelated source files, and APEC retry filtering. A real-data Stage 3 or
   deep-validation run was intentionally not started while the separate
   baseline-seed process was active. Peak-RSS comparison and real-data output
   equivalence therefore remain the next gate; no memory-saving percentage is

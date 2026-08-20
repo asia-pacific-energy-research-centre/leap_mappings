@@ -61,4 +61,29 @@ def test_manifested_parquet_rejects_unknown_requested_column(tmp_path: Path) -> 
         read_manifested_parquet(path, columns=["missing"])
 
 
+def test_manifested_parquet_applies_validated_row_filters(tmp_path: Path) -> None:
+    frame = pd.DataFrame({
+        "source_system": ["ESTO", "NINTH"],
+        "value": [1.0, 2.0],
+    })
+    path = tmp_path / "detail.parquet"
+    write_manifested_parquet(frame, path, artifact_type="test")
+
+    restored = read_manifested_parquet(
+        path,
+        columns=["value"],
+        filters=[("source_system", "==", "NINTH")],
+    )
+
+    assert restored.to_dict("records") == [{"value": 2.0}]
+
+
+def test_manifested_parquet_rejects_unknown_filter_column(tmp_path: Path) -> None:
+    path = tmp_path / "detail.parquet"
+    write_manifested_parquet(pd.DataFrame({"value": [1]}), path, artifact_type="test")
+
+    with pytest.raises(ValueError, match="filters reference absent"):
+        read_manifested_parquet(path, filters=[("missing", "==", "x")])
+
+
 #%%
