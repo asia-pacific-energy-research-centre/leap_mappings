@@ -2554,32 +2554,51 @@ def _validate_common_esto_axis_recursive_sums(
     del data
     gc.collect()
     parent_codes = set(children_map)
-    groups_by_source_parent: dict[tuple[str, str], list[tuple[tuple[str, ...], dict[str, float], set[str]]]] = {}
-    with profile_pipeline_section(f"recursive_{axis}{section_suffix}_lookup"):
-        for group_key, group_rows in grouped.groupby(["source_system", *sub_group_cols], dropna=False, sort=False):
-            source_system = str(group_key[0])
-            idx = tuple(str(value) for value in group_key[1:])
-            values = dict(zip(group_rows[axis_col].astype(str), group_rows["value"].astype(float)))
-            sys_codes = {code for code, value in values.items() if abs(value) > tolerance}
-            for parent_code in parent_codes.intersection(values):
-                groups_by_source_parent.setdefault((source_system, parent_code), []).append(
-                    (idx, values, sys_codes)
-                )
-
     source_specific_exclude_parents = source_specific_exclude_parents or {}
     checks = []
-    for parent_code, children in children_map.items():
-        for source_system in grouped["source_system"].dropna().astype(str).unique():
-            if parent_code in source_specific_exclude_parents.get(source_system, set()):
-                continue
-            expected_children = children
-            if source_frontier is not None and axis == "flow":
-                frontier_children = frontier_lookup.get((str(source_system), str(parent_code)), set())
-                expected_children = [child for child in children if child in frontier_children]
-                expected_children.extend(sorted(frontier_children.difference(children)))
-                if not expected_children:
+    # Consume one exact source context at a time. The previous implementation
+    # retained a values dictionary for every context and then referenced those
+    # dictionaries from every parent present, which dominated deep-validation
+    # RSS. The grouped columnar table remains authoritative; only the current
+    # context is converted to a small lookup and released on the next iteration.
+    with profile_pipeline_section(f"recursive_{axis}{section_suffix}_lookup"):
+        grouped_contexts = grouped.groupby(
+            ["source_system", *sub_group_cols],
+            dropna=False,
+            sort=False,
+        )
+        for group_key, group_rows in grouped_contexts:
+            source_system = str(group_key[0])
+            idx = tuple(str(value) for value in group_key[1:])
+            values = dict(
+                zip(
+                    group_rows[axis_col].astype(str),
+                    group_rows["value"].astype(float),
+                )
+            )
+            sys_codes = {
+                code for code, value in values.items() if abs(value) > tolerance
+            }
+            for parent_code in parent_codes.intersection(values):
+                if parent_code in source_specific_exclude_parents.get(
+                    source_system, set()
+                ):
                     continue
-            for idx, values, sys_codes in groups_by_source_parent.get((source_system, parent_code), []):
+                expected_children = children_map[parent_code]
+                if source_frontier is not None and axis == "flow":
+                    frontier_children = frontier_lookup.get(
+                        (source_system, parent_code), set()
+                    )
+                    expected_children = [
+                        child
+                        for child in expected_children
+                        if child in frontier_children
+                    ]
+                    expected_children.extend(
+                        sorted(frontier_children.difference(expected_children))
+                    )
+                    if not expected_children:
+                        continue
                 # A zero-valued aggregate placeholder must not mask a nonzero
                 # detailed base input in this exact source slice.
                 resolved = _resolve_to_comparison_data(
@@ -2658,6 +2677,8 @@ def _validate_common_esto_axis_recursive_sums(
                     "source_issue_ids": source_record.get("source_issue_ids", ""),
                     "inherited_source_inconsistency": source_status == "confirmed_inherited",
                 })
+    del grouped
+    gc.collect()
 
     result = pd.DataFrame(checks)
     if result.empty:

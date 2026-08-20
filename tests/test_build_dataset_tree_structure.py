@@ -609,6 +609,37 @@ def test_common_validation_processes_source_systems_sequentially(tmp_path: Path)
     assert result["difference"].tolist() == [1.0, 1.0]
 
 
+def test_common_validation_handles_many_sparse_contexts_without_state_bleed(
+    tmp_path: Path,
+) -> None:
+    comparison_path = tmp_path / "comparison.csv"
+    tree = pd.DataFrame([
+        {"dataset": dataset, "axis": "product", "code": code, "parent_code": parent}
+        for dataset in ["esto", "common_esto"]
+        for code, parent in [("P", ""), ("P.1", "P"), ("P.2", "P")]
+    ])
+    rows = []
+    for economy_number in range(200):
+        for product, value in [("P", 11.0), ("P.1", 4.0), ("P.2", 6.0)]:
+            rows.append({
+                "comparison_scope": "scope", "source_system": "ESTO",
+                "economy": f"{economy_number:03d}_TST", "scenario": "reference",
+                "year": 2023, "common_flow_label": "F",
+                "common_product_label": product, "value": value,
+            })
+    pd.DataFrame(rows).to_csv(comparison_path, index=False)
+
+    result = validate_common_esto_recursive_sums(
+        tree,
+        comparison_path,
+        leap_var_base_year=2022,
+    )
+
+    assert len(result) == 200
+    assert result["economy"].nunique() == 200
+    assert set(result["difference"]) == {1.0}
+
+
 def test_common_flow_validation_expands_zero_base_rollup_placeholder(tmp_path: Path) -> None:
     """A zero base label must not hide a nonzero detailed rollup input."""
     comparison_path = tmp_path / "comparison.csv"
