@@ -36,6 +36,43 @@ fixture-verified 2026-08-20; bounded real-data measurement pending.
   equivalence therefore remain the next gate; no memory-saving percentage is
   claimed yet.
 
+### 2026-08-20 follow-on implementation checkpoints
+
+The remaining code-level items from the memory review were implemented as
+separate reversible commits, using fixture-only verification while the
+baseline-seed workload was active:
+
+- `0531d9a` spills source/economy comparison chunks to temporary Parquet and
+  releases relevance/source frames before final comparison materialisation.
+- `efe3059` reads the shared physical ESTO history once. ESTO Extended is now a
+  virtual identity expanded only inside the current bounded application chunk;
+  shared relevance evidence is counted once rather than doubled.
+- `31e9ead` certifies fact/metadata reconstruction in 250,000-row windows
+  instead of retaining full reconstructed and expected legacy tables together.
+- `a206c93` replaces the recursive validator's retained context dict-of-dicts
+  with a one-context-at-a-time iterator over the grouped columnar table.
+- `6c5d08b` reuses one run-scoped Parquet integrity result across predicate
+  reads, invalidating it when file size, modification time, or the manifest
+  hash identity changes.
+- `db834ca` completes bounded value application: once component relevance is
+  fixed, physical source files are re-read in 250,000-row chunks; comparison
+  shards and lineage are streamed, chunk totals are reconciled, and no full
+  active-source value table is retained during mapping.
+
+All of these checkpoints preserve the existing in-memory functions for small
+notebook/fixture callers. The production `chunk_value_application=True` path
+uses the streamed source and disk-shard workflow. Focused recursive,
+diagnostic, anchor, contract, Stage 3, smoke, and synthetic acceptance tests
+passed. The only outstanding acceptance step is an isolated real-data run to
+measure peak RSS and elapsed time against the 6.85 GB application and 9.04 GB
+interrupted-validation observations. That run remains deferred until the
+baseline-seed workload is no longer competing for RAM.
+The initial relevance/source-total pass still materialises the deduplicated
+physical inputs together; the former full active-value application table does
+not. If profiling shows the earlier relevance phase is now the peak, its
+summaries should become the next disk-backed pass rather than adding more
+unmeasured complexity pre-emptively.
+
 ### 2026-08-20 bounded LNG pipeline evidence
 
 - The profiled Stages 1-2 pass completed with a **0.41 GB** peak RSS. The
@@ -170,23 +207,16 @@ historical peak as an incident report, not a reproducible baseline.
 
 ### Follow-on: reduce ordinary Stage 3 memory, not only deep validation
 
-The deep-validation work above is the immediate safety priority. The ordinary
-Stage 3 application path has separate, larger-scale opportunities which should
-be designed as one streaming change after that first pass is proven equivalent.
-They are intentionally not folded into the low-risk validation patch.
+The deep-validation work above was the immediate safety priority. The ordinary
+Stage 3 application changes below are now implemented behind the existing
+`chunk_value_application=True` production path; real-data measurement remains
+the final acceptance gate.
 
-1. **Make source/economy chunking genuinely streaming (highest expected
-   benefit).** `run_apply_common_esto_structure()` currently reads all four
-   converted sources before `apply_common_structure_by_source_economy()` splits
-   them into chunks. It also retains every comparison, missing-map, and total
-   frame in lists and concatenates them at the end. Replace this with a
-   two-pass, partitioned workflow: first stream compact pair-relevance and
-   source-total summaries; then reread one source/economy partition at a time,
-   apply the map, write a partitioned Parquet fact shard/lineage shard, update
-   small QA accumulators, and release it. Final publication must consume the
-   staged partition set transactionally rather than rebuilding a second
-   full-size in-memory comparison table.
-2. **Do not duplicate ordinary ESTO history for ESTO Extended.** Stage 3
+1. **Implemented — streamed value application.** Relevance and source-total
+   summaries are fixed first; value application then re-reads physical inputs
+   in bounded chunks, writes comparison/lineage shards, and releases each
+   source frame. Final aggregation happens only after source chunks are gone.
+2. **Implemented — do not duplicate ordinary ESTO history for ESTO Extended.** Stage 3
    deliberately uses the same ESTO history file for `ESTO` and
    `ESTO_EXTENDED`, but currently materialises it under both source-system
    labels. Read and filter one ESTO partition once, then apply the two scope
@@ -214,7 +244,7 @@ They are intentionally not folded into the low-risk validation patch.
    make the legacy CSV an explicit compatibility export (or retire it) rather
    than an unconditional default output. This primarily reduces disk and I/O,
    but also prevents accidental full-CSV reads in downstream workflows.
-6. **Reuse static validation state, not data frames.** Cache the small tree
+6. **Implemented in the validation read boundary.** Reuse static validation state, not data frames. Cache the small tree
    indexes, aliases, rollup maps, and mapping indexes across the APEC and
    economy-detail passes. Do not cache raw sources, comparison frames, or
    grouped value tables, because doing so recreates the peak-memory problem.
