@@ -11,6 +11,7 @@ from pathlib import Path
 import gzip
 import sys
 import re
+import tempfile
 from datetime import datetime, timezone
 
 import gc
@@ -1183,12 +1184,13 @@ def apply_common_structure(
     return comparison_df, missing_map_df, mapped_source_df
 
 
-def apply_common_structure_by_source_economy(
+def _apply_common_structure_by_source_economy_chunks(
     source_df: pd.DataFrame,
     common_rows_df: pd.DataFrame,
     lineage_output_path: Path,
     comparison_scope_systems: dict[str, set[str]] | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    comparison_parts_dir: Path | None = None,
+) -> tuple[pd.DataFrame | list[Path], pd.DataFrame, pd.DataFrame]:
     """Apply the common map in disjoint fact-key chunks.
 
     ``source_system`` and ``economy`` are part of every comparison, lineage,
@@ -1197,6 +1199,7 @@ def apply_common_structure_by_source_economy(
     comparison frames remain in memory.
     """
     comparison_frames: list[pd.DataFrame] = []
+    comparison_part_paths: list[Path] = []
     missing_frames: list[pd.DataFrame] = []
     total_check_frames: list[pd.DataFrame] = []
     lineage_temp_path = lineage_output_path.with_name(
@@ -1269,7 +1272,19 @@ def apply_common_structure_by_source_economy(
                         index=False,
                         header=chunk_count == 0,
                     )
-                    comparison_frames.append(comparison_chunk_df)
+                    if comparison_parts_dir is None:
+                        comparison_frames.append(comparison_chunk_df)
+                    else:
+                        comparison_parts_dir.mkdir(parents=True, exist_ok=True)
+                        comparison_part_path = (
+                            comparison_parts_dir / f"part_{chunk_count:06d}.parquet"
+                        )
+                        comparison_chunk_df.to_parquet(
+                            comparison_part_path,
+                            index=False,
+                            compression="zstd",
+                        )
+                        comparison_part_paths.append(comparison_part_path)
                     missing_frames.append(
                         filter_missing_common_map_diagnostics(
                             missing_chunk_df
@@ -1309,11 +1324,15 @@ def apply_common_structure_by_source_economy(
         lineage_temp_path.unlink(missing_ok=True)
         raise
 
-    comparison_df = (
-        pd.concat(comparison_frames, ignore_index=True)
-        if comparison_frames
-        else pd.DataFrame(columns=OUTPUT_COLUMNS)
-    )
+    comparison_result: pd.DataFrame | list[Path]
+    if comparison_parts_dir is None:
+        comparison_result = (
+            pd.concat(comparison_frames, ignore_index=True)
+            if comparison_frames
+            else pd.DataFrame(columns=OUTPUT_COLUMNS)
+        )
+    else:
+        comparison_result = comparison_part_paths
     missing_map_df = (
         pd.concat(missing_frames, ignore_index=True)
         if missing_frames
@@ -1329,7 +1348,49 @@ def apply_common_structure_by_source_economy(
             + ["source_total", "common_total", "difference"]
         )
     )
-    return comparison_df, missing_map_df, total_check_df
+    return comparison_result, missing_map_df, total_check_df
+
+
+def apply_common_structure_by_source_economy(
+    source_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    lineage_output_path: Path,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Apply in chunks and retain comparison frames for fixture-sized callers."""
+    comparison_result, missing_map_df, total_check_df = (
+        _apply_common_structure_by_source_economy_chunks(
+            source_df=source_df,
+            common_rows_df=common_rows_df,
+            lineage_output_path=lineage_output_path,
+            comparison_scope_systems=comparison_scope_systems,
+        )
+    )
+    if not isinstance(comparison_result, pd.DataFrame):
+        raise TypeError("In-memory chunk application did not return a comparison table.")
+    return comparison_result, missing_map_df, total_check_df
+
+
+def apply_common_structure_by_source_economy_to_parts(
+    source_df: pd.DataFrame,
+    common_rows_df: pd.DataFrame,
+    lineage_output_path: Path,
+    comparison_parts_dir: Path,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+) -> tuple[list[Path], pd.DataFrame, pd.DataFrame]:
+    """Apply in chunks while spilling comparison results to temporary Parquet."""
+    comparison_result, missing_map_df, total_check_df = (
+        _apply_common_structure_by_source_economy_chunks(
+            source_df=source_df,
+            common_rows_df=common_rows_df,
+            lineage_output_path=lineage_output_path,
+            comparison_scope_systems=comparison_scope_systems,
+            comparison_parts_dir=Path(comparison_parts_dir),
+        )
+    )
+    if isinstance(comparison_result, pd.DataFrame):
+        raise TypeError("Partitioned chunk application did not return Parquet parts.")
+    return comparison_result, missing_map_df, total_check_df
 
 
 def build_broad_common_row_diagnostics(
@@ -2191,6 +2252,8 @@ def run_apply_common_esto_structure(
         esto_base_year=esto_base_year,
         relevance_policies=relevance_policies,
     )
+    del relevance_source_df
+    gc.collect()
     leap_branch_audit_df = pd.DataFrame()
     raw_leap_df = pd.DataFrame()
     leap_esto_df = pd.DataFrame()
@@ -2374,20 +2437,37 @@ def run_apply_common_esto_structure(
         output_dir=output_dir,
     )
     esto_component_lineage_df = None
+    active_source_row_count = len(active_source_df)
     if (
         chunk_by_source_economy
         and esto_component_lineage_output_path is not None
     ):
-        (
-            unfiltered_comparison_df,
-            missing_map_df,
-            total_check_df,
-        ) = apply_common_structure_by_source_economy(
-            active_source_df,
-            adjusted_common_rows_df,
-            esto_component_lineage_output_path,
-            comparison_scope_systems=comparison_scope_systems,
-        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".common_esto_comparison_parts_",
+            dir=output_dir,
+        ) as comparison_parts_temp:
+            comparison_parts_dir = Path(comparison_parts_temp)
+            (
+                comparison_part_paths,
+                missing_map_df,
+                total_check_df,
+            ) = apply_common_structure_by_source_economy_to_parts(
+                active_source_df,
+                adjusted_common_rows_df,
+                esto_component_lineage_output_path,
+                comparison_parts_dir=comparison_parts_dir,
+                comparison_scope_systems=comparison_scope_systems,
+            )
+            # Chunk results are safely on disk. Release the full active source
+            # table before materialising the combined comparison output.
+            del active_source_df
+            gc.collect()
+            unfiltered_comparison_df = (
+                pd.read_parquet(comparison_parts_dir)
+                if comparison_part_paths
+                else pd.DataFrame(columns=OUTPUT_COLUMNS)
+            )
     else:
         (
             unfiltered_comparison_df,
@@ -2408,6 +2488,8 @@ def run_apply_common_esto_structure(
             unfiltered_comparison_df,
             comparison_scope_systems=comparison_scope_systems,
         )
+        del active_source_df
+        gc.collect()
     # The comparison can exceed a million rows. The remaining helpers treat it
     # as read-only, so retain the existing frame instead of doubling its memory
     # immediately before broad-row, wide-output, and contract publication.
@@ -2470,7 +2552,7 @@ def run_apply_common_esto_structure(
         "HIGHLY RECOMMENDED COPY-READY MAPPINGS: "
         f"{relevance_output_paths['highly_recommended'].resolve()}"
     )
-    print(f"Nonzero ESTO-shaped source rows used: {len(active_source_df):,}")
+    print(f"Nonzero ESTO-shaped source rows used: {active_source_row_count:,}")
     print(f"Common ESTO components pruned as not applicable: {len(pruned_components_df):,}")
     print(f"Common comparison rows written without label-based subtotal filtering: {len(comparison_df):,}")
     print(f"Wide year rows written: {len(wide_year_df):,}")

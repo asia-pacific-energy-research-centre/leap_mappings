@@ -6,6 +6,7 @@ import pytest
 from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
     apply_common_structure_by_source_economy,
+    apply_common_structure_by_source_economy_to_parts,
     build_component_relevance,
     build_source_coverage_check,
     build_total_check,
@@ -588,6 +589,24 @@ def test_chunked_common_application_matches_single_pass(tmp_path) -> None:
         expected_lineage.sort_values(lineage_sort).reset_index(drop=True),
         check_dtype=False,
     )
+
+    parts_dir = tmp_path / "comparison_parts"
+    part_paths, partitioned_missing, partitioned_total_check = (
+        apply_common_structure_by_source_economy_to_parts(
+            source_df,
+            common_rows_df,
+            tmp_path / "partitioned_lineage.csv.gz",
+            comparison_parts_dir=parts_dir,
+        )
+    )
+    partitioned_comparison = pd.read_parquet(parts_dir)
+    assert len(part_paths) == 3
+    pd.testing.assert_frame_equal(
+        partitioned_comparison.sort_values(comparison_sort).reset_index(drop=True),
+        expected_comparison.sort_values(comparison_sort).reset_index(drop=True),
+    )
+    pd.testing.assert_frame_equal(partitioned_missing, expected_missing)
+    pd.testing.assert_frame_equal(partitioned_total_check, expected_total_check)
 
 
 def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> None:
