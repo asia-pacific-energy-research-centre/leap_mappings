@@ -12,6 +12,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     build_total_check,
     build_unmapped_leap_branch_evidence,
     build_wide_year_output,
+    collapse_shared_source_paths,
     filter_missing_common_map_diagnostics,
     filter_partial_coverage_by_relevance,
     filter_source_to_relevant_pairs,
@@ -607,6 +608,81 @@ def test_chunked_common_application_matches_single_pass(tmp_path) -> None:
     )
     pd.testing.assert_frame_equal(partitioned_missing, expected_missing)
     pd.testing.assert_frame_equal(partitioned_total_check, expected_total_check)
+
+
+def test_shared_esto_history_expands_only_as_virtual_chunk_identity(
+    tmp_path: Path,
+) -> None:
+    shared_path = tmp_path / "esto.csv"
+    physical_paths, aliases = collapse_shared_source_paths({
+        "ESTO": shared_path,
+        "ESTO_EXTENDED": shared_path,
+        "LEAP": tmp_path / "leap.csv",
+    })
+    assert set(physical_paths) == {"ESTO", "LEAP"}
+    assert aliases == {"ESTO_EXTENDED": "ESTO"}
+
+    source = pd.DataFrame([{
+        "source_system": "ESTO", "economy": "20_USA",
+        "scenario": "historical", "year": 2023,
+        "esto_flow": "F", "esto_product": "P", "value": 5.0,
+    }])
+    common_rows = pd.DataFrame([
+        {
+            "comparison_scope": scope,
+            "component_esto_flow": "F", "component_esto_product": "P",
+            "common_row_id": f"{scope}_row", "common_flow_code": "F",
+            "common_flow_name": "Flow", "common_flow_label": "F Flow",
+            "common_product_code": "P", "common_product_name": "Product",
+            "common_product_label": "P Product", "component_sign": 1,
+        }
+        for scope in ["esto_only", "esto_extended"]
+    ])
+
+    comparison, missing, _ = apply_common_structure(
+        source,
+        common_rows,
+        comparison_scope_systems={
+            "esto_only": {"ESTO"},
+            "esto_extended": {"ESTO_EXTENDED"},
+        },
+        source_system_aliases=aliases,
+    )
+
+    assert missing.empty
+    assert comparison[["comparison_scope", "source_system", "value"]].to_dict(
+        "records"
+    ) == [
+        {"comparison_scope": "esto_extended", "source_system": "ESTO_EXTENDED", "value": 5.0},
+        {"comparison_scope": "esto_only", "source_system": "ESTO", "value": 5.0},
+    ]
+
+
+def test_shared_source_relevance_counts_physical_rows_once() -> None:
+    source = pd.DataFrame([{
+        "source_system": "ESTO", "economy": "20_USA", "year": 2023,
+        "esto_flow": "F", "esto_product": "P", "value": 5.0,
+    }])
+    policies = [
+        {
+            "dataset_id": dataset_id,
+            "period_policy": "latest_available_year",
+            "evidence_column": "esto_base_year_nonzero",
+            "include_year_range": False,
+        }
+        for dataset_id in ["ESTO", "ESTO_EXTENDED"]
+    ]
+
+    relevance, _ = build_component_relevance(
+        source,
+        active_component_abs_tolerance=0.0,
+        ninth_projection_start_year=2023,
+        relevance_policies=policies,
+        source_system_aliases={"ESTO_EXTENDED": "ESTO"},
+    )
+
+    assert relevance.loc[0, "esto_base_year_nonzero_row_count"] == 1
+    assert relevance.loc[0, "esto_base_year_abs_sum"] == 5.0
 
 
 def test_apply_common_structure_rejects_duplicate_component_mapping_keys() -> None:

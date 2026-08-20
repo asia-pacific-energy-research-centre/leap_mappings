@@ -381,6 +381,44 @@ def read_source_tables(
     return source_df
 
 
+def collapse_shared_source_paths(
+    source_paths: dict[str, Path],
+) -> tuple[dict[str, Path], dict[str, str]]:
+    """Return physical inputs once plus virtual-system to physical-system aliases."""
+    physical_paths: dict[str, Path] = {}
+    source_system_aliases: dict[str, str] = {}
+    physical_system_by_path: dict[Path, str] = {}
+    for source_system, path in source_paths.items():
+        resolved_path = Path(path).resolve()
+        physical_system = physical_system_by_path.get(resolved_path)
+        if physical_system is None:
+            physical_system_by_path[resolved_path] = source_system
+            physical_paths[source_system] = Path(path)
+        else:
+            source_system_aliases[source_system] = physical_system
+    return physical_paths, source_system_aliases
+
+
+def expand_source_system_aliases(
+    source_df: pd.DataFrame,
+    source_system_aliases: dict[str, str] | None,
+) -> pd.DataFrame:
+    """Expand virtual system identities only for the current bounded frame."""
+    if not source_system_aliases or source_df.empty:
+        return source_df
+    frames = [source_df]
+    for virtual_system, physical_system in source_system_aliases.items():
+        aliased = source_df[
+            source_df["source_system"].astype(str).eq(physical_system)
+        ].copy()
+        if aliased.empty:
+            continue
+        aliased["source_system"] = aliased["source_system"].astype("string")
+        aliased["source_system"] = virtual_system
+        frames.append(aliased)
+    return pd.concat(frames, ignore_index=True)
+
+
 def split_code_name(label: object) -> tuple[str, str]:
     """Split an ESTO label into leading code and display name."""
     text = "" if pd.isna(label) else str(label).strip()
@@ -541,6 +579,7 @@ def build_component_relevance(
     ninth_projection_start_year: int,
     esto_base_year: int | None = None,
     relevance_policies: list[dict[str, object]] | None = None,
+    source_system_aliases: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, int | None]:
     """Return component pairs with policy-selected non-zero mapping evidence."""
     policies = (
@@ -590,8 +629,11 @@ def build_component_relevance(
         ]
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
+    source_system_aliases = source_system_aliases or {}
     latest_year_dataset_ids = {
-        str(policy["dataset_id"])
+        source_system_aliases.get(
+            str(policy["dataset_id"]), str(policy["dataset_id"])
+        )
         for policy in policies
         if policy["period_policy"] == "latest_available_year"
     }
@@ -608,14 +650,15 @@ def build_component_relevance(
     include_year_range: dict[str, bool] = {}
     for policy in policies:
         dataset_id = str(policy["dataset_id"])
+        evidence_source_system = source_system_aliases.get(dataset_id, dataset_id)
         period_policy = str(policy["period_policy"])
         evidence_column = str(policy["evidence_column"])
-        mask = working_df["source_system"].eq(dataset_id) & nonzero_mask
+        mask = working_df["source_system"].eq(evidence_source_system) & nonzero_mask
         if period_policy == "latest_available_year":
             if esto_base_year is not None:
                 mask &= working_df["year"].eq(resolved_esto_base_year)
             else:
-                dataset_mask = working_df["source_system"].eq(dataset_id)
+                dataset_mask = working_df["source_system"].eq(evidence_source_system)
                 latest_for_vintage = working_df.loc[dataset_mask].groupby(
                     "_relevance_vintage",
                     observed=True,
@@ -1050,6 +1093,7 @@ def apply_common_structure(
     common_rows_df: pd.DataFrame,
     return_lineage: bool = False,
     comparison_scope_systems: dict[str, set[str]] | None = None,
+    source_system_aliases: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Join ESTO-shaped source rows to common rows and aggregate values."""
     scope_systems = (
@@ -1064,6 +1108,7 @@ def apply_common_structure(
         if return_lineage:
             return comparison_df, missing_map_df, mapped_source_df, pd.DataFrame(columns=ESTO_COMPONENT_LINEAGE_COLUMNS)
         return comparison_df, missing_map_df, mapped_source_df
+    source_df = expand_source_system_aliases(source_df, source_system_aliases)
     common_rows_df = common_rows_df.copy()
     metadata_defaults: dict[str, object] = {
         "common_row_basis": "",
@@ -1190,6 +1235,7 @@ def _apply_common_structure_by_source_economy_chunks(
     lineage_output_path: Path,
     comparison_scope_systems: dict[str, set[str]] | None = None,
     comparison_parts_dir: Path | None = None,
+    source_system_aliases: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame | list[Path], pd.DataFrame, pd.DataFrame]:
     """Apply the common map in disjoint fact-key chunks.
 
@@ -1266,6 +1312,7 @@ def _apply_common_structure_by_source_economy_chunks(
                         common_rows_df,
                         return_lineage=True,
                         comparison_scope_systems=comparison_scope_systems,
+                        source_system_aliases=source_system_aliases,
                     )
                     lineage_chunk_df.to_csv(
                         lineage_handle,
@@ -1356,6 +1403,7 @@ def apply_common_structure_by_source_economy(
     common_rows_df: pd.DataFrame,
     lineage_output_path: Path,
     comparison_scope_systems: dict[str, set[str]] | None = None,
+    source_system_aliases: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply in chunks and retain comparison frames for fixture-sized callers."""
     comparison_result, missing_map_df, total_check_df = (
@@ -1364,6 +1412,7 @@ def apply_common_structure_by_source_economy(
             common_rows_df=common_rows_df,
             lineage_output_path=lineage_output_path,
             comparison_scope_systems=comparison_scope_systems,
+            source_system_aliases=source_system_aliases,
         )
     )
     if not isinstance(comparison_result, pd.DataFrame):
@@ -1377,6 +1426,7 @@ def apply_common_structure_by_source_economy_to_parts(
     lineage_output_path: Path,
     comparison_parts_dir: Path,
     comparison_scope_systems: dict[str, set[str]] | None = None,
+    source_system_aliases: dict[str, str] | None = None,
 ) -> tuple[list[Path], pd.DataFrame, pd.DataFrame]:
     """Apply in chunks while spilling comparison results to temporary Parquet."""
     comparison_result, missing_map_df, total_check_df = (
@@ -1386,6 +1436,7 @@ def apply_common_structure_by_source_economy_to_parts(
             lineage_output_path=lineage_output_path,
             comparison_scope_systems=comparison_scope_systems,
             comparison_parts_dir=Path(comparison_parts_dir),
+            source_system_aliases=source_system_aliases,
         )
     )
     if isinstance(comparison_result, pd.DataFrame):
@@ -2231,11 +2282,22 @@ def run_apply_common_esto_structure(
     source_system_overrides: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Apply the common ESTO structure to available ESTO-shaped source data."""
+    physical_source_paths, source_system_aliases = collapse_shared_source_paths(
+        source_paths
+    )
+    physical_source_overrides = (
+        {
+            source_system: override
+            for source_system, override in source_system_overrides.items()
+            if source_system in physical_source_paths
+        }
+        if source_system_overrides else None
+    )
     source_df = read_source_tables(
-        source_paths,
+        physical_source_paths,
         default_economy=default_economy,
         compact_dtypes=chunk_by_source_economy,
-        source_system_overrides=source_system_overrides,
+        source_system_overrides=physical_source_overrides,
     )
     common_rows_df = pd.read_csv(common_rows_path, dtype=str).fillna("")
     for column in ["component_esto_flow", "component_esto_product"]:
@@ -2251,6 +2313,7 @@ def run_apply_common_esto_structure(
         ninth_projection_start_year=ninth_projection_start_year,
         esto_base_year=esto_base_year,
         relevance_policies=relevance_policies,
+        source_system_aliases=source_system_aliases,
     )
     del relevance_source_df
     gc.collect()
@@ -2374,6 +2437,10 @@ def run_apply_common_esto_structure(
         )["value"]
         .sum()
     )
+    source_totals_df = expand_source_system_aliases(
+        source_totals_df,
+        source_system_aliases,
+    )
     del source_df
     if not relevance_df.empty:
         active_source_df = filter_source_to_relevant_pairs(
@@ -2458,6 +2525,7 @@ def run_apply_common_esto_structure(
                 esto_component_lineage_output_path,
                 comparison_parts_dir=comparison_parts_dir,
                 comparison_scope_systems=comparison_scope_systems,
+                source_system_aliases=source_system_aliases,
             )
             # Chunk results are safely on disk. Release the full active source
             # table before materialising the combined comparison output.
@@ -2479,6 +2547,7 @@ def run_apply_common_esto_structure(
             adjusted_common_rows_df,
             return_lineage=True,
             comparison_scope_systems=comparison_scope_systems,
+            source_system_aliases=source_system_aliases,
         )
         missing_map_df = filter_missing_common_map_diagnostics(
             missing_map_df
