@@ -2,7 +2,30 @@
 
 ## MAPQ-052 — Reduce Stage 3 deep-validation peak memory (anchor + recursive checks)
 
-**Priority / status:** P1 · profiling baseline reproduced 2026-08-20; memory reduction pending.
+**Priority / status:** P1 · safe first-pass memory reduction implemented and
+fixture-verified 2026-08-20; bounded real-data measurement pending.
+
+### 2026-08-20 safe first-pass implementation
+
+- Manifested Parquet reads now support validated column projection and restore
+  declared dtypes by column name. Recursive Common ESTO validation requests
+  only its eight required columns and releases the raw axis frame as soon as
+  the grouped table exists.
+- Child diagnostics now return their correctly shaped empty artifacts before
+  opening the comparison table or any converted raw source whenever there are
+  no failed checks. When failures exist, the comparison read is projected to
+  the eight diagnostic columns.
+- The APEC economy retry now restricts raw source and comparison rows to the
+  failed source/scenario/year contexts before full-frame copying and
+  normalisation. After tree-code canonicalisation, it retains only the failed
+  parent/other-axis branches and their descendants before source-evidence and
+  raw-pair lookup construction. It deliberately retains every economy.
+- Low-memory verification passed: 80 focused typed-output, recursive,
+  diagnostic, and anchor tests plus 4 APEC retry tests. A real-data Stage 3 or
+  deep-validation run was intentionally not started while the separate
+  baseline-seed process was active. Peak-RSS comparison and real-data output
+  equivalence therefore remain the next gate; no memory-saving percentage is
+  claimed yet.
 
 ### 2026-08-20 bounded LNG pipeline evidence
 

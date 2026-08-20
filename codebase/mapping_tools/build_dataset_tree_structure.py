@@ -31,6 +31,7 @@ Tree CSV columns:
 
 from __future__ import annotations
 
+import gc
 import re
 import sys
 from pathlib import Path
@@ -39,6 +40,7 @@ from typing import Any
 import pandas as pd
 
 from codebase.mapping_tools.pipeline_profiling import profile_pipeline_section
+from codebase.mapping_tools.typed_output import read_manifested_parquet
 
 # ---------------------------------------------------------------------------
 # Repo root and paths
@@ -2480,13 +2482,7 @@ def _validate_common_esto_axis_recursive_sums(
     if not comparison_data_path.exists():
         return _empty_common_esto_validation()
 
-    with profile_pipeline_section(f"recursive_{axis}_read"):
-        data = (
-            pd.read_parquet(comparison_data_path)
-            if comparison_data_path.suffix.casefold() == ".parquet"
-            else pd.read_csv(comparison_data_path, dtype=object)
-        )
-    required = {
+    required_columns = [
         "comparison_scope",
         "source_system",
         "economy",
@@ -2495,8 +2491,14 @@ def _validate_common_esto_axis_recursive_sums(
         "common_flow_label",
         "common_product_label",
         "value",
-    }
-    missing = required.difference(data.columns)
+    ]
+    with profile_pipeline_section(f"recursive_{axis}_read"):
+        data = (
+            read_manifested_parquet(comparison_data_path, columns=required_columns)
+            if comparison_data_path.suffix.casefold() == ".parquet"
+            else pd.read_csv(comparison_data_path, dtype=object, usecols=required_columns)
+        )
+    missing = set(required_columns).difference(data.columns)
     if missing:
         raise ValueError(
             f"Common ESTO comparison data is missing required columns: {sorted(missing)}"
@@ -2504,7 +2506,7 @@ def _validate_common_esto_axis_recursive_sums(
 
     data["value"] = pd.to_numeric(data["value"], errors="coerce").fillna(0.0)
     data["year"] = pd.to_numeric(data["year"], errors="coerce")
-    data = data[data["year"] > int(leap_var_base_year)].copy()
+    data = data.loc[data["year"] > int(leap_var_base_year)]
     data["year"] = data["year"].astype(int).astype(str)
     if data.empty:
         return _empty_common_esto_validation()
@@ -2536,6 +2538,8 @@ def _validate_common_esto_axis_recursive_sums(
             .sum()
             .reset_index()
         )
+    del data
+    gc.collect()
     parent_codes = set(children_map)
     groups_by_source_parent: dict[tuple[str, str], list[tuple[tuple[str, ...], dict[str, float], set[str]]]] = {}
     with profile_pipeline_section(f"recursive_{axis}_lookup"):

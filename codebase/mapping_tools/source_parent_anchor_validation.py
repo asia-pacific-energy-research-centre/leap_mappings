@@ -572,7 +572,35 @@ def validate_source_parent_anchors(
         bad = ambiguous[ambiguous > 1].head(10).reset_index().to_dict("records")
         raise ValueError(f"Component maps to multiple Common ESTO rows: {bad}")
 
-    source = source_df.copy()
+    retry_filter = issue_filter is not None and not issue_filter.empty
+    if retry_filter:
+        required_filter = {
+            "source_system", "validation_axis", "scenario", "year",
+            "parent_code", "other_axis_value",
+        }
+        missing_filter = required_filter.difference(issue_filter.columns)
+        if missing_filter:
+            raise ValueError(
+                f"Source anchor issue filter is missing columns: {sorted(missing_filter)}"
+            )
+        # The economy retry only needs scenario/year contexts that failed at
+        # APEC level. Restrict before copying and canonicalising the raw source
+        # rows; economies intentionally remain unrestricted so member examples
+        # can still be attributed.
+        source_years = pd.to_numeric(source_df["year"], errors="coerce")
+        source_mask = pd.Series(False, index=source_df.index)
+        for (system, scenario), rows in issue_filter.groupby(
+            ["source_system", "scenario"], dropna=False
+        ):
+            allowed_years = set(pd.to_numeric(rows["year"], errors="coerce").dropna())
+            source_mask |= (
+                source_df["source_system"].astype(str).eq(str(system))
+                & source_df["scenario"].astype(str).eq(str(scenario))
+                & source_years.isin(allowed_years)
+            )
+        source = source_df.loc[source_mask].copy()
+    else:
+        source = source_df.copy()
     source["value"] = pd.to_numeric(source["value"], errors="coerce").fillna(0.0)
     source["year"] = pd.to_numeric(source["year"], errors="coerce")
     source["economy"] = _normalize_economy(source["economy"])
@@ -606,7 +634,22 @@ def validate_source_parent_anchors(
     # boolean scan of the original nested loop is replaced by a single
     # vectorized merge per (source_system, axis) below.
     comparison_keys = ["comparison_scope", "source_system", "economy", "scenario", "year"]
-    comparison = comparison_df[comparison_keys + ["common_row_id", "value"]].copy()
+    comparison_columns = comparison_keys + ["common_row_id", "value"]
+    if retry_filter:
+        comparison_years = pd.to_numeric(comparison_df["year"], errors="coerce")
+        comparison_mask = pd.Series(False, index=comparison_df.index)
+        for (system, scenario), rows in issue_filter.groupby(
+            ["source_system", "scenario"], dropna=False
+        ):
+            allowed_years = set(pd.to_numeric(rows["year"], errors="coerce").dropna())
+            comparison_mask |= (
+                comparison_df["source_system"].astype(str).eq(str(system))
+                & comparison_df["scenario"].astype(str).eq(str(scenario))
+                & comparison_years.isin(allowed_years)
+            )
+        comparison = comparison_df.loc[comparison_mask, comparison_columns].copy()
+    else:
+        comparison = comparison_df[comparison_columns].copy()
     comparison["economy"] = _normalize_economy(comparison["economy"])
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce")
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
@@ -691,6 +734,54 @@ def validate_source_parent_anchors(
             axis_source[other_col] = canonicalize_tree_codes(axis_source[other_col], other_aliases)
             system_mappings[axis_col] = canonicalize_tree_codes(system_mappings[axis_col], axis_aliases)
             system_mappings[other_col] = canonicalize_tree_codes(system_mappings[other_col], other_aliases)
+            if retry_filter:
+                relevant_contexts = issue_filter[
+                    issue_filter["source_system"].astype(str).eq(source_system)
+                    & issue_filter["validation_axis"].astype(str).eq(axis)
+                ].copy()
+                if relevant_contexts.empty:
+                    continue
+                other_codes = (
+                    relevant_contexts["other_axis_value"]
+                    .fillna("")
+                    .astype(str)
+                    .str.split(" + ", regex=False)
+                    .explode()
+                )
+                other_codes = set(canonicalize_tree_codes(other_codes, other_aliases).astype(str))
+                parent_codes = set(
+                    canonicalize_tree_codes(
+                        relevant_contexts["parent_code"], axis_aliases
+                    ).astype(str)
+                )
+
+                def codes_at_or_below(
+                    roots: set[str],
+                    child_lookup: dict[str, list[str]],
+                ) -> set[str]:
+                    pending = list(roots)
+                    resolved = set(roots)
+                    while pending:
+                        code = pending.pop()
+                        for child in child_lookup.get(code, []):
+                            if child not in resolved:
+                                resolved.add(child)
+                                pending.append(child)
+                    return resolved
+
+                other_children_for_filter = _children_map(
+                    canonical_tree, dataset, other_tree_axis
+                )
+                allowed_axis_codes = codes_at_or_below(parent_codes, children)
+                allowed_other_codes = codes_at_or_below(
+                    other_codes, other_children_for_filter
+                )
+                axis_source = axis_source[
+                    axis_source[axis_col].astype(str).isin(allowed_axis_codes)
+                    & axis_source[other_col].astype(str).isin(allowed_other_codes)
+                ].copy()
+                if axis_source.empty:
+                    continue
             if source_system == "LEAP" and axis == "flow":
                 own_use_flows = _leap_own_use_rollup_flows(children, system_mappings)
                 own_use_mask = axis_source["source_flow"].astype(str).isin(own_use_flows)

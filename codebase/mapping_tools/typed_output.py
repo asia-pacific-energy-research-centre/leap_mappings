@@ -84,8 +84,11 @@ def write_manifested_parquet(
     return manifest
 
 
-def read_manifested_parquet(path: Path) -> pd.DataFrame:
-    """Read one Parquet table after validating its sidecar version and hash."""
+def read_manifested_parquet(
+    path: Path,
+    columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """Read selected Parquet columns after validating its sidecar and hash."""
     path = Path(path)
     sidecar = manifest_path(path)
     try:
@@ -101,11 +104,25 @@ def read_manifested_parquet(path: Path) -> pd.DataFrame:
         raise ValueError(f"Unsupported Parquet artifact storage: {sidecar}")
     if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
         raise ValueError(f"Parquet artifact hash mismatch: {path}")
-    frame = pd.read_parquet(path)
+    expected_columns = [str(column) for column in artifact.get("columns", [])]
     expected_dtypes = artifact.get("dtypes", [])
-    for position, dtype_name in enumerate(expected_dtypes):
-        if position < len(frame.columns) and str(frame.dtypes.iloc[position]) != dtype_name:
-            frame.isetitem(position, frame.iloc[:, position].astype(dtype_name))
+    if len(expected_columns) != len(expected_dtypes):
+        raise ValueError(f"Invalid Parquet artifact column metadata: {sidecar}")
+    if columns is not None:
+        requested_columns = [str(column) for column in columns]
+        missing_columns = sorted(set(requested_columns).difference(expected_columns))
+        if missing_columns:
+            raise ValueError(
+                f"Requested columns are absent from Parquet artifact: {missing_columns}"
+            )
+    else:
+        requested_columns = None
+    frame = pd.read_parquet(path, columns=requested_columns)
+    dtype_by_column = dict(zip(expected_columns, expected_dtypes))
+    for column in frame.columns:
+        dtype_name = dtype_by_column[str(column)]
+        if str(frame[column].dtype) != dtype_name:
+            frame[column] = frame[column].astype(dtype_name)
     if len(frame) != int(artifact.get("row_count", -1)):
         raise ValueError(f"Parquet artifact row-count mismatch: {path}")
     return frame

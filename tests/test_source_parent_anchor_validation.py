@@ -845,6 +845,31 @@ def test_partitions_do_not_bleed_and_absent_frontier_fails() -> None:
     assert by_key[("E2", 2022)]["reason"] == "frontier_rows_absent"
 
 
+def test_issue_filter_restricts_retry_context_before_anchor_work() -> None:
+    source, tree, mappings, common, comparison = _multi_partition_fixture()
+    issue_filter = pd.DataFrame([{
+        "source_system": "ESTO",
+        "validation_axis": "product",
+        "scenario": "historical",
+        "year": 2022,
+        "parent_code": "P",
+        "other_axis_value": "F",
+    }])
+
+    detail = validate_source_parent_anchors(
+        source,
+        tree,
+        mappings,
+        common,
+        comparison,
+        issue_filter=issue_filter,
+    )
+
+    assert set(detail["year"]) == {2022}
+    assert set(detail["economy"]) == {"E1", "E2"}
+    assert set(detail["validation_axis"]) == {"product"}
+
+
 def test_zero_parent_without_source_frontier_is_unanchorable() -> None:
     source, tree, mappings, common, comparison = _multi_partition_fixture()
     source = source[(source["economy"] == "E2")].copy()

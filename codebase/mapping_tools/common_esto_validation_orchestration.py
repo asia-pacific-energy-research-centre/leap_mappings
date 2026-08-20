@@ -36,6 +36,7 @@ from codebase.mapping_tools.value_adapter_registry import (
     get_registered_stage3_source_paths,
 )
 from codebase.mapping_tools.pipeline_profiling import profile_pipeline_section
+from codebase.mapping_tools.typed_output import read_manifested_parquet
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,6 +49,8 @@ def _read_comparison_data(
     """Read the canonical Parquet values artifact or a legacy CSV fixture."""
     path = Path(comparison_data_path)
     if path.suffix.casefold() == ".parquet":
+        if filters is None:
+            return read_manifested_parquet(path, columns=columns)
         return pd.read_parquet(path, columns=columns, filters=filters)
     return pd.read_csv(path, dtype=object, usecols=columns)
 
@@ -375,12 +378,22 @@ def build_common_esto_child_diagnostics(
     exclude_parents: set[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Expand parent checks into child evidence and recurring issue patterns."""
-    if validation_df.empty:
+    failed_validation = validation_df[
+        validation_df.get("status", pd.Series(index=validation_df.index, dtype=object)).eq("failed")
+    ]
+    if failed_validation.empty:
         empty_detail = pd.DataFrame(columns=CHILD_DIAGNOSTIC_COLUMNS)
         empty_patterns = pd.DataFrame(columns=PATTERN_COLUMNS)
         return empty_detail, empty_patterns, empty_detail.copy()
+    comparison_columns = [
+        "comparison_scope", "source_system", "economy", "scenario", "year",
+        "common_flow_label", "common_product_label", "value",
+    ]
     with profile_pipeline_section("child_diagnostics_comparison_read"):
-        comparison = _read_comparison_data(comparison_data_path)
+        comparison = _read_comparison_data(
+            comparison_data_path,
+            columns=comparison_columns,
+        )
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce").astype("Int64").astype(str)
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison["economy"] = comparison["economy"].map(_normalise_economy)
@@ -419,7 +432,7 @@ def build_common_esto_child_diagnostics(
             raw_lookups[system][axis_name] = lookup
     rollup_inputs, rollup_modes = _load_rollup_relationships(workbook_path)
     detail_rows: list[dict[str, object]] = []
-    for _, check in validation_df[validation_df["status"].eq("failed")].iterrows():
+    for _, check in failed_validation.iterrows():
         axis = str(check["validation_axis"])
         axis_col = "common_product_label" if axis == "product" else "common_flow_label"
         other_col = "common_flow_label" if axis == "product" else "common_product_label"

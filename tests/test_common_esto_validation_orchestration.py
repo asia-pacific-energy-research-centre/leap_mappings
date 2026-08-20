@@ -273,6 +273,35 @@ def test_eligible_checks_with_zero_mismatches_pass(tmp_path: Path) -> None:
     assert product["mismatch_count"] == 0
 
 
+def test_passed_checks_skip_comparison_and_raw_diagnostic_reads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    validation = pd.DataFrame([{"status": "passed"}])
+
+    def unexpected_read(*_args, **_kwargs):
+        raise AssertionError("diagnostic input should not be opened without failures")
+
+    monkeypatch.setattr(validation_module, "_read_comparison_data", unexpected_read)
+    monkeypatch.setattr(
+        validation_module,
+        "_load_diagnostic_source_values",
+        unexpected_read,
+    )
+
+    detail, patterns, rollups = validation_module.build_common_esto_child_diagnostics(
+        validation_df=validation,
+        tree_df=_tree(),
+        comparison_data_path=tmp_path / "missing.parquet",
+        output_dir=tmp_path,
+        run_id=RUN_ID,
+    )
+
+    assert detail.empty
+    assert patterns.empty
+    assert rollups.empty
+
+
 def test_eligible_checks_with_mismatches_fail(tmp_path: Path) -> None:
     comparison_path = tmp_path / "comparison.csv"
     _write_comparison(comparison_path, parent_value=11.0)
