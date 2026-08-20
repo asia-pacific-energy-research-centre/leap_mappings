@@ -2,7 +2,31 @@
 
 ## MAPQ-052 — Reduce Stage 3 deep-validation peak memory (anchor + recursive checks)
 
-**Priority / status:** P1 · reviewed and implementation plan refined 2026-08-19.
+**Priority / status:** P1 · profiling baseline reproduced 2026-08-20; memory reduction pending.
+
+### 2026-08-20 bounded LNG pipeline evidence
+
+- The profiled Stages 1-2 pass completed with a **0.41 GB** peak RSS. The
+  bounded AUS LEAP parse completed with **0.12 GB** peak RSS. Full data
+  conversion completed with **2.59 GB** peak RSS; the full Ninth conversion
+  dominated its roughly 667-second run.
+- Stage 3 structure application completed and published the Common ESTO
+  output with **6.85 GB** peak process-tree RSS. Mapped-row aggregation
+  preservation remained 100% for every emitted comparison scope/source.
+- The isolated deep-validation pass reproduced the incident during the Common
+  ESTO recursive product group/build area. Process RSS reached **9.04 GB**;
+  Windows then paged the process working set down while free physical memory
+  fell to **0.16 GB**. The pass was deliberately interrupted before an OS
+  allocation kill. The successful Stage 3 application output was already
+  preserved.
+- The original sampler only flushed in `__exit__`, and the external console
+  interrupt bypassed that finalizer. It now atomically checkpoints the active
+  section and samples every ten seconds, so a future interruption or OS kill
+  leaves a current `status=running` trace instead of a stale prior-run file.
+- These measurements confirm that the immediate optimization target remains
+  the recursive product read/group/lookup path described below. A completed
+  deep-validation baseline is still unavailable, so no percentage saving is
+  claimed.
 
 Stage 3 deep validation (`source_parent_anchor_validation` plus the recursive
 Common ESTO parent/child check) peaked at **17.9 GB RSS** on one 2026-08-18

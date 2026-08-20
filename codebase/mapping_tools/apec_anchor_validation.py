@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from codebase.mapping_tools.pipeline_profiling import profile_pipeline_section
+
 from codebase.mapping_tools.source_parent_anchor_validation import (
     validate_source_parent_anchors,
 )
@@ -162,39 +164,42 @@ def validate_source_parent_anchors_apec_first(
     exclude_parents: set[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Validate APEC, then calculate only economy contexts for APEC failures."""
-    apec_source, apec_comparison = aggregate_anchor_inputs_to_apec(
-        source_df, comparison_df
-    )
-    apec_detail = validate_source_parent_anchors(
-        source_df=apec_source,
-        source_tree_df=source_tree_df,
-        source_mapping_df=source_mapping_df,
-        common_rows_df=common_rows_df,
-        comparison_df=apec_comparison,
-        tolerance=tolerance,
-        absolute_tolerance=apec_absolute_tolerance,
-        economies={APEC_ECONOMY},
-        years_by_system=years_by_system,
-        unmodelled_source_codes=unmodelled_source_codes,
-        exclude_parents=exclude_parents,
-    )
+    with profile_pipeline_section("apec_input_aggregation"):
+        apec_source, apec_comparison = aggregate_anchor_inputs_to_apec(
+            source_df, comparison_df
+        )
+    with profile_pipeline_section("apec_pass"):
+        apec_detail = validate_source_parent_anchors(
+            source_df=apec_source,
+            source_tree_df=source_tree_df,
+            source_mapping_df=source_mapping_df,
+            common_rows_df=common_rows_df,
+            comparison_df=apec_comparison,
+            tolerance=tolerance,
+            absolute_tolerance=apec_absolute_tolerance,
+            economies={APEC_ECONOMY},
+            years_by_system=years_by_system,
+            unmodelled_source_codes=unmodelled_source_codes,
+            exclude_parents=exclude_parents,
+        )
     apec_issues = select_apec_anchor_issues(apec_detail)
     if apec_issues.empty:
         economy_examples = apec_detail.iloc[0:0].copy()
     else:
-        economy_detail = validate_source_parent_anchors(
-            source_df=source_df,
-            source_tree_df=source_tree_df,
-            source_mapping_df=source_mapping_df,
-            common_rows_df=common_rows_df,
-            comparison_df=comparison_df,
-            tolerance=tolerance,
-            absolute_tolerance=None,
-            years_by_system=years_by_system,
-            unmodelled_source_codes=unmodelled_source_codes,
-            exclude_parents=exclude_parents,
-            issue_filter=apec_issues[APEC_TARGET_FILTER_COLUMNS],
-        )
+        with profile_pipeline_section("economy_retry"):
+            economy_detail = validate_source_parent_anchors(
+                source_df=source_df,
+                source_tree_df=source_tree_df,
+                source_mapping_df=source_mapping_df,
+                common_rows_df=common_rows_df,
+                comparison_df=comparison_df,
+                tolerance=tolerance,
+                absolute_tolerance=None,
+                years_by_system=years_by_system,
+                unmodelled_source_codes=unmodelled_source_codes,
+                exclude_parents=exclude_parents,
+                issue_filter=apec_issues[APEC_TARGET_FILTER_COLUMNS],
+            )
         economy_examples = select_economy_examples_for_apec_issues(
             economy_detail, apec_issues
         )

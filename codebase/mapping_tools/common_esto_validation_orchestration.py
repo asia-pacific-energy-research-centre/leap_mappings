@@ -35,6 +35,7 @@ from codebase.mapping_tools.mapping_sheet_registry import (
 from codebase.mapping_tools.value_adapter_registry import (
     get_registered_stage3_source_paths,
 )
+from codebase.mapping_tools.pipeline_profiling import profile_pipeline_section
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -378,7 +379,8 @@ def build_common_esto_child_diagnostics(
         empty_detail = pd.DataFrame(columns=CHILD_DIAGNOSTIC_COLUMNS)
         empty_patterns = pd.DataFrame(columns=PATTERN_COLUMNS)
         return empty_detail, empty_patterns, empty_detail.copy()
-    comparison = _read_comparison_data(comparison_data_path)
+    with profile_pipeline_section("child_diagnostics_comparison_read"):
+        comparison = _read_comparison_data(comparison_data_path)
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce").astype("Int64").astype(str)
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
     comparison["economy"] = comparison["economy"].map(_normalise_economy)
@@ -397,7 +399,8 @@ def build_common_esto_child_diagnostics(
             prefix = tuple(str(values[column]) for column in ["comparison_scope", "source_system", "economy", "scenario", other_column, "year"])
             lookup.setdefault(prefix, {})[str(values[axis_column])] = float(values["value"])
         comparison_lookups[axis_name] = lookup
-    source_values = _load_diagnostic_source_values(output_dir)
+    with profile_pipeline_section("child_diagnostics_raw_source_load"):
+        source_values = _load_diagnostic_source_values(output_dir)
     raw_lookups: dict[str, dict[str, dict[tuple[str, ...], dict[str, float]]]] = {}
     for system, raw in source_values.items():
         raw_lookups[system] = {}
@@ -969,20 +972,21 @@ def run_common_esto_validation_workflow(
             continue
 
         try:
-            axis_detail = _validate_common_esto_axis_recursive_sums(
-                tree_df=tree_df,
-                comparison_data_path=comparison_data_path,
-                axis=axis,
-                tolerance=tolerance,
-                source_inconsistencies=source_inconsistencies,
-                leap_var_base_year=leap_var_base_year,
-                record_all_checks=True,
-                source_frontier=source_frontier,
-                exclude_parents=excluded_rollup_parents,
-                detached_labels=detached_rollup_parents,
-                rollup_modes=rollup_modes,
-                source_specific_exclude_parents=source_specific_exclude_parents,
-            )
+            with profile_pipeline_section(f"recursive_{axis}"):
+                axis_detail = _validate_common_esto_axis_recursive_sums(
+                    tree_df=tree_df,
+                    comparison_data_path=comparison_data_path,
+                    axis=axis,
+                    tolerance=tolerance,
+                    source_inconsistencies=source_inconsistencies,
+                    leap_var_base_year=leap_var_base_year,
+                    record_all_checks=True,
+                    source_frontier=source_frontier,
+                    exclude_parents=excluded_rollup_parents,
+                    detached_labels=detached_rollup_parents,
+                    rollup_modes=rollup_modes,
+                    source_specific_exclude_parents=source_specific_exclude_parents,
+                )
             grouped_axis_detail = build_validation_check_groups(axis_detail)
             detail_frames.append(axis_detail)
             grouped_check_frames.append(grouped_axis_detail)
@@ -1045,16 +1049,17 @@ def run_common_esto_validation_workflow(
     grouped_checks_df.insert(0, "run_id", run_id)
     grouped_checks_df.to_csv(grouped_checks_path, index=False)
 
-    child_detail, issue_patterns, rollup_diagnosis = build_common_esto_child_diagnostics(
-        validation_df=detail_df,
-        tree_df=tree_df,
-        comparison_data_path=comparison_data_path,
-        output_dir=output_dir,
-        run_id=run_id,
-        workbook_path=workbook_path,
-        source_frontier=source_frontier,
-        exclude_parents=excluded_rollup_parents,
-    )
+    with profile_pipeline_section("child_diagnostics"):
+        child_detail, issue_patterns, rollup_diagnosis = build_common_esto_child_diagnostics(
+            validation_df=detail_df,
+            tree_df=tree_df,
+            comparison_data_path=comparison_data_path,
+            output_dir=output_dir,
+            run_id=run_id,
+            workbook_path=workbook_path,
+            source_frontier=source_frontier,
+            exclude_parents=excluded_rollup_parents,
+        )
     child_detail.to_csv(output_dir / "common_esto_validation_child_detail.csv", index=False)
     issue_patterns.to_csv(output_dir / "common_esto_validation_issue_patterns.csv", index=False)
     rollup_diagnosis.to_csv(output_dir / "common_esto_validation_rollup_diagnosis.csv", index=False)

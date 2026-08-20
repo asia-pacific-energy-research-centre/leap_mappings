@@ -38,6 +38,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.pipeline_profiling import profile_pipeline_section
+
 # ---------------------------------------------------------------------------
 # Repo root and paths
 # ---------------------------------------------------------------------------
@@ -2478,11 +2480,12 @@ def _validate_common_esto_axis_recursive_sums(
     if not comparison_data_path.exists():
         return _empty_common_esto_validation()
 
-    data = (
-        pd.read_parquet(comparison_data_path)
-        if comparison_data_path.suffix.casefold() == ".parquet"
-        else pd.read_csv(comparison_data_path, dtype=object)
-    )
+    with profile_pipeline_section(f"recursive_{axis}_read"):
+        data = (
+            pd.read_parquet(comparison_data_path)
+            if comparison_data_path.suffix.casefold() == ".parquet"
+            else pd.read_csv(comparison_data_path, dtype=object)
+        )
     required = {
         "comparison_scope",
         "source_system",
@@ -2527,22 +2530,24 @@ def _validate_common_esto_axis_recursive_sums(
     # every parent and every source slice, which made rollup-aware validation
     # disproportionately expensive on the full NINTH dataset.
     sub_group_cols = ["comparison_scope", "economy", "scenario", other_axis_col, "year"]
-    grouped = (
-        data.groupby(["source_system", *sub_group_cols, axis_col], dropna=False, sort=False)["value"]
-        .sum()
-        .reset_index()
-    )
+    with profile_pipeline_section(f"recursive_{axis}_group"):
+        grouped = (
+            data.groupby(["source_system", *sub_group_cols, axis_col], dropna=False, sort=False)["value"]
+            .sum()
+            .reset_index()
+        )
     parent_codes = set(children_map)
     groups_by_source_parent: dict[tuple[str, str], list[tuple[tuple[str, ...], dict[str, float], set[str]]]] = {}
-    for group_key, group_rows in grouped.groupby(["source_system", *sub_group_cols], dropna=False, sort=False):
-        source_system = str(group_key[0])
-        idx = tuple(str(value) for value in group_key[1:])
-        values = dict(zip(group_rows[axis_col].astype(str), group_rows["value"].astype(float)))
-        sys_codes = {code for code, value in values.items() if abs(value) > tolerance}
-        for parent_code in parent_codes.intersection(values):
-            groups_by_source_parent.setdefault((source_system, parent_code), []).append(
-                (idx, values, sys_codes)
-            )
+    with profile_pipeline_section(f"recursive_{axis}_lookup"):
+        for group_key, group_rows in grouped.groupby(["source_system", *sub_group_cols], dropna=False, sort=False):
+            source_system = str(group_key[0])
+            idx = tuple(str(value) for value in group_key[1:])
+            values = dict(zip(group_rows[axis_col].astype(str), group_rows["value"].astype(float)))
+            sys_codes = {code for code, value in values.items() if abs(value) > tolerance}
+            for parent_code in parent_codes.intersection(values):
+                groups_by_source_parent.setdefault((source_system, parent_code), []).append(
+                    (idx, values, sys_codes)
+                )
 
     source_specific_exclude_parents = source_specific_exclude_parents or {}
     checks = []

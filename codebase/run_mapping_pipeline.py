@@ -38,6 +38,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +70,10 @@ from codebase.utilities.leap_balance_export_resolver import (  # noqa: E402
 from codebase.mapping_tools.typed_output import (  # noqa: E402
     read_manifested_parquet,
     write_manifested_parquet,
+)
+from codebase.mapping_tools.pipeline_profiling import (  # noqa: E402
+    profile_pipeline_section as _profile_section,
+    set_pipeline_profiler,
 )
 
 # ---------------------------------------------------------------------------
@@ -147,38 +152,150 @@ if not LEAP_EXPORTS_ROOT.is_dir():
 # ---------------------------------------------------------------------------
 _PIPELINE_LOG_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline.log"
 _RESOURCE_USAGE_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline_resource_usage.json"
-
-
+_PERFORMANCE_SUMMARY_PATH = REPO_ROOT / "results" / "logs" / "mapping_pipeline_performance_summary.csv"
 class _ResourceUsageMonitor:
-    """Sample this process's RSS without adding a hard runtime dependency."""
+    """Profile wall time and aggregate process-tree RSS by pipeline section."""
 
-    def __init__(self, output_path: Path, interval_seconds: float = 5.0):
+    def __init__(
+        self,
+        output_path: Path,
+        interval_seconds: float = 1.0,
+        performance_summary_path: Path | None = None,
+    ):
         self.output_path = output_path
+        self.performance_summary_path = (
+            performance_summary_path
+            if performance_summary_path is not None
+            else output_path.with_name("mapping_pipeline_performance_summary.csv")
+        )
         self.interval_seconds = interval_seconds
-        self.stage = "startup"
+        self.section_stack: list[str] = []
         self.samples: list[dict[str, object]] = []
+        self.sections: list[dict[str, object]] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self._checkpoint_every_samples = 10
         try:
             import psutil
         except ImportError:
             psutil = None
         self._process = psutil.Process(os.getpid()) if psutil else None
 
-    def set_stage(self, stage: str) -> None:
-        self.stage = stage
+    @property
+    def section_path(self) -> str:
+        return "/".join(self.section_stack) if self.section_stack else "startup"
+
+    def _memory_snapshot(self) -> dict[str, int]:
+        if self._process is None:
+            return {"process_rss_bytes": 0, "children_rss_bytes": 0, "rss_bytes": 0}
+        try:
+            process_rss = int(self._process.memory_info().rss)
+        except Exception:
+            process_rss = 0
+        children_rss = 0
+        try:
+            for child in self._process.children(recursive=True):
+                try:
+                    children_rss += int(child.memory_info().rss)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return {
+            "process_rss_bytes": process_rss,
+            "children_rss_bytes": children_rss,
+            "rss_bytes": process_rss + children_rss,
+        }
 
     def _sample(self) -> None:
         if self._process is None:
             return
-        memory = self._process.memory_info()
-        self.samples.append(
-            {
+        snapshot = self._memory_snapshot()
+        with self._lock:
+            self.samples.append({
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                "stage": self.stage,
-                "rss_bytes": int(memory.rss),
-            }
+                "section": self.section_path,
+                **snapshot,
+            })
+            should_checkpoint = (
+                len(self.samples) % self._checkpoint_every_samples == 0
+            )
+        if should_checkpoint:
+            self._write_report(status="running")
+
+    def _write_report(self, status: str) -> None:
+        """Atomically checkpoint samples so an OS kill leaves useful evidence."""
+        with self._lock:
+            samples = self.samples.copy()
+            sections = self.sections.copy()
+        values = [int(item["rss_bytes"]) for item in samples]
+        summary: dict[str, object] = {
+            "status": status if self._process is not None else "psutil_unavailable",
+            "sampling_interval_seconds": self.interval_seconds,
+            "sample_count": len(values),
+            "average_rss_bytes": round(sum(values) / len(values)) if values else None,
+            "peak_rss_bytes": max(values) if values else None,
+            "minimum_rss_bytes": min(values) if values else None,
+            "active_section": samples[-1]["section"] if samples else "startup",
+            "sections": sections,
+            "samples": samples,
+        }
+        temporary_json_path = self.output_path.with_suffix(
+            self.output_path.suffix + ".tmp"
         )
+        temporary_csv_path = self.performance_summary_path.with_suffix(
+            self.performance_summary_path.suffix + ".tmp"
+        )
+        temporary_json_path.write_text(
+            json.dumps(summary, indent=2), encoding="utf-8"
+        )
+        pd.DataFrame(sections).to_csv(temporary_csv_path, index=False)
+        temporary_json_path.replace(self.output_path)
+        temporary_csv_path.replace(self.performance_summary_path)
+
+    @contextmanager
+    def measure(self, section_name: str):
+        """Record exact elapsed time plus sampled RAM for a nested section."""
+        self.section_stack.append(section_name)
+        self._sample()
+        with self._lock:
+            first_sample_index = max(0, len(self.samples) - 1)
+        started_utc = datetime.now(timezone.utc).isoformat()
+        started = time.perf_counter()
+        status = "completed"
+        try:
+            yield
+        except MemoryError:
+            status = "memory_error"
+            raise
+        except (KeyboardInterrupt, SystemExit):
+            status = "process_interrupted"
+            raise
+        except Exception:
+            status = "failed"
+            raise
+        finally:
+            elapsed = time.perf_counter() - started
+            self._sample()
+            with self._lock:
+                section_samples = self.samples[first_sample_index:].copy()
+            rss_values = [int(sample["rss_bytes"]) for sample in section_samples]
+            with self._lock:
+                self.sections.append({
+                    "section": self.section_path,
+                    "status": status,
+                    "started_utc": started_utc,
+                    "finished_utc": datetime.now(timezone.utc).isoformat(),
+                    "elapsed_seconds": round(elapsed, 3),
+                    "start_rss_bytes": rss_values[0] if rss_values else None,
+                    "end_rss_bytes": rss_values[-1] if rss_values else None,
+                    "average_rss_bytes": round(sum(rss_values) / len(rss_values)) if rss_values else None,
+                    "peak_rss_bytes": max(rss_values) if rss_values else None,
+                    "sample_count": len(rss_values),
+                })
+            self.section_stack.pop()
+            self._write_report(status="running")
 
     def _run(self) -> None:
         while not self._stop.wait(self.interval_seconds):
@@ -188,6 +305,7 @@ class _ResourceUsageMonitor:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         if self._process is not None:
             self._sample()
+            self._write_report(status="running")
             self._thread = threading.Thread(
                 target=self._run,
                 name="mapping-pipeline-resource-monitor",
@@ -202,21 +320,12 @@ class _ResourceUsageMonitor:
             self._thread.join(timeout=self.interval_seconds + 1)
         self._sample()
         values = [int(item["rss_bytes"]) for item in self.samples]
-        summary: dict[str, object] = {
-            "status": "recorded" if self._process is not None else "psutil_unavailable",
-            "sampling_interval_seconds": self.interval_seconds,
-            "sample_count": len(values),
-            "average_rss_bytes": round(sum(values) / len(values)) if values else None,
-            "peak_rss_bytes": max(values) if values else None,
-            "minimum_rss_bytes": min(values) if values else None,
-            "samples": self.samples,
-        }
-        self.output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        self._write_report(status="recorded")
         if values:
             print(
                 "[resource] RSS average: "
-                f"{summary['average_rss_bytes'] / 1024**3:.2f} GB; "
-                f"peak: {summary['peak_rss_bytes'] / 1024**3:.2f} GB; "
+                f"{(sum(values) / len(values)) / 1024**3:.2f} GB; "
+                f"peak: {max(values) / 1024**3:.2f} GB; "
                 f"samples: {len(values)}"
             )
         else:
@@ -376,7 +485,8 @@ def run_separate_axis_refresh() -> None:
         run_separate_axis_mapping_refresh,
     )
 
-    run_separate_axis_mapping_refresh(promote_master=True)
+    with _profile_section("refresh_and_promote_master"):
+        run_separate_axis_mapping_refresh(promote_master=True)
 
 
 def run_stage_1() -> None:
@@ -393,15 +503,16 @@ def run_stage_1() -> None:
         SHEET_CONFIGS,
         run_relationship_workflow,
     )
-    run_relationship_workflow(
-        mapping_workbook_path=WORKBOOK_PATH,
-        fallback_workbook_path=FALLBACK_WORKBOOK_PATH,
-        sheet_configs=SHEET_CONFIGS,
-        output_csv_path=OUTPUT_CSV_PATH,
-        output_xlsx_path=OUTPUT_XLSX_PATH,
-        compact_catalogue_csv_path=COMPACT_CATALOGUE_CSV_PATH,
-        qa_dir=QA_DIR,
-    )
+    with _profile_section("build_energy_balance_relationships"):
+        run_relationship_workflow(
+            mapping_workbook_path=WORKBOOK_PATH,
+            fallback_workbook_path=FALLBACK_WORKBOOK_PATH,
+            sheet_configs=SHEET_CONFIGS,
+            output_csv_path=OUTPUT_CSV_PATH,
+            output_xlsx_path=OUTPUT_XLSX_PATH,
+            compact_catalogue_csv_path=COMPACT_CATALOGUE_CSV_PATH,
+            qa_dir=QA_DIR,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -431,30 +542,33 @@ def run_stage_2(
         if allow_direct_subtotal_edges is None
         else bool(allow_direct_subtotal_edges)
     )
-    run_common_esto_structure_workflow(
-        relationships_path=STAGE_2_RELATIONSHIPS_PATH,
-        coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
-        common_esto_overrides_path=COMMON_ESTO_OVERRIDES_PATH,
-        common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
-        outlook_mappings_path=WORKBOOK_PATH,
-        output_dir=OUTPUT_DIR,
-        enabled_scopes=(
-            DEFAULT_ENABLED_COMPARISON_SCOPES
-            if enabled_scopes is None
-            else enabled_scopes
-        ),
-        allow_direct_subtotal_edges=direct_subtotal_edges,
-    )
+    with _profile_section("build_common_esto_structure"):
+        run_common_esto_structure_workflow(
+            relationships_path=STAGE_2_RELATIONSHIPS_PATH,
+            coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
+            common_esto_overrides_path=COMMON_ESTO_OVERRIDES_PATH,
+            common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
+            outlook_mappings_path=WORKBOOK_PATH,
+            output_dir=OUTPUT_DIR,
+            enabled_scopes=(
+                DEFAULT_ENABLED_COMPARISON_SCOPES
+                if enabled_scopes is None
+                else enabled_scopes
+            ),
+            allow_direct_subtotal_edges=direct_subtotal_edges,
+        )
     from codebase.mapping_tools.compile_structural_mapping_artifacts import (
         compile_structural_mapping_artifacts,
     )
 
-    compile_structural_mapping_artifacts()
+    with _profile_section("compile_structural_mapping_artifacts"):
+        compile_structural_mapping_artifacts()
     from codebase.mapping_tools.build_source_to_common_esto_map import (
         build_and_write_source_to_common_esto_map,
     )
 
-    build_and_write_source_to_common_esto_map()
+    with _profile_section("build_source_to_common_esto_map"):
+        build_and_write_source_to_common_esto_map()
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +623,8 @@ def run_leap_parse(economies: Sequence[str] | None = None) -> None:
             # the shared RAW_LEAP_PATH is only written once, combined below.
             scratch_output = Path(tmp_dir) / f"{economy}_raw_leap.csv"
             try:
-                df = parse_leap_balance_dir(export_dir, scratch_output, economy_code=economy)
+                with _profile_section(f"parse_economy_{economy}"):
+                    df = parse_leap_balance_dir(export_dir, scratch_output, economy_code=economy)
             except FileNotFoundError as exc:
                 print(f"  WARNING: {economy} export directory has no .xlsx files ({exc})")
                 continue
@@ -520,9 +635,10 @@ def run_leap_parse(economies: Sequence[str] | None = None) -> None:
         print("  WARNING: no economies parsed; RAW_LEAP_PATH not written.")
         return
 
-    combined = pd.concat(frames, ignore_index=True)
-    RAW_LEAP_PATH.parent.mkdir(parents=True, exist_ok=True)
-    combined.to_csv(RAW_LEAP_PATH, index=False)
+    with _profile_section("combine_and_write_raw_leap"):
+        combined = pd.concat(frames, ignore_index=True)
+        RAW_LEAP_PATH.parent.mkdir(parents=True, exist_ok=True)
+        combined.to_csv(RAW_LEAP_PATH, index=False)
     try:
         display_path = RAW_LEAP_PATH.relative_to(REPO_ROOT)
     except ValueError:
@@ -545,18 +661,19 @@ def run_leap_to_esto() -> None:
         return
 
     from codebase.mapping_tools.convert_leap_results_to_esto import run_conversion
-    run_conversion(
-        leap_results_path=RAW_LEAP_PATH,
-        relationships_path=RELATIONSHIPS_PATH,
-        output_path=LEAP_ESTO_PATH,
-        mapping_workbook_path=WORKBOOK_PATH,
-        rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
-        target_values_path=ESTO_ROWS_PATH,
-        lineage_output_path=LEAP_SOURCE_LINEAGE_PATH,
-        source_branch_fallback_rules_path=SOURCE_BRANCH_FALLBACK_RULES_PATH,
-        all_demand_components_path=ALL_DEMAND_COMPONENTS_PATH,
-        preflight_audit_dir=REL_DIR,
-    )
+    with _profile_section("convert_leap_to_esto"):
+        run_conversion(
+            leap_results_path=RAW_LEAP_PATH,
+            relationships_path=RELATIONSHIPS_PATH,
+            output_path=LEAP_ESTO_PATH,
+            mapping_workbook_path=WORKBOOK_PATH,
+            rollup_audit_path=LEAP_ROLLUP_AUDIT_PATH,
+            target_values_path=ESTO_ROWS_PATH,
+            lineage_output_path=LEAP_SOURCE_LINEAGE_PATH,
+            source_branch_fallback_rules_path=SOURCE_BRANCH_FALLBACK_RULES_PATH,
+            all_demand_components_path=ALL_DEMAND_COMPONENTS_PATH,
+            preflight_audit_dir=REL_DIR,
+        )
 
 
 def run_ninth_to_esto() -> None:
@@ -583,8 +700,9 @@ def run_ninth_to_esto() -> None:
     )
     # Load the mapping first so the wide 9th frame can be filtered to only
     # sector/fuel pairs with an included ESTO mapping *before* the year melt.
-    relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
-    ninth_rollup_rules_df = load_non_expanding_ninth_rollup_rules(WORKBOOK_PATH)
+    with _profile_section("load_ninth_relationships_and_rollups"):
+        relationships_df = load_ninth_to_esto_relationships(RELATIONSHIPS_PATH)
+        ninth_rollup_rules_df = load_non_expanding_ninth_rollup_rules(WORKBOOK_PATH)
     mapped_pairs = set(
         zip(
             relationships_df["source_flow"].astype(str),
@@ -593,7 +711,8 @@ def run_ninth_to_esto() -> None:
     )
     print("  Preparing 9th long-format data (filter-before-melt) …")
     _t = time.perf_counter()
-    ninth_long = prepare_ninth_long_format(NINTH_CSV_PATH, mapped_pairs=mapped_pairs)
+    with _profile_section("prepare_ninth_long_format"):
+        ninth_long = prepare_ninth_long_format(NINTH_CSV_PATH, mapped_pairs=mapped_pairs)
     print(
         f"  9th long-format rows: {len(ninth_long):,} "
         f"(prepared in {time.perf_counter() - _t:.1f}s)"
@@ -629,6 +748,8 @@ def run_ninth_to_esto() -> None:
     lineage_row_count = 0
     chunk_count = 0
     try:
+        conversion_section = _profile_section("convert_and_write_ninth_by_economy")
+        conversion_section.__enter__()
         with (
             gzip.open(
                 converted_temp_path,
@@ -687,6 +808,9 @@ def run_ninth_to_esto() -> None:
         converted_temp_path.unlink(missing_ok=True)
         lineage_temp_path.unlink(missing_ok=True)
         raise
+    finally:
+        if "conversion_section" in locals():
+            conversion_section.__exit__(*sys.exc_info())
     print(f"  Conversion relationships used: {len(relationships_df):,}")
     print(f"  Economy chunks written: {chunk_count:,}")
     print(f"  Converted ESTO rows written: {converted_row_count:,}")
@@ -767,14 +891,23 @@ def run_data_convert(write_esto_extended_delta: bool = False) -> None:
     from codebase.mapping_tools.value_adapter_registry import (
         run_registered_value_adapters,
     )
+    def profiled_adapter(section_name: str, adapter):
+        def run_profiled_adapter():
+            with _profile_section(section_name):
+                return adapter()
+        return run_profiled_adapter
+
     run_registered_value_adapters({
-        "esto_exact_rows": run_esto_exact_rows,
-        "esto_extended_exact_rows": run_esto_extended_exact_rows,
-        "leap_to_esto": run_leap_to_esto,
-        "ninth_to_esto": run_ninth_to_esto,
+        "esto_exact_rows": profiled_adapter("prepare_esto_exact_rows", run_esto_exact_rows),
+        "esto_extended_exact_rows": profiled_adapter(
+            "prepare_esto_extended_exact_rows", run_esto_extended_exact_rows
+        ),
+        "leap_to_esto": profiled_adapter("leap_adapter", run_leap_to_esto),
+        "ninth_to_esto": profiled_adapter("ninth_adapter", run_ninth_to_esto),
     })
     if write_esto_extended_delta:
-        run_esto_extended_delta_contract()
+        with _profile_section("write_esto_extended_delta_contract"):
+            run_esto_extended_delta_contract()
 
 
 # ---------------------------------------------------------------------------
@@ -896,25 +1029,26 @@ def run_stage_3(
     }
     _write_stage3_run_manifest(run_manifest)
     apply_t0 = time.perf_counter()
-    run_apply_common_esto_structure(
-        source_paths=source_paths,
-        common_rows_path=COMMON_ROWS_PATH,
-        output_dir=COMMON_ESTO_DIR,
-        default_economy="20USA",
-        broad_common_row_component_limit=50,
-        active_component_abs_tolerance=0.0,
-        raw_leap_results_path=RAW_LEAP_PATH,
-        outlook_mappings_path=WORKBOOK_PATH,
-        structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
-        ninth_source_data_path=NINTH_CSV_PATH,
-        ninth_projection_start_year=2023,
-        esto_component_lineage_output_path=ESTO_COMPONENT_LINEAGE_PATH,
-        chunk_by_source_economy=chunk_value_application,
-        run_id=run_id,
-        run_timestamp_utc=run_timestamp_utc,
-        relevance_reference_paths=relevance_reference_paths,
-        source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
-    )
+    with _profile_section("apply_common_esto_structure"):
+        run_apply_common_esto_structure(
+            source_paths=source_paths,
+            common_rows_path=COMMON_ROWS_PATH,
+            output_dir=COMMON_ESTO_DIR,
+            default_economy="20USA",
+            broad_common_row_component_limit=50,
+            active_component_abs_tolerance=0.0,
+            raw_leap_results_path=RAW_LEAP_PATH,
+            outlook_mappings_path=WORKBOOK_PATH,
+            structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
+            ninth_source_data_path=NINTH_CSV_PATH,
+            ninth_projection_start_year=2023,
+            esto_component_lineage_output_path=ESTO_COMPONENT_LINEAGE_PATH,
+            chunk_by_source_economy=chunk_value_application,
+            run_id=run_id,
+            run_timestamp_utc=run_timestamp_utc,
+            relevance_reference_paths=relevance_reference_paths,
+            source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
+        )
     run_manifest["timings_seconds"]["apply_common_esto_structure"] = round(
         time.perf_counter() - apply_t0, 3
     )
@@ -967,7 +1101,8 @@ def run_stage_3(
     # ~290MB file). Each consumer copies before mutating, so the shared frame
     # is never altered in place and outputs are unchanged.
     print("  Reading 9th wide CSV once for Stage 3 consumers …")
-    ninth_wide = pd.read_csv(NINTH_CSV_PATH, dtype=object)
+    with _profile_section("read_ninth_wide_for_validation"):
+        ninth_wide = pd.read_csv(NINTH_CSV_PATH, dtype=object)
 
     common_tree = build_common_esto_tree(COMMON_ROWS_PATH, WORKBOOK_PATH)
     common_hierarchy_edges = build_common_esto_hierarchy_edges(
@@ -1000,32 +1135,36 @@ def run_stage_3(
     validation_tree.to_csv(tree_output_dir / "all_dataset_trees.csv", index=False)
 
     print("  Running projection-only source hierarchy validation ...")
-    ninth_validation = validate_ninth_recursive_sums(
-        data_csv_path=NINTH_CSV_PATH,
-        workbook_path=WORKBOOK_PATH,
-        leap_var_base_year=LEAP_VAR_BASE_YEAR,
-        data_df=ninth_wide,
-    )
-    ninth_sector_validation = validate_ninth_sector_recursive_sums(
-        data_csv_path=NINTH_CSV_PATH,
-        workbook_path=WORKBOOK_PATH,
-        common_rows_path=COMMON_ROWS_PATH,
-        leap_var_base_year=LEAP_VAR_BASE_YEAR,
-        data_df=ninth_wide,
-    )
-    ninth_fuel_validation = validate_ninth_fuel_recursive_sums(
-        data_csv_path=NINTH_CSV_PATH,
-        workbook_path=WORKBOOK_PATH,
-        common_rows_path=COMMON_ROWS_PATH,
-        leap_var_base_year=LEAP_VAR_BASE_YEAR,
-        data_df=ninth_wide,
-    )
-    leap_validation = validate_leap_recursive_sums(
-        leap_data_paths=[RAW_LEAP_PATH],
-        workbook_path=WORKBOOK_PATH,
-        esto_data_path=ESTO_CSV_PATH,
-        leap_var_base_year=LEAP_VAR_BASE_YEAR,
-    )
+    with _profile_section("validate_ninth_recursive_sums"):
+        ninth_validation = validate_ninth_recursive_sums(
+            data_csv_path=NINTH_CSV_PATH,
+            workbook_path=WORKBOOK_PATH,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+            data_df=ninth_wide,
+        )
+    with _profile_section("validate_ninth_sector_recursive_sums"):
+        ninth_sector_validation = validate_ninth_sector_recursive_sums(
+            data_csv_path=NINTH_CSV_PATH,
+            workbook_path=WORKBOOK_PATH,
+            common_rows_path=COMMON_ROWS_PATH,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+            data_df=ninth_wide,
+        )
+    with _profile_section("validate_ninth_fuel_recursive_sums"):
+        ninth_fuel_validation = validate_ninth_fuel_recursive_sums(
+            data_csv_path=NINTH_CSV_PATH,
+            workbook_path=WORKBOOK_PATH,
+            common_rows_path=COMMON_ROWS_PATH,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+            data_df=ninth_wide,
+        )
+    with _profile_section("validate_leap_recursive_sums"):
+        leap_validation = validate_leap_recursive_sums(
+            leap_data_paths=[RAW_LEAP_PATH],
+            workbook_path=WORKBOOK_PATH,
+            esto_data_path=ESTO_CSV_PATH,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+        )
     ninth_validation.to_csv(tree_output_dir / "ninth_validation.csv", index=False)
     ninth_sector_validation.to_csv(tree_output_dir / "ninth_sector_validation.csv", index=False)
     ninth_fuel_validation.to_csv(tree_output_dir / "ninth_fuel_validation.csv", index=False)
@@ -1042,18 +1181,19 @@ def run_stage_3(
     )
 
     common_validation_t0 = time.perf_counter()
-    detail_df, validation_summary = run_common_esto_validation_workflow(
-        tree_df=validation_tree,
-        comparison_data_path=comparison_path,
-        output_dir=tree_output_dir,
-        run_id=run_id,
-        run_timestamp_utc=run_timestamp_utc,
-        expected_input_mtime_ns=expected_mtime_ns,
-        skip_reason=skip_reason,
-        source_inconsistencies=source_inconsistencies,
-        leap_var_base_year=LEAP_VAR_BASE_YEAR,
-        workbook_path=WORKBOOK_PATH,
-    )
+    with _profile_section("common_esto_recursive_validation"):
+        detail_df, validation_summary = run_common_esto_validation_workflow(
+            tree_df=validation_tree,
+            comparison_data_path=comparison_path,
+            output_dir=tree_output_dir,
+            run_id=run_id,
+            run_timestamp_utc=run_timestamp_utc,
+            expected_input_mtime_ns=expected_mtime_ns,
+            skip_reason=skip_reason,
+            source_inconsistencies=source_inconsistencies,
+            leap_var_base_year=LEAP_VAR_BASE_YEAR,
+            workbook_path=WORKBOOK_PATH,
+        )
     run_manifest["timings_seconds"]["common_esto_validation"] = round(
         time.perf_counter() - common_validation_t0, 3
     )
@@ -1178,16 +1318,17 @@ def run_stage_3(
                 )
 
             anchor_t0 = time.perf_counter()
-            anchor_result = validate_source_parent_anchors_apec_first(
-                source_df=raw_anchor_source,
-                source_tree_df=validation_tree,
-                source_mapping_df=source_mapping,
-                common_rows_df=common_rows,
-                years_by_system=anchor_years_by_system,
-                comparison_df=comparison_data,
-                unmodelled_source_codes=unmodelled_source_codes,
-                exclude_parents=anchor_exclude_parents,
-            )
+            with _profile_section("source_parent_anchor_validation"):
+                anchor_result = validate_source_parent_anchors_apec_first(
+                    source_df=raw_anchor_source,
+                    source_tree_df=validation_tree,
+                    source_mapping_df=source_mapping,
+                    common_rows_df=common_rows,
+                    years_by_system=anchor_years_by_system,
+                    comparison_df=comparison_data,
+                    unmodelled_source_codes=unmodelled_source_codes,
+                    exclude_parents=anchor_exclude_parents,
+                )
             anchor_detail = anchor_result["apec_detail"]
             anchor_economy_examples = anchor_result["economy_examples"]
             anchor_child_context_values = build_failed_anchor_raw_child_context_values(
@@ -1524,22 +1665,29 @@ def main() -> None:
             if args.leap_economies
             else None
         )
-        with _ResourceUsageMonitor(_RESOURCE_USAGE_PATH) as resource_monitor:
-            for stage in stages_to_run:
-                resource_monitor.set_stage(stage)
-                if stage == "leap_parse":
-                    run_leap_parse(economies=leap_economies)
-                elif stage == "data_convert":
-                    run_data_convert(
-                        write_esto_extended_delta=args.write_esto_extended_delta
-                    )
-                elif stage == "3":
-                    run_stage_3(
-                        skip_deep_validation=args.skip_deep_validation,
-                        use_esto_extended_delta=args.use_esto_extended_delta,
-                    )
-                else:
-                    _STAGE_RUNNERS[stage]()
+        with _ResourceUsageMonitor(
+            _RESOURCE_USAGE_PATH,
+            performance_summary_path=_PERFORMANCE_SUMMARY_PATH,
+        ) as resource_monitor:
+            set_pipeline_profiler(resource_monitor)
+            try:
+                for stage in stages_to_run:
+                    with resource_monitor.measure(stage):
+                        if stage == "leap_parse":
+                            run_leap_parse(economies=leap_economies)
+                        elif stage == "data_convert":
+                            run_data_convert(
+                                write_esto_extended_delta=args.write_esto_extended_delta
+                            )
+                        elif stage == "3":
+                            run_stage_3(
+                                skip_deep_validation=args.skip_deep_validation,
+                                use_esto_extended_delta=args.use_esto_extended_delta,
+                            )
+                        else:
+                            _STAGE_RUNNERS[stage]()
+            finally:
+                set_pipeline_profiler(None)
 
             print("\n" + "=" * 60)
             print("Pipeline complete.")
