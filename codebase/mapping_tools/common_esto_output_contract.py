@@ -239,6 +239,31 @@ def reconstruct_common_esto_comparison(
     return reconstructed.drop(columns="_merge")[LEGACY_COMPARISON_COLUMNS]
 
 
+def _validate_reconstruction_in_chunks(
+    legacy_comparison_df: pd.DataFrame,
+    fact_df: pd.DataFrame,
+    metadata_df: pd.DataFrame,
+    chunk_size: int,
+) -> None:
+    """Certify exact reconstruction without holding two full legacy copies."""
+    if chunk_size <= 0:
+        raise ValueError("Common ESTO reconstruction chunk_size must be positive.")
+    for start in range(0, len(fact_df), chunk_size):
+        stop = min(start + chunk_size, len(fact_df))
+        reconstructed = reconstruct_common_esto_comparison(
+            fact_df.iloc[start:stop],
+            metadata_df,
+        ).reset_index(drop=True)
+        expected = _certify_legacy_comparison(
+            legacy_comparison_df.iloc[start:stop]
+        ).reset_index(drop=True)
+        if not reconstructed.equals(expected):
+            raise ValueError(
+                "Fact and metadata reconstruction does not exactly match the "
+                f"legacy comparison in rows {start}:{stop}."
+            )
+
+
 def _sha256(path: Path) -> str:
     """Return the SHA-256 digest of one file."""
     digest = hashlib.sha256()
@@ -279,6 +304,7 @@ def write_common_esto_output_contract(
     run_id: str,
     run_timestamp_utc: str,
     structural_contract_manifest_path: Path | None = None,
+    reconstruction_chunk_size: int = 250_000,
 ) -> tuple[dict[str, object], list[Path]]:
     """Write the fact, metadata, and commit-marker manifest as one transaction.
 
@@ -288,10 +314,12 @@ def write_common_esto_output_contract(
     """
     _validate_publication_identity(run_id, run_timestamp_utc)
     fact_df, metadata_df = build_common_esto_output_tables(legacy_comparison_df)
-    reconstructed_df = reconstruct_common_esto_comparison(fact_df, metadata_df)
-    expected_df = _certify_legacy_comparison(legacy_comparison_df).reset_index(drop=True)
-    if not reconstructed_df.equals(expected_df):
-        raise ValueError("Fact and metadata reconstruction does not exactly match the legacy comparison.")
+    _validate_reconstruction_in_chunks(
+        legacy_comparison_df,
+        fact_df,
+        metadata_df,
+        chunk_size=reconstruction_chunk_size,
+    )
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -199,6 +199,41 @@ def test_manifest_matches_published_artifacts(tmp_path: Path) -> None:
         assert record["sha256"] == _sha256(artifact_path)
 
 
+def test_contract_reconstruction_is_certified_in_bounded_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    legacy = pd.concat(
+        [
+            _legacy_comparison().iloc[[0]].assign(economy=f"{index:02d}_TST")
+            for index in range(5)
+        ],
+        ignore_index=True,
+    )
+    reconstructed_sizes: list[int] = []
+    real_reconstruct = contract_module.reconstruct_common_esto_comparison
+
+    def record_reconstruction(fact_df: pd.DataFrame, metadata_df: pd.DataFrame):
+        reconstructed_sizes.append(len(fact_df))
+        return real_reconstruct(fact_df, metadata_df)
+
+    monkeypatch.setattr(
+        contract_module,
+        "reconstruct_common_esto_comparison",
+        record_reconstruction,
+    )
+
+    write_common_esto_output_contract(
+        legacy,
+        tmp_path,
+        run_id="bounded_reconstruction",
+        run_timestamp_utc="2026-08-20T00:00:00+00:00",
+        reconstruction_chunk_size=2,
+    )
+
+    assert reconstructed_sizes == [2, 2, 1]
+
+
 def test_manifest_references_selected_hierarchy_subtotal_contract(tmp_path: Path) -> None:
     structural_manifest = tmp_path / "structural_manifest.json"
     structural_manifest.write_text(
