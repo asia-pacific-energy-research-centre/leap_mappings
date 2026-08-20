@@ -7,6 +7,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     apply_common_structure,
     apply_common_structure_by_source_economy,
     apply_common_structure_by_source_economy_to_parts,
+    apply_common_structure_from_source_paths_to_parts,
     build_component_relevance,
     build_source_coverage_check,
     build_total_check,
@@ -608,6 +609,50 @@ def test_chunked_common_application_matches_single_pass(tmp_path) -> None:
     )
     pd.testing.assert_frame_equal(partitioned_missing, expected_missing)
     pd.testing.assert_frame_equal(partitioned_total_check, expected_total_check)
+
+    source_path = tmp_path / "streamed_source.csv"
+    source_df.to_csv(source_path, index=False)
+    streamed_parts_dir = tmp_path / "streamed_comparison_parts"
+    (
+        streamed_part_paths,
+        streamed_missing,
+        streamed_total_check,
+        streamed_active_rows,
+    ) = apply_common_structure_from_source_paths_to_parts(
+        source_paths={"SOURCE": source_path},
+        default_economy="20_USA",
+        common_rows_df=common_rows_df,
+        relevance_df=pd.DataFrame(),
+        active_component_abs_tolerance=0.0,
+        lineage_output_path=tmp_path / "streamed_lineage.csv.gz",
+        comparison_parts_dir=streamed_parts_dir,
+        chunksize=1,
+    )
+    streamed_comparison = pd.read_parquet(streamed_parts_dir)
+    streamed_comparison = (
+        streamed_comparison.groupby(
+            expected_comparison.columns[:-1].tolist(),
+            dropna=False,
+            as_index=False,
+            observed=True,
+        )["value"]
+        .sum()
+    )
+    assert len(streamed_part_paths) == len(source_df)
+    assert streamed_active_rows == len(source_df)
+    pd.testing.assert_frame_equal(
+        streamed_comparison.sort_values(comparison_sort).reset_index(drop=True),
+        expected_comparison.sort_values(comparison_sort).reset_index(drop=True),
+        check_dtype=False,
+        check_categorical=False,
+    )
+    pd.testing.assert_frame_equal(
+        streamed_missing,
+        expected_missing,
+        check_dtype=False,
+        check_categorical=False,
+    )
+    pd.testing.assert_frame_equal(streamed_total_check, expected_total_check)
 
 
 def test_shared_esto_history_expands_only_as_virtual_chunk_identity(

@@ -9,6 +9,7 @@ economy, scenario, year, ESTO flow/product, and value columns.
 #%%
 from pathlib import Path
 import gzip
+import shutil
 import sys
 import re
 import tempfile
@@ -1444,6 +1445,192 @@ def apply_common_structure_by_source_economy_to_parts(
     return comparison_result, missing_map_df, total_check_df
 
 
+def _iter_normalised_source_chunks(
+    source_paths: dict[str, Path],
+    default_economy: str,
+    source_system_overrides: dict[str, str] | None,
+    chunksize: int,
+):
+    """Yield bounded normalized source frames without retaining prior chunks."""
+    for source_system, path in source_paths.items():
+        path = Path(path)
+        if not path.exists():
+            continue
+        if path.suffix.casefold() in {".xlsx", ".xlsm", ".xls"}:
+            raw_chunks = [pd.read_excel(path)]
+        else:
+            raw_chunks = pd.read_csv(path, dtype=object, chunksize=chunksize)
+        for raw_chunk in raw_chunks:
+            normalised = normalise_source_columns(
+                raw_chunk,
+                default_source_system=source_system,
+                default_economy=default_economy,
+            )
+            if source_system_overrides and source_system in source_system_overrides:
+                normalised["source_system"] = source_system_overrides[source_system]
+            filtered = filter_unmodelled_source_rows(normalised)
+            if not filtered.empty:
+                yield source_system, _compact_source_frames([filtered])[0]
+
+
+def apply_common_structure_from_source_paths_to_parts(
+    source_paths: dict[str, Path],
+    default_economy: str,
+    common_rows_df: pd.DataFrame,
+    relevance_df: pd.DataFrame,
+    active_component_abs_tolerance: float,
+    lineage_output_path: Path,
+    comparison_parts_dir: Path,
+    comparison_scope_systems: dict[str, set[str]] | None = None,
+    source_system_overrides: dict[str, str] | None = None,
+    source_system_aliases: dict[str, str] | None = None,
+    chunksize: int = 250_000,
+) -> tuple[list[Path], pd.DataFrame, pd.DataFrame, int]:
+    """Stream physical source files through bounded Stage 3 value chunks."""
+    comparison_parts_dir = Path(comparison_parts_dir)
+    comparison_parts_dir.mkdir(parents=True, exist_ok=True)
+    missing_parts_dir = comparison_parts_dir / ".missing_parts"
+    missing_parts_dir.mkdir()
+    comparison_part_paths: list[Path] = []
+    missing_part_paths: list[Path] = []
+    empty_missing_map_df: pd.DataFrame | None = None
+    total_check_frames: list[pd.DataFrame] = []
+    active_source_row_count = 0
+    chunk_count = 0
+    lineage_temp_path = lineage_output_path.with_name(
+        f"{lineage_output_path.name}.tmp"
+    )
+    try:
+        lineage_output_path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(
+            lineage_temp_path,
+            mode="wt",
+            encoding="utf-8",
+            newline="",
+        ) as lineage_handle:
+            for source_system, source_chunk_df in _iter_normalised_source_chunks(
+                source_paths=source_paths,
+                default_economy=default_economy,
+                source_system_overrides=source_system_overrides,
+                chunksize=chunksize,
+            ):
+                source_chunk_df = nonzero_source_rows(
+                    source_chunk_df,
+                    active_component_abs_tolerance,
+                )
+                if not relevance_df.empty:
+                    source_chunk_df = filter_source_to_relevant_pairs(
+                        source_chunk_df,
+                        relevance_df,
+                    )
+                if source_chunk_df.empty:
+                    continue
+                active_source_row_count += len(source_chunk_df)
+                (
+                    comparison_chunk_df,
+                    missing_chunk_df,
+                    mapped_source_chunk_df,
+                    lineage_chunk_df,
+                ) = apply_common_structure(
+                    source_chunk_df,
+                    common_rows_df,
+                    return_lineage=True,
+                    comparison_scope_systems=comparison_scope_systems,
+                    source_system_aliases=source_system_aliases,
+                )
+                lineage_chunk_df.to_csv(
+                    lineage_handle,
+                    index=False,
+                    header=chunk_count == 0,
+                )
+                comparison_part_path = (
+                    comparison_parts_dir / f"part_{chunk_count:06d}.parquet"
+                )
+                comparison_chunk_df.to_parquet(
+                    comparison_part_path,
+                    index=False,
+                    compression="zstd",
+                )
+                comparison_part_paths.append(comparison_part_path)
+                filtered_missing = filter_missing_common_map_diagnostics(
+                    missing_chunk_df
+                )
+                if empty_missing_map_df is None:
+                    empty_missing_map_df = filtered_missing.iloc[0:0].copy()
+                if not filtered_missing.empty:
+                    missing_part_path = (
+                        missing_parts_dir / f"part_{chunk_count:06d}.parquet"
+                    )
+                    filtered_missing.to_parquet(
+                        missing_part_path,
+                        index=False,
+                        compression="zstd",
+                    )
+                    missing_part_paths.append(missing_part_path)
+                total_check_frames.append(
+                    build_total_check(
+                        mapped_source_chunk_df,
+                        comparison_chunk_df,
+                        comparison_scope_systems=comparison_scope_systems,
+                    )
+                )
+                chunk_count += 1
+                print(
+                    "  Streamed Common ESTO source chunk "
+                    f"{source_system}/{chunk_count}: "
+                    f"{len(comparison_chunk_df):,} comparison rows"
+                )
+                del (
+                    source_chunk_df,
+                    comparison_chunk_df,
+                    missing_chunk_df,
+                    mapped_source_chunk_df,
+                    lineage_chunk_df,
+                    filtered_missing,
+                )
+                gc.collect()
+            if chunk_count == 0:
+                pd.DataFrame(columns=ESTO_COMPONENT_LINEAGE_COLUMNS).to_csv(
+                    lineage_handle,
+                    index=False,
+                )
+        lineage_temp_path.replace(lineage_output_path)
+    except Exception:
+        lineage_temp_path.unlink(missing_ok=True)
+        raise
+
+    missing_map_df = (
+        pd.read_parquet(missing_parts_dir)
+        if missing_part_paths
+        else (
+            empty_missing_map_df
+            if empty_missing_map_df is not None
+            else pd.DataFrame()
+        )
+    )
+    shutil.rmtree(missing_parts_dir)
+    total_check_df = (
+        pd.concat(total_check_frames, ignore_index=True)
+        .groupby(TOTAL_GROUP_COLUMNS, dropna=False, as_index=False, observed=True)[
+            ["source_total", "common_total", "difference"]
+        ]
+        .sum()
+        .sort_values(TOTAL_GROUP_COLUMNS)
+        .reset_index(drop=True)
+        if total_check_frames
+        else pd.DataFrame(
+            columns=TOTAL_GROUP_COLUMNS
+            + ["source_total", "common_total", "difference"]
+        )
+    )
+    return (
+        comparison_part_paths,
+        missing_map_df,
+        total_check_df,
+        active_source_row_count,
+    )
+
+
 def build_broad_common_row_diagnostics(
     common_rows_df: pd.DataFrame,
     comparison_df: pd.DataFrame,
@@ -2426,7 +2613,6 @@ def run_apply_common_esto_structure(
         del diagnostic_results, candidate_contexts, audit_frames
         gc.collect()
 
-    active_source_df = nonzero_source_rows(source_df, active_component_abs_tolerance)
     source_row_count = len(source_df)
     source_totals_df = (
         source_df.groupby(
@@ -2441,12 +2627,19 @@ def run_apply_common_esto_structure(
         source_totals_df,
         source_system_aliases,
     )
-    del source_df
-    if not relevance_df.empty:
-        active_source_df = filter_source_to_relevant_pairs(
-            active_source_df,
-            relevance_df,
+    active_source_df = None
+    if not chunk_by_source_economy:
+        active_source_df = nonzero_source_rows(
+            source_df,
+            active_component_abs_tolerance,
         )
+        if not relevance_df.empty:
+            active_source_df = filter_source_to_relevant_pairs(
+                active_source_df,
+                relevance_df,
+            )
+    del source_df
+    gc.collect()
     adjusted_common_rows_df, pruned_components_df = relabel_common_rows_for_active_components(
         relevance_df=relevance_df,
         common_rows_df=common_rows_df,
@@ -2504,7 +2697,7 @@ def run_apply_common_esto_structure(
         output_dir=output_dir,
     )
     esto_component_lineage_df = None
-    active_source_row_count = len(active_source_df)
+    active_source_row_count = 0
     if (
         chunk_by_source_economy
         and esto_component_lineage_output_path is not None
@@ -2519,24 +2712,40 @@ def run_apply_common_esto_structure(
                 comparison_part_paths,
                 missing_map_df,
                 total_check_df,
-            ) = apply_common_structure_by_source_economy_to_parts(
-                active_source_df,
-                adjusted_common_rows_df,
-                esto_component_lineage_output_path,
+                active_source_row_count,
+            ) = apply_common_structure_from_source_paths_to_parts(
+                source_paths=physical_source_paths,
+                default_economy=default_economy,
+                common_rows_df=adjusted_common_rows_df,
+                relevance_df=relevance_df,
+                active_component_abs_tolerance=active_component_abs_tolerance,
+                lineage_output_path=esto_component_lineage_output_path,
                 comparison_parts_dir=comparison_parts_dir,
                 comparison_scope_systems=comparison_scope_systems,
+                source_system_overrides=physical_source_overrides,
                 source_system_aliases=source_system_aliases,
             )
-            # Chunk results are safely on disk. Release the full active source
-            # table before materialising the combined comparison output.
-            del active_source_df
-            gc.collect()
             unfiltered_comparison_df = (
                 pd.read_parquet(comparison_parts_dir)
                 if comparison_part_paths
                 else pd.DataFrame(columns=OUTPUT_COLUMNS)
             )
+            if not unfiltered_comparison_df.empty:
+                unfiltered_comparison_df = (
+                    unfiltered_comparison_df.groupby(
+                        OUTPUT_COLUMNS[:-1] + COMPARISON_INTERNAL_COLUMNS,
+                        dropna=False,
+                        as_index=False,
+                        observed=True,
+                    )["value"]
+                    .sum()
+                    .sort_values(OUTPUT_COLUMNS[:-1])
+                    .reset_index(drop=True)
+                )
     else:
+        if active_source_df is None:
+            raise TypeError("In-memory Stage 3 application requires source rows.")
+        active_source_row_count = len(active_source_df)
         (
             unfiltered_comparison_df,
             missing_map_df,
