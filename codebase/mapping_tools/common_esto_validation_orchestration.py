@@ -45,11 +45,17 @@ def _read_comparison_data(
     comparison_data_path: Path,
     columns: list[str] | None = None,
     filters: list[list[tuple[str, str, object]]] | None = None,
+    integrity_cache: dict[str, tuple[int, int, str]] | None = None,
 ) -> pd.DataFrame:
     """Read the canonical Parquet values artifact or a legacy CSV fixture."""
     path = Path(comparison_data_path)
     if path.suffix.casefold() == ".parquet":
-        return read_manifested_parquet(path, columns=columns, filters=filters)
+        return read_manifested_parquet(
+            path,
+            columns=columns,
+            filters=filters,
+            integrity_cache=integrity_cache,
+        )
     return pd.read_csv(path, dtype=object, usecols=columns)
 
 VALIDATION_SUMMARY_COLUMNS = [
@@ -427,6 +433,7 @@ def build_common_esto_child_diagnostics(
     workbook_path: Path | None = None,
     source_frontier: pd.DataFrame | None = None,
     exclude_parents: set[str] | None = None,
+    parquet_integrity_cache: dict[str, tuple[int, int, str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Expand parent checks into child evidence and recurring issue patterns."""
     failed_validation = validation_df[
@@ -449,6 +456,7 @@ def build_common_esto_child_diagnostics(
                 "in",
                 sorted(set(failed_validation["source_system"].dropna().astype(str))),
             )],
+            integrity_cache=parquet_integrity_cache,
         )
     comparison["year"] = pd.to_numeric(comparison["year"], errors="coerce").astype("Int64").astype(str)
     comparison["value"] = pd.to_numeric(comparison["value"], errors="coerce").fillna(0.0)
@@ -677,6 +685,7 @@ def validate_non_expanding_rollups(
     run_id: str,
     leap_var_base_year: int = LEAP_VAR_BASE_YEAR,
     tolerance: float = 0.01,
+    parquet_integrity_cache: dict[str, tuple[int, int, str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Reconcile each named rollup subtotal against its declared contributors.
 
@@ -725,6 +734,7 @@ def validate_non_expanding_rollups(
         comparison_data_path,
         columns=sorted(required),
         filters=parquet_filters,
+        integrity_cache=parquet_integrity_cache,
     )
     if not required.issubset(data.columns):
         return (
@@ -970,6 +980,7 @@ def run_common_esto_validation_workflow(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run Common ESTO validations and always replace current-run outputs."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    parquet_integrity_cache: dict[str, tuple[int, int, str]] = {}
     source_frontier = build_source_comparison_frontier(tree_df, workbook_path)
     source_frontier.to_csv(output_dir / "common_esto_source_frontier.csv", index=False)
     excluded_rollup_parents = _excluded_rollup_parents(workbook_path)
@@ -1034,7 +1045,11 @@ def run_common_esto_validation_workflow(
         else:
             try:
                 source_systems = sorted(
-                    _read_comparison_data(comparison_data_path, columns=["source_system"])[
+                    _read_comparison_data(
+                        comparison_data_path,
+                        columns=["source_system"],
+                        integrity_cache=parquet_integrity_cache,
+                    )[
                         "source_system"
                     ].dropna().astype(str).unique().tolist()
                 ) or ["ALL"]
@@ -1088,6 +1103,7 @@ def run_common_esto_validation_workflow(
                         source_system_filter=(
                             None if source_system == "ALL" else source_system
                         ),
+                        parquet_integrity_cache=parquet_integrity_cache,
                     )
                     for source_system in source_systems
                 ]
@@ -1167,6 +1183,7 @@ def run_common_esto_validation_workflow(
             workbook_path=workbook_path,
             source_frontier=source_frontier,
             exclude_parents=excluded_rollup_parents,
+            parquet_integrity_cache=parquet_integrity_cache,
         )
     child_detail.to_csv(output_dir / "common_esto_validation_child_detail.csv", index=False)
     issue_patterns.to_csv(output_dir / "common_esto_validation_issue_patterns.csv", index=False)
@@ -1181,6 +1198,7 @@ def run_common_esto_validation_workflow(
         run_id=run_id,
         leap_var_base_year=leap_var_base_year,
         tolerance=tolerance,
+        parquet_integrity_cache=parquet_integrity_cache,
     )
     rollup_validation.to_csv(output_dir / "common_esto_rollup_validation.csv", index=False)
     rollup_validation_summary.to_csv(

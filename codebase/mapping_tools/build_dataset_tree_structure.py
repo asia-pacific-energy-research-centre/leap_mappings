@@ -2456,6 +2456,7 @@ def _validate_common_esto_axis_recursive_sums(
     rollup_modes: dict[str, str] | None = None,
     source_specific_exclude_parents: dict[str, set[str]] | None = None,
     source_system_filter: str | None = None,
+    parquet_integrity_cache: dict[str, tuple[int, int, str]] | None = None,
 ) -> pd.DataFrame:
     """
     Validate one Common ESTO axis where dot-notation parent/child rows exist.
@@ -2505,6 +2506,7 @@ def _validate_common_esto_axis_recursive_sums(
                     [("source_system", "==", source_system_filter)]
                     if source_system_filter else None
                 ),
+                integrity_cache=parquet_integrity_cache,
             )
             if comparison_data_path.suffix.casefold() == ".parquet"
             else pd.read_csv(comparison_data_path, dtype=object, usecols=required_columns)
@@ -2724,8 +2726,13 @@ def validate_common_esto_recursive_sums(
     """
     if not comparison_data_path.exists():
         return _empty_common_esto_validation()
+    parquet_integrity_cache: dict[str, tuple[int, int, str]] = {}
     source_system_data = (
-        read_manifested_parquet(comparison_data_path, columns=["source_system"])
+        read_manifested_parquet(
+            comparison_data_path,
+            columns=["source_system"],
+            integrity_cache=parquet_integrity_cache,
+        )
         if comparison_data_path.suffix.casefold() == ".parquet"
         else pd.read_csv(comparison_data_path, dtype=object, usecols=["source_system"])
     )
@@ -2753,6 +2760,7 @@ def validate_common_esto_recursive_sums(
                     rollup_modes=rollup_modes,
                     source_specific_exclude_parents=source_specific_exclude_parents,
                     source_system_filter=source_system,
+                    parquet_integrity_cache=parquet_integrity_cache,
                 )
             )
     result = pd.concat(result_frames, ignore_index=True)

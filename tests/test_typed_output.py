@@ -86,4 +86,33 @@ def test_manifested_parquet_rejects_unknown_filter_column(tmp_path: Path) -> Non
         read_manifested_parquet(path, filters=[("missing", "==", "x")])
 
 
+def test_manifested_parquet_reuses_run_scoped_integrity_check(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "detail.parquet"
+    write_manifested_parquet(pd.DataFrame({"value": [1, 2]}), path, artifact_type="test")
+    from codebase.mapping_tools import typed_output as typed_output_module
+
+    real_sha256 = typed_output_module.sha256_file
+    calls: list[Path] = []
+
+    def count_sha256(target: Path) -> str:
+        calls.append(Path(target))
+        return real_sha256(target)
+
+    monkeypatch.setattr(typed_output_module, "sha256_file", count_sha256)
+    integrity_cache: dict[str, tuple[int, int, str]] = {}
+
+    read_manifested_parquet(path, columns=["value"], integrity_cache=integrity_cache)
+    read_manifested_parquet(
+        path,
+        columns=["value"],
+        filters=[("value", ">", 1)],
+        integrity_cache=integrity_cache,
+    )
+
+    assert calls == [path]
+
+
 #%%

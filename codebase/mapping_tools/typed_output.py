@@ -92,6 +92,7 @@ def read_manifested_parquet(
         | list[list[tuple[str, str, object]]]
         | None
     ) = None,
+    integrity_cache: dict[str, tuple[int, int, str]] | None = None,
 ) -> pd.DataFrame:
     """Read selected Parquet columns after validating its sidecar and hash."""
     path = Path(path)
@@ -107,8 +108,17 @@ def read_manifested_parquet(
     artifact = manifest.get("artifact", {})
     if artifact.get("format") != "parquet" or artifact.get("compression") != PARQUET_COMPRESSION:
         raise ValueError(f"Unsupported Parquet artifact storage: {sidecar}")
-    if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
+    if not path.is_file():
         raise ValueError(f"Parquet artifact hash mismatch: {path}")
+    expected_sha256 = str(artifact.get("sha256", ""))
+    stat = path.stat()
+    cache_key = str(path.resolve())
+    identity = (int(stat.st_size), int(stat.st_mtime_ns), expected_sha256)
+    if integrity_cache is None or integrity_cache.get(cache_key) != identity:
+        if sha256_file(path) != expected_sha256:
+            raise ValueError(f"Parquet artifact hash mismatch: {path}")
+        if integrity_cache is not None:
+            integrity_cache[cache_key] = identity
     expected_columns = [str(column) for column in artifact.get("columns", [])]
     expected_dtypes = artifact.get("dtypes", [])
     if len(expected_columns) != len(expected_dtypes):
