@@ -11,6 +11,7 @@ from codebase.mapping_tools.source_parent_anchor_validation import (
     _read_anchor_wide_source,
     build_leaf_reconciliation_exception_candidates,
     build_failed_anchor_mapped_component_context_values,
+    normalize_anchor_year_for_output,
     build_failed_anchor_raw_child_context_values,
     build_failed_anchor_raw_child_values,
     summarise_source_parent_anchors,
@@ -217,6 +218,60 @@ def test_failed_anchor_mapped_component_context_exposes_each_common_component() 
     assert set(components["mapped_value"]) == {4.0, 5.0}
     assert set(components["raw_child_code"]) == {"P", "P.1", "P.2"}
     assert set(components["raw_node_role"]) == {"parent", "child"}
+
+
+def test_failed_anchor_mapped_component_context_ignores_unused_categories() -> None:
+    """Categorical comparison keys must not expand into a Cartesian product."""
+    source, tree, mappings, common, comparison = _fixture(child_b_value=5)
+    detail = validate_source_parent_anchors(source, tree, mappings, common, comparison)
+
+    categorical_columns = [
+        "source_system",
+        "comparison_scope",
+        "economy",
+        "scenario",
+        "year",
+        "common_row_id",
+    ]
+    for column in categorical_columns:
+        observed_values = comparison[column].drop_duplicates().tolist()
+        unused_values = [f"unused_{column}_{index}" for index in range(25)]
+        comparison[column] = pd.Categorical(
+            comparison[column],
+            categories=[*observed_values, *unused_values],
+        )
+
+    components = build_failed_anchor_mapped_component_context_values(
+        detail, tree, mappings, common, comparison,
+    )
+
+    assert set(components["common_row_id"]) == {"c1", "c2"}
+    assert set(components["mapped_value"]) == {4.0, 5.0}
+
+
+def test_normalize_anchor_year_for_output_handles_mixed_object_values() -> None:
+    frame = pd.DataFrame(
+        {
+            "year": pd.Series([2022, "2030", None, ""], dtype=object),
+            "proportional_error": pd.Series([0.5, "0.25", None, ""], dtype=object),
+        }
+    )
+
+    normalized = normalize_anchor_year_for_output(frame)
+
+    assert str(normalized["year"].dtype) == "Int64"
+    assert normalized["year"].tolist() == [2022, 2030, pd.NA, pd.NA]
+    assert str(normalized["proportional_error"].dtype) == "Float64"
+    assert normalized["proportional_error"].tolist() == [0.5, 0.25, pd.NA, pd.NA]
+
+    summary = pd.DataFrame({"source_non_additivity_observed": [345, "2", ""]})
+    normalized_summary = normalize_anchor_year_for_output(summary)
+    assert str(normalized_summary["source_non_additivity_observed"].dtype) == "Int64"
+    assert normalized_summary["source_non_additivity_observed"].tolist() == [
+        345,
+        2,
+        pd.NA,
+    ]
 
 
 def test_failed_anchor_mapped_context_expands_grouped_other_axis_values() -> None:

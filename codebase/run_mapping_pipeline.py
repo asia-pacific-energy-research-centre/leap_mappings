@@ -987,6 +987,7 @@ def run_stage_3(
         build_failed_anchor_mapped_component_context_values,
         build_failed_anchor_raw_child_context_values,
         load_raw_source_anchor_inputs,
+        normalize_anchor_year_for_output,
         select_source_parent_anchor_findings,
         summarise_failed_anchor_raw_child_context_values,
         summarise_source_parent_anchors,
@@ -1398,6 +1399,16 @@ def run_stage_3(
     anchor_summary["run_timestamp_utc"] = run_timestamp_utc
     anchor_summary["input_path"] = str(comparison_path.resolve())
     anchor_summary["input_mtime_ns"] = expected_mtime_ns if expected_mtime_ns is not None else ""
+    for anchor_output_frame in [
+        anchor_detail,
+        anchor_child_context_values,
+        anchor_mapped_component_context_values,
+        anchor_economy_examples,
+        anchor_economy_child_context_values,
+        anchor_economy_mapped_component_context_values,
+        leaf_reconciliation_candidates,
+    ]:
+        normalize_anchor_year_for_output(anchor_output_frame)
     anchor_findings = select_source_parent_anchor_findings(anchor_detail)
     write_manifested_parquet(
         anchor_findings,

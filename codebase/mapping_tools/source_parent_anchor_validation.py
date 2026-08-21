@@ -2591,6 +2591,7 @@ def build_failed_anchor_mapped_component_context_values(
         comparison.groupby(
             ["source_system", "comparison_scope", "economy", "scenario", "year", "common_row_id"],
             dropna=False,
+            observed=True,
         )["value"].sum().to_dict()
     )
     rows: list[dict[str, object]] = []
@@ -2774,6 +2775,112 @@ def build_failed_anchor_mapped_component_context_values(
     if not rows:
         return pd.DataFrame(columns=ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS)
     return pd.DataFrame(rows)[ANCHOR_MAPPED_COMPONENT_CONTEXT_COLUMNS].drop_duplicates()
+
+
+def normalize_anchor_year_for_output(frame: pd.DataFrame) -> pd.DataFrame:
+    """Give anchor diagnostics stable nullable numeric Parquet dtypes."""
+    integer_columns = {
+        "year",
+        "frontier_row_count",
+        "missing_expected_child_count",
+        "missing_nonzero_child_count",
+        "missing_zero_or_absent_child_count",
+        "raw_source_frontier_row_count",
+        "failed_context_count",
+        "raw_child_row_count",
+    }
+    float_columns = {
+        "parent_value",
+        "frontier_sum",
+        "difference",
+        "abs_error",
+        "proportional_error",
+        "missing_nonzero_child_abs",
+        "parent_positive_value",
+        "parent_negative_value",
+        "frontier_positive_sum",
+        "frontier_negative_sum",
+        "raw_source_frontier_sum",
+        "raw_source_difference",
+        "parent_total",
+        "frontier_total",
+        "mismatch_total",
+        "absolute_mismatch_total",
+        "raw_child_total",
+        "raw_child_value",
+        "mapped_value",
+        "direct_children_sum",
+        "direct_children_residual",
+        "leaf_descendants_sum",
+        "leaf_descendants_residual",
+    }
+    boolean_columns = {
+        "enabled",
+        "known_data_quality_exception",
+        "raw_source_hierarchy_mismatch",
+    }
+    for column in sorted((integer_columns | float_columns) & set(frame.columns)):
+        raw_value = frame[column]
+        missing_value = raw_value.isna() | raw_value.astype(str).str.strip().eq("")
+        numeric_value = pd.to_numeric(raw_value.mask(missing_value), errors="coerce")
+        invalid_value = ~missing_value & numeric_value.isna()
+        if invalid_value.any():
+            invalid_values = sorted(
+                frame.loc[invalid_value, column].astype(str).unique()
+            )
+            raise ValueError(
+                f"Anchor output column {column} contains non-numeric values: "
+                f"{invalid_values}"
+            )
+        dtype = "Int64" if column in integer_columns else "Float64"
+        frame[column] = numeric_value.astype(dtype)
+    for column in sorted(boolean_columns & set(frame.columns)):
+        raw_value = frame[column]
+        missing_value = raw_value.isna() | raw_value.astype(str).str.strip().eq("")
+        text_value = raw_value.astype("string").str.strip().str.casefold()
+        invalid_value = ~missing_value & ~text_value.isin({"true", "false", "1", "0"})
+        if invalid_value.any():
+            invalid_values = sorted(
+                frame.loc[invalid_value, column].astype(str).unique()
+            )
+            raise ValueError(
+                f"Anchor output column {column} contains non-boolean values: "
+                f"{invalid_values}"
+            )
+        frame[column] = (
+            text_value.map({"true": True, "false": False, "1": True, "0": False})
+            .mask(missing_value)
+            .astype("boolean")
+        )
+    if "source_non_additivity_observed" in frame.columns:
+        column = "source_non_additivity_observed"
+        raw_value = frame[column]
+        missing_value = raw_value.isna() | raw_value.astype(str).str.strip().eq("")
+        text_value = raw_value.astype("string").str.strip().str.casefold()
+        observed_text = set(text_value.loc[~missing_value].dropna().unique())
+        if observed_text.issubset({"true", "false", "1", "0"}):
+            frame[column] = (
+                text_value.map(
+                    {"true": True, "false": False, "1": True, "0": False}
+                )
+                .mask(missing_value)
+                .astype("boolean")
+            )
+        else:
+            numeric_value = pd.to_numeric(
+                raw_value.mask(missing_value), errors="coerce"
+            )
+            invalid_value = ~missing_value & numeric_value.isna()
+            if invalid_value.any():
+                invalid_values = sorted(
+                    frame.loc[invalid_value, column].astype(str).unique()
+                )
+                raise ValueError(
+                    f"Anchor output column {column} contains invalid values: "
+                    f"{invalid_values}"
+                )
+            frame[column] = numeric_value.astype("Int64")
+    return frame
 
 
 def summarise_failed_anchor_raw_child_context_values(context_values: pd.DataFrame) -> pd.DataFrame:

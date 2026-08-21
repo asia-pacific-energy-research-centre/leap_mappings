@@ -10,6 +10,7 @@ from codebase.mapping_tools.anchor_validation_only_workflow import (
     ANCHOR_COMPARISON_COLUMNS,
     _read_anchor_comparison_slice,
 )
+from codebase.mapping_tools.typed_output import write_manifested_parquet
 
 
 def test_read_anchor_comparison_slice_filters_columns_systems_and_years(
@@ -107,6 +108,44 @@ def test_read_anchor_comparison_slice_returns_typed_empty_contract(
 
     assert result.empty
     assert result.columns.tolist() == ANCHOR_COMPARISON_COLUMNS
+
+
+def test_read_anchor_comparison_slice_filters_manifested_parquet(
+    tmp_path: Path,
+) -> None:
+    comparison_path = tmp_path / "comparison.parquet"
+    frame = pd.DataFrame(
+        [
+            {
+                "comparison_scope": "esto_leap",
+                "source_system": "LEAP",
+                "economy": "20USA",
+                "scenario": "Reference",
+                "year": 2030,
+                "common_row_id": "row_1",
+                "value": 10.0,
+            },
+            {
+                "comparison_scope": "esto_leap",
+                "source_system": "LEAP",
+                "economy": "20USA",
+                "scenario": "Reference",
+                "year": 2040,
+                "common_row_id": "row_1",
+                "value": 11.0,
+            },
+        ]
+    )
+    write_manifested_parquet(frame, comparison_path, artifact_type="comparison")
+
+    result = _read_anchor_comparison_slice(
+        comparison_data_path=comparison_path,
+        years_by_system={"LEAP": {2030}},
+    )
+
+    assert result[["source_system", "year", "value"]].to_dict("records") == [
+        {"source_system": "LEAP", "year": 2030, "value": 10.0}
+    ]
 
 
 #%%
