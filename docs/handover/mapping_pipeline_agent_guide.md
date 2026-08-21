@@ -115,7 +115,7 @@ Full published columns are in
 | workbook mapping/rollup | Stage 1, 2, conversions as affected, 3; run focused hierarchy review when structural flags or hierarchy changed |
 | scope/override/name affecting structure | Stage 1 if relationship-dependent; Stage 2 and 3 |
 | source vintage | conversion and Stage 3; Stage 1/2 if coverage/structure changes; run ESTO-row review only when category coverage changed |
-| LEAP balance export only | LEAP parse, LEAP conversion, Stage 3 |
+| LEAP balance export only | LEAP parse and LEAP conversion; rerun Stage 3 when the converted LEAP values are to be republished |
 | values only; every cached dependency proven current | fast path |
 | Stage 3 validation logic | Stage 3 full validation |
 

@@ -470,7 +470,7 @@ sequenceDiagram
 | canonical mapping row | if structural/category coverage changed | yes | yes | usually yes | yes | affected preparation | yes |
 | rollup/scope/override | hierarchy review if structural meaning changed | yes | yes | if conversion rule changed | yes | if consumed rule changed | yes |
 | ESTO/9th source vintage | ESTO-row review if categories changed | if coverage/cardinality changes | yes | yes | yes | yes | yes |
-| LEAP balance export only | no | no | no | LEAP only | yes | results update | yes |
+| LEAP balance export only | no | no | no | LEAP only | optional, when converted LEAP values are republished | results update | yes |
 | LEAP template structure | hierarchy contract review | maybe | maybe | LEAP parse/convert | yes | yes | yes |
 | dashboard routing/config only | no | no | no | no | no | no | yes |
 | cached source values only, structure unchanged | no | no | no | if stale | fast path allowed | independent | yes |

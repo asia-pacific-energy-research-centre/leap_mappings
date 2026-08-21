@@ -13,7 +13,6 @@ from codebase.run_mapping_pipeline import (
     build_registry_provenance,
     expand_requested_stages,
     load_active_mapping_generation_manifest,
-    require_all_available_leap_economies,
     validate_leap_economy_selection,
 )
 
@@ -45,29 +44,6 @@ def test_bounded_leap_selection_cannot_publish_contract() -> None:
 
 def test_bounded_leap_selection_remains_available_for_parse_only() -> None:
     validate_leap_economy_selection(["leap_parse"], ["20_USA"])
-
-
-def test_stage3_coverage_gate_requires_every_discoverable_leap_economy(
-    tmp_path,
-) -> None:
-    exports_root = tmp_path / "exports"
-    for economy in ["20_USA", "21_VN"]:
-        economy_dir = exports_root / economy
-        economy_dir.mkdir(parents=True)
-        (economy_dir / f"2008_{economy.split('_', 1)[1]}_TGT.xlsx").touch()
-    converted_path = tmp_path / "converted.csv"
-    pd.DataFrame({"economy": ["20_USA"]}).to_csv(converted_path, index=False)
-
-    with pytest.raises(ValueError, match="21_VN"):
-        require_all_available_leap_economies(converted_path, exports_root)
-
-    pd.DataFrame({"economy": ["20_USA", "21_VN"]}).to_csv(
-        converted_path, index=False
-    )
-    assert require_all_available_leap_economies(converted_path, exports_root) == [
-        "20_USA",
-        "21_VN",
-    ]
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:

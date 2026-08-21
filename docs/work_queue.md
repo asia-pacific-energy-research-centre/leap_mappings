@@ -1,6 +1,6 @@
 # LEAP mappings work queue and handover plan
 
-## MAPQ-053 — Require all-economy inputs for production Common ESTO publication
+## MAPQ-053 — Use available source/template coverage for Common ESTO publication
 
 **Priority / status:** P0 · implemented and fixture-verified 2026-08-21;
 production pipeline run intentionally pending.
@@ -11,8 +11,10 @@ production pipeline run intentionally pending.
 - Explicit economy subsets remain available for an isolated `leap_parse`, but
   are rejected when the same command includes `data_convert` or Stage 3 so a
   bounded diagnostic cannot silently replace the production contract.
-- Stage 3 verifies that converted LEAP rows include every economy currently
-  discoverable from the canonical balance-export directory before publishing.
+- Stage 3 no longer requires raw LEAP balance exports or converted LEAP rows
+  for every export-bearing economy. Per-economy LEAP templates remain the
+  structural authority; LEAP values are published only where converted LEAP
+  data exist, while ESTO/NINTH sources publish their available economies.
 - Date/economy/scenario filenames separated with underscores, including the
   maintained `2008_MAS_TGT.xlsx` and `1908_VN_TGT.xlsx` forms, are now part of
   balance-export discovery.

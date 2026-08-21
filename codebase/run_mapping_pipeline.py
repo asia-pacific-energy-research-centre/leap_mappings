@@ -957,11 +957,13 @@ def run_stage_3(
         print("  Run earlier stages first.")
         return
 
-    if stage3_source_paths is None:
-        require_all_available_leap_economies(
-            converted_leap_path=source_paths["LEAP"],
-            exports_root=LEAP_EXPORTS_ROOT,
-        )
+    # LEAP is an optional value source for Stage 3.  Per-economy templates are
+    # the structural authority; raw balance exports are only needed to produce
+    # LEAP values.  Do not block the ESTO/NINTH publication when no converted
+    # LEAP artifact is available.
+    if not source_paths.get("LEAP", Path()).exists():
+        print("  No converted LEAP artifact found; publishing non-LEAP sources.")
+        source_paths.pop("LEAP", None)
 
     from codebase.mapping_tools.apply_common_esto_structure import run_apply_common_esto_structure
     from codebase.mapping_tools.build_dataset_tree_structure import (
@@ -1044,7 +1046,7 @@ def run_stage_3(
             default_economy="20USA",
             broad_common_row_component_limit=50,
             active_component_abs_tolerance=0.0,
-            raw_leap_results_path=RAW_LEAP_PATH,
+            raw_leap_results_path=(RAW_LEAP_PATH if RAW_LEAP_PATH.exists() else None),
             outlook_mappings_path=WORKBOOK_PATH,
             structural_partial_coverage_path=COMMON_ESTO_DIR / "qa_common_esto_structural_partial_coverage.csv",
             ninth_source_data_path=NINTH_CSV_PATH,
@@ -1597,33 +1599,6 @@ def validate_leap_economy_selection(
             "Use --leap-economies all (or omit the option), or run leap_parse alone "
             "for an isolated diagnostic."
         )
-
-
-def require_all_available_leap_economies(
-    converted_leap_path: Path,
-    exports_root: Path,
-) -> list[str]:
-    """Require converted LEAP rows for every economy with a recognized export."""
-    expected = discover_available_economies(exports_root)
-    if not expected:
-        raise ValueError(
-            "No recognized LEAP balance exports were found; refusing to publish a "
-            "production Common ESTO contract without LEAP economy coverage."
-        )
-    converted = pd.read_csv(converted_leap_path, usecols=["economy"], dtype=object)
-    actual = {
-        str(value).strip()
-        for value in converted["economy"].dropna().unique()
-        if str(value).strip()
-    }
-    missing = sorted(set(expected).difference(actual))
-    if missing:
-        raise ValueError(
-            "Converted LEAP input is missing economies with recognized balance "
-            f"exports: {missing}. Rerun leap_parse for all economies and then "
-            "data_convert before Stage 3."
-        )
-    return expected
 
 
 def main() -> None:
