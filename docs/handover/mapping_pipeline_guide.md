@@ -37,10 +37,19 @@ Legacy `leap_mappings.xlsx`, `master_config.xlsx`, and
 `leap_mapping_refresh_workflow.py` are references, not the active mapping
 system.
 
-The separate-axis generate stage is the production first step. It promotes the
+The separate-axis generate stage is the maintainer refresh step. It promotes the
 compatibility workbook only after generation, reopen, Boolean, schema, and hash
 validation. See
 [`../separate_axis_mapping_pipeline.md`](../separate_axis_mapping_pipeline.md).
+
+For a colleague using the committed mapping configuration, the ordinary run is
+`codebase/run_mapping_pipeline.py` with no arguments. It runs Stages 1–3 plus
+LEAP parsing and data conversion for the bounded `20_USA` smoke economy. It
+deliberately skips `generate` and the recursive/anchor deep audit. Use
+`--leap-economies all` only for an intentional multi-economy refresh after
+checking memory. Run `generate` only after maintained mapping inputs change.
+Run `--deep-validation` only with enough time and free disk; the current full
+audit can exceed 100 GB of temporary data.
 
 ```mermaid
 flowchart LR

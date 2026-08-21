@@ -1541,6 +1541,8 @@ def run_stage_3(
 # ---------------------------------------------------------------------------
 
 _ALL_STAGES = ["generate", "1", "2", "leap_parse", "data_convert", "3"]
+_DEFAULT_STAGES = ["1", "2", "leap_parse", "data_convert", "3"]
+_DEFAULT_COLLEAGUE_LEAP_ECONOMIES = ["20_USA"]
 
 _STAGE_RUNNERS = {
     "generate":     run_separate_axis_refresh,
@@ -1578,8 +1580,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the LEAP->ESTO mapping pipeline.")
     parser.add_argument(
         "--stages",
-        default=",".join(_ALL_STAGES),
-        help="Comma-separated list of stages to run (default: all).",
+        default=",".join(_DEFAULT_STAGES),
+        help=(
+            "Comma-separated stages (default: the colleague-safe 1,2,leap_parse,"
+            "data_convert,3 sequence). Run 'generate' explicitly after editing "
+            "maintained mapping inputs."
+        ),
     )
     parser.add_argument(
         "--skip",
@@ -1591,9 +1597,9 @@ def main() -> None:
         default=None,
         help=(
             "Comma-separated list of economy codes to parse during the leap_parse "
-            "stage (e.g. --leap-economies 20_USA,12_NZ). Default: auto-discover "
-            "every economy with a recognized export directory under the canonical "
-            "LEAP exports root."
+            "stage (e.g. --leap-economies 20_USA,12_NZ). Default: the bounded "
+            "20_USA colleague smoke run. Use --leap-economies all to auto-discover "
+            "every economy with recognized exports."
         ),
     )
     parser.add_argument(
@@ -1621,10 +1627,19 @@ def main() -> None:
         default=None,
         help="Optional parsed raw-LEAP CSV override for a reproducible test slice.",
     )
-    parser.add_argument(
+    validation_group = parser.add_mutually_exclusive_group()
+    validation_group.add_argument(
+        "--deep-validation",
+        action="store_true",
+        help=(
+            "Opt in to the full recursive/anchor validation pass. This can create "
+            "more than 100 GB of temporary data; the default publication run skips it."
+        ),
+    )
+    validation_group.add_argument(
         "--skip-deep-validation",
         action="store_true",
-        help="Test mode: stop after common-structure application and skip the full recursive/anchor validation pass.",
+        help="Deprecated compatibility flag; deep validation is skipped by default.",
     )
     parser.add_argument(
         "--write-esto-extended-delta",
@@ -1671,11 +1686,14 @@ def main() -> None:
     with _log_to_file(_PIPELINE_LOG_PATH) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
         print("Running pipeline stages:", stages_to_run)
-        leap_economies = (
-            [item.strip() for item in args.leap_economies.split(",") if item.strip()]
-            if args.leap_economies
-            else None
-        )
+        if args.leap_economies and args.leap_economies.strip().casefold() == "all":
+            leap_economies = None
+        elif args.leap_economies:
+            leap_economies = [
+                item.strip() for item in args.leap_economies.split(",") if item.strip()
+            ]
+        else:
+            leap_economies = list(_DEFAULT_COLLEAGUE_LEAP_ECONOMIES)
         with _ResourceUsageMonitor(
             _RESOURCE_USAGE_PATH,
             performance_summary_path=_PERFORMANCE_SUMMARY_PATH,
@@ -1692,7 +1710,7 @@ def main() -> None:
                             )
                         elif stage == "3":
                             run_stage_3(
-                                skip_deep_validation=args.skip_deep_validation,
+                                skip_deep_validation=not args.deep_validation,
                                 use_esto_extended_delta=args.use_esto_extended_delta,
                             )
                         else:

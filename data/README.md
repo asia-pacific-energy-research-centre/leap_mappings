@@ -8,7 +8,7 @@ archive/zip, not from git.
 
 To prepare the current handoff ZIP, run `scripts/create_data_bundle.py` from
 Jupyter or an IDE cell runner. It writes a dated, commit-labelled ZIP under
-`data_bundles/` containing exactly the three source tables listed below.
+`data_bundles/` containing the source files listed below.
 Tracked mapping configuration and generated `results/` files are deliberately
 excluded.
 
@@ -32,6 +32,16 @@ data/README.md` if useful for archaeology, but don't treat it as current; this r
 | `00APEC_2025_low_with_subtotals.csv` | Primary ESTO source table — Stage 0, `data_convert`, Stage 3. |
 | `00APEC_2024_low_with_subtotals.csv` | Secondary ESTO year, checked by Stage 0 maintenance for missing-mapped-row detection. |
 | `merged_file_energy_ALL_20251106.csv` | 9th Outlook source table — Stage 0, `data_convert`, Stage 3. The single largest required input (currently several hundred MB). |
+| `esto_extended.csv` | ESTO Extended source used by conversion, hierarchy, and Stage 3. |
+| `temp/new leap rows.xlsx` | Maintained LEAP branch inventory used by hierarchy and mapping refresh checks. |
+
+The default `codebase/run_mapping_pipeline.py` run uses the committed mapping
+configuration, parses the bounded `20_USA` smoke economy, and skips the very
+large recursive/anchor audit. Pass `--leap-economies all` for an intentional
+multi-economy refresh after checking memory. Maintainers run
+`--stages generate,...` only after editing mapping inputs, and opt into the
+potentially 100+ GB audit with `--deep-validation` when the available disk and
+run time have been checked.
 
 ## Not needed for this repo's pipeline
 

@@ -22,6 +22,8 @@ REQUIRED_SOURCE_PATHS = {
     "data/00APEC_2024_low_with_subtotals.csv",
     "data/00APEC_2025_low_with_subtotals.csv",
     "data/merged_file_energy_ALL_20251106.csv",
+    "data/esto_extended.csv",
+    "data/temp/new leap rows.xlsx",
 }
 
 
@@ -162,7 +164,7 @@ def extract_data_bundle(
         raise RuntimeError(f"Extraction finished but readiness checks failed: {missing_after_install}")
 
     print(f"Installed {len(installed):,} files from {bundle_path.name}")
-    print("All three mapping source tables are available.")
+    print("All required mapping source files are available.")
     return installed
 
 

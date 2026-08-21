@@ -33,6 +33,10 @@ BALANCE_EXPORT_PREFIX_FILENAME_PATTERN = re.compile(
     r"^(?P<scenario>REF|TGT)\s+(?P<date_id>\d{4,8})(?:\s+[^.]*)?\.xlsx$",
     re.IGNORECASE,
 )
+BALANCE_EXPORT_DATE_PREFIX_FILENAME_PATTERN = re.compile(
+    r"^(?P<date_id>\d{4,8})\s+(?P<scenario>REF|TGT)(?:\s+[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
 BALANCE_EXPORT_ECONOMY_PREFIX_FILENAME_PATTERN = re.compile(
     r"^(?:[A-Za-z0-9_-]+\s+)(?P<scenario>REF|TGT)\s+(?P<date_id>\d{4,8})(?:\s+[^.]*)?\.xlsx$",
     re.IGNORECASE,
@@ -69,6 +73,7 @@ def _match_balance_export_filename(filename: str) -> re.Match[str] | None:
     return (
         BALANCE_EXPORT_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_PREFIX_FILENAME_PATTERN.match(filename)
+        or BALANCE_EXPORT_DATE_PREFIX_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_ECONOMY_PREFIX_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_DATE_ECONOMY_SCENARIO_FILENAME_PATTERN.match(filename)
     )

@@ -22,6 +22,8 @@ SOURCE_TABLE_PATHS = (
     Path("data/00APEC_2024_low_with_subtotals.csv"),
     Path("data/00APEC_2025_low_with_subtotals.csv"),
     Path("data/merged_file_energy_ALL_20251106.csv"),
+    Path("data/esto_extended.csv"),
+    Path("data/temp/new leap rows.xlsx"),
 )
 
 
@@ -41,7 +43,7 @@ def _git_commit(repo_root: Path) -> str:
 
 
 def collect_bundle_files(repo_root: Path = REPO_ROOT) -> list[dict[str, object]]:
-    """Collect only the three external source tables required by the mapping pipeline."""
+    """Collect the external source files required by the maintained pipeline."""
     records = []
     missing = []
     for relative_path in SOURCE_TABLE_PATHS:
