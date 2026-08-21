@@ -62,6 +62,8 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -102,6 +104,10 @@ from codebase.mapping_tools.convert_leap_results_to_esto import (  # noqa: E402
 )
 from codebase.mapping_tools.parse_leap_balance_export import (  # noqa: E402
     parse_leap_balance_dir,
+)
+from codebase.mapping_tools.source_branch_preflight import (  # noqa: E402
+    build_all_demand_representation_status,
+    load_all_demand_aggregated_components,
 )
 
 
@@ -337,6 +343,21 @@ def run_mapping_chain(job: dict) -> dict:
         preflight_audit_dir=work_dir,
     )
     converted_rows = len(converted_df)
+    demand_detail_selection_audit_path = (
+        work_dir / "leap_all_demand_detail_selection_audit.csv"
+    )
+    demand_representation_status_path = (
+        work_dir / "leap_demand_representation_status.csv"
+    )
+    components = load_all_demand_aggregated_components(
+        Path(config["all_demand_components_path"])
+    )
+    representation_status_df = build_all_demand_representation_status(
+        raw_df,
+        components,
+        pd.read_csv(demand_detail_selection_audit_path),
+    )
+    representation_status_df.to_csv(demand_representation_status_path, index=False)
 
     report_step("compare")
     common_rows_path = Path(artifacts["common_esto_rows_path"])
@@ -382,8 +403,9 @@ def run_mapping_chain(job: dict) -> dict:
             work_dir / "leap_source_branch_fallback_audit.csv"
         ),
         "demand_detail_selection_audit_path": str(
-            work_dir / "leap_all_demand_detail_selection_audit.csv"
+            demand_detail_selection_audit_path
         ),
+        "demand_representation_status_path": str(demand_representation_status_path),
         "raw_leap_rows": raw_leap_rows,
         "converted_rows": converted_rows,
         "comparison_rows": comparison_rows,
