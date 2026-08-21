@@ -225,3 +225,6 @@ results/**
 !results/.gitkeep
 !results/**/
 !results/**/README.md
+
+# Root-local Codex scratch work (may contain a shared-runtime junction).
+/.codex_tmp_*/
