@@ -117,6 +117,9 @@ ESTO_EXTENDED_DELTA_MANIFEST_PATH = (
 )
 RELATIONSHIPS_PATH  = REL_DIR / "energy_balance_relationships.csv"
 COMMON_ROWS_PATH    = COMMON_ESTO_DIR / "common_esto_rows.csv"
+LEAP_DEMAND_REPRESENTATION_STATUS_PATH = (
+    COMMON_ESTO_DIR / "leap_demand_representation_status.csv"
+)
 ESTO_COMPONENT_LINEAGE_PATH = COMMON_ESTO_DIR / "esto_component_to_common_row_lineage.csv.gz"
 ESTO_EXACT_ROWS_SOURCE_IDENTITY_QA_PATH = (
     REL_DIR / "qa_esto_exact_rows_source_identity.csv"
@@ -674,6 +677,23 @@ def run_leap_to_esto() -> None:
             all_demand_components_path=ALL_DEMAND_COMPONENTS_PATH,
             preflight_audit_dir=REL_DIR,
         )
+    from codebase.mapping_tools.source_branch_preflight import (
+        build_all_demand_representation_status,
+        load_all_demand_aggregated_components,
+    )
+    audit_path = REL_DIR / "leap_all_demand_detail_selection_audit.csv"
+    if audit_path.exists():
+        status_df = build_all_demand_representation_status(
+            pd.read_csv(RAW_LEAP_PATH),
+            load_all_demand_aggregated_components(ALL_DEMAND_COMPONENTS_PATH),
+            pd.read_csv(audit_path),
+        )
+        COMMON_ESTO_DIR.mkdir(parents=True, exist_ok=True)
+        status_df.to_csv(LEAP_DEMAND_REPRESENTATION_STATUS_PATH, index=False)
+        print(
+            "  LEAP demand representation status: "
+            f"{len(status_df):,} rows -> {LEAP_DEMAND_REPRESENTATION_STATUS_PATH}"
+        )
 
 
 def run_ninth_to_esto() -> None:
@@ -1023,6 +1043,20 @@ def run_stage_3(
                 "size_bytes": path.stat().st_size if path.exists() else None,
             }
             for name, path in source_paths.items()
+        },
+        "leap_demand_representation_status": {
+            "path": str(LEAP_DEMAND_REPRESENTATION_STATUS_PATH.resolve()),
+            "exists": LEAP_DEMAND_REPRESENTATION_STATUS_PATH.exists(),
+            "size_bytes": (
+                LEAP_DEMAND_REPRESENTATION_STATUS_PATH.stat().st_size
+                if LEAP_DEMAND_REPRESENTATION_STATUS_PATH.exists()
+                else None
+            ),
+            "sha256": (
+                _sha256(LEAP_DEMAND_REPRESENTATION_STATUS_PATH)
+                if LEAP_DEMAND_REPRESENTATION_STATUS_PATH.exists()
+                else None
+            ),
         },
         "relevance_reference_files": {
             source_system: [str(path.resolve()) for path in paths]

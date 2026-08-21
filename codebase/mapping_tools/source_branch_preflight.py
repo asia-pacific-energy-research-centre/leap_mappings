@@ -84,6 +84,15 @@ ALL_DEMAND_SELECTION_AUDIT_COLUMNS = [
     "placeholder_total_suppressed",
     "placeholder_rows_zeroed",
 ]
+ALL_DEMAND_REPRESENTATION_STATUS_COLUMNS = [
+    "economy",
+    "scenario",
+    "year",
+    "component_branch",
+    "placeholder_branch",
+    "detailed_branches",
+    "representation_status",
+]
 ALL_DEMAND_WARNING_COLUMNS = [
     "economy",
     "scenario",
@@ -436,6 +445,63 @@ def apply_all_demand_detail_fallbacks(
                     }
                 )
     return adjusted_df, pd.DataFrame(audit_rows, columns=ALL_DEMAND_SELECTION_AUDIT_COLUMNS)
+
+
+def build_all_demand_representation_status(
+    leap_df: pd.DataFrame,
+    components_df: pd.DataFrame,
+    selection_audit_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Publish one current-run representation status per LEAP period/component.
+
+    This is deliberately presentation metadata, not a mapping input.  It is
+    derived from the same parsed LEAP rows and selection audit that determine
+    whether placeholder values are retained.  Periods with neither configured
+    representation are explicit ``no_data_unavailable`` rows so a consumer
+    never needs to infer unavailable data from a zero.
+    """
+    if leap_df is None or leap_df.empty or components_df is None or components_df.empty:
+        return pd.DataFrame(columns=ALL_DEMAND_REPRESENTATION_STATUS_COLUMNS)
+
+    periods = leap_df[PERIOD_COLUMNS].drop_duplicates()
+    audit_lookup = (
+        selection_audit_df.set_index(PERIOD_COLUMNS + ["component_branch"])
+        if selection_audit_df is not None and not selection_audit_df.empty
+        else pd.DataFrame()
+    )
+    rows: list[dict[str, Any]] = []
+    for economy, economy_periods in periods.groupby("economy", dropna=False):
+        resolved = resolve_components_for_economy(components_df, economy)
+        for _, component in resolved.iterrows():
+            component_branch = _str(component.get("component_branch"))
+            placeholder_branch = _placeholder_branch(component)
+            detailed_branches = ";".join(_detail_branches(component))
+            for _, period in economy_periods.iterrows():
+                key = (
+                    period["economy"],
+                    period["scenario"],
+                    period["year"],
+                    component_branch,
+                )
+                if not audit_lookup.empty and key in audit_lookup.index:
+                    audit_row = audit_lookup.loc[key]
+                    if isinstance(audit_row, pd.DataFrame):
+                        raise ValueError(f"Duplicate all-demand selection audit key: {key}")
+                    status = _str(audit_row.get("status"))
+                else:
+                    status = "no_data_unavailable"
+                rows.append(
+                    {
+                        "economy": period["economy"],
+                        "scenario": period["scenario"],
+                        "year": period["year"],
+                        "component_branch": component_branch,
+                        "placeholder_branch": placeholder_branch,
+                        "detailed_branches": detailed_branches,
+                        "representation_status": status,
+                    }
+                )
+    return pd.DataFrame(rows, columns=ALL_DEMAND_REPRESENTATION_STATUS_COLUMNS)
 
 
 def get_demand_sectors_without_detail(components_df: pd.DataFrame, economy: str) -> list[str]:

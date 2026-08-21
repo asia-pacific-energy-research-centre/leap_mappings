@@ -7,6 +7,7 @@ import pandas as pd
 from codebase.mapping_tools.source_branch_preflight import (
     apply_all_demand_detail_fallbacks,
     apply_source_branch_fallbacks,
+    build_all_demand_representation_status,
     check_all_demand_aggregated_overlap,
     get_demand_sectors_without_detail,
     resolve_components_for_economy,
@@ -290,4 +291,28 @@ class TestMixedPlaceholderAndDetailedDemand:
         assert statuses == {
             "01_AUS": "detailed_preferred",
             "20_USA": "placeholder_only_retained",
+        }
+
+    def test_representation_status_marks_missing_component_data_unavailable(self) -> None:
+        rows = pd.DataFrame(
+            [
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "All demand aggregated/Road", "leap_product": "Electricity", "value": 9.0},
+                {"economy": "01_AUS", "scenario": "Target", "year": 2030, "leap_flow": "Unrelated", "leap_product": "Electricity", "value": 1.0},
+            ]
+        )
+        components = pd.concat(
+            [
+                self._components(),
+                pd.DataFrame(
+                    [{"economy": "", "aggregated_branch": "All demand aggregated", "component_branch": "Buildings", "detailed_branches": "Buildings", "detail_activation": "all_present", "include": "True", "note": ""}]
+                ),
+            ],
+            ignore_index=True,
+        )
+        _, audit = apply_all_demand_detail_fallbacks(rows, components)
+        status = build_all_demand_representation_status(rows, components, audit)
+        values = status.set_index("component_branch")["representation_status"].to_dict()
+        assert values == {
+            "Road": "placeholder_only_retained",
+            "Buildings": "no_data_unavailable",
         }

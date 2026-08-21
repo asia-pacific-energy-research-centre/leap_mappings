@@ -155,6 +155,31 @@ repository cannot answer either:
   overlaps both `16 Other sector` and `17 Non-energy use`, so no set of declared
   parents reveals the overlap.
 
+## LEAP placeholder representation status
+
+The structural source-to-common map deliberately includes both expected
+placeholder branches (for example, `All demand aggregated/Buildings`) and
+their detailed replacements (`Buildings`). Which representation supplied
+values in a particular run is not mapping semantics. It is published
+separately as `results/common_esto/leap_demand_representation_status.csv`.
+
+This is a run-specific artifact with a stable schema:
+
+```text
+economy, scenario, year, component_branch, placeholder_branch,
+detailed_branches, representation_status
+```
+
+The mapping pipeline regenerates it from the parsed LEAP balance exports and
+the preflight selection audit. `placeholder_only_retained`,
+`detailed_preferred`, `detailed_only_used`, and partial-detail statuses record
+the representation selected for that period. `no_data_unavailable` means
+neither configured representation was present; it is not a numerical zero.
+
+Consumers may use this artifact for labels and warnings only. It must not
+remove source mappings, hide ordinary Common ESTO categories, allocate missing
+detail, or replace the source-safe hierarchy frontier used for totals.
+
 **Open question for maintainers (raised 2026-08-06):** is that exclusion
 deliberate? If spanning rollups are intentionally not tree nodes, say so here so
 consumers know to handle them. If it is an oversight, declaring them removes a

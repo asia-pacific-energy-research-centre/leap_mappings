@@ -62,6 +62,22 @@ def test_each_scope_includes_its_canonical_esto_source():
     assert "ESTO" not in set(coverage["source_system"])
 
 
+def test_leap_placeholder_and_expected_detail_both_survive_publication():
+    source_to_common_map, _coverage = build_source_to_common_esto_map()
+    leap_flows = set(
+        source_to_common_map.loc[
+            source_to_common_map["system"].eq("LEAP"), "source_flow"
+        ]
+    )
+    assert {
+        "All demand aggregated/Buildings",
+        "Buildings",
+        "All demand aggregated/Road",
+        "Freight road",
+        "Passenger road",
+    }.issubset(leap_flows)
+
+
 def test_participating_source_systems_reads_scope_name():
     assert _participating_source_systems("esto_leap") == {"ESTO", "LEAP"}
     assert _participating_source_systems("esto_leap_ninth") == {"ESTO", "LEAP", "NINTH"}

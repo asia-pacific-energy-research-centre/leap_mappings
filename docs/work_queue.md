@@ -1,5 +1,17 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-054 — Publish current-run LEAP demand representation status
+
+**Priority / status:** P0 · implemented; full production pipeline verification pending.
+
+- `leap_demand_representation_status.csv` is generated from parsed LEAP values
+  and the all-demand selection audit, with one economy/scenario/year/component
+  status and an explicit `no_data_unavailable` state.
+- It is presentation metadata for consumers. It does not change the canonical
+  placeholder or detailed source mappings, and it does not permit allocation.
+- Stage 3 records the artifact identity in its run manifest so downstream
+  renders can verify they are reading the selected pipeline generation.
+
 ## MAPQ-053 — Use available source/template coverage for Common ESTO publication
 
 **Priority / status:** P0 · implemented and fixture-verified 2026-08-21;
