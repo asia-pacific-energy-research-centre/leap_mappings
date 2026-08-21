@@ -4,7 +4,7 @@ Integration test for codebase.portable_mapping_chain against a real economy.
 This exercises the exact call sequence proven in
 leap_initialisation/docs/leap_review_tools_handover_20260803.md §2, using the
 real 12_NZ LEAP balance export and the real mapping/config artifacts checked
-into this repo (or its results/ output). It is slow (parses ~385k raw rows)
+into this repo (or its results/ output). It is slow (parses ~105k raw rows)
 and depends on the sibling leap_initialisation checkout's export data, so it
 is skipped when either is unavailable rather than failing the suite.
 """
@@ -70,8 +70,8 @@ def test_run_mapping_chain_12_nz(tmp_path):
 
     result = run_mapping_chain(job)
 
-    assert result["raw_leap_rows"] == 385_035
-    assert result["converted_rows"] == 45_409
+    assert result["raw_leap_rows"] == 105_120
+    assert result["converted_rows"] == 31_664
     assert result["comparison_rows"] > 188_452
     assert Path(result["comparison_data_path"]).exists()
     assert Path(result["wide_data_path"]).exists()

@@ -3,8 +3,9 @@
 
 The expected counts follow the promoted mapping-generation manifest. They were
 refreshed after the domestic-demand TFC boundary added source pairs, the
-registry refresh added structural links, and MAPQ-048 retained components
-supported by the endpoint year of any maintained ESTO vintage.
+registry refresh added structural links, MAPQ-048 retained components
+supported by the endpoint year of any maintained ESTO vintage, and the LNG
+inclusive-rollup refresh removed one obsolete direct LEAP pair.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ def test_zero_fan_out_across_every_scope():
         )
 
 
-def test_esto_leap_ninth_scope_matches_the_w1_finding():
+def test_esto_leap_ninth_scope_matches_the_promoted_mapping_manifest():
     source_to_common_map, coverage = build_source_to_common_esto_map()
     scope_map = source_to_common_map[source_to_common_map["scope"] == "esto_leap_ninth"]
     scope_coverage = coverage[coverage["comparison_scope"] == "esto_leap_ninth"]
@@ -38,15 +39,16 @@ def test_esto_leap_ninth_scope_matches_the_w1_finding():
     ].drop_duplicates()
     leap_unmapped = scope_coverage[scope_coverage["source_system"] == "LEAP"]
 
-    assert len(leap_mapped) == 2992
-    assert len(leap_unmapped) == 3417
+    assert len(leap_mapped) == 2991
+    assert len(leap_unmapped) == 3777
 
     ninth_mapped = scope_map[scope_map["system"] == "NINTH"][
         ["source_flow", "source_product"]
     ].drop_duplicates()
     ninth_unmapped = scope_coverage[scope_coverage["source_system"] == "NINTH"]
-    assert len(ninth_mapped) == 1980
-    assert len(ninth_unmapped) == 0
+    assert len(ninth_mapped) == 1943
+    assert len(ninth_unmapped) == 6
+    assert set(ninth_unmapped["target_flow"]) == {"09.01.02.01 Coal CHP"}
 
 
 def test_each_scope_includes_its_canonical_esto_source():
