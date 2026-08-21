@@ -45,6 +45,10 @@ BALANCE_EXPORT_DATE_ECONOMY_SCENARIO_FILENAME_PATTERN = re.compile(
     r"^(?P<date_id>\d{4,8})\s+[A-Za-z0-9_-]+\s+(?P<scenario>REF|TGT)(?:\s+[^.]*)?\.xlsx$",
     re.IGNORECASE,
 )
+BALANCE_EXPORT_SEPARATED_DATE_ECONOMY_SCENARIO_FILENAME_PATTERN = re.compile(
+    r"^(?P<date_id>\d{4,8})[_-]+[A-Za-z0-9]+[_-]+(?P<scenario>REF|TGT)(?:[_ -]+[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
 
 # LEAP sometimes exports a "...REF.xlsx" balance workbook whose sheets'
 # internal "Scenario: X, Year: Y, Units: Z" subtitle still says "Target" (a
@@ -76,6 +80,7 @@ def _match_balance_export_filename(filename: str) -> re.Match[str] | None:
         or BALANCE_EXPORT_DATE_PREFIX_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_ECONOMY_PREFIX_FILENAME_PATTERN.match(filename)
         or BALANCE_EXPORT_DATE_ECONOMY_SCENARIO_FILENAME_PATTERN.match(filename)
+        or BALANCE_EXPORT_SEPARATED_DATE_ECONOMY_SCENARIO_FILENAME_PATTERN.match(filename)
     )
 
 

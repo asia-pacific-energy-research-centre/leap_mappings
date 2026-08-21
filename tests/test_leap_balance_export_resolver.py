@@ -133,6 +133,21 @@ def test_date_economy_scenario_is_discovered_without_generated_reviews(tmp_path:
     ) == [reference, target]
 
 
+def test_underscore_separated_date_economy_scenario_is_discovered(tmp_path: Path) -> None:
+    mas_dir = tmp_path / "10_MAS"
+    vn_dir = tmp_path / "21_VN"
+    mas_dir.mkdir()
+    vn_dir.mkdir()
+    mas_target = mas_dir / "2008_MAS_TGT.xlsx"
+    vn_target = vn_dir / "1908_VN_TGT.xlsx"
+    mas_target.touch()
+    vn_target.touch()
+
+    assert discover_available_economies(tmp_path) == ["10_MAS", "21_VN"]
+    assert scenario_code_from_balance_export_filename(mas_target) == "TGT"
+    assert scenario_code_from_balance_export_filename(vn_target) == "TGT"
+
+
 def test_short_ddmm_export_can_be_newer_than_full_ddmmyyyy_name(tmp_path: Path) -> None:
     rus_dir = tmp_path / "16_RUS"
     rus_dir.mkdir()

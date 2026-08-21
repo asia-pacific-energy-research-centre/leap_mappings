@@ -1,5 +1,28 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-053 — Require all-economy inputs for production Common ESTO publication
+
+**Priority / status:** P0 · implemented and fixture-verified 2026-08-21;
+production pipeline run intentionally pending.
+
+- The default pipeline no longer narrows LEAP parsing to `20_USA`. Omitting
+  `--leap-economies` now discovers every economy with a recognized active
+  balance export.
+- Explicit economy subsets remain available for an isolated `leap_parse`, but
+  are rejected when the same command includes `data_convert` or Stage 3 so a
+  bounded diagnostic cannot silently replace the production contract.
+- Stage 3 verifies that converted LEAP rows include every economy currently
+  discoverable from the canonical balance-export directory before publishing.
+- Date/economy/scenario filenames separated with underscores, including the
+  maintained `2008_MAS_TGT.xlsx` and `1908_VN_TGT.xlsx` forms, are now part of
+  balance-export discovery.
+- Focused unit tests cover default selection, bounded-publication rejection,
+  Stage 3 coverage failure and success, and underscore-separated filenames;
+  all 28 focused tests pass. The live read-only gate discovers eight active
+  export economies and correctly identifies the four economies absent from the
+  current converted LEAP artifact. No mapping pipeline or production artifact
+  generation was run for this item.
+
 ## MAPQ-052 — Reduce Stage 3 deep-validation peak memory (anchor + recursive checks)
 
 **Priority / status:** P1 · safe first-pass memory reduction implemented and

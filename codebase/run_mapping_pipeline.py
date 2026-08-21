@@ -957,6 +957,12 @@ def run_stage_3(
         print("  Run earlier stages first.")
         return
 
+    if stage3_source_paths is None:
+        require_all_available_leap_economies(
+            converted_leap_path=source_paths["LEAP"],
+            exports_root=LEAP_EXPORTS_ROOT,
+        )
+
     from codebase.mapping_tools.apply_common_esto_structure import run_apply_common_esto_structure
     from codebase.mapping_tools.build_dataset_tree_structure import (
         LEAP_VAR_BASE_YEAR,
@@ -1542,7 +1548,7 @@ def run_stage_3(
 
 _ALL_STAGES = ["generate", "1", "2", "leap_parse", "data_convert", "3"]
 _DEFAULT_STAGES = ["1", "2", "leap_parse", "data_convert", "3"]
-_DEFAULT_COLLEAGUE_LEAP_ECONOMIES = ["20_USA"]
+_DEFAULT_LEAP_ECONOMIES: list[str] | None = None
 
 _STAGE_RUNNERS = {
     "generate":     run_separate_axis_refresh,
@@ -1576,6 +1582,50 @@ def expand_requested_stages(requested: list[str], skipped: set[str]) -> list[str
     return expanded
 
 
+def validate_leap_economy_selection(
+    stages_to_run: Sequence[str],
+    leap_economies: Sequence[str] | None,
+) -> None:
+    """Prevent a bounded LEAP parse from feeding production contract stages."""
+    if leap_economies is None:
+        return
+    publishing_stages = sorted(set(stages_to_run).intersection({"data_convert", "3"}))
+    if publishing_stages:
+        raise ValueError(
+            "A bounded --leap-economies selection cannot run with data_convert or "
+            "Stage 3 because it would publish a partial Common ESTO contract. "
+            "Use --leap-economies all (or omit the option), or run leap_parse alone "
+            "for an isolated diagnostic."
+        )
+
+
+def require_all_available_leap_economies(
+    converted_leap_path: Path,
+    exports_root: Path,
+) -> list[str]:
+    """Require converted LEAP rows for every economy with a recognized export."""
+    expected = discover_available_economies(exports_root)
+    if not expected:
+        raise ValueError(
+            "No recognized LEAP balance exports were found; refusing to publish a "
+            "production Common ESTO contract without LEAP economy coverage."
+        )
+    converted = pd.read_csv(converted_leap_path, usecols=["economy"], dtype=object)
+    actual = {
+        str(value).strip()
+        for value in converted["economy"].dropna().unique()
+        if str(value).strip()
+    }
+    missing = sorted(set(expected).difference(actual))
+    if missing:
+        raise ValueError(
+            "Converted LEAP input is missing economies with recognized balance "
+            f"exports: {missing}. Rerun leap_parse for all economies and then "
+            "data_convert before Stage 3."
+        )
+    return expected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the LEAP->ESTO mapping pipeline.")
     parser.add_argument(
@@ -1597,9 +1647,9 @@ def main() -> None:
         default=None,
         help=(
             "Comma-separated list of economy codes to parse during the leap_parse "
-            "stage (e.g. --leap-economies 20_USA,12_NZ). Default: the bounded "
-            "20_USA colleague smoke run. Use --leap-economies all to auto-discover "
-            "every economy with recognized exports."
+            "stage (e.g. --leap-economies 20_USA,12_NZ). Default: auto-discover "
+            "every economy with recognized exports. Explicit subsets are allowed "
+            "only when leap_parse runs without data_convert or Stage 3."
         ),
     )
     parser.add_argument(
@@ -1693,7 +1743,11 @@ def main() -> None:
                 item.strip() for item in args.leap_economies.split(",") if item.strip()
             ]
         else:
-            leap_economies = list(_DEFAULT_COLLEAGUE_LEAP_ECONOMIES)
+            leap_economies = _DEFAULT_LEAP_ECONOMIES
+        try:
+            validate_leap_economy_selection(stages_to_run, leap_economies)
+        except ValueError as exc:
+            parser.error(str(exc))
         with _ResourceUsageMonitor(
             _RESOURCE_USAGE_PATH,
             performance_summary_path=_PERFORMANCE_SUMMARY_PATH,

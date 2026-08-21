@@ -7,12 +7,14 @@ import pytest
 import codebase.run_mapping_pipeline as pipeline
 from codebase.run_mapping_pipeline import (
     _ALL_STAGES,
-    _DEFAULT_COLLEAGUE_LEAP_ECONOMIES,
+    _DEFAULT_LEAP_ECONOMIES,
     _DEFAULT_STAGES,
     _stage3_completion_status,
     build_registry_provenance,
     expand_requested_stages,
     load_active_mapping_generation_manifest,
+    require_all_available_leap_economies,
+    validate_leap_economy_selection,
 )
 
 
@@ -27,10 +29,45 @@ def test_default_pipeline_excludes_retired_stage_zero() -> None:
     ]
 
 
-def test_colleague_default_uses_committed_mapping_configuration() -> None:
+def test_default_run_uses_all_discoverable_leap_economies() -> None:
     assert _DEFAULT_STAGES == ["1", "2", "leap_parse", "data_convert", "3"]
     assert "generate" not in _DEFAULT_STAGES
-    assert _DEFAULT_COLLEAGUE_LEAP_ECONOMIES == ["20_USA"]
+    assert _DEFAULT_LEAP_ECONOMIES is None
+
+
+def test_bounded_leap_selection_cannot_publish_contract() -> None:
+    with pytest.raises(ValueError, match="partial Common ESTO contract"):
+        validate_leap_economy_selection(
+            ["leap_parse", "data_convert", "3"],
+            ["20_USA"],
+        )
+
+
+def test_bounded_leap_selection_remains_available_for_parse_only() -> None:
+    validate_leap_economy_selection(["leap_parse"], ["20_USA"])
+
+
+def test_stage3_coverage_gate_requires_every_discoverable_leap_economy(
+    tmp_path,
+) -> None:
+    exports_root = tmp_path / "exports"
+    for economy in ["20_USA", "21_VN"]:
+        economy_dir = exports_root / economy
+        economy_dir.mkdir(parents=True)
+        (economy_dir / f"2008_{economy.split('_', 1)[1]}_TGT.xlsx").touch()
+    converted_path = tmp_path / "converted.csv"
+    pd.DataFrame({"economy": ["20_USA"]}).to_csv(converted_path, index=False)
+
+    with pytest.raises(ValueError, match="21_VN"):
+        require_all_available_leap_economies(converted_path, exports_root)
+
+    pd.DataFrame({"economy": ["20_USA", "21_VN"]}).to_csv(
+        converted_path, index=False
+    )
+    assert require_all_available_leap_economies(converted_path, exports_root) == [
+        "20_USA",
+        "21_VN",
+    ]
 
 
 def test_abbreviated_full_run_includes_conversion_dependencies() -> None:
