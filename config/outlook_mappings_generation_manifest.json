@@ -1,66 +1,66 @@
 {
   "status": "promoted_and_reopened",
   "writer": "python_openpyxl",
-  "generated_at_utc": "2026-08-21T01:28:31.895413+00:00",
+  "generated_at_utc": "2026-08-21T12:14:49.743021+00:00",
   "contract_version": "separate_axis_mapping_contract_v1",
   "historical_boundary_year": 2023,
   "editable_axis_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
   "generated_pair_workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_key_pairs_generated.xlsx",
   "canonical_master_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_master.xlsx",
   "candidate_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\outlook_mappings_master_candidate.xlsx",
-  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_44fa0ec59eeb.xlsx",
+  "prior_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_4fd1ac4678e0.xlsx",
   "original_canonical_backup_path": "C:\\Users\\Work\\github\\leap_mappings\\outputs\\separate_axis_mapping_refresh\\workbooks\\prior_canonical_master_b1826a4e7f9d.xlsx",
   "hashes": {
     "original_canonical_master_sha256": "b1826a4e7f9db60e491e0ff04b42de489cfa395eea68d551675cf9df2736079a",
-    "prior_canonical_master_sha256": "44fa0ec59eebfdef87108f5c737b034a63d5979501b4f4ba176a9833e304efd4",
-    "promoted_master_sha256": "90ed5e05f93cd70c49f143485f9cb8dead3c3f67488b6a841eb04504f77a3573",
-    "generated_pair_workbook_sha256": "831063e447049f7a761b03f3a50618c6059d052e006fcfe1e356a4c3971f7ecf",
-    "editable_axis_workbook_sha256": "6ce82d7b2ef8dfb4cd99111ba57b5d577700eb3f4712ab9a1cc4209834de8516",
-    "compiler_manifest_sha256": "09967cf1f421ef2101c79d09f3d85f5f70923769dc0158899d1f9eb8d57e7547",
-    "split_manifest_sha256": "868aadad106e4c434ecc3d1f97130151e5c5f4e0569795cfbcd6d3e3694a1196"
+    "prior_canonical_master_sha256": "4fd1ac4678e0ec64ecfd395ae8c97a3dafb830d6a7efb050f3099cf9a45dce19",
+    "promoted_master_sha256": "ff34390d082cbdd5c0c6461c6a5d3b954aca45484e152e164320f7f094f0dbda",
+    "generated_pair_workbook_sha256": "7d8715f1ff463523b2645b526349536d5026407bc553d0091d378937c7fc75c2",
+    "editable_axis_workbook_sha256": "fcbd220fedf6861001a4451e6c8661000406c0509860a72446f16f04b91ef6ff",
+    "compiler_manifest_sha256": "10d967596cc636c29d5a93248834a658bb56108c197c5df6980dda5351623792",
+    "split_manifest_sha256": "4b7e0b85839553b9adcde2fb2e9956a97cadd7b50890f4bbddef72bce5cf7dd7"
   },
   "compiled_counts": {
-    "leap_combined_esto": 3328,
-    "leap_combined_ninth": 3440,
-    "ninth_pairs_to_esto_pairs": 2653
+    "leap_combined_esto": 3334,
+    "leap_combined_ninth": 3441,
+    "ninth_pairs_to_esto_pairs": 2654
   },
   "pair_counts": {
-    "LEAP key pairs": 31796,
-    "ESTO key pairs": 10773,
+    "LEAP key pairs": 31805,
+    "ESTO key pairs": 10906,
     "ESTO Extended key pairs": 19106,
     "Ninth key pairs": 19825
   },
   "compiler_summary": {
     "current_pair_relationship_rows": 9421,
     "sector_flow_axis_rows": 382,
-    "fuel_product_axis_rows": 218,
-    "axis_rows_total": 600,
+    "fuel_product_axis_rows": 219,
+    "axis_rows_total": 601,
     "blocking_within_axis_many_to_many_components": 0,
     "many_to_many_axis_components": 0,
     "allowed_many_to_many_component_exceptions": 0,
     "unresolved_many_to_many_axis_components": 0,
-    "universe_compiled_relationship_rows": 15820,
+    "universe_compiled_relationship_rows": 15831,
     "universe_exact_current_relationship_matches": 9214,
     "universe_current_relationships_not_compiled": 207,
     "universe_extra_targets_for_current_sources": 495,
-    "universe_new_source_pair_candidates": 6111,
-    "temporal_compiled_relationship_rows": 9421,
-    "temporal_rows_after_axis_contract_gate": 9421,
+    "universe_new_source_pair_candidates": 6122,
+    "temporal_compiled_relationship_rows": 9429,
+    "temporal_rows_after_axis_contract_gate": 9429,
     "temporal_exact_current_relationship_matches": 9421,
     "temporal_current_relationships_not_compiled": 0,
     "temporal_extra_targets_for_current_sources": 0,
-    "temporal_new_source_pair_candidates": 0,
-    "generated_relationship_governance_rows": 0,
-    "leap_layered_registry_pair_rows": 31796,
+    "temporal_new_source_pair_candidates": 8,
+    "generated_relationship_governance_rows": 8,
+    "leap_layered_registry_pair_rows": 31805,
     "leap_current_source_pairs_present_in_registry": 3784,
     "leap_current_source_keys_absent_from_registry": 0,
-    "leap_generated_pairs_not_in_current_mapping_contract": 28012,
-    "leap_observed_verification_pair_rows": 4599,
-    "leap_observed_pairs_missing_from_registry": 207
+    "leap_generated_pairs_not_in_current_mapping_contract": 28021,
+    "leap_observed_verification_pair_rows": 4819,
+    "leap_observed_pairs_missing_from_registry": 199
   },
   "leap_pair_registry_manifest": {
     "manifest_version": 6,
-    "source_signature": "3267947ab205399b239b323357297df8f8a593fe8cd98ebff2dd53cb17dd9853",
+    "source_signature": "3e49295cba76c77a32acf9bd037c5163f0a595612302a6efd3a6a375925272e7",
     "source_count": 14,
     "sources": [
       {
@@ -83,101 +83,101 @@
         "source_kind": "export_template",
         "source_id": "AUS clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\AUS clean slate 17_08.xlsx",
-        "size_bytes": 2381884,
-        "modified_time_ns": 1787207355485755900,
-        "sha256": "d0f89845a457ad1feaccd0b6f0ad43821450af1440f7982afe639ed280f430e5"
+        "size_bytes": 2382525,
+        "modified_time_ns": 1787279602435625600,
+        "sha256": "42f7f174c903eb906b13834c197efd47ea69db25fbd29ce5a9d02c7929ea4a31"
       },
       {
         "source_kind": "export_template",
         "source_id": "BD clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\BD clean slate 17_08.xlsx",
-        "size_bytes": 2023333,
-        "modified_time_ns": 1787209611212046000,
-        "sha256": "e64a0b33bce5a604b8c197573345fe406d29dc44d8b7854b9c845cade42c74a9"
+        "size_bytes": 2023994,
+        "modified_time_ns": 1787279613968212100,
+        "sha256": "8fc1c33caece59d5e2ee6f384851c74cc125ab86404273490c204ec065207070"
       },
       {
         "source_kind": "export_template",
         "source_id": "MAS clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\MAS clean slate 17_08.xlsx",
-        "size_bytes": 2050372,
-        "modified_time_ns": 1787209643043610500,
-        "sha256": "e8bf282e48e1e4edac402dbfb4511a2414f36f0aecb555fb7e3ee613595d3cb0"
+        "size_bytes": 2051028,
+        "modified_time_ns": 1787279624540665400,
+        "sha256": "ebf0f95bd76f4c19425365f1a4982bc6e473cbb1e3bcecc5a7e8f50863768642"
       },
       {
         "source_kind": "export_template",
         "source_id": "MEX clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\MEX clean slate 17_08.xlsx",
-        "size_bytes": 2081044,
-        "modified_time_ns": 1787209658548266500,
-        "sha256": "747810ce853f9fbfcb8a213e52db789c03b953763c92b2485dab07801cda65d7"
+        "size_bytes": 2081744,
+        "modified_time_ns": 1787279634825494000,
+        "sha256": "9e46568f143ca0f4009e1923a5227b665d9b27478051c9bd090c1c4ac2c7aeb1"
       },
       {
         "source_kind": "export_template",
         "source_id": "NZ clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\NZ clean slate 17_08.xlsx",
-        "size_bytes": 2095500,
-        "modified_time_ns": 1787209674080217000,
-        "sha256": "710d8b2db211fc6bb9cd0971fdb981abde138cf1907825b743a3c99e8976ee94"
+        "size_bytes": 2099029,
+        "modified_time_ns": 1787279648022280700,
+        "sha256": "9896d72eccc33e16427636b7ae18e8e38675e18cde110906e333b683aae5c02e"
       },
       {
         "source_kind": "export_template",
         "source_id": "PHL clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\PHL clean slate 17_08.xlsx",
-        "size_bytes": 2073646,
-        "modified_time_ns": 1787209704869133500,
-        "sha256": "f5adf298ad3620b748f57100d47220afb1f4e1c46a89adb2d3f64c311e7ba9e7"
+        "size_bytes": 2074366,
+        "modified_time_ns": 1787279658521878400,
+        "sha256": "fd59913b5f4f0f1891a8c400b4ca81a805ac2da19f0bae8b33e896564b3b34ea"
       },
       {
         "source_kind": "export_template",
         "source_id": "PNG clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\PNG clean slate 17_08.xlsx",
-        "size_bytes": 2025537,
-        "modified_time_ns": 1787209689377833300,
-        "sha256": "85b388c4f392a5487fc4977852dd369c3e27a0a5eb81e85eafaeea827d03cc2f"
+        "size_bytes": 2026186,
+        "modified_time_ns": 1787279668562001100,
+        "sha256": "9beb79e9ed3a98bd6c7fb12ac368fcd3667fdd553eeec79f3f428ce579c9606e"
       },
       {
         "source_kind": "export_template",
         "source_id": "PRC clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\PRC clean slate 17_08.xlsx",
-        "size_bytes": 2212212,
-        "modified_time_ns": 1787209627271080300,
-        "sha256": "d16b2db1e39ef7f391e27b31890fd2d820f61e56a74728b1701fa9c4885226f9"
+        "size_bytes": 2212905,
+        "modified_time_ns": 1787279677630701400,
+        "sha256": "7774cb4853f49cf02cdfa20710ac8c4c7010213b2da838034bd9ca56da840f64"
       },
       {
         "source_kind": "export_template",
         "source_id": "RUS clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\RUS clean slate 17_08.xlsx",
-        "size_bytes": 2213723,
-        "modified_time_ns": 1787223308911387700,
-        "sha256": "589e26897efd71125307a6bf8448b050a114cae37ed8845d2575ca3cfd013b9a"
+        "size_bytes": 2125897,
+        "modified_time_ns": 1787279686847884900,
+        "sha256": "d10c467599771737daa9483356dfbe2b68ca3902840ad83b4d2d964fa30e32e0"
       },
       {
         "source_kind": "export_template",
         "source_id": "THA clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\THA clean slate 17_08.xlsx",
-        "size_bytes": 2090677,
-        "modified_time_ns": 1787209719715158600,
-        "sha256": "f25564fa2432bfcd8c2b05a3c7b5d92c5601a43a3d84e0c151fa06fd8a748d89"
+        "size_bytes": 2091327,
+        "modified_time_ns": 1787279696198321000,
+        "sha256": "38ecb0572cd7c17dccd86b0c4885916c614b761e34a780cd1f82e5eff0df9ac5"
       },
       {
         "source_kind": "export_template",
         "source_id": "USA clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\USA clean slate 17_08.xlsx",
-        "size_bytes": 776584,
-        "modified_time_ns": 1787209728975972500,
-        "sha256": "3211e3ad6d5af194374c19caa25e1fc9f6f1f4287bd690fb7c79d668fef2c06a"
+        "size_bytes": 776944,
+        "modified_time_ns": 1787279701341146400,
+        "sha256": "6bd7ec46c19560696669c4930657a19b09865556a005ef30c4e40167025f7a78"
       },
       {
         "source_kind": "export_template",
         "source_id": "VN clean slate 17_08.xlsx",
         "path": "C:\\Users\\Work\\github\\leap_initialisation\\data\\leap_export_templates\\VN clean slate 17_08.xlsx",
-        "size_bytes": 2067845,
-        "modified_time_ns": 1787209739558736200,
-        "sha256": "86d4a8acc810865b6d6dcc192ebcf562403ad88df04595e00fa2b106ae40148f"
+        "size_bytes": 2068527,
+        "modified_time_ns": 1787279571400220700,
+        "sha256": "fbc1148cee7ebefe79b95d457a8309e57647b91ba70103cd38c81a3b9861be92"
       }
     ],
     "registry_version": 6,
-    "generated_at_utc": "2026-08-20T15:40:45.557051+00:00",
+    "generated_at_utc": "2026-08-21T12:11:43.311035+00:00",
     "pair_count": 30549,
     "subtotal_pair_count": 3629,
     "direct_only_pair_count": 935,
@@ -185,32 +185,32 @@
     "shared_authority_pair_count": 1252,
     "balance_flow_count": 442,
     "balance_product_count": 67,
-    "excluded_leaf_count": 3007,
+    "excluded_leaf_count": 3019,
     "registry_path": "C:\\Users\\Work\\github\\leap_mappings\\results\\separate_axis_mapping_exploration\\valid_pairs\\leap_layered.csv",
     "diagnostics_path": "C:\\Users\\Work\\github\\leap_mappings\\results\\separate_axis_mapping_exploration\\valid_pairs\\leap_layered_excluded_leaves.csv",
     "refreshed_this_run": false,
     "refresh_reason": "source_workbooks_unchanged",
-    "observed_balance_export_file_count": 5,
-    "observed_balance_pair_count": 770,
-    "observed_pairs_added_to_registry": 16,
+    "observed_balance_export_file_count": 10,
+    "observed_balance_pair_count": 946,
+    "observed_pairs_added_to_registry": 24,
     "observed_evidence_refreshed_this_run": false,
     "rollup_pair_counts": {
-      "LEAP": 812,
+      "LEAP": 813,
       "ESTO": 1258,
       "ESTO_EXTENDED": 861,
       "NINTH": 684
     },
     "reviewed_extra_pair_counts": {
-      "LEAP": 427,
-      "ESTO": 967,
+      "LEAP": 428,
+      "ESTO": 968,
       "ESTO_EXTENDED": 974,
-      "NINTH": 917
+      "NINTH": 918
     }
   },
   "provisional_relationship_policy": "provisionally_accepted",
   "semantic_review_debt": {
     "within_axis_many_to_many_components": 0,
-    "additional_compiled_relationships": 0
+    "additional_compiled_relationships": 8
   },
   "validation": {
     "sheetCount": 14,
@@ -231,9 +231,9 @@
       "ninth fuel to esto product"
     ],
     "rowCounts": {
-      "leap_combined_esto": 3328,
-      "leap_combined_ninth": 3440,
-      "ninth_pairs_to_esto_pairs": 2653
+      "leap_combined_esto": 3334,
+      "leap_combined_ninth": 3441,
+      "ninth_pairs_to_esto_pairs": 2654
     },
     "booleanColumns": [
       "leap_combined_esto.leap_is_subtotal",
@@ -249,7 +249,7 @@
     "formulaErrors": []
   },
   "editable_duplicate_cleanup": {
-    "checked_at_utc": "2026-08-21T01:27:47.772828+00:00",
+    "checked_at_utc": "2026-08-21T12:14:13.346025+00:00",
     "workbook_path": "C:\\Users\\Work\\github\\leap_mappings\\config\\outlook_mappings_single_axis.xlsx",
     "checked_sheets": [
       "leap_sector_to_esto",
@@ -277,8 +277,8 @@
         "duplicates": []
       },
       "leap_fuel_to_esto": {
-        "input_row_count": 70,
-        "retained_row_count": 70,
+        "input_row_count": 71,
+        "retained_row_count": 71,
         "duplicate_rows_removed": 0,
         "duplicates": []
       },
@@ -307,14 +307,14 @@
         "duplicates": []
       },
       "extra_leap_key_pairs": {
-        "input_row_count": 427,
-        "retained_row_count": 427,
+        "input_row_count": 428,
+        "retained_row_count": 428,
         "duplicate_rows_removed": 0,
         "duplicates": []
       },
       "extra_esto_key_pairs": {
-        "input_row_count": 967,
-        "retained_row_count": 967,
+        "input_row_count": 968,
+        "retained_row_count": 968,
         "duplicate_rows_removed": 0,
         "duplicates": []
       },
@@ -325,8 +325,8 @@
         "duplicates": []
       },
       "extra_ninth_key_pairs": {
-        "input_row_count": 917,
-        "retained_row_count": 917,
+        "input_row_count": 918,
+        "retained_row_count": 918,
         "duplicate_rows_removed": 0,
         "duplicates": []
       }
