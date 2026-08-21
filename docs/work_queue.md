@@ -1,5 +1,19 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-055 — Verify mapped electrolysers green-electricity input after the post-2026-08-21 production run
+
+**Priority / status:** P0 · mapping contract updated; production rerun verification pending.
+
+- Map only `Hydrogen transformation/Electrolysers × Electricity for hydrogen`
+  and `09_13_01_electrolysers × 17_x_green_electricity` to
+  `09.13.01 Electrolysers × 20 Green electricity`.
+- After the next production mapping run using inputs dated after 2026-08-21,
+  confirm that the Common ESTO fact contains the negative LEAP and 9th input
+  series and that no `Imports × Electricity for hydrogen` rows are mapped.
+- Re-render the Australia Hydrogen transformation dashboard chart only after
+  that verification; the dashboard must consume the Common ESTO result and
+  must not recreate this mapping downstream.
+
 ## MAPQ-054 — Publish current-run LEAP demand representation status
 
 **Priority / status:** P0 · implemented; full production pipeline verification pending.
