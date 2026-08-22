@@ -1,5 +1,24 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-056 — Migrate large machine-only mapping evidence from CSV to Parquet
+
+**Priority / status:** P2 · queued 2026-08-22.
+
+- Start with `results/separate_axis_mapping_exploration/leap_authority/observed_pair_evidence.csv`.
+  Replace it with a Zstandard-compressed Parquet artifact and update its
+  reader/writer paths. Retain the compact, human-readable
+  `observed_export_inventory.csv` provenance manifest unless measured Parquet
+  storage is smaller.
+- Audit other tracked mapping-result CSVs with the same decision rule: identify
+  files read and written only by Python workflows, measure their compressed
+  Parquet size and reader compatibility, and classify each as either a
+  machine-only Parquet candidate or a deliberately retained reviewer-facing
+  CSV. Do not convert small files where Parquet metadata increases storage.
+- For each approved migration, add a focused round-trip/schema test, update
+  all in-repository consumers, and remove the replaced tracked CSV rather than
+  keeping duplicate canonical formats. Record the reason for any retained CSV
+  in the relevant workflow inventory or artifact documentation.
+
 ## MAPQ-055 — Verify mapped electrolysers green-electricity input after the post-2026-08-21 production run
 
 **Priority / status:** P0 · mapping contract updated; production rerun verification pending.
