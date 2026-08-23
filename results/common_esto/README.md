@@ -35,6 +35,19 @@ what they answer:
 - **Did totals survive the mapping?** `common_esto_total_check.csv` / `qa_common_esto_total_check.csv`, `common_esto_source_coverage_check.csv`
 - **Axis partitioning internals**: `qa_common_esto_product_axis_partitions.csv`, `qa_common_esto_flow_axis_partitions.csv`, `qa_common_esto_product_intersections_resolved.csv`, `qa_common_esto_flow_intersections_resolved.csv`, `qa_common_esto_axis_partition_skipped_broad_rows.csv`, `qa_common_esto_suppressed_graph_edges.csv`, `qa_common_esto_excluded_components.csv`, `qa_common_esto_structure_summary.csv`
 
+### LEAP ESTO Extended diagnostic review
+
+Until the detailed LEAP balance exports have been confirmed complete for the
+relevant economy and scope, treat findings involving source pairs that belong
+to an `esto_extended_*` scope as **provisional export-coverage evidence**, not
+as proof that a maintained mapping is wrong. Do not add, remove, or restore a
+mapping solely because one of these outputs reports absent detail.
+
+Review those findings in the rendered [Mapping diagnostics page](../../../leap_dashboard/outputs/common_esto_dashboard/diagnostics/dashboards/mapping_diagnostics.html).
+It suppresses the currently unconfirmed LEAP/ESTO Extended anchor contexts and
+states that suppression on the page. Reconsider them only after the relevant
+LEAP exports have been checked and their required detail is confirmed.
+
 ## `diagnostics/`
 
 Deeper trace-level output for "broad" or intersecting common rows (rows spanning unusually

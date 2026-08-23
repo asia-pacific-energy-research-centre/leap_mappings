@@ -23,6 +23,15 @@ the sum of their children. Check here when a subtotal in the comparison data doe
 | `common_esto_rollup_validation.csv` / `common_esto_rollup_validation_summary.csv` | Validates the rollup rules themselves (not just the resulting totals) against their contributor rows. |
 | `source_parent_anchor_validation.csv` / `_summary.csv` | Checks converted (mapped) totals against the original raw source parent totals — the main defense against a mapping silently changing a total. Use `docs/handover/mapping_pipeline_agent_guide.md` for current interpretation; the completed 2026-07-22/23 investigation chain is preserved under `docs/archive/anchor_validation_methodology/`. |
 
+### LEAP ESTO Extended anchor contexts
+
+If a LEAP anchor finding uses detailed source pairs available only through an
+`esto_extended_*` scope, it is not actionable mapping evidence until the
+required LEAP export detail has been confirmed. Use the rendered
+[Mapping diagnostics page](../../../leap_dashboard/outputs/common_esto_dashboard/diagnostics/dashboards/mapping_diagnostics.html)
+for review: it suppresses these currently unconfirmed contexts and makes the
+reason visible. Do not infer a missing mapping from their raw anchor totals.
+
 ## Also present but not from the current pipeline run
 
 `esto_validation.csv` and `common_esto_non_esto_parent_child_edges.csv` are written only when
