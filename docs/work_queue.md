@@ -8,7 +8,11 @@
   can be the correct shared LEAP/ESTO/9th comparison boundary. The current
   extractor starts from leaf rows and uses a small retained-subtotal allow-list
   (`08 Transfers`, `15.02 Road`), which risks hiding other valid published
-  parents.
+  parents. This matters particularly when changing ESTO vintages: a boundary
+  previously supplied as an ordinary usable row can become marked as a
+  subtotal, while the newly introduced leaf rows are zero or do not represent
+  an additive replacement. A leaf-only extractor would then silently lose the
+  historical value precisely at the ESTO/ESTO Extended switch.
 - **Brief evidence:** the 2026 ESTO table contains 71,558 subtotal rows across
   125 flows; 13,156 rows across 113 flows are non-zero in 2022. They include
   overlapping top-level and intermediate parents such as Total transformation,
