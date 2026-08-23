@@ -32,6 +32,22 @@ ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 ESTO_RETAINED_SUBTOTAL_FLOW_LABELS = {"08 Transfers"}
 
 
+# ESTO Extended 2024 carries this published typo while the Common ESTO
+# relationships use the canonical ESTO label. Canonicalise it at ingestion so
+# the original observations join their existing mapping; values are unchanged.
+ESTO_FLOW_LABEL_ALIASES = {
+    "10.02 Transmision and distribution losses": "10.02 Transmission and distribution losses",
+}
+
+
+def normalise_esto_flow_labels(esto_df: pd.DataFrame) -> pd.DataFrame:
+    """Return source rows with known published flow-label aliases canonicalised."""
+    result = esto_df.copy()
+    if "flows" in result.columns:
+        result["flows"] = result["flows"].replace(ESTO_FLOW_LABEL_ALIASES)
+    return result
+
+
 def configured_rollup_reference_pairs(
     relationships_df: pd.DataFrame,
     leap_rollup_rules_df: pd.DataFrame,
@@ -119,6 +135,7 @@ def run_esto_exact_rows_for_path(
         df = pd.read_parquet(data_path)
     else:
         df = pd.read_csv(data_path, dtype=object)
+    df = normalise_esto_flow_labels(df)
     year_cols = [c for c in df.columns if str(c).isdigit()]
     for col in year_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
