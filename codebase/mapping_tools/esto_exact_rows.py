@@ -25,11 +25,13 @@ import pandas as pd
 ESTO_REFERENCE_ROLLUP_LABELS = {"Total transformation - no transfers"}
 
 
-# Some ESTO parent flows contain the published observations even though they
-# are structurally marked as subtotals. In particular, 08 Transfers can be
-# non-zero while its 08.01-08.99 detail rows are zero or incomplete, so the
-# parent must survive the ordinary leaf-only extraction for Common ESTO.
-ESTO_RETAINED_SUBTOTAL_FLOW_LABELS = {"08 Transfers"}
+# Some ESTO parent flows contain published comparison boundaries even though
+# they are structurally marked as subtotals. 08 Transfers can be non-zero
+# while its 08.01-08.99 detail rows are zero or incomplete. Likewise, Road is
+# the common boundary used by the LEAP and 9th mappings; lower ESTO road
+# technology rows are not an additive sector frontier. Keep those published
+# parents through the ordinary leaf-only extraction for Common ESTO.
+ESTO_RETAINED_SUBTOTAL_FLOW_LABELS = {"08 Transfers", "15.02 Road"}
 
 
 # ESTO Extended 2024 carries this published typo while the Common ESTO
