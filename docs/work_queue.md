@@ -1,5 +1,34 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-057 — Replace the blanket ESTO subtotal exclusion with an audited boundary policy
+
+**Priority / status:** P1 · queued 2026-08-24.
+
+- **Why investigate:** `15.02 Road` confirmed that a published ESTO subtotal
+  can be the correct shared LEAP/ESTO/9th comparison boundary. The current
+  extractor starts from leaf rows and uses a small retained-subtotal allow-list
+  (`08 Transfers`, `15.02 Road`), which risks hiding other valid published
+  parents.
+- **Brief evidence:** the 2026 ESTO table contains 71,558 subtotal rows across
+  125 flows; 13,156 rows across 113 flows are non-zero in 2022. They include
+  overlapping top-level and intermediate parents such as Total transformation,
+  Industry, Manufacturing, Buildings, and Losses & own use. Removing the
+  leaf-only rule outright would therefore make both parent and child facts
+  available to every Common ESTO consumer and can double-count any consumer
+  that does not explicitly select a non-overlapping frontier.
+- **Plan:** replace the handwritten allow-list only after deriving a
+  source-specific retained-boundary policy from the hierarchy/subtotal
+  contract and active comparison mappings. The policy must choose either a
+  published parent or an additive child frontier per source/economy/scenario/
+  product, preserve intentionally detailed pages, and record why every
+  retained subtotal is safe.
+- **Acceptance checks:** compare current versus candidate source totals for
+  every comparison scope; run parent/child additivity checks; prove no new
+  duplicate Common ESTO fact keys or source-total drift; add fixtures for Road,
+  Transfers, additive parents, and non-additive placeholder hierarchies; then
+  run dashboard and mapping-consumer regression suites. Do not remove the
+  current filter until these checks pass.
+
 ## MAPQ-056 — Migrate large machine-only mapping evidence from CSV to Parquet
 
 **Priority / status:** P2 · queued 2026-08-22.
