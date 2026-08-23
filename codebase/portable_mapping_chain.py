@@ -386,6 +386,12 @@ def run_mapping_chain(job: dict) -> dict:
         source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
     )
     comparison_rows = len(comparison_df)
+    # The fast path already computes the exact source rows that have no
+    # Common ESTO row. Preserve that evidence for the per-export dashboard;
+    # otherwise its diagnostics page cannot distinguish "zero findings" from
+    # "the QA artifact was never passed through the portable run".
+    unmapped_qa_path = work_dir / "qa_nonzero_unmapped_leap_branches.csv"
+    missing_map_df.to_csv(unmapped_qa_path, index=False)
     if not missing_map_df.empty:
         notes.append(
             f"{len(missing_map_df):,} source rows had no Common ESTO map "
@@ -406,6 +412,7 @@ def run_mapping_chain(job: dict) -> dict:
             demand_detail_selection_audit_path
         ),
         "demand_representation_status_path": str(demand_representation_status_path),
+        "unmapped_qa_path": str(unmapped_qa_path),
         "raw_leap_rows": raw_leap_rows,
         "converted_rows": converted_rows,
         "comparison_rows": comparison_rows,
