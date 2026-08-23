@@ -37,16 +37,25 @@ what they answer:
 
 ### LEAP ESTO Extended diagnostic review
 
-Until the detailed LEAP balance exports have been confirmed complete for the
-relevant economy and scope, treat findings involving source pairs that belong
-to an `esto_extended_*` scope as **provisional export-coverage evidence**, not
-as proof that a maintained mapping is wrong. Do not add, remove, or restore a
-mapping solely because one of these outputs reports absent detail.
+Until the detailed LEAP sectors are fully imported into the main LEAP areas,
+treat findings involving source pairs that belong to an `esto_extended_*` scope
+as **provisional export-coverage evidence**, not as proof that a maintained
+mapping is wrong. Do not add, remove, or restore a mapping solely because one
+of these outputs reports absent detail.
 
 Review those findings in the rendered [Mapping diagnostics page](../../../leap_dashboard/outputs/common_esto_dashboard/diagnostics/dashboards/mapping_diagnostics.html).
 It suppresses the currently unconfirmed LEAP/ESTO Extended anchor contexts and
-states that suppression on the page. Reconsider them only after the relevant
-LEAP exports have been checked and their required detail is confirmed.
+states that suppression on the page. Reconsider them only after the detailed
+LEAP sectors are fully imported into the main LEAP areas.
+
+### Imported LEAP category recognition
+
+The mapping chain preserves LEAP labels after known aliases are normalised. It
+then records every non-zero LEAP `(flow, product)` pair without a direct
+maintained LEAP-to-ESTO map in `qa_nonzero_unmapped_leap_branches.csv` rather
+than silently dropping it. This is a mapping-review signal, not a claim that a
+source label is invalid. The Mapping diagnostics page presents the count and
+the affected pairs for review.
 
 ## `diagnostics/`
 

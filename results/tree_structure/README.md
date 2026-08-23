@@ -27,7 +27,7 @@ the sum of their children. Check here when a subtotal in the comparison data doe
 
 If a LEAP anchor finding uses detailed source pairs available only through an
 `esto_extended_*` scope, it is not actionable mapping evidence until the
-required LEAP export detail has been confirmed. Use the rendered
+detailed LEAP sectors are fully imported into the main LEAP areas. Use the rendered
 [Mapping diagnostics page](../../../leap_dashboard/outputs/common_esto_dashboard/diagnostics/dashboards/mapping_diagnostics.html)
 for review: it suppresses these currently unconfirmed contexts and makes the
 reason visible. Do not infer a missing mapping from their raw anchor totals.
