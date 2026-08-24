@@ -2415,10 +2415,6 @@ def run_common_esto_comparison_fast_path(
         comparison_scope_systems=comparison_scope_systems,
     )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
-    comparison_df = _apply_bd_industry_unallocated_gas_total_exception(
-        comparison_df,
-        adjusted_common_rows_df,
-    )
     wide_year_df = build_wide_year_output(
         comparison_df,
         common_rows_path,
@@ -2445,90 +2441,6 @@ def run_common_esto_comparison_fast_path(
     print(f"Fast-path source rows missing common map: {len(missing_map_df):,}")
     print(f"Fast-path wrote Common ESTO comparison outputs to: {output_dir}")
     return comparison_df, wide_year_df, missing_map_df
-
-
-def _apply_bd_industry_unallocated_gas_total_exception(
-    comparison_df: pd.DataFrame,
-    common_rows_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """Add Brunei's 9th unallocated gas to the direct Industry total.
-
-    Brunei's 9th Target source publishes this value only on the detailed
-    ``14.03.11 Non-specified industry`` row.  The existing dashboard method
-    compares direct parent rows, so the corresponding ``14 Industry sector``
-    total otherwise omits the value.  Keep the detailed row unchanged and
-    materialize one parent-total row only for this documented economy/source/
-    scenario/product case.  This is deliberately not a general leaf roll-up.
-    """
-    required_comparison = {
-        "comparison_scope", "source_system", "economy", "scenario", "year",
-        "common_flow_code", "common_product_code", "common_row_id", "value",
-    }
-    required_mapping = {
-        "comparison_scope", "common_flow_code", "common_product_code",
-        "common_row_id",
-    }
-    if not required_comparison.issubset(comparison_df.columns):
-        return comparison_df
-    if not required_mapping.issubset(common_rows_df.columns):
-        return comparison_df
-
-    parent_rows = common_rows_df[
-        common_rows_df["common_flow_code"].astype(str).eq("14")
-        & common_rows_df["common_product_code"].astype(str).eq("08.99")
-    ]
-    if parent_rows.empty:
-        return comparison_df
-
-    additions: list[pd.DataFrame] = []
-    for scope, parent_meta in parent_rows.groupby("comparison_scope", sort=False):
-        scope_mask = comparison_df["comparison_scope"].astype(str).eq(str(scope))
-        detail_mask = (
-            scope_mask
-            & comparison_df["source_system"].astype(str).str.casefold().eq("ninth")
-            & comparison_df["economy"].astype(str).str.upper().eq("02_BD")
-            & comparison_df["scenario"].astype(str).str.casefold().eq("target")
-            & comparison_df["common_flow_code"].astype(str).eq("14.03.11")
-            & comparison_df["common_product_code"].astype(str).eq("08.99")
-        )
-        detail = comparison_df.loc[detail_mask].copy()
-        if detail.empty:
-            continue
-
-        parent_meta = parent_meta.iloc[0]
-        existing_parent = comparison_df.loc[
-            scope_mask
-            & comparison_df["source_system"].astype(str).str.casefold().eq("ninth")
-            & comparison_df["economy"].astype(str).str.upper().eq("02_BD")
-            & comparison_df["scenario"].astype(str).str.casefold().eq("target")
-            & comparison_df["common_flow_code"].astype(str).eq("14")
-            & comparison_df["common_product_code"].astype(str).eq("08.99"),
-            ["year"],
-        ]
-        existing_years = set(existing_parent["year"].tolist())
-        detail = detail[~detail["year"].isin(existing_years)].copy()
-        if detail.empty:
-            continue
-
-        # The detailed source can only contribute once per year to this
-        # targeted parent row. Preserve all comparison metadata from the
-        # authoritative parent Common ESTO row.
-        detail = (
-            detail.groupby(
-                [column for column in detail.columns if column != "value"],
-                dropna=False,
-                as_index=False,
-            )["value"].sum()
-        )
-        for column in common_rows_df.columns:
-            if column in detail.columns:
-                detail[column] = parent_meta[column]
-        detail["value"] = pd.to_numeric(detail["value"], errors="coerce").fillna(0.0)
-        additions.append(detail)
-
-    if not additions:
-        return comparison_df
-    return pd.concat([comparison_df, *additions], ignore_index=True, sort=False)
 
 
 def run_apply_common_esto_structure(
@@ -2880,10 +2792,6 @@ def run_apply_common_esto_structure(
         source_totals_df,
         unfiltered_comparison_df,
         comparison_scope_systems=comparison_scope_systems,
-    )
-    comparison_df = _apply_bd_industry_unallocated_gas_total_exception(
-        comparison_df,
-        adjusted_common_rows_df,
     )
     wide_year_df = build_wide_year_output(
         comparison_df,
