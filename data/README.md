@@ -6,18 +6,26 @@ archive/zip, not from git.
 
 ## Portable Data Bundle
 
-To prepare the current handoff ZIP, run `scripts/create_data_bundle.py` from
-Jupyter or an IDE cell runner. It writes a dated, commit-labelled ZIP under
-`data_bundles/` containing the source files listed below.
-Tracked mapping configuration and generated `results/` files are deliberately
+**Bundle creation and installation are coordinated with the sibling
+`leap_initialisation` repository.** Clone both repositories beside each other
+before running either bundle script: `.../leap_mappings` and
+`.../leap_initialisation`. Running `scripts/create_data_bundle.py` in either
+repository deliberately rebuilds both bundles, so mapping inputs and
+initialisation inputs are refreshed at the same time. The script stops with a
+clear error if the sibling checkout is missing.
+
+Each repository receives its own dated, commit-labelled ZIP under
+`data_bundles/`. This repository's ZIP contains the source files listed below;
+tracked mapping configuration and generated `results/` files are deliberately
 excluded.
 
-After cloning the repository, place that ZIP under `data_bundles/` and run
-`scripts/extract_data_bundle.py`. The extractor validates the embedded manifest
-and ZIP contents, refuses unsafe paths, and does not overwrite different local
-files unless `ALLOW_OVERWRITE` is deliberately changed to `True`. The ZIP is
-ignored by Git and is intended to be shared separately through restricted
-storage such as Google Drive.
+After cloning both repositories, place the matching ZIP in each repository's
+`data_bundles/` folder and run `scripts/extract_data_bundle.py` from either
+checkout. It deliberately installs both bundles. The extractor validates each
+manifest and ZIP contents, refuses unsafe paths, and does not overwrite
+different local files unless `ALLOW_OVERWRITE` is deliberately changed to
+`True`. The ZIPs are ignored by Git and are intended to be shared separately
+through restricted storage such as Google Drive.
 
 ### Publication checklist
 

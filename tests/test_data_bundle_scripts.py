@@ -6,8 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from scripts.create_data_bundle import SOURCE_TABLE_PATHS, create_data_bundle
-from scripts.extract_data_bundle import MANIFEST_NAME, extract_data_bundle
+from scripts.create_data_bundle import (
+    SOURCE_TABLE_PATHS,
+    create_coordinated_data_bundles,
+    create_data_bundle,
+)
+from scripts.extract_data_bundle import (
+    MANIFEST_NAME,
+    extract_coordinated_data_bundles,
+    extract_data_bundle,
+)
 
 
 def _write(path: Path, content: bytes = b"test data\n") -> None:
@@ -19,6 +27,19 @@ def _make_source_repo(root: Path) -> None:
     (root / ".git").mkdir(parents=True)
     for relative_path in SOURCE_TABLE_PATHS:
         _write(root / relative_path, relative_path.as_posix().encode("utf-8"))
+
+
+def test_coordinated_bundle_actions_require_sibling_initialisation_checkout(tmp_path: Path) -> None:
+    mappings_root = tmp_path / "leap_mappings"
+    _make_source_repo(mappings_root)
+
+    with pytest.raises(FileNotFoundError, match="leap_initialisation"):
+        create_coordinated_data_bundles(repo_root=mappings_root)
+    with pytest.raises(FileNotFoundError, match="leap_initialisation"):
+        extract_coordinated_data_bundles(
+            bundle_path=tmp_path / "not-needed.zip",
+            repo_root=mappings_root,
+        )
 
 
 def test_bundle_round_trip_contains_only_required_tables_and_no_hash_sidecar(tmp_path: Path) -> None:
