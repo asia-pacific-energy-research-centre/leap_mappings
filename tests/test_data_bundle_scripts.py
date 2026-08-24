@@ -13,6 +13,7 @@ from scripts.create_data_bundle import (
 )
 from scripts.extract_data_bundle import (
     MANIFEST_NAME,
+    _require_matching_bundle_pair,
     extract_coordinated_data_bundles,
     extract_data_bundle,
 )
@@ -39,6 +40,14 @@ def test_coordinated_bundle_actions_require_sibling_initialisation_checkout(tmp_
         extract_coordinated_data_bundles(
             bundle_path=tmp_path / "not-needed.zip",
             repo_root=mappings_root,
+        )
+
+
+def test_bundle_pair_validation_rejects_mixed_releases() -> None:
+    with pytest.raises(ValueError, match="do not match"):
+        _require_matching_bundle_pair(
+            {"bundle_pair_id": "release-a"},
+            {"bundle_pair_id": "release-b"},
         )
 
 
