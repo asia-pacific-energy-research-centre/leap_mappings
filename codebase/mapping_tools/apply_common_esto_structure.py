@@ -2876,15 +2876,6 @@ def run_apply_common_esto_structure(
         print(f"WARNING: {broad_warning_message}")
     if intersecting_axis_warning_message:
         print(f"WARNING: {intersecting_axis_warning_message}")
-    wide_year_df = build_wide_year_output(
-        comparison_df,
-        common_rows_path,
-        outlook_mappings_path=(
-            outlook_mappings_path
-            if outlook_mappings_path is not None
-            else OUTLOOK_MAPPINGS_PATH
-        ),
-    )
     source_coverage_check_df = build_source_coverage_check(
         source_totals_df,
         unfiltered_comparison_df,
@@ -2893,6 +2884,15 @@ def run_apply_common_esto_structure(
     comparison_df = _apply_bd_industry_unallocated_gas_total_exception(
         comparison_df,
         adjusted_common_rows_df,
+    )
+    wide_year_df = build_wide_year_output(
+        comparison_df,
+        common_rows_path,
+        outlook_mappings_path=(
+            outlook_mappings_path
+            if outlook_mappings_path is not None
+            else OUTLOOK_MAPPINGS_PATH
+        ),
     )
     save_outputs(
         comparison_df,
