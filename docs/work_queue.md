@@ -1370,6 +1370,44 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   output; downstream loaders retain their current compatibility interface; and
   rollback/provenance tests cover the new ownership boundary.
 
+### MAPQ-047 — Review display-name coverage and decide its ownership boundary
+
+- **Priority / status / timing:** P2 · `review_and_design_decision_needed` · added 2026-08-25
+- **Owner repos:** `leap_mappings` + `leap_initialisation` · **Depends on:** MAPQ-036
+- **Evidence:** Review-only
+  `results/maintenance/missing_leap_display_name_mapping_combinations.csv`
+  (commit `a590979`) contains 1,447 active mapping-pair/code combinations
+  whose implied code authority is absent from `leap_display_names`: 931 are
+  currently single-name candidates and 516 imply multiple LEAP names. The
+  audit filters known rolled LEAP sector/fuel values, but it is a candidate
+  list only; aggregate, interim, comparison-only, and context-specific names
+  still require semantic review. `99 AUTO BALANCE` was intentionally excluded
+  after its synthetic catalog authority was added in `50582a1`.
+- **Current boundary:** `leap_display_names` is a preserved live sheet in the
+  generated compatibility master. It is consumed by mapping Stages 1–2 and
+  by `leap_initialisation`; it is not currently a sheet in
+  `outlook_mappings_single_axis.xlsx`. Therefore copying rows into the
+  single-axis workbook alone would not affect any consumer.
+- **Scope:** For each candidate code/name relationship, decide whether it
+  needs an authority row, is a rollup/aggregate/interim alternative that must
+  remain absent, or is ambiguous and needs a context-aware design rather than
+  a global display name. Separately decide whether to retain a dedicated
+  display-name authority or replace it with a deterministic, tested derivation
+  from the primary mapping contract. Do not treat the current mapping-pair
+  sheets as a sufficient replacement unless the derivation resolves all
+  one-code-to-many-LEAP-name cases explicitly.
+- **Next action:** Review the 931 single-name candidates in bounded groups by
+  code type, then triage the 516 ambiguous cases against rollup rules and
+  branch semantics. Write a short ownership decision covering schema, editable
+  source, refresh behavior, consumers, and migration/rollback tests. Only
+  after that decision, make reviewed additions or migrate the authority into
+  the single-axis contract and update the generator/loaders together.
+- **Completion criteria:** Every reviewed candidate has a disposition; no
+  rollup or comparison-only label is promoted as a real LEAP branch; the
+  chosen authority has one explicit editable owner; mapping and initialisation
+  consumers read the same generated result; and tests cover name conflicts,
+  rollup exclusion, refresh preservation, and the migration rollback path.
+
 ### MAPQ-037 — Complete review of the APEC anchor-validation workbook
 
 - **Priority / status / timing:** P1 · `review_in_progress` · current work
