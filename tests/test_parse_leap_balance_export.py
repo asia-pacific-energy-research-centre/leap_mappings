@@ -3,7 +3,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from codebase.mapping_tools.parse_leap_balance_export import parse_leap_balance_dir, parse_leap_balance_xlsx
+from codebase.mapping_tools.parse_leap_balance_export import (
+    parse_leap_balance_csv,
+    parse_leap_balance_dir,
+    parse_leap_balance_xlsx,
+)
 
 
 def _sheet(year: int) -> pd.DataFrame:
@@ -16,6 +20,60 @@ def _sheet(year: int) -> pd.DataFrame:
             ["Total Transformation", 2.0, 2.0],
         ]
     )
+
+
+def _detailed_csv_sheet(*, indented: bool) -> pd.DataFrame:
+    child = "   Child plant" if indented else "Child plant"
+    road = "  Road" if indented else "Road"
+    electricity = "    Electricity" if indented else "Electricity"
+    return pd.DataFrame(
+        [
+            ['Energy Balance for Area "AUS test model"', None, None, None],
+            ["Scenario: Target, Year: 2022, Units: Petajoule", None, None, None],
+            [None, "Electricity", "Natural gas", "Total"],
+            ["Production", "-", 10, 10],
+            [child, 2, "-", 2],
+            ["Parent plant", 2, "-", 2],
+            ["Total Transformation", 2, "-", 2],
+            ["Demand", 3, 4, 7],
+            [road, 3, 4, 7],
+            [electricity, 3, "-", 3],
+            ["Total Final Energy Demand", 3, 4, 7],
+            ["Unmet Requirements", "-", "-", "-"],
+        ]
+    )
+
+
+def test_parse_leap_balance_csv_requires_hierarchy_template(tmp_path: Path) -> None:
+    csv_path = tmp_path / "balance.csv"
+    _detailed_csv_sheet(indented=False).to_csv(csv_path, header=False, index=False)
+
+    with pytest.raises(ValueError, match="no leading-space hierarchy"):
+        parse_leap_balance_csv(csv_path, economy_override="01_AUS")
+
+
+def test_parse_leap_balance_csv_restores_validated_hierarchy(tmp_path: Path) -> None:
+    csv_path = tmp_path / "balance.csv"
+    template_path = tmp_path / "hierarchy.csv"
+    _detailed_csv_sheet(indented=False).to_csv(csv_path, header=False, index=False)
+    _detailed_csv_sheet(indented=True).to_csv(
+        template_path, header=False, index=False
+    )
+
+    parsed = parse_leap_balance_csv(
+        csv_path,
+        economy_override="01_AUS",
+        hierarchy_template_path=template_path,
+    )
+
+    assert len(parsed) == 18
+    assert "Parent plant/Child plant" in set(parsed["leap_flow"])
+    assert "Demand/Road/Electricity" in set(parsed["leap_flow"])
+    assert parsed.loc[
+        (parsed["leap_flow"] == "Production")
+        & (parsed["leap_product"] == "Electricity"),
+        "value",
+    ].item() == 0.0
 
 
 def test_parse_leap_balance_xlsx_reads_plain_year_sheets(tmp_path: Path) -> None:

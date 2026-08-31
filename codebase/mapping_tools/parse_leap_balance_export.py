@@ -294,7 +294,15 @@ def _parse_single_sheet(
             if fuel_name is None:
                 continue
             try:
-                value = float(raw_v) * unit_factor
+                # LEAP's CSV writer renders an exact zero as ``-`` whereas
+                # the XLSX writer stores numeric 0. Preserve the explicit row
+                # so mapping coverage and zero-valued branch diagnostics stay
+                # identical between source formats.
+                value = (
+                    0.0
+                    if str(raw_v).strip() in {"-", "–", "—"}
+                    else float(raw_v) * unit_factor
+                )
             except (TypeError, ValueError):
                 continue
             records.append({
@@ -364,6 +372,153 @@ def parse_leap_balance_xlsx(
     )
 
 
+def _read_balance_csv(csv_path: Path) -> pd.DataFrame:
+    """Read one LEAP Energy Balance CSV without treating ``-`` as missing."""
+    try:
+        raw = pd.read_csv(
+            csv_path,
+            header=None,
+            dtype=object,
+            keep_default_na=False,
+        )
+    except Exception as exc:
+        raise ValueError(f"Could not read LEAP balance CSV {csv_path}: {exc}") from exc
+    if raw.shape[0] < 4 or raw.shape[1] < 2:
+        raise ValueError(
+            f"LEAP balance CSV {csv_path} has shape {raw.shape}; expected at least "
+            "four rows and two columns."
+        )
+    return raw
+
+
+def _template_sheet_for_csv(
+    template_path: Path,
+    *,
+    scenario: str,
+    year: int,
+) -> pd.DataFrame:
+    """Load the matching hierarchy-bearing sheet from a CSV/XLSX template."""
+    if template_path.suffix.casefold() == ".csv":
+        return _read_balance_csv(template_path)
+    if template_path.suffix.casefold() not in {".xlsx", ".xlsm"}:
+        raise ValueError(
+            "CSV hierarchy templates must be LEAP .csv, .xlsx, or .xlsm exports: "
+            f"{template_path}"
+        )
+
+    workbook = pd.ExcelFile(template_path)
+    preferred_names = [f"EBal|{year}", str(year)]
+    candidates = [name for name in preferred_names if name in workbook.sheet_names]
+    candidates.extend(name for name in workbook.sheet_names if name not in candidates)
+    for sheet_name in candidates:
+        raw = workbook.parse(sheet_name, header=None, dtype=object)
+        try:
+            _economy, sheet_scenario, sheet_year, _factor = _parse_header(raw)
+        except (IndexError, ValueError):
+            continue
+        if sheet_year == year and sheet_scenario == scenario:
+            return raw
+    raise ValueError(
+        f"Hierarchy template {template_path} has no {scenario} {year} balance sheet."
+    )
+
+
+def _restore_csv_hierarchy(
+    raw: pd.DataFrame,
+    *,
+    csv_path: Path,
+    hierarchy_template_path: Path,
+) -> pd.DataFrame:
+    """Restore column-A indentation that LEAP removes from CSV exports.
+
+    The template contributes only leading spaces in the row labels. Values,
+    fuel columns, scenario, year, and units always come from the CSV. Exact
+    row-order validation makes this fail closed if the model structure changed.
+    """
+    _economy, scenario, year, _factor = _parse_header(raw)
+    template_path = Path(hierarchy_template_path)
+    if not template_path.is_file():
+        raise FileNotFoundError(
+            f"LEAP CSV hierarchy template does not exist: {template_path}"
+        )
+    template = _template_sheet_for_csv(
+        template_path,
+        scenario=scenario,
+        year=year,
+    )
+    if raw.shape != template.shape:
+        raise ValueError(
+            f"LEAP CSV {csv_path.name} has shape {raw.shape}, but hierarchy template "
+            f"{template_path.name} has shape {template.shape}. The template must come "
+            "from the same model structure and detail level."
+        )
+
+    csv_fuels = [normalise_source_label_key(value) for value in raw.iloc[2, 1:]]
+    template_fuels = [
+        normalise_source_label_key(value) for value in template.iloc[2, 1:]
+    ]
+    if csv_fuels != template_fuels:
+        raise ValueError(
+            f"LEAP CSV {csv_path.name} and hierarchy template {template_path.name} "
+            "have different fuel columns."
+        )
+
+    csv_labels = raw.iloc[3:, 0].fillna("").astype(str).str.strip().tolist()
+    template_labels = (
+        template.iloc[3:, 0].fillna("").astype(str).str.strip().tolist()
+    )
+    mismatches = [
+        index + 4
+        for index, (csv_label, template_label) in enumerate(
+            zip(csv_labels, template_labels)
+        )
+        if csv_label != template_label
+    ]
+    if mismatches:
+        preview = ", ".join(str(row) for row in mismatches[:8])
+        raise ValueError(
+            f"LEAP CSV {csv_path.name} and hierarchy template {template_path.name} "
+            f"have different balance-row labels at file row(s) {preview}."
+        )
+
+    restored = raw.copy()
+    restored.iloc[3:, 0] = template.iloc[3:, 0].values
+    return restored
+
+
+def parse_leap_balance_csv(
+    csv_path: Path,
+    economy_override: str | None = None,
+    *,
+    hierarchy_template_path: Path | None = None,
+) -> pd.DataFrame:
+    """Parse one LEAP Energy Balance CSV into the dashboard's long contract.
+
+    LEAP's CSV writer strips the leading spaces that encode sector hierarchy.
+    A hierarchy-bearing export from the same model structure is therefore
+    required unless the CSV itself retained indentation. The parser validates
+    every row label and fuel column before borrowing indentation.
+    """
+    csv_path = Path(csv_path)
+    raw = _read_balance_csv(csv_path)
+    labels = raw.iloc[3:, 0].fillna("").astype(str)
+    has_indentation = labels.map(lambda value: value != value.lstrip(" ")).any()
+    if not has_indentation:
+        if hierarchy_template_path is None:
+            raise ValueError(
+                f"LEAP CSV {csv_path.name} has no leading-space hierarchy in column A. "
+                "LEAP removes this information from CSV exports, so the branch paths "
+                "cannot be reconstructed unambiguously. Supply a hierarchy template "
+                "(.xlsx/.xlsm or an indented CSV) from the same model structure."
+            )
+        raw = _restore_csv_hierarchy(
+            raw,
+            csv_path=csv_path,
+            hierarchy_template_path=Path(hierarchy_template_path),
+        )
+    return _parse_single_sheet(raw, economy_override=economy_override)
+
+
 # ---------------------------------------------------------------------------
 # Directory runner
 # ---------------------------------------------------------------------------
@@ -373,9 +528,10 @@ def parse_leap_balance_dir(
     output_path: Path,
     *,
     economy_code: str | None = None,
+    csv_hierarchy_template_path: Path | None = None,
 ) -> pd.DataFrame:
     """
-    Parse all LEAP balance xlsx files in *export_dir* and write a combined
+    Parse all LEAP balance files in *export_dir* and write a combined
     long-format CSV to *output_path*.
 
     Uses the parent directory name as the economy code if not provided
@@ -387,10 +543,36 @@ def parse_leap_balance_dir(
         path for path in export_dir.glob("*.xlsx")
         if not path.name.startswith("~$")
     )
-    if not all_xlsx_files:
-        raise FileNotFoundError(f"No .xlsx files found in {export_dir}")
+    csv_files = sorted(export_dir.glob("*.csv"))
+    if all_xlsx_files and csv_files:
+        raise ValueError(
+            f"Both Excel and CSV LEAP balance exports were found in {export_dir}. "
+            "Keep one source format in the run folder so values are not counted twice."
+        )
+    if not all_xlsx_files and not csv_files:
+        raise FileNotFoundError(f"No .xlsx or .csv files found in {export_dir}")
 
     eco = economy_code or export_dir.name
+    if csv_files:
+        frames = []
+        for path in csv_files:
+            print(f"  Parsing {path.name} …")
+            frame = parse_leap_balance_csv(
+                path,
+                economy_override=eco,
+                hierarchy_template_path=csv_hierarchy_template_path,
+            )
+            print(
+                f"    {len(frame):,} rows "
+                f"(year={frame['year'].iloc[0] if len(frame) else '?'}, "
+                f"scenario={frame['scenario'].iloc[0] if len(frame) else '?'})"
+            )
+            frames.append(frame)
+        combined = pd.concat(frames, ignore_index=True)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        combined.to_csv(output_path, index=False)
+        return combined
+
     xlsx_files = select_latest_balance_export_workbooks(
         export_dir,
         economy=eco,

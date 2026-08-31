@@ -326,7 +326,16 @@ def run_mapping_chain(job: dict) -> dict:
     converted_path = work_dir / "leap_results_converted_to_esto.csv"
 
     report_step("parse_export")
-    raw_df = parse_leap_balance_dir(export_dir, raw_leap_path, economy_code=economy)
+    raw_df = parse_leap_balance_dir(
+        export_dir,
+        raw_leap_path,
+        economy_code=economy,
+        csv_hierarchy_template_path=(
+            Path(config["balance_csv_hierarchy_template_path"])
+            if config.get("balance_csv_hierarchy_template_path")
+            else None
+        ),
+    )
     raw_leap_rows = len(raw_df)
 
     report_step("convert")

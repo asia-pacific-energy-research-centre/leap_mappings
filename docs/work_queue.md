@@ -1,5 +1,19 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-059 — Guarded LEAP Energy Balance CSV parsing
+
+**Priority / status:** P1 · complete 2026-08-31.
+
+- LEAP's CSV balance export is accepted only when column-A indentation is
+  present or restored from a row-for-row validated hierarchy template from the
+  same model structure. The template contributes indentation only; CSV values,
+  fuels, scenario, year, and units remain authoritative.
+- CSV dash cells are retained as explicit numeric zeroes so mapping coverage
+  matches XLSX ingestion, and mixed CSV/XLSX run folders fail before values can
+  be counted twice.
+- The supplied Australia Target/2022 CSV reproduced all 13,875 XLSX flow/fuel
+  keys, then completed the portable conversion and dashboard chain.
+
 ## MAPQ-058 — Conserve parent/fuel comparator allocations at every detail depth
 
 **Priority / status:** P1 · complete 2026-08-29.
