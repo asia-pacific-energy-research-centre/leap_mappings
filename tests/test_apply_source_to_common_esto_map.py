@@ -73,3 +73,27 @@ def test_scope_and_source_system_are_stamped_on_every_row():
     )
     assert set(result["comparison_scope"]) == {"esto_leap_ninth"}
     assert set(result["source_system"]) == {"LEAP"}
+
+
+def test_source_labels_match_without_case_sensitivity():
+    values = pd.DataFrame(
+        [
+            {
+                "source_flow": "residential",
+                "source_product": "NATURAL GAS",
+                "economy": "20_USA",
+                "scenario": "Target",
+                "year": 2022,
+                "value": 25.0,
+            }
+        ]
+    )
+    result = apply_source_to_common_esto_map(
+        values,
+        _sample_map(),
+        comparison_scope="esto_leap_ninth",
+        source_system="LEAP",
+    )
+    assert len(result) == 1
+    assert result.loc[0, "common_row_id"] == "row_1"
+    assert result.loc[0, "value"] == 25.0
