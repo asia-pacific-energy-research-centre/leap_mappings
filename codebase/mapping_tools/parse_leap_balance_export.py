@@ -27,6 +27,7 @@ Where:
 
 from __future__ import annotations
 
+import csv
 import re
 import sys
 from pathlib import Path
@@ -375,14 +376,12 @@ def parse_leap_balance_xlsx(
 def _read_balance_csv(csv_path: Path) -> pd.DataFrame:
     """Read one LEAP Energy Balance CSV without treating ``-`` as missing."""
     try:
-        raw = pd.read_csv(
-            csv_path,
-            header=None,
-            dtype=object,
-            keep_default_na=False,
-        )
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.reader(handle))
     except Exception as exc:
         raise ValueError(f"Could not read LEAP balance CSV {csv_path}: {exc}") from exc
+    width = max((len(row) for row in rows), default=0)
+    raw = pd.DataFrame([row + [""] * (width - len(row)) for row in rows])
     if raw.shape[0] < 4 or raw.shape[1] < 2:
         raise ValueError(
             f"LEAP balance CSV {csv_path} has shape {raw.shape}; expected at least "
@@ -501,6 +500,19 @@ def parse_leap_balance_csv(
     """
     csv_path = Path(csv_path)
     raw = _read_balance_csv(csv_path)
+    column_labels = [str(value).strip() for value in raw.iloc[2, 1:]]
+    year_labels = [label for label in column_labels if re.fullmatch(r"\d{4}", label)]
+    if year_labels and len(year_labels) == len([label for label in column_labels if label]):
+        metadata = str(raw.iloc[1, 0] or "").strip()
+        fuels_match = re.search(r"Fuels:\s*([^,]+)", metadata, flags=re.IGNORECASE)
+        fuels = fuels_match.group(1).strip() if fuels_match else "unknown"
+        raise ValueError(
+            f"LEAP CSV {csv_path.name} uses years as columns ({year_labels[0]}-"
+            f"{year_labels[-1]}) and declares Fuels: {fuels}. This layout contains "
+            "one fuel aggregate per balance row, not the individual fuel/product "
+            "axis required by the dashboard mapping chain. Export individual fuels "
+            "in Petajoule, or keep using the all-years XLSX balance export."
+        )
     labels = raw.iloc[3:, 0].fillna("").astype(str)
     has_indentation = labels.map(lambda value: value != value.lstrip(" ")).any()
     if not has_indentation:

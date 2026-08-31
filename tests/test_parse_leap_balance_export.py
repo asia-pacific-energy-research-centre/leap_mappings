@@ -52,6 +52,22 @@ def test_parse_leap_balance_csv_requires_hierarchy_template(tmp_path: Path) -> N
         parse_leap_balance_csv(csv_path, economy_override="01_AUS")
 
 
+def test_parse_leap_balance_csv_rejects_all_years_fuel_aggregate(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "all_years.csv"
+    csv_path.write_text(
+        '"Energy Balance for Area AUS test model"\n'
+        '"Fuels: All, Scenario: Target, Units: Thousand Petajoule"\n'
+        '"",2022,2023,2024\n'
+        "Production,18.18,18.28,18.27\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="individual fuel/product axis"):
+        parse_leap_balance_csv(csv_path, economy_override="01_AUS")
+
+
 def test_parse_leap_balance_csv_restores_validated_hierarchy(tmp_path: Path) -> None:
     csv_path = tmp_path / "balance.csv"
     template_path = tmp_path / "hierarchy.csv"

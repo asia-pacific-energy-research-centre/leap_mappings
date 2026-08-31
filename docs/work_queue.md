@@ -11,8 +11,12 @@
 - CSV dash cells are retained as explicit numeric zeroes so mapping coverage
   matches XLSX ingestion, and mixed CSV/XLSX run folders fail before values can
   be counted twice.
-- The supplied Australia Target/2022 CSV reproduced all 13,875 XLSX flow/fuel
-  keys, then completed the portable conversion and dashboard chain.
+- The Australia Target/2022 fuel-column CSV reproduced all 13,875 XLSX
+  flow/fuel keys, then completed the portable conversion and dashboard chain.
+  A second all-years CSV layout was also inspected: its 2022–2060 columns are
+  the single `Fuels: All` aggregate, not individual products, and two-decimal
+  Thousand-PJ output rounds material detailed rows to zero. It is rejected
+  explicitly rather than being mistaken for a dashboard-ready source.
 
 ## MAPQ-058 — Conserve parent/fuel comparator allocations at every detail depth
 
