@@ -1,5 +1,22 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-058 — Conserve parent/fuel comparator allocations at every detail depth
+
+**Priority / status:** P1 · complete 2026-08-29.
+
+- **Correction:** the explicit `allocate_by_leap_share` dashboard-comparison
+  mode normalizes LEAP sibling shares separately for each parent, fuel, year,
+  scenario and hierarchy depth. Alternative hierarchy levels each reconcile to
+  the authoritative parent/fuel envelope; deeper rows no longer divide by only
+  the shallowest level and therefore cannot exceed the parent merely because
+  several display depths are present.
+- **Boundary:** this is an explicitly labelled estimated-detail mode. It does
+  not change raw ESTO or the allocation-free Common ESTO mapping contract.
+- **Acceptance checks:** the focused fuel/depth conservation test passes, the
+  initialisation and deployed runtime copies are synchronized, and the AUS
+  detailed-Road dashboard shows the authoritative parent line plus the visible
+  technology coverage gap.
+
 ## MAPQ-057 — Replace the blanket ESTO subtotal exclusion with an audited boundary policy
 
 **Priority / status:** P1 · queued 2026-08-24.
