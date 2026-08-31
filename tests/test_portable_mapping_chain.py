@@ -71,7 +71,9 @@ def test_run_mapping_chain_12_nz(tmp_path):
     result = run_mapping_chain(job)
 
     assert result["raw_leap_rows"] == 105_120
-    assert result["converted_rows"] == 31_664
+    # Ethane and petroleum coke are now retained for the combined Other-sector
+    # placeholder (two additional fuel series across the 41 exported years).
+    assert result["converted_rows"] == 31_746
     assert result["comparison_rows"] > 188_452
     assert Path(result["comparison_data_path"]).exists()
     assert Path(result["wide_data_path"]).exists()

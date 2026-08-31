@@ -77,3 +77,40 @@ def test_russia_missing_demand_targets_are_registered_for_esto_scopes() -> None:
         ).fillna("")
         observed = set(zip(pairs.iloc[:, 0], pairs.iloc[:, 1]))
         assert expected_targets.issubset(observed), sheet_name
+
+
+def test_combined_other_placeholder_retains_observed_ethane_and_petroleum_coke_pairs() -> None:
+    pairs = pd.read_excel(
+        MAPPING_WORKBOOK,
+        sheet_name="extra_leap_key_pairs",
+        dtype=str,
+    ).fillna("")
+    observed = set(
+        pairs.loc[
+            pairs["leap_sector"].eq("All demand aggregated/Other sector"),
+            "leap_fuel",
+        ]
+    )
+    assert {"Ethane", "Petroleum coke"}.issubset(observed)
+
+
+def test_combined_other_placeholder_targets_are_approved_for_esto_scopes() -> None:
+    expected_targets = {
+        (
+            "16.03-16.05 Other sector (all demand aggregate)",
+            "07.11 Ethane",
+        ),
+        (
+            "16.03-16.05 Other sector (all demand aggregate)",
+            "07.16 Petroleum coke",
+        ),
+    }
+
+    for sheet_name in ["extra_esto_key_pairs", "extra_esto_extended_pairs"]:
+        pairs = pd.read_excel(
+            MAPPING_WORKBOOK,
+            sheet_name=sheet_name,
+            dtype=str,
+        ).fillna("")
+        observed = set(zip(pairs.iloc[:, 0], pairs.iloc[:, 1]))
+        assert expected_targets.issubset(observed), sheet_name
