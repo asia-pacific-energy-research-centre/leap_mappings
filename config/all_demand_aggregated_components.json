@@ -43,6 +43,14 @@
       "economy_overrides": {}
     },
     {
+      "component_branch": "Non Energy Use",
+      "detailed_branches": ["Non-energy use"],
+      "detail_activation": "all_present",
+      "include_by_default": true,
+      "note": "Declared as included in All demand aggregated when published as its own placeholder child. A combined Other-sector-only export remains combined and is never allocated by the dashboard.",
+      "economy_overrides": {}
+    },
+    {
       "component_branch": "International transport",
       "detailed_branches": ["International transport"],
       "detail_activation": "all_present",
