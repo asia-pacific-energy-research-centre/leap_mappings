@@ -13,7 +13,7 @@ from codebase.mapping_tools.parse_leap_balance_export import (
 def _sheet(year: int) -> pd.DataFrame:
     return pd.DataFrame(
         [
-            [f'Energy Balance for Area "Test Area"', None, None],
+            ['Energy Balance for Area "Test Area"', None, None],
             [f"Scenario: Reference, Year: {year}, Units: Petajoule", None, None],
             [None, "Natural gas", "Total"],
             ["Production", 1.0, 1.0],
@@ -103,6 +103,34 @@ def test_parse_leap_balance_xlsx_reads_plain_year_sheets(tmp_path: Path) -> None
     assert sorted(parsed["year"].unique()) == [2059, 2060]
     assert set(parsed["economy"]) == {"02_BD"}
     assert set(parsed["leap_product"]) == {"Natural gas"}
+
+
+def test_parse_leap_balance_xlsx_retains_deep_transformation_paths(
+    tmp_path: Path,
+) -> None:
+    workbook_path = tmp_path / "detailed_power.xlsx"
+    raw = pd.DataFrame(
+        [
+            ['Energy Balance for Area "Test Area"', None],
+            ["Scenario: Target, Year: 2023, Units: Petajoule", None],
+            [None, "Natural gas"],
+            ["      Gas", -3.0],
+            ["   Processes", -3.0],
+            ["Electricity Generation", -3.0],
+            ["Total Transformation", -3.0],
+        ]
+    )
+    with pd.ExcelWriter(workbook_path) as writer:
+        raw.to_excel(writer, sheet_name="2023", header=False, index=False)
+
+    parsed = parse_leap_balance_xlsx(workbook_path, economy_override="01_AUS")
+
+    assert set(parsed["leap_flow"]) == {
+        "Electricity Generation",
+        "Electricity Generation/Processes",
+        "Electricity Generation/Processes/Gas",
+        "Total Transformation",
+    }
 
 
 def test_parse_leap_balance_dir_ignores_excel_lock_files(tmp_path: Path) -> None:

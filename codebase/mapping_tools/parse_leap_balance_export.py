@@ -31,7 +31,6 @@ import csv
 import re
 import sys
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -167,37 +166,30 @@ def _reconstruct_transformation_paths(
     end: int,
 ) -> dict[int, str]:
     """
-    Transformation section: children (3-space indent) appear BEFORE their parent.
+    Transformation section: descendants appear BEFORE their parent.
 
-    Scan forward; when a level-0 row is encountered, assign it as parent to
-    all immediately preceding level-1 rows.  Level-0 rows with no pending
-    children are standalone (Production, Imports, etc.).
+    LEAP uses three spaces per hierarchy level.  Reading the post-order rows
+    backwards turns them into ordinary parent-before-child order, which lets
+    us retain detailed process paths deeper than the previously supported
+    single child level.
     """
     paths: dict[int, str] = {}
-    pending: list[tuple[int, str]] = []  # (row_index, segment_name)
+    ancestors: dict[int, str] = {}
 
-    for i in range(start, end + 1):
+    for i in range(end, start - 1, -1):
         raw_val = sector_col.iloc[i]
         if pd.isna(raw_val) or not str(raw_val).strip():
             continue
 
-        s      = str(raw_val)
+        s = str(raw_val)
         indent = _indentation(s)
-        name   = _normalize_flow_name(s)
-
-        if indent == 0:
-            # Assign this row as parent to all pending children
-            for pi, child_name in pending:
-                paths[pi] = f"{name}/{child_name}"
-            pending = []
-            paths[i] = name
-        else:
-            # indent == 3 → level-1 child; parent will be seen later
-            pending.append((i, name))
-
-    # Orphaned children (no subsequent parent row seen) — store as-is
-    for pi, child_name in pending:
-        paths[pi] = child_name
+        level = 0 if indent == 0 else (indent + 2) // 3
+        name = _normalize_flow_name(s)
+        ancestors[level] = name
+        for deeper_level in [key for key in ancestors if key > level]:
+            del ancestors[deeper_level]
+        path_segments = [ancestors[key] for key in range(level + 1) if key in ancestors]
+        paths[i] = "/".join(path_segments)
 
     return paths
 
