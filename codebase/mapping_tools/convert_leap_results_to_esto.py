@@ -9,6 +9,7 @@ LEAP flow/product columns and writes grouped ESTO flow/product results.
 
 #%%
 import sys
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -36,6 +37,24 @@ SOURCE_LINEAGE_COLUMNS = [
     "allocation_source",
     "value",
 ]
+
+
+def canonical_leap_flow_path(value: object) -> str:
+    """Return a LEAP path with optional structural ``Processes`` nodes removed.
+
+    Balance exports may represent transformation processes either as
+    ``Heat plants/Processes/Coal HP`` or the equivalent cleaner path
+    ``Heat plants/Coal HP``.  Mapping relationships historically used the
+    former, while current exports use the latter.  ``Processes`` is a layout
+    node rather than part of the process identity, so both forms must join to
+    the same mapping without changing the source workbook.
+    """
+    parts = [
+        part.strip()
+        for part in re.split(r"[\\/]", str(value or ""))
+        if part.strip() and part.strip().casefold() != "processes"
+    ]
+    return "/".join(parts)
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
@@ -152,10 +171,18 @@ def convert_leap_results_to_esto(
             allowed_rolled_pairs=allowed_pairs,
         )
 
+    source_df["_canonical_source_flow"] = source_df["leap_flow"].map(
+        canonical_leap_flow_path
+    )
+    relationships_for_join = relationships_df.copy()
+    relationships_for_join["_canonical_source_flow"] = relationships_for_join[
+        "source_flow"
+    ].map(canonical_leap_flow_path)
+
     merged_df = source_df.merge(
-        relationships_df,
-        left_on=["leap_flow", "leap_product"],
-        right_on=["source_flow", "source_product"],
+        relationships_for_join,
+        left_on=["_canonical_source_flow", "leap_product"],
+        right_on=["_canonical_source_flow", "source_product"],
         how="left",
     )
     missing_mapping_df = merged_df[merged_df["target_flow"].isna() | merged_df["target_product"].isna()]

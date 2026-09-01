@@ -130,3 +130,46 @@ def test_own_use_or_losses_rows_are_forced_negative() -> None:
     converted_values = converted_df.set_index("target_flow")["value"].to_dict()
     assert converted_values["10.01.01 Electricity, CHP and heat plants"] == -50.0
     assert converted_values["17 Electricity"] == 30.0
+
+
+def test_optional_processes_path_segment_does_not_block_power_detail_mapping() -> None:
+    relationships_df = pd.DataFrame([
+        {
+            "source_system": "LEAP",
+            "source_flow": "Heat plants/Processes/Coal HP",
+            "source_product": "Other bituminous coal",
+            "target_system": "ESTO",
+            "target_flow": "09.01.03.01 Coal HP",
+            "target_product": "01.02 Other bituminous coal",
+            "relationship_id": "rel-coal-hp",
+            "allocation_method": "direct",
+            "relationship_type": "direct_or_existing_mapping",
+        }
+    ])
+    leap_results_df = pd.DataFrame([
+        {
+            "economy": "05_PRC",
+            "scenario": "Target",
+            "year": 2030,
+            "leap_flow": "Heat plants/Coal HP",
+            "leap_product": "Other bituminous coal",
+            "value": -125.0,
+        }
+    ])
+
+    converted_df, lineage_df = convert_leap_results_to_esto(
+        leap_results_df,
+        relationships_df,
+        return_lineage=True,
+    )
+
+    assert converted_df[["target_flow", "value"]].to_dict("records") == [
+        {"target_flow": "09.01.03.01 Coal HP", "value": -125.0}
+    ]
+    assert lineage_df[["source_flow", "target_flow", "value"]].to_dict(
+        "records"
+    ) == [{
+        "source_flow": "Heat plants/Processes/Coal HP",
+        "target_flow": "09.01.03.01 Coal HP",
+        "value": -125.0,
+    }]

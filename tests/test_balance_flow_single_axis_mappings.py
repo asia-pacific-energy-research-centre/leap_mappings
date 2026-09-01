@@ -196,4 +196,75 @@ def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
     ) in product_rows
 
 
+def test_electricity_generation_processes_map_to_stable_esto_extended_flows() -> None:
+    leap_to_esto_flow = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_esto",
+        dtype=str,
+    ).fillna("")
+    rows = set(
+        leap_to_esto_flow[
+            ["leap_sector", "esto_flow", "esto_dataset_scope"]
+        ].itertuples(index=False, name=None)
+    )
+
+    expected_processes = {
+        "Coal": ("01", "Coal power"),
+        "Coal_CCUS": ("02", "Coal power CCS"),
+        "Coal_H2_blended": ("03", "Coal hydrogen blended"),
+        "Gas": ("04", "Gas power"),
+        "Gas_CCUS": ("05", "Gas power CCS"),
+        "Geothermal": ("06", "Geothermal"),
+        "Hydro": ("07", "Hydro"),
+        "Nuclear": ("08", "Nuclear"),
+        "Others": ("09", "Others"),
+        "Petroleum products": ("10", "Oil"),
+        "Solar": ("11", "Solar"),
+        "Solar CSP": ("12", "Solar CSP"),
+        "Solar PV": ("13", "Solar utility PV"),
+        "Solar rooftop": ("14", "Solar rooftop"),
+        "Solid biomass": ("15", "Solid biomass"),
+        "Battery": ("16", "Storage"),
+        "Wind": ("17", "Wind"),
+        "Wind offshore": ("18", "Wind offshore"),
+    }
+    expected_rows = {
+        (
+            f"Electricity Generation/{branch}",
+            f"{prefix}.{suffix} {label}",
+            "ESTO_EXTENDED",
+        )
+        for branch, (suffix, label) in expected_processes.items()
+        for prefix in ("09.01.01", "09.02.01")
+    }
+
+    assert expected_rows <= rows
+
+    alias_rows = {
+        (
+            "Electricity Generation/Solar_rooftop",
+            f"{prefix}.14 Solar rooftop",
+            "ESTO_EXTENDED",
+        )
+        for prefix in ("09.01.01", "09.02.01")
+    } | {
+        (
+            f"Electricity Generation/{branch}",
+            f"{prefix}.16 Storage",
+            "ESTO_EXTENDED",
+        )
+        for branch in ("Batteries", "Distributed storage")
+        for prefix in ("09.01.01", "09.02.01")
+    }
+    assert alias_rows <= rows
+
+    extended_pairs = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="extra_esto_extended_pairs",
+        dtype=str,
+    ).fillna("")
+    registered_flows = set(extended_pairs["esto_flow"])
+    assert {row[1] for row in expected_rows | alias_rows} <= registered_flows
+
+
 #%%
