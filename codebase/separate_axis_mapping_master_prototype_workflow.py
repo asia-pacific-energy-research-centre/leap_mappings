@@ -321,12 +321,14 @@ def _load_pair_universes(
         },
     }
     rollup_counts: dict[str, int] = {}
+    rollup_rules_by_dataset: dict[str, pd.DataFrame] = {}
     for dataset, spec in rollup_specs.items():
         raw_count = len(universes[dataset])
         rules = pd.read_excel(
             EDITABLE_AXIS_WORKBOOK_PATH,
             sheet_name=spec["sheet"],
         )
+        rollup_rules_by_dataset[dataset] = rules
         universes[dataset] = expand_pair_universe_with_rollups(
             universes[dataset],
             rules,
@@ -347,6 +349,26 @@ def _load_pair_universes(
             universes[dataset],
             extra_pairs,
             dataset=dataset,
+        )
+
+    # Reviewed extras are accepted exact pairs and must be able to seed a
+    # registered rollup just like raw dataset pairs.  Detailed ESTO Extended
+    # power components commonly enter through this authority layer; deriving
+    # rollups only before extras are merged silently rejects their synthetic
+    # all-producers targets from the compiled compatibility workbook.
+    for dataset, spec in rollup_specs.items():
+        count_before_reviewed_rollups = len(universes[dataset])
+        universes[dataset] = expand_pair_universe_with_rollups(
+            universes[dataset],
+            rollup_rules_by_dataset[dataset],
+            input_flow_column=spec["input_flow"],
+            input_product_column=spec["input_product"],
+            rolled_flow_column=spec["rolled_flow"],
+            rolled_product_column=spec["rolled_product"],
+            dataset_scope=spec["scope"],
+        )
+        rollup_counts[dataset] += (
+            len(universes[dataset]) - count_before_reviewed_rollups
         )
 
     leap_manifest = dict(leap_manifest)

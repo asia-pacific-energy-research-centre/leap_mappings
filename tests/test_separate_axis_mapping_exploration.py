@@ -1067,6 +1067,48 @@ def test_reviewed_extra_pairs_promote_existing_and_absent_pairs() -> None:
     assert not bool(merged.loc[("F2", "P2"), "pair_exists_in_dataset"])
 
 
+def test_reviewed_extra_pair_can_seed_registered_rollup_pair() -> None:
+    registry = pd.DataFrame(
+        [
+            {
+                "flow": "unrelated",
+                "product": "P1",
+                "pair_origin": "raw",
+            }
+        ]
+    )
+    accepted = merge_reviewed_extra_pairs(
+        registry,
+        pd.DataFrame([{"flow": "component", "product": "P1"}]),
+        dataset="ESTO_EXTENDED",
+    )
+    rules = pd.DataFrame(
+        [
+            {
+                "input_esto_flow": "component",
+                "input_esto_product": "",
+                "rolled_esto_flow": "component,other combined",
+                "rolled_esto_product": "",
+                "include": True,
+                "esto_dataset_scope": "ESTO_EXTENDED",
+            }
+        ]
+    )
+
+    result = expand_pair_universe_with_rollups(
+        accepted,
+        rules,
+        input_flow_column="input_esto_flow",
+        input_product_column="input_esto_product",
+        rolled_flow_column="rolled_esto_flow",
+        rolled_product_column="rolled_esto_product",
+        dataset_scope="ESTO_EXTENDED",
+    ).set_index(["flow", "product"])
+
+    assert ("component,other combined", "P1") in result.index
+    assert result.loc[("component,other combined", "P1"), "pair_origin"] == "rollup"
+
+
 def test_bootstrap_extra_pairs_keeps_only_required_ineligible_pairs() -> None:
     current = pd.DataFrame(
         [

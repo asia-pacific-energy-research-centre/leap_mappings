@@ -1260,6 +1260,15 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
 - **Do not enact during current review:** The canonical mapping workbook and LEAP model structures remain unchanged until the active processes finish and a clean baseline is available.
 - **Next action:** Review tomorrow as part of the mappings review. On a dedicated branch/worktree, inventory alias co-occurrence by economy, then propose exact rollup rows and mapping-row replacements before editing `config/outlook_mappings_master.xlsx`.
 - **Completion criteria:** Imported electricity maps only to `02_imports` / `02 Imports`; aliases cannot double count; Coal-H2 maps within coal power; power-detail mappings have no unresolved post-rollup many-to-many relationships; existing ESTO Extended identifiers remain stable; and maintenance plus Stages 1–3 pass without source-total or parent/child regressions.
+- **2026-09-03 all-producers checkpoint:** The editable single-axis authority
+  maps undifferentiated Power sources directly to the 27 registered
+  comma-joined main-activity/autoproducer targets, while their real ESTO
+  components remain rollup contributors. The compiler re-expands rollups after
+  reviewed extra pairs are merged; 146 erroneous `843` sentinel values were
+  cleared only from blank wildcard/preserve-original rollup fields. Stages 1–3
+  completed with zero fan-out, separated non-expanding frontiers, and 100%
+  mapped-row aggregation preservation. The review workbook is
+  `outputs/power_all_producers_review_20260903/power_all_producers_mapping_review.xlsx`.
 
 ### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets (superseded)
 
