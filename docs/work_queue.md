@@ -106,7 +106,13 @@ as values. `config.esto_extended_table_path` and the retired
 `prepare_esto_extended_exact_rows()` API fail closed with migration errors.
 Portable fast-path output now writes component lineage, and the public Common
 ESTO fact contract is `v2` with `fact_value_provenance` as an explicit fact
-key/column.
+attribute/column under the six-field business key.
+
+**Checkpoint 3A.2 — reviewed structural asset committed (2026-09-03):**
+`data/esto_extended_catalogue.csv` is the canonical 4,337-pair, numeric-free
+catalogue built from the current authoritative workbook. It is a reviewed
+source asset, not a Stage 3 fallback: missing or stale coverage continues to
+fail until a maintainer explicitly rebuilds, reviews, and commits it.
 
 **Remaining cross-repo cutover:** `leap_initialisation` must stop packaging and
 selecting legacy Extended vintages for the portable chain, package the

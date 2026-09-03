@@ -19,6 +19,11 @@ from codebase.mapping_tools.esto_exact_rows import (
 from codebase.mapping_tools.apply_common_esto_structure import normalise_source_columns
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_CATALOGUE_PATH = REPO_ROOT / "data" / "esto_extended_catalogue.csv"
+AUTHORITATIVE_WORKBOOK_PATH = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+
+
 def _workbook(path: Path) -> None:
     mappings = pd.DataFrame([
         {
@@ -66,6 +71,25 @@ def test_structural_catalogue_preserves_gas_ccus_without_historical_facts(tmp_pa
     assert not {"economy", "year", "value", "2022"}.intersection(catalogue.columns)
     assert catalogue.loc[catalogue["flows"].eq("09.01.01.04 Gas_CCUS"), "rollup_modes"].iloc[0] == "EXPANDING"
     assert output.is_file()
+
+
+def test_committed_canonical_catalogue_validates_current_active_mappings() -> None:
+    assert CANONICAL_CATALOGUE_PATH.is_file()
+    catalogue = pd.read_csv(CANONICAL_CATALOGUE_PATH, dtype=object)
+    required = required_extended_pairs(AUTHORITATIVE_WORKBOOK_PATH)
+
+    assert list(catalogue.columns) == CATALOGUE_COLUMNS
+    assert not catalogue.duplicated(["flows", "products"]).any()
+    assert catalogue[["flows", "products"]].equals(
+        catalogue.sort_values(["flows", "products"])[
+            ["flows", "products"]
+        ].reset_index(drop=True)
+    )
+    assert not {
+        "economy", "scenario", "year", "value",
+    }.intersection(catalogue.columns)
+    assert not [column for column in catalogue.columns if str(column).isdigit()]
+    assert catalogue_diagnostics(catalogue, required).empty
 
 
 def test_catalogue_coverage_reports_missing_stale_and_numeric_rows_deterministically(tmp_path: Path) -> None:
