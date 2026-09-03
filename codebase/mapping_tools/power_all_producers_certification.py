@@ -17,6 +17,7 @@ SOURCE_GROUP_COLUMNS = [
     "source_system", "economy", "scenario", "year", "source_flow", "source_product"
 ]
 VALUE_GROUP_COLUMNS = ["economy", "scenario", "year"]
+EXPECTED_POWER_COMPONENT_COUNT = 2
 
 
 def _truthy(values: pd.Series) -> pd.Series:
@@ -77,34 +78,57 @@ def audit_source_once_delivery(
 def audit_structural_component_definitions(
     common_rows: pd.DataFrame,
     rollups: pd.DataFrame,
+    expected_component_count: int = EXPECTED_POWER_COMPONENT_COUNT,
 ) -> pd.DataFrame:
-    """Certify that each all-producer target declares its registered components."""
+    """Certify reviewed targets and their independently registered components.
+
+    This validates definitions only.  It never compares a target against an
+    ESTO Extended numeric series and does not infer missing components.
+    """
     required = rollups[["rolled_esto_flow", "components"]].copy()
-    required["component_esto_flow_registered"] = required["components"].str.split("|")
-    required = required.explode("component_esto_flow_registered").drop(columns="components")
-    available = common_rows[["comparison_scope", "component_esto_flow"]].drop_duplicates()
-    observed = required.merge(
-        available,
-        left_on="rolled_esto_flow",
-        right_on="component_esto_flow",
-        how="left",
+    required["components"] = required["components"].fillna("").astype(str)
+    required["registered_component_count"] = required["components"].map(
+        lambda value: len({item.strip() for item in value.split("|") if item.strip()})
     )
-    observed["status"] = observed["comparison_scope"].notna().map(
+    targets = (
+        common_rows[["comparison_scope", "component_esto_flow"]]
+        .drop_duplicates()
+        .groupby("component_esto_flow")["comparison_scope"]
+        .agg(lambda values: "|".join(sorted(set(values.astype(str)))))
+        .reset_index()
+        .rename(columns={"component_esto_flow": "rolled_esto_flow"})
+    )
+    audit = required.merge(targets, on="rolled_esto_flow", how="left")
+    audit["comparison_scope"] = audit["comparison_scope"].fillna("")
+    audit["expected_component_count"] = expected_component_count
+    audit["target_status"] = audit["comparison_scope"].ne("").map(
         {True: "passed", False: "missing_structural_target"}
     )
-    return observed[[
-        "comparison_scope", "rolled_esto_flow", "component_esto_flow_registered", "status",
+    audit["component_set_status"] = audit["registered_component_count"].eq(
+        expected_component_count
+    ).map({True: "passed", False: "incomplete_component_set"})
+    audit["status"] = (
+        audit["target_status"].eq("passed")
+        & audit["component_set_status"].eq("passed")
+    ).map({True: "passed", False: "failed"})
+    return audit[[
+        "comparison_scope", "rolled_esto_flow", "components",
+        "expected_component_count", "registered_component_count",
+        "target_status", "component_set_status", "status",
     ]]
 
 
 def audit_ordinary_esto_component_coverage(
     esto_exact_rows: pd.DataFrame,
     rollups: pd.DataFrame,
+    expected_component_count: int = EXPECTED_POWER_COMPONENT_COUNT,
 ) -> pd.DataFrame:
-    """Report ordinary-ESTO component coverage without manufacturing Extended facts."""
+    """Report full, partial, and absent ordinary-ESTO component coverage."""
     components = rollups[["rolled_esto_flow", "components"]].copy()
     components["component_esto_flow"] = components["components"].str.split("|")
     components = components.explode("component_esto_flow").drop(columns="components")
+    components["component_esto_flow"] = components["component_esto_flow"].astype(str).str.strip()
+    components = components.loc[components["component_esto_flow"].ne("")].drop_duplicates()
     raw = esto_exact_rows.copy()
     raw["value"] = pd.to_numeric(raw["value"], errors="coerce").fillna(0.0)
     raw = raw.loc[raw["esto_flow"].isin(set(components["component_esto_flow"]))]
@@ -114,17 +138,45 @@ def audit_ordinary_esto_component_coverage(
         right_on="component_esto_flow",
         how="inner",
     )
-    raw = (
-        raw.groupby(["rolled_esto_flow", "esto_product", *VALUE_GROUP_COLUMNS], as_index=False)["value"]
-        .sum()
-        .rename(columns={"esto_product": "component_esto_product", "value": "component_total"})
+    raw = raw.groupby(
+        ["rolled_esto_flow", "esto_product", *VALUE_GROUP_COLUMNS],
+        as_index=False,
+    ).agg(
+        component_total=("value", "sum"),
+        observed_component_count=("component_esto_flow", "nunique"),
+        observed_components=(
+            "component_esto_flow", lambda values: "|".join(sorted(set(values)))
+        ),
     )
-    raw["status"] = raw["component_total"].ne(0.0).map(
-        {True: "observed_ordinary_esto_component_coverage", False: "no_data"}
-    )
-    return raw[[
+    raw = raw.rename(columns={"esto_product": "component_esto_product"})
+    raw["expected_component_count"] = expected_component_count
+    raw["status"] = raw["observed_component_count"].eq(
+        expected_component_count
+    ).map({
+        True: "full_ordinary_esto_component_coverage",
+        False: "partial_ordinary_esto_component_coverage",
+    })
+    no_data_targets = set(rollups["rolled_esto_flow"]) - set(raw["rolled_esto_flow"])
+    no_data = pd.DataFrame([
+        {
+            "rolled_esto_flow": target,
+            "component_esto_product": "",
+            "economy": "",
+            "scenario": "",
+            "year": "",
+            "component_total": 0.0,
+            "expected_component_count": expected_component_count,
+            "observed_component_count": 0,
+            "observed_components": "",
+            "status": "no_data",
+        }
+        for target in sorted(no_data_targets)
+    ])
+    coverage = pd.concat([raw, no_data], ignore_index=True)
+    return coverage[[
         "rolled_esto_flow", "component_esto_product", *VALUE_GROUP_COLUMNS,
-        "component_total", "status",
+        "component_total", "expected_component_count", "observed_component_count",
+        "observed_components", "status",
     ]]
 
 

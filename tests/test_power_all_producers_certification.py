@@ -45,4 +45,58 @@ def test_power_certification_separates_structural_targets_from_ordinary_esto_cov
 
     assert set(structural["status"]) == {"passed"}
     assert coverage.loc[0, "component_total"] == 5
-    assert coverage.loc[0, "status"] == "observed_ordinary_esto_component_coverage"
+    assert coverage.loc[0, "expected_component_count"] == 2
+    assert coverage.loc[0, "observed_component_count"] == 2
+    assert coverage.loc[0, "status"] == "full_ordinary_esto_component_coverage"
+
+
+def test_power_structural_certification_reports_missing_target_and_component_set() -> None:
+    complete = pd.DataFrame([{
+        "rolled_esto_flow": "09.01,09.02 Combined",
+        "components": "09.01 A|09.02 A",
+    }])
+    missing_target = audit_structural_component_definitions(
+        pd.DataFrame(columns=["comparison_scope", "component_esto_flow"]),
+        complete,
+    )
+    assert missing_target.loc[0, "target_status"] == "missing_structural_target"
+    assert missing_target.loc[0, "status"] == "failed"
+
+    one_component = pd.DataFrame([{
+        "rolled_esto_flow": "09.01,09.02 Combined",
+        "components": "09.01 A",
+    }])
+    incomplete = audit_structural_component_definitions(
+        pd.DataFrame([{
+            "comparison_scope": "scope",
+            "component_esto_flow": "09.01,09.02 Combined",
+        }]),
+        one_component,
+    )
+    assert incomplete.loc[0, "component_set_status"] == "incomplete_component_set"
+    assert incomplete.loc[0, "status"] == "failed"
+
+
+def test_ordinary_esto_component_coverage_reports_partial_and_no_data() -> None:
+    rollups = pd.DataFrame([{
+        "rolled_esto_flow": "09.01,09.02 Combined",
+        "components": "09.01 A|09.02 A",
+    }])
+    partial = audit_ordinary_esto_component_coverage(
+        pd.DataFrame([{
+            "economy": "01_AUS", "scenario": "historical", "year": 2023,
+            "esto_flow": "09.01 A", "esto_product": "Coal", "value": 2,
+        }]),
+        rollups,
+    )
+    assert partial.loc[0, "observed_component_count"] == 1
+    assert partial.loc[0, "status"] == "partial_ordinary_esto_component_coverage"
+
+    no_data = audit_ordinary_esto_component_coverage(
+        pd.DataFrame(columns=[
+            "economy", "scenario", "year", "esto_flow", "esto_product", "value",
+        ]),
+        rollups,
+    )
+    assert no_data.loc[0, "observed_component_count"] == 0
+    assert no_data.loc[0, "status"] == "no_data"

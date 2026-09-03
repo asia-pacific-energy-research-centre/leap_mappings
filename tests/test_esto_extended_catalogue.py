@@ -25,12 +25,14 @@ def _workbook(path: Path) -> None:
             "esto_flow": "09.01.01.04 Gas_CCUS",
             "esto_product": "08 Gas",
             "duplicate_to_remove": False,
+            "remove_row": False,
             "esto_dataset_scope": "ESTO_EXTENDED",
         },
         {
             "esto_flow": "09.01.01 Gas",
             "esto_product": "08 Gas",
             "duplicate_to_remove": False,
+            "remove_row": False,
             "esto_dataset_scope": "BOTH",
         },
     ])
@@ -84,6 +86,29 @@ def test_catalogue_coverage_reports_missing_stale_and_numeric_rows_deterministic
     ]
     with pytest.raises(ValueError, match="ESTO Extended structural catalogue is invalid"):
         assert_valid_catalogue(invalid, required)
+
+
+def test_removed_extended_mapping_is_not_required_or_stale(tmp_path: Path) -> None:
+    workbook = tmp_path / "mappings.xlsx"
+    _workbook(workbook)
+    mappings = pd.read_excel(workbook, sheet_name="leap_combined_esto", dtype=object)
+    mappings.loc[len(mappings)] = {
+        "esto_flow": "09.01.01.99 Removed Gas detail",
+        "esto_product": "08 Gas",
+        "duplicate_to_remove": False,
+        "remove_row": True,
+        "esto_dataset_scope": "ESTO_EXTENDED",
+    }
+    rollups = pd.read_excel(workbook, sheet_name="esto_rollup_rules", dtype=object)
+    with pd.ExcelWriter(workbook) as writer:
+        mappings.to_excel(writer, sheet_name="leap_combined_esto", index=False)
+        mappings.iloc[0:0].to_excel(writer, sheet_name="ninth_pairs_to_esto_pairs", index=False)
+        rollups.to_excel(writer, sheet_name="esto_rollup_rules", index=False)
+
+    required = required_extended_pairs(workbook)
+
+    assert "09.01.01.99 Removed Gas detail" not in set(required["flows"])
+    assert catalogue_diagnostics(required, required).empty
 
 
 def test_numeric_fixture_builder_cannot_publish_copied_or_equal_split_gas_ccus_history(tmp_path: Path) -> None:

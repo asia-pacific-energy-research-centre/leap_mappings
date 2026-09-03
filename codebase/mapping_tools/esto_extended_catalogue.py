@@ -30,7 +30,8 @@ def _truthy(value: object) -> bool:
 
 def _active(frame: pd.DataFrame) -> pd.DataFrame:
     duplicate = frame.get("duplicate_to_remove", pd.Series(False, index=frame.index))
-    return frame.loc[~duplicate.map(_truthy)].copy()
+    removed = frame.get("remove_row", pd.Series(False, index=frame.index))
+    return frame.loc[~duplicate.map(_truthy) & ~removed.map(_truthy)].copy()
 
 
 def _extended_scope(value: object) -> bool:
