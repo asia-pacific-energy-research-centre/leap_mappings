@@ -99,8 +99,27 @@ def test_metadata_uses_compound_key_and_rejects_conflicts() -> None:
 def test_duplicate_fact_key_is_rejected() -> None:
     legacy = _legacy_comparison()
 
-    with pytest.raises(ValueError, match="seven-column fact key"):
+    with pytest.raises(ValueError, match="six-field fact key"):
         build_common_esto_output_tables(pd.concat([legacy, legacy.iloc[[0]]], ignore_index=True))
+
+
+def test_conflicting_provenance_cannot_share_one_business_fact_key() -> None:
+    assert FACT_KEY_COLUMNS == [
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "common_row_id",
+    ]
+    assert "fact_value_provenance" in FACT_COLUMNS
+    assert "fact_value_provenance" not in FACT_KEY_COLUMNS
+    legacy = _legacy_comparison().iloc[[0]].copy()
+    conflicting = legacy.copy()
+    conflicting["fact_value_provenance"] = "downstream_estimate"
+
+    with pytest.raises(ValueError, match="conflicting fact_value_provenance"):
+        build_common_esto_output_tables(pd.concat([legacy, conflicting], ignore_index=True))
 
 
 @pytest.mark.parametrize(
@@ -108,6 +127,7 @@ def test_duplicate_fact_key_is_rejected() -> None:
     [
         ("comparison_scope", " ", "contains empty values"),
         ("source_system", "", "contains empty values"),
+        ("fact_value_provenance", "", "fact attribute"),
         ("economy", None, "contains empty values"),
         ("scenario", "", "contains empty values"),
         ("common_row_id", "", "contains empty values"),
