@@ -1,5 +1,40 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-060 — Formalise ESTO Extended as structural-only metadata
+
+**Priority / status:** P2 · `planned` · post-MAPQ-029 certification correction.
+
+**Owner repositories:** `leap_mappings` + `leap_dashboard` (consult
+`leap_initialisation` where it consumes the same source contract).
+
+**Problem:** ESTO Extended currently has two different meanings in the
+pipeline: a registry of detailed comparison categories and a source-system
+label applied to ordinary ESTO history. That overload makes it too easy to
+mistake a derived display value for an observed ESTO Extended fact.
+`data/esto_extended.csv` has no defensible independent numerical basis and
+must not become one.
+
+**Scope:** Separate Extended-category structure from numeric-source
+provenance while preserving the existing category IDs, mappings, and rollups.
+Keep ordinary ESTO as the observed historical source. Keep any detailed
+allocation downstream in the dashboard, using LEAP base-year shares, explicit
+estimate provenance, and an unallocated residual when required. Add a
+structural coverage assertion: when active mappings or rollups introduce an
+ESTO Extended category, generated `data/esto_extended.csv` must contain it;
+missing or stale categories fail the check and require a human decision. The
+assertion must not generate values.
+
+**Out of scope:** This is not a reason to edit the frozen Power mappings or to
+create numerical ESTO Extended observations. The current MAPQ-029 correction
+only needs to fix the certification audit's invalid component-sum comparison.
+
+**Completion criteria:** All consumers distinguish observed ordinary ESTO facts
+from estimated detailed display rows by provenance rather than the
+`ESTO_EXTENDED` label; `esto_extended.csv` is treated only as a structurally
+complete category catalogue; its coverage assertion is tested; and the mapping
+pipeline, dashboard contract tests, and a representative dashboard render
+preserve aggregate values without manufacturing upstream ESTO Extended data.
+
 ## MAPQ-059 — Guarded LEAP Energy Balance CSV parsing
 
 **Priority / status:** P1 · complete 2026-08-31.
