@@ -84,6 +84,7 @@ ESTO_COMPONENT_LINEAGE_COLUMNS = [
     "source_aggregate_labels",
     "source_aggregate_group_ids",
     "component_sign",
+    "fact_value_provenance",
     "value",
 ]
 COMPARISON_INTERNAL_COLUMNS = [
@@ -92,7 +93,7 @@ COMPARISON_INTERNAL_COLUMNS = [
     "common_product_component_count",
 ]
 WIDE_OUTPUT_ID_COLUMNS = ["comparison_scope", "economy", "scenario", "product", "flow"]
-SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "value"]
+SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "fact_value_provenance", "value"]
 SOURCE_VALUE_SCOPE_COLUMNS = ["comparison_scope"] + SOURCE_VALUE_COLUMNS
 SOURCE_CATEGORY_COLUMNS = [
     "source_system",
@@ -287,6 +288,18 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
         .str.upper()
         .str.strip()
     )
+    if "fact_value_provenance" not in working_df.columns:
+        working_df["fact_value_provenance"] = working_df["source_system"].map(
+            lambda source_system: (
+                "observed_ordinary_esto"
+                if source_system == "ESTO"
+                else "source_native_observation"
+            )
+        )
+    else:
+        working_df["fact_value_provenance"] = (
+            working_df["fact_value_provenance"].fillna("").astype(str).str.strip()
+        )
     for column in ["scenario", "year"]:
         if column not in working_df.columns:
             working_df[column] = ""
@@ -1122,6 +1135,22 @@ def apply_common_structure(
             return comparison_df, missing_map_df, mapped_source_df, pd.DataFrame(columns=ESTO_COMPONENT_LINEAGE_COLUMNS)
         return comparison_df, missing_map_df, mapped_source_df
     source_df = expand_source_system_aliases(source_df, source_system_aliases)
+    if "fact_value_provenance" not in source_df.columns:
+        source_df = source_df.copy()
+        source_df["fact_value_provenance"] = source_df["source_system"].map(
+            lambda source_system: (
+                "observed_ordinary_esto"
+                if str(source_system).upper() in {"ESTO", "ESTO_EXTENDED"}
+                else "source_native_observation"
+            )
+        )
+    source_value_columns = [
+        column for column in SOURCE_VALUE_COLUMNS if column in source_df.columns
+    ]
+    source_df = source_df[
+        source_value_columns
+        + [column for column in source_df.columns if column not in source_value_columns]
+    ]
     common_rows_df = common_rows_df.copy()
     metadata_defaults: dict[str, object] = {
         "common_row_basis": "",

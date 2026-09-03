@@ -885,13 +885,13 @@ def test_component_relevance_uses_each_dataset_and_vintage_latest_year() -> None
         ninth_projection_start_year=2023,
     )
 
-    assert latest_year == 2024
+    assert latest_year == 2023
     assert set(
         zip(
             relevance_df["component_esto_flow"],
             relevance_df["component_esto_product"],
         )
-    ) == {("F1", "P1"), ("F2", "P2"), ("F3", "P3")}
+    ) == {("F1", "P1"), ("F2", "P2")}
 
 
 def test_vintage_endpoint_relevance_never_erases_nonzero_source_history() -> None:

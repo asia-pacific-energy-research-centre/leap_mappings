@@ -2334,6 +2334,7 @@ def load_raw_source_anchor_inputs(
     esto_long = esto_long.rename(columns={"flows": "source_flow", "products": "source_product"})
     esto_long["source_system"] = "ESTO"
     esto_long["scenario"] = "historical"
+    esto_long["fact_value_provenance"] = "observed_ordinary_esto"
     source_frames.append(esto_long)
     esto_pairs = esto[["flows", "products"]].drop_duplicates().rename(columns={
         "flows": "source_flow", "products": "source_product",
@@ -2344,25 +2345,27 @@ def load_raw_source_anchor_inputs(
     mapping_frames.append(esto_pairs)
 
     if esto_extended_data_path is not None and Path(esto_extended_data_path).exists():
-        esto_extended = _read_anchor_wide_source(
-            Path(esto_extended_data_path),
-            ["economy", "flows", "products"],
-            anchor_target_years,
-            include_latest_year=True,
+        # Extended is a structural vocabulary. Reuse ordinary ESTO observations
+        # only where their native pair exists in that vocabulary; never melt a
+        # fabricated Extended numeric table into a second history.
+        esto_extended = pd.read_csv(
+            Path(esto_extended_data_path), dtype=object, usecols=["flows", "products"]
         )
-        extended_long = _melt_years(
-            esto_extended, ["economy", "flows", "products"], anchor_target_years, include_latest_year=True,
-        )
-        extended_long = extended_long.rename(columns={"flows": "source_flow", "products": "source_product"})
-        extended_long["source_system"] = "ESTO_EXTENDED"
-        extended_long["scenario"] = "historical"
-        source_frames.append(extended_long)
         extended_pairs = esto_extended[["flows", "products"]].drop_duplicates().rename(columns={
             "flows": "source_flow", "products": "source_product",
         })
+        extended_long = esto_long.merge(
+            extended_pairs,
+            on=["source_flow", "source_product"],
+            how="inner",
+        )
         extended_pairs["source_system"] = "ESTO_EXTENDED"
         extended_pairs["component_esto_flow"] = extended_pairs["source_flow"]
         extended_pairs["component_esto_product"] = extended_pairs["source_product"]
+        extended_long["source_system"] = "ESTO_EXTENDED"
+        extended_long["scenario"] = "historical"
+        extended_long["fact_value_provenance"] = "observed_ordinary_esto"
+        source_frames.append(extended_long)
         mapping_frames.append(extended_pairs)
 
     ninth_load_start = time.perf_counter()

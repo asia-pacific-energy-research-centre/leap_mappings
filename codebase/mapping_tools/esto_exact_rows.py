@@ -40,6 +40,7 @@ ESTO_RETAINED_SUBTOTAL_FLOW_LABELS = {"08 Transfers", "15.02 Road"}
 ESTO_FLOW_LABEL_ALIASES = {
     "10.02 Transmision and distribution losses": "10.02 Transmission and distribution losses",
 }
+OBSERVED_ORDINARY_ESTO_FACT_PROVENANCE = "observed_ordinary_esto"
 
 
 def normalise_esto_flow_labels(esto_df: pd.DataFrame) -> pd.DataFrame:
@@ -210,6 +211,11 @@ def run_esto_exact_rows_for_path(
     worker has no repository: it passes the artifacts bundled with the release,
     and re-derives the exact rows from whichever ESTO table the user supplied.
     """
+    if source_system.upper() == "ESTO_EXTENDED":
+        raise ValueError(
+            "ESTO Extended is structural-only. Extract ordinary ESTO exact rows "
+            "and relabel their source identity only when applying an Extended scope."
+        )
     print("\n" + "-" * 40)
     print(f"  {source_system} exact rows")
     if not data_path.exists():
@@ -314,6 +320,7 @@ def run_esto_exact_rows_for_path(
     long_df["source_system"] = source_system
     long_df["scenario"] = "historical"
     long_df["year"] = long_df["year"].astype(int)
+    long_df["fact_value_provenance"] = OBSERVED_ORDINARY_ESTO_FACT_PROVENANCE
 
     exact_row_count = len(long_df)
     if not non_expanding_rows_df.empty:

@@ -74,18 +74,34 @@ def audit_source_once_delivery(
     return detail, summary
 
 
-def audit_component_sums(
-    esto_exact_rows: pd.DataFrame,
-    comparison_fact: pd.DataFrame,
+def audit_structural_component_definitions(
     common_rows: pd.DataFrame,
     rollups: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Compare Common-ESTO all-producer values with real component observations.
+    """Certify that each all-producer target declares its registered components."""
+    required = rollups[["rolled_esto_flow", "components"]].copy()
+    required["component_esto_flow_registered"] = required["components"].str.split("|")
+    required = required.explode("component_esto_flow_registered").drop(columns="components")
+    available = common_rows[["comparison_scope", "component_esto_flow"]].drop_duplicates()
+    observed = required.merge(
+        available,
+        left_on="rolled_esto_flow",
+        right_on="component_esto_flow",
+        how="left",
+    )
+    observed["status"] = observed["comparison_scope"].notna().map(
+        {True: "passed", False: "missing_structural_target"}
+    )
+    return observed[[
+        "comparison_scope", "rolled_esto_flow", "component_esto_flow_registered", "status",
+    ]]
 
-    A target/product/economy/scenario/year is reported as ``no_data`` when
-    neither component has an observed non-zero value.  That is coverage state,
-    not a mapping failure.
-    """
+
+def audit_ordinary_esto_component_coverage(
+    esto_exact_rows: pd.DataFrame,
+    rollups: pd.DataFrame,
+) -> pd.DataFrame:
+    """Report ordinary-ESTO component coverage without manufacturing Extended facts."""
     components = rollups[["rolled_esto_flow", "components"]].copy()
     components["component_esto_flow"] = components["components"].str.split("|")
     components = components.explode("component_esto_flow").drop(columns="components")
@@ -103,32 +119,13 @@ def audit_component_sums(
         .sum()
         .rename(columns={"esto_product": "component_esto_product", "value": "component_total"})
     )
-    targets = common_rows.loc[
-        common_rows["component_esto_flow"].isin(set(rollups["rolled_esto_flow"])),
-        ["comparison_scope", "common_row_id", "component_esto_flow", "component_esto_product"],
-    ].drop_duplicates()
-    fact = comparison_fact.loc[comparison_fact["source_system"].eq("ESTO_EXTENDED")].copy()
-    fact["value"] = pd.to_numeric(fact["value"], errors="coerce").fillna(0.0)
-    observed = targets.merge(fact, on=["comparison_scope", "common_row_id"], how="left")
-    observed = observed.merge(
-        raw,
-        left_on=["component_esto_flow", "component_esto_product", *VALUE_GROUP_COLUMNS],
-        right_on=["rolled_esto_flow", "component_esto_product", *VALUE_GROUP_COLUMNS],
-        how="left",
+    raw["status"] = raw["component_total"].ne(0.0).map(
+        {True: "observed_ordinary_esto_component_coverage", False: "no_data"}
     )
-    observed["component_total"] = observed["component_total"].fillna(0.0)
-    observed["value"] = observed["value"].fillna(0.0)
-    observed["difference"] = observed["value"] - observed["component_total"]
-    observed["status"] = "passed"
-    no_data = observed["value"].eq(0.0) & observed["component_total"].eq(0.0)
-    observed.loc[no_data, "status"] = "no_data"
-    observed.loc[~no_data & observed["difference"].abs().gt(1e-8), "status"] = "failed"
-    return observed[
-        [
-            "comparison_scope", "component_esto_flow", "component_esto_product", *VALUE_GROUP_COLUMNS,
-            "component_total", "value", "difference", "status",
-        ]
-    ]
+    return raw[[
+        "rolled_esto_flow", "component_esto_product", *VALUE_GROUP_COLUMNS,
+        "component_total", "status",
+    ]]
 
 
 def audit_alias_cooccurrence(raw_leap: pd.DataFrame) -> pd.DataFrame:

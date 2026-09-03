@@ -14,33 +14,15 @@ if str(REPO_ROOT) not in sys.path:
 
 from codebase.mapping_tools.power_all_producers_certification import (  # noqa: E402
     audit_alias_cooccurrence,
-    audit_component_sums,
+    audit_ordinary_esto_component_coverage,
     audit_source_once_delivery,
+    audit_structural_component_definitions,
     registered_power_rollups,
 )
 
 
 def _resolve(path: str | Path) -> Path:
     return Path(str(path).replace("\\", "/")) if Path(path).is_absolute() else REPO_ROOT / path
-
-
-def _load_esto_extended_component_values(component_flows: set[str]) -> pd.DataFrame:
-    """Load only the published ESTO Extended component observations to long form."""
-    source = pd.read_csv(_resolve("data/esto_extended.csv"))
-    source = source.loc[source["flows"].isin(component_flows)]
-    year_columns = [column for column in source.columns if str(column).isdigit()]
-    values = source.melt(
-        id_vars=["economy", "flows", "products"],
-        value_vars=year_columns,
-        var_name="year",
-        value_name="value",
-    ).rename(columns={"flows": "esto_flow", "products": "esto_product"})
-    values["economy"] = values["economy"].astype(str).str.replace(
-        r"^(\\d{2})([A-Z]+)$", r"\\1_\\2", regex=True
-    )
-    values["scenario"] = "historical"
-    values["year"] = pd.to_numeric(values["year"], errors="raise").astype(int)
-    return values
 
 
 def run_certification(output_dir: Path | None = None) -> dict[str, object]:
@@ -59,13 +41,11 @@ def run_certification(output_dir: Path | None = None) -> dict[str, object]:
     source_detail, source_summary = audit_source_once_delivery(source_lineage, targets)
     raw_leap = pd.read_csv(_resolve("results/mapping_relationships/raw_leap_results.csv"))
     aliases = audit_alias_cooccurrence(raw_leap)
-    component = audit_component_sums(
-        _load_esto_extended_component_values(
-            set(pd.read_excel(axis, sheet_name="esto_rollup_rules", dtype=str).fillna("").loc[
-                lambda d: d["rollup_context"].eq("power_process_comparison"), "input_esto_flow"
-            ])
-        ),
-        pd.read_csv(_resolve("results/common_esto/common_esto_comparison_fact.csv.gz")),
+    ordinary_component_coverage = audit_ordinary_esto_component_coverage(
+        pd.read_csv(_resolve("results/mapping_relationships/esto_results_exact_rows.csv.gz")),
+        rollups,
+    )
+    structural_components = audit_structural_component_definitions(
         pd.read_csv(_resolve("results/common_esto/common_esto_rows.csv")),
         rollups,
     )
@@ -110,13 +90,15 @@ def run_certification(output_dir: Path | None = None) -> dict[str, object]:
     ])
     exceptions = pd.concat([
         source_detail.loc[source_detail["status"].eq("failed")],
-        component.loc[component["status"].eq("failed")],
+        structural_components.loc[
+            structural_components["status"].eq("missing_structural_target")
+        ],
         static_rows.loc[static_rows["status"].eq("failed")],
     ], ignore_index=True, sort=False)
     summary = pd.DataFrame([
         {"check": "source_once_delivery", "status": "passed" if source_summary["failures"].sum() == 0 else "failed", "observations": int(source_summary["observations"].sum()), "exceptions": int(source_summary["failures"].sum())},
-        {"check": "esto_extended_component_sum", "status": "passed" if not component["status"].eq("failed").any() else "failed", "observations": int(component["status"].ne("no_data").sum()), "exceptions": int(component["status"].eq("failed").sum())},
-        {"check": "esto_extended_component_sum_no_data", "status": "no_data", "observations": int(component["status"].eq("no_data").sum()), "exceptions": 0},
+        {"check": "extended_structural_component_definition", "status": "passed" if not structural_components["status"].eq("missing_structural_target").any() else "failed", "observations": len(structural_components), "exceptions": int(structural_components["status"].eq("missing_structural_target").sum())},
+        {"check": "ordinary_esto_component_coverage", "status": "info", "observations": int(ordinary_component_coverage["status"].eq("observed_ordinary_esto_component_coverage").sum()), "exceptions": 0},
         *static_rows.assign(exceptions=0).to_dict("records"),
         {"check": "alias_double_count_risk", "status": "passed" if not aliases["status"].eq("double_count_risk").any() else "review", "observations": len(aliases), "exceptions": int(aliases["status"].eq("double_count_risk").sum())},
     ])

@@ -2,8 +2,9 @@ import pandas as pd
 
 from codebase.mapping_tools.power_all_producers_certification import (
     audit_alias_cooccurrence,
-    audit_component_sums,
+    audit_ordinary_esto_component_coverage,
     audit_source_once_delivery,
+    audit_structural_component_definitions,
     registered_power_rollups,
 )
 
@@ -31,13 +32,17 @@ def test_source_delivery_and_alias_cooccurrence_are_observation_specific() -> No
     assert aliases.loc[0, "status"] == "double_count_risk"
 
 
-def test_component_sum_compares_two_producer_observations_to_one_common_row() -> None:
+def test_power_certification_separates_structural_targets_from_ordinary_esto_coverage() -> None:
     rollups = pd.DataFrame([{"rolled_esto_flow": "09.01,09.02 Combined", "components": "09.01 A|09.02 A"}])
     raw = pd.DataFrame([
         {"economy": "01_AUS", "scenario": "historical", "year": 2023, "esto_flow": "09.01 A", "esto_product": "Coal", "value": 2},
         {"economy": "01_AUS", "scenario": "historical", "year": 2023, "esto_flow": "09.02 A", "esto_product": "Coal", "value": 3},
     ])
-    common = pd.DataFrame([{"comparison_scope": "scope", "common_row_id": "row", "component_esto_flow": "09.01,09.02 Combined", "component_esto_product": "Coal"}])
-    fact = pd.DataFrame([{"comparison_scope": "scope", "source_system": "ESTO_EXTENDED", "common_row_id": "row", "economy": "01_AUS", "scenario": "historical", "year": 2023, "value": 5}])
-    result = audit_component_sums(raw, fact, common, rollups)
-    assert result.loc[0, "status"] == "passed"
+    common = pd.DataFrame([{"comparison_scope": "scope", "component_esto_flow": "09.01,09.02 Combined"}])
+
+    structural = audit_structural_component_definitions(common, rollups)
+    coverage = audit_ordinary_esto_component_coverage(raw, rollups)
+
+    assert set(structural["status"]) == {"passed"}
+    assert coverage.loc[0, "component_total"] == 5
+    assert coverage.loc[0, "status"] == "observed_ordinary_esto_component_coverage"
