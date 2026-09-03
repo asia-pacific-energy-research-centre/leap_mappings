@@ -95,8 +95,24 @@ an Extended numeric series. Numeric source rows carry
 `fact_value_provenance=observed_ordinary_esto`; this is separate from
 `is_exact_row`, which remains structural mapping metadata.
 
+**Checkpoint 3A — portable mapping-chain contract complete (2026-09-03):**
+The portable chain now requires
+`config.esto_extended_catalogue_path`, validates it with the numeric-free
+catalogue validator, and uses it only as a structural gate. It reuses the
+selected ordinary `esto_exact_rows_path` under both `ESTO` and
+`ESTO_EXTENDED` source identities, carrying
+`fact_value_provenance=observed_ordinary_esto`; it never reads the catalogue
+as values. `config.esto_extended_table_path` and the retired
+`prepare_esto_extended_exact_rows()` API fail closed with migration errors.
+Portable fast-path output now writes component lineage, and the public Common
+ESTO fact contract is `v2` with `fact_value_provenance` as an explicit fact
+key/column.
+
 **Remaining cross-repo cutover:** `leap_initialisation` must stop packaging and
-selecting legacy Extended vintages for the portable chain; `leap_dashboard`
+selecting legacy Extended vintages for the portable chain, package the
+numeric-free catalogue, pass it as `config.esto_extended_catalogue_path`,
+drop `config.esto_extended_table_path`, and accept the Common ESTO fact
+contract v2 provenance column. `leap_dashboard`
 must consume the fact-layer provenance, label any downstream estimates, and
 break stacked/total traces across missing years; then refresh the generated
 `leap_review_web_app/runtime/` closure in a clean deployment worktree. Do not

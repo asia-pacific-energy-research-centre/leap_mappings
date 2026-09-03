@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 
-CONTRACT_VERSION = "common_esto_output_contract_v1"
+CONTRACT_VERSION = "common_esto_output_contract_v2"
 FACT_FILENAME = "common_esto_comparison_fact.csv.gz"
 METADATA_FILENAME = "common_esto_row_metadata.csv"
 MANIFEST_FILENAME = "common_esto_output_contract.json"
@@ -23,6 +23,7 @@ MANIFEST_FILENAME = "common_esto_output_contract.json"
 FACT_COLUMNS = [
     "comparison_scope",
     "source_system",
+    "fact_value_provenance",
     "economy",
     "scenario",
     "year",
@@ -59,6 +60,7 @@ BOOLEAN_METADATA_COLUMNS = [
 LEGACY_COMPARISON_COLUMNS = [
     "comparison_scope",
     "source_system",
+    "fact_value_provenance",
     "economy",
     "scenario",
     "year",
@@ -195,7 +197,7 @@ def build_common_esto_output_tables(
     if fact_df.duplicated(FACT_KEY_COLUMNS, keep=False).any():
         examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
         raise ValueError(
-            "Common ESTO fact rows are not unique on the six-column fact key. "
+            "Common ESTO fact rows are not unique on the seven-column fact key. "
             f"Examples: {examples}"
         )
 
