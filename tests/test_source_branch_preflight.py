@@ -5,11 +5,13 @@ import json
 import pandas as pd
 
 from codebase.mapping_tools.source_branch_preflight import (
+    SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE,
     apply_all_demand_detail_fallbacks,
     apply_source_branch_fallbacks,
     build_all_demand_representation_status,
     check_all_demand_aggregated_overlap,
     get_demand_sectors_without_detail,
+    load_source_branch_fallback_rules,
     resolve_components_for_economy,
     run_leap_source_branch_preflight,
 )
@@ -42,6 +44,21 @@ def _leap_rows() -> pd.DataFrame:
             {"economy": "20_USA", "scenario": "Reference", "year": 2040, "leap_flow": "CHP interim", "leap_product": "Natural gas", "value": 5.0},
             # Unrelated branch untouched.
             {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Oil Refining", "leap_product": "Crude oil", "value": 7.0},
+        ]
+    )
+
+
+def _parent_reconciliation_rules() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "rule_id": "SBF-004",
+                "standard_branch": "Electricity Generation",
+                "interim_branch": "",
+                "action": SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE,
+                "include": "True",
+                "note": "",
+            }
         ]
     )
 
@@ -84,6 +101,103 @@ class TestScenario5InterimOnly:
         assert len(retained) == 1
         assert retained.iloc[0]["interim_total_retained"] == 5.0
         assert retained.iloc[0]["interim_total_suppressed"] == 0.0
+
+
+class TestScenario4ReconciledParent:
+    def test_parent_action_is_accepted_by_the_rule_loader(self, tmp_path) -> None:
+        rules_path = tmp_path / "source_branch_fallback_rules.csv"
+        _parent_reconciliation_rules().to_csv(rules_path, index=False)
+
+        loaded = load_source_branch_fallback_rules(rules_path)
+
+        assert loaded["action"].tolist() == [
+            SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE
+        ]
+
+    def test_exact_multi_product_detail_suppresses_parent_without_mutating_input(self) -> None:
+        source = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Gas", "value": 20.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Gas plants", "leap_product": "Gas", "value": 20.0},
+            ]
+        )
+        snapshot = source.copy(deep=True)
+
+        adjusted, audit = apply_source_branch_fallbacks(source, _parent_reconciliation_rules())
+
+        pd.testing.assert_frame_equal(source, snapshot)
+        assert adjusted.loc[adjusted["leap_flow"].eq("Electricity Generation"), "value"].tolist() == [0.0, 0.0]
+        assert adjusted.loc[adjusted["leap_flow"].str.contains("/"), "value"].tolist() == [10.0, 20.0]
+        row = audit.iloc[0]
+        assert row["status"] == "parent_zeroed_detailed_reconciled"
+        assert row["reconciliation_status"] == "exact_product_reconciliation"
+        assert row["interim_rows_zeroed"] == 2
+
+    def test_value_mismatch_retains_parent(self) -> None:
+        source = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 9.0},
+            ]
+        )
+
+        adjusted, audit = apply_source_branch_fallbacks(source, _parent_reconciliation_rules())
+
+        assert adjusted.loc[adjusted["leap_flow"].eq("Electricity Generation"), "value"].iloc[0] == 10.0
+        assert audit.iloc[0]["status"] == "parent_retained_descendants_incomplete_or_mismatch"
+        assert audit.iloc[0]["reconciliation_status"] == "product_set_or_value_mismatch"
+
+    def test_missing_descendant_product_retains_parent(self) -> None:
+        source = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Gas", "value": 20.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 10.0},
+            ]
+        )
+
+        adjusted, audit = apply_source_branch_fallbacks(source, _parent_reconciliation_rules())
+
+        assert adjusted.loc[adjusted["leap_flow"].eq("Electricity Generation"), "value"].tolist() == [10.0, 20.0]
+        assert audit.iloc[0]["status"] == "parent_retained_descendants_incomplete_or_mismatch"
+
+    def test_descendant_only_extra_product_retains_parent(self) -> None:
+        source = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Gas plants", "leap_product": "Gas", "value": 0.0},
+            ]
+        )
+
+        adjusted, audit = apply_source_branch_fallbacks(source, _parent_reconciliation_rules())
+
+        assert adjusted.loc[adjusted["leap_flow"].eq("Electricity Generation"), "value"].iloc[0] == 10.0
+        assert audit.iloc[0]["status"] == "parent_retained_descendants_incomplete_or_mismatch"
+
+    def test_parent_selection_is_isolated_by_scenario_and_year(self) -> None:
+        source = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Target", "year": 2030, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Target", "year": 2030, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 8.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2040, "leap_flow": "Electricity Generation", "leap_product": "Coal", "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "year": 2040, "leap_flow": "Electricity Generation/Coal plants", "leap_product": "Coal", "value": 8.0},
+            ]
+        )
+
+        adjusted, audit = apply_source_branch_fallbacks(source, _parent_reconciliation_rules())
+
+        parents = adjusted[adjusted["leap_flow"].eq("Electricity Generation")].set_index(["scenario", "year"])["value"].to_dict()
+        assert parents == {("Reference", 2030): 0.0, ("Target", 2030): 10.0, ("Reference", 2040): 10.0}
+        assert audit.set_index(["scenario", "year"])["status"].to_dict() == {
+            ("Reference", 2030): "parent_zeroed_detailed_reconciled",
+            ("Target", 2030): "parent_retained_descendants_incomplete_or_mismatch",
+            ("Reference", 2040): "parent_retained_descendants_incomplete_or_mismatch",
+        }
 
 
 class TestScenario6AllDemandWarning:

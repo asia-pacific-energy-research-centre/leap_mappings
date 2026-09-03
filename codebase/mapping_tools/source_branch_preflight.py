@@ -13,6 +13,11 @@ Two configuration-owned checks:
    an audit row is written. The parsed raw input file is never altered.
    Interim-only periods are retained unchanged.
 
+   The same registry can also name an aggregate parent without an interim
+   branch. ``suppress_parent_when_descendants_reconcile`` suppresses that exact
+   parent only when its detailed descendants have the identical fuel set and
+   values for the same economy/scenario/year.
+
 2. ``config/all_demand_aggregated_components.json`` — the human-owned record of
    placeholder components and their complete detailed replacements. Selection
    is structural per economy/scenario/year: placeholder-only data is retained,
@@ -43,6 +48,7 @@ import pandas as pd
 
 #%%
 WARN_AND_ZERO_INTERIM = "warn_and_zero_interim"
+SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE = "suppress_parent_when_descendants_reconcile"
 
 FALLBACK_RULE_COLUMNS = ["rule_id", "standard_branch", "interim_branch", "action", "include", "note"]
 FALLBACK_AUDIT_COLUMNS = [
@@ -59,6 +65,7 @@ FALLBACK_AUDIT_COLUMNS = [
     "interim_total_suppressed",
     "interim_total_retained",
     "interim_rows_zeroed",
+    "reconciliation_status",
 ]
 
 ALL_DEMAND_COMPONENT_COLUMNS = [
@@ -158,13 +165,19 @@ def load_source_branch_fallback_rules(path: Path) -> pd.DataFrame:
         {
             _str(action)
             for action in rules_df["action"]
-            if _str(action) and _str(action) != WARN_AND_ZERO_INTERIM
+            if _str(action)
+            and _str(action)
+            not in {
+                WARN_AND_ZERO_INTERIM,
+                SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE,
+            }
         }
     )
     if unknown_actions:
         raise ValueError(
             f"Unsupported source-branch fallback actions: {unknown_actions}. "
-            f"Only {WARN_AND_ZERO_INTERIM!r} is implemented."
+            f"Supported actions are {WARN_AND_ZERO_INTERIM!r} and "
+            f"{SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE!r}."
         )
     return rules_df[FALLBACK_RULE_COLUMNS]
 
@@ -195,13 +208,15 @@ def apply_source_branch_fallbacks(
     leap_df: pd.DataFrame,
     rules_df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Apply the ``warn_and_zero_interim`` policy to parsed LEAP working data.
+    """Apply configured source-branch adjustments to a copied LEAP frame.
 
     Returns the adjusted working frame plus one audit row per rule and period
-    where the interim branch had non-zero energy. ``status`` is
+    where the interim branch had non-zero energy. For the interim action, ``status`` is
     ``interim_zeroed`` when the standard branch was also non-zero (values were
     suppressed) and ``interim_only_retained`` when the interim branch was the
-    only active branch (values kept).
+    only active branch (values kept). The parent action emits one audit row for
+    every period containing the exact parent, recording whether full
+    per-product reconciliation permitted suppression.
     """
     if rules_df is None or rules_df.empty or leap_df is None or leap_df.empty:
         return leap_df, pd.DataFrame(columns=FALLBACK_AUDIT_COLUMNS)
@@ -214,6 +229,99 @@ def apply_source_branch_fallbacks(
         interim_branch = _str(rule.get("interim_branch"))
         rule_id = _str(rule.get("rule_id"))
         action = _str(rule.get("action")) or WARN_AND_ZERO_INTERIM
+        if action == SUPPRESS_PARENT_WHEN_DESCENDANTS_RECONCILE:
+            if not standard_branch:
+                continue
+            parent_mask = flows.astype(str).str.strip().eq(standard_branch)
+            descendant_mask = branch_mask(flows, standard_branch) & ~parent_mask
+            parent_rows = adjusted_df[parent_mask].copy()
+            if parent_rows.empty:
+                continue
+
+            group_columns = [*PERIOD_COLUMNS, "leap_product"]
+            parent_totals = (
+                parent_rows.assign(
+                    _value=pd.to_numeric(parent_rows["value"], errors="coerce").fillna(0.0)
+                )
+                .groupby(group_columns, as_index=False)["_value"]
+                .sum()
+                .rename(columns={"_value": "parent_total"})
+            )
+            descendant_rows = adjusted_df[descendant_mask].copy()
+            descendant_totals = (
+                descendant_rows.assign(
+                    _value=pd.to_numeric(descendant_rows["value"], errors="coerce").fillna(0.0)
+                )
+                .groupby(group_columns, as_index=False)["_value"]
+                .sum()
+                .rename(columns={"_value": "descendant_total"})
+            )
+            product_comparison = parent_totals.merge(
+                descendant_totals,
+                on=group_columns,
+                how="outer",
+                indicator=True,
+            )
+            product_comparison["parent_total"] = product_comparison["parent_total"].fillna(0.0)
+            product_comparison["descendant_total"] = product_comparison["descendant_total"].fillna(0.0)
+            tolerance = (
+                1e-9
+                * product_comparison[["parent_total", "descendant_total"]]
+                .abs()
+                .max(axis=1)
+                .clip(lower=1.0)
+            )
+            product_comparison["is_exact_product_match"] = (
+                product_comparison["_merge"].eq("both")
+                & product_comparison["parent_total"]
+                .sub(product_comparison["descendant_total"])
+                .abs()
+                .le(tolerance)
+            )
+            period_comparison = product_comparison.groupby(
+                PERIOD_COLUMNS,
+                as_index=False,
+            ).agg(
+                parent_total=("parent_total", "sum"),
+                descendant_total=("descendant_total", "sum"),
+                exact_product_reconciliation=("is_exact_product_match", "all"),
+            )
+            for _, period in period_comparison.iterrows():
+                key = tuple(period[column] for column in PERIOD_COLUMNS)
+                period_parent_mask = parent_mask.copy()
+                for column, value in zip(PERIOD_COLUMNS, key):
+                    period_parent_mask &= adjusted_df[column].eq(value)
+                reconciled = bool(period["exact_product_reconciliation"])
+                rows_zeroed = int(period_parent_mask.sum()) if reconciled else 0
+                if reconciled:
+                    adjusted_df.loc[period_parent_mask, "value"] = 0.0
+                audit_rows.append(
+                    {
+                        "rule_id": rule_id,
+                        "standard_branch": standard_branch,
+                        "interim_branch": "",
+                        "economy": key[0],
+                        "scenario": key[1],
+                        "year": key[2],
+                        "action": action,
+                        "status": (
+                            "parent_zeroed_detailed_reconciled"
+                            if reconciled
+                            else "parent_retained_descendants_incomplete_or_mismatch"
+                        ),
+                        "standard_total": float(period["parent_total"]),
+                        "interim_total_original": float(period["descendant_total"]),
+                        "interim_total_suppressed": 0.0,
+                        "interim_total_retained": float(period["descendant_total"]),
+                        "interim_rows_zeroed": rows_zeroed,
+                        "reconciliation_status": (
+                            "exact_product_reconciliation"
+                            if reconciled
+                            else "product_set_or_value_mismatch"
+                        ),
+                    }
+                )
+            continue
         if not standard_branch or not interim_branch:
             continue
         standard_mask = branch_mask(flows, standard_branch)
@@ -260,6 +368,7 @@ def apply_source_branch_fallbacks(
                     "interim_total_suppressed": suppressed,
                     "interim_total_retained": retained,
                     "interim_rows_zeroed": zeroed_rows,
+                    "reconciliation_status": "not_applicable",
                 }
             )
     audit_df = pd.DataFrame(audit_rows, columns=FALLBACK_AUDIT_COLUMNS)
