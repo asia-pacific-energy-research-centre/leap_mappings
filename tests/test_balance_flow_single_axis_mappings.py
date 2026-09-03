@@ -231,10 +231,17 @@ def test_electricity_generation_processes_map_to_stable_esto_extended_flows() ->
     expected_rows = {
         (
             f"Electricity Generation/{branch}",
-            f"{prefix}.{suffix} {label}",
+            f"09.01.01.{suffix},09.02.01.{suffix} {label}",
             "ESTO_EXTENDED",
         )
         for branch, (suffix, label) in expected_processes.items()
+        if branch != "Battery"
+    } | {
+        (
+            "Electricity Generation/Battery",
+            f"{prefix}.16 Storage",
+            "ESTO_EXTENDED",
+        )
         for prefix in ("09.01.01", "09.02.01")
     }
 
@@ -243,10 +250,9 @@ def test_electricity_generation_processes_map_to_stable_esto_extended_flows() ->
     alias_rows = {
         (
             "Electricity Generation/Solar_rooftop",
-            f"{prefix}.14 Solar rooftop",
+            "09.01.01.14,09.02.01.14 Solar rooftop",
             "ESTO_EXTENDED",
-        )
-        for prefix in ("09.01.01", "09.02.01")
+        ),
     } | {
         (
             f"Electricity Generation/{branch}",
@@ -264,7 +270,12 @@ def test_electricity_generation_processes_map_to_stable_esto_extended_flows() ->
         dtype=str,
     ).fillna("")
     registered_flows = set(extended_pairs["esto_flow"])
-    assert {row[1] for row in expected_rows | alias_rows} <= registered_flows
+    component_flows = {
+        f"{prefix}.{suffix} {label}"
+        for _, (suffix, label) in expected_processes.items()
+        for prefix in ("09.01.01", "09.02.01")
+    }
+    assert component_flows <= registered_flows
 
 
 #%%

@@ -1269,6 +1269,17 @@ Index. Full detail for each ID follows. `Wk` is the target handover week
   completed with zero fan-out, separated non-expanding frontiers, and 100%
   mapped-row aggregation preservation. The review workbook is
   `outputs/power_all_producers_review_20260903/power_all_producers_mapping_review.xlsx`.
+- **2026-09-03 focused certification:** Remains `review_in_progress`, not
+  complete. All 27 two-component producer rollups, 1,712 non-zero LEAP/Ninth
+  once-only deliveries, imports, Coal-H2, producer-target exclusion, Other +
+  solid-biomass non-overlap, and the current alias inventory pass. The sole
+  Power-specific blocker is comparison-basis evidence: 1,157 non-zero Common
+  ESTO Extended all-producers values do not equal the sum of the published
+  main-activity/autoproducer detail observations (2,334 more are zero/no-data),
+  because Stage 3 uses ordinary ESTO history as the ESTO Extended value source.
+  Decide and document the intended ESTO Extended value basis, then rerun
+  `codebase/power_all_producers_certification_workflow.py`; do not alter the
+  frozen Power mapping rows to address this evidence gap.
 
 ### MAPQ-030 — Rebuild subtotal classifications across all mapping sheets (superseded)
 
