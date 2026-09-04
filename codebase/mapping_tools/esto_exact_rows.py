@@ -65,8 +65,15 @@ def _filter_extended_to_native_rows(
         return extended_df
     native_name = "00APEC_" + name[len("esto_extended_") :]
     native_name = native_name.rsplit(".", 1)[0] + ".csv"
-    native_path = extended_path.with_name(native_name)
-    if not native_path.is_file():
+    candidates = [extended_path.with_name(native_name)]
+    # Portable bundles keep mapping data and the native ESTO issues in
+    # sibling repository roots (leap_mappings/data and leap_initialisation/data).
+    if len(extended_path.parents) >= 3:
+        candidates.append(
+            extended_path.parents[2] / "leap_initialisation" / "data" / native_name
+        )
+    native_path = next((path for path in candidates if path.is_file()), None)
+    if native_path is None:
         return extended_df
     native = pd.read_csv(native_path, usecols=["economy", "flows", "products"], dtype=object)
     keys = set(map(tuple, native[["economy", "flows", "products"]].itertuples(index=False, name=None)))
