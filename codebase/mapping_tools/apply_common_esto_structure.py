@@ -1230,60 +1230,6 @@ def apply_common_structure(
     return comparison_df, missing_map_df, mapped_source_df
 
 
-def allocate_power_parent_by_leap_base_year_share(
-    comparison_df: pd.DataFrame,
-    common_rows_df: pd.DataFrame,
-    *,
-    base_year: int,
-) -> pd.DataFrame:
-    """Allocate historical Power parent rows to LEAP technology children."""
-    required = {"source_system", "common_flow_code", "common_product_code", "year", "value"}
-    if comparison_df.empty or not required.issubset(comparison_df.columns):
-        return comparison_df
-    parent_code = "09.01.01,09.02.01"
-    children = comparison_df[
-        comparison_df["source_system"].eq("LEAP")
-        & comparison_df["common_flow_code"].astype(str).str.startswith("09.01.01.")
-        & comparison_df["year"].eq(int(base_year))
-    ].copy()
-    if children.empty:
-        return comparison_df
-    child_cols = [
-        "common_row_id", "common_flow_code", "common_flow_name", "common_flow_label",
-        "common_product_code", "common_product_name", "common_product_label",
-        "common_row_basis", "is_exact_row", "requires_rollup", "is_non_expanding_rollup",
-        "non_expanding_rollup_id", "rollup_mode", "source_aggregate_labels", "source_aggregate_group_ids",
-    ]
-    child_cols = [c for c in child_cols if c in children.columns]
-    children = children[child_cols + ["scenario", "economy", "value"]].drop_duplicates(
-        ["economy", "common_product_code", "common_flow_code"]
-    )
-    children["_abs"] = children["value"].abs()
-    children["_denom"] = children.groupby(["economy", "scenario", "common_product_code"])["_abs"].transform("sum")
-    children = children[children["_denom"].gt(0)].copy()
-    if children.empty:
-        return comparison_df
-    children["_share"] = children["_abs"] / children["_denom"]
-    parents = comparison_df[
-        comparison_df["source_system"].isin(["ESTO", "ESTO_EXTENDED"])
-        & comparison_df["common_flow_code"].eq(parent_code)
-    ].copy()
-    if parents.empty:
-        return comparison_df
-    allocated = parents.merge(children, on=["economy", "common_product_code"], suffixes=("", "_child"), how="inner")
-    if allocated.empty:
-        return comparison_df
-    allocated["value"] = allocated["value"] * allocated["_share"]
-    for col in child_cols:
-        if col in allocated.columns and f"{col}_child" in allocated.columns:
-            allocated[col] = allocated[f"{col}_child"]
-    allocated = allocated[comparison_df.columns.tolist()]
-    remove_keys = parents[["source_system", "economy", "scenario", "year", "common_product_code"]].drop_duplicates()
-    out = comparison_df.merge(remove_keys.assign(_remove=True), on=["source_system", "economy", "scenario", "year", "common_product_code"], how="left")
-    out = out[~(out["_remove"].eq(True) & out["common_flow_code"].eq(parent_code))].drop(columns=["_remove"])
-    return pd.concat([out, allocated], ignore_index=True).sort_values(OUTPUT_COLUMNS[:-1]).reset_index(drop=True)
-
-
 def _apply_common_structure_by_source_economy_chunks(
     source_df: pd.DataFrame,
     common_rows_df: pd.DataFrame,
@@ -2467,11 +2413,6 @@ def run_common_esto_comparison_fast_path(
         active_source_df,
         adjusted_common_rows_df,
         comparison_scope_systems=comparison_scope_systems,
-    )
-    comparison_df = allocate_power_parent_by_leap_base_year_share(
-        comparison_df,
-        adjusted_common_rows_df,
-        base_year=resolved_esto_base_year,
     )
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     wide_year_df = build_wide_year_output(
