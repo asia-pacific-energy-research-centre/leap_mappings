@@ -50,6 +50,30 @@ def normalise_esto_flow_labels(esto_df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _filter_extended_to_native_rows(
+    extended_df: pd.DataFrame, extended_path: Path
+) -> pd.DataFrame:
+    """Keep only rows whose keys occur in the matching native ESTO issue.
+
+    ESTO Extended is built by adding rollups/disaggregations to a native ESTO
+    issue.  Those derived rows are useful for structure, but must not become
+    authoritative historical observations.  The matching native issue lives
+    beside the Extended file as ``00APEC_<vintage>_low_with_subtotals``.
+    """
+    name = extended_path.name
+    if not name.startswith("esto_extended_"):
+        return extended_df
+    native_name = "00APEC_" + name[len("esto_extended_") :]
+    native_name = native_name.rsplit(".", 1)[0] + ".csv"
+    native_path = extended_path.with_name(native_name)
+    if not native_path.is_file():
+        return extended_df
+    native = pd.read_csv(native_path, usecols=["economy", "flows", "products"], dtype=object)
+    keys = set(map(tuple, native[["economy", "flows", "products"]].itertuples(index=False, name=None)))
+    key_index = pd.MultiIndex.from_frame(extended_df[["economy", "flows", "products"]])
+    return extended_df.loc[key_index.isin(keys)].copy()
+
+
 def configured_rollup_reference_pairs(
     relationships_df: pd.DataFrame,
     leap_rollup_rules_df: pd.DataFrame,
@@ -137,6 +161,8 @@ def run_esto_exact_rows_for_path(
         df = pd.read_parquet(data_path)
     else:
         df = pd.read_csv(data_path, dtype=object)
+    if source_system == "ESTO_EXTENDED":
+        df = _filter_extended_to_native_rows(df, Path(data_path))
     df = normalise_esto_flow_labels(df)
     year_cols = [c for c in df.columns if str(c).isdigit()]
     for col in year_cols:
