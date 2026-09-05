@@ -516,6 +516,17 @@ def apply_all_demand_detail_fallbacks(
 
     adjusted_df = leap_df.copy()
     audit_rows: list[dict[str, Any]] = []
+    flow_text = adjusted_df["leap_flow"].astype(str).str.strip()
+    branch_masks: dict[str, pd.Series] = {}
+
+    def cached_branch_mask(branch: str) -> pd.Series:
+        """Build each expensive string-prefix mask once for the full conversion."""
+        if branch not in branch_masks:
+            branch_masks[branch] = flow_text.eq(branch) | flow_text.str.startswith(
+                f"{branch}/"
+            )
+        return branch_masks[branch]
+
     for economy, _ in adjusted_df.groupby("economy", dropna=False):
         resolved = resolve_components_for_economy(components_df, economy)
         for _, component in resolved.iterrows():
@@ -538,7 +549,7 @@ def apply_all_demand_detail_fallbacks(
 
             economy_mask = adjusted_df["economy"].eq(economy)
             placeholder_masks = {
-                branch: economy_mask & branch_mask(adjusted_df["leap_flow"], branch)
+                branch: economy_mask & cached_branch_mask(branch)
                 for branch in placeholder_branches
             }
             placeholder_mask = pd.Series(False, index=adjusted_df.index)
@@ -546,9 +557,7 @@ def apply_all_demand_detail_fallbacks(
                 placeholder_mask |= branch_rows
             detailed_mask = pd.Series(False, index=adjusted_df.index)
             for detailed_branch in detailed_branches:
-                detailed_mask |= economy_mask & branch_mask(
-                    adjusted_df["leap_flow"], detailed_branch
-                )
+                detailed_mask |= economy_mask & cached_branch_mask(detailed_branch)
             relevant_mask = placeholder_mask | detailed_mask
             if not relevant_mask.any():
                 continue
@@ -561,9 +570,7 @@ def apply_all_demand_detail_fallbacks(
                 present = []
                 nonzero = []
                 for branch in detailed_branches:
-                    branch_rows = period_mask & branch_mask(
-                        adjusted_df["leap_flow"], branch
-                    )
+                    branch_rows = period_mask & cached_branch_mask(branch)
                     if not branch_rows.any():
                         continue
                     present.append(branch)
