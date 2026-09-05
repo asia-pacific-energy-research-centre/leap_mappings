@@ -95,6 +95,40 @@ SPECIAL_ALREADY_MAPPED_TEMPLATE_CHILDREN = {
     ("transmission and distribution", "electricity"): "10.02 Transmission and distribution losses / 17 Electricity"
 }
 
+# Display labels for detailed road-transport leaves repeat the vehicle class,
+# making them understandable in flat exports and dashboard legends.
+TRANSPORT_FLOW_LABEL_UPDATES = {
+    "15.02.01.01.01 BEV": "15.02.01.01.01 BEV LCV",
+    "15.02.01.01.02 ICE": "15.02.01.01.02 ICE LCV",
+    "15.02.01.01.03 PHEV": "15.02.01.01.03 PHEV LCV",
+    "15.02.01.02.01 BEV heavy": "15.02.01.02.01 BEV heavy truck",
+    "15.02.01.02.02 BEV medium": "15.02.01.02.02 BEV medium truck",
+    "15.02.01.02.03 FCEV heavy": "15.02.01.02.03 FCEV heavy truck",
+    "15.02.01.02.04 FCEV medium": "15.02.01.02.04 FCEV medium truck",
+    "15.02.01.02.05 ICE heavy": "15.02.01.02.05 ICE heavy truck",
+    "15.02.01.02.06 ICE medium": "15.02.01.02.06 ICE medium truck",
+    "15.02.02.01.01 BEV": "15.02.02.01.01 BEV bus",
+    "15.02.02.01.02 FCEV": "15.02.02.01.02 FCEV bus",
+    "15.02.02.01.03 ICE": "15.02.02.01.03 ICE bus",
+    "15.02.02.02.01 BEV large": "15.02.02.02.01 BEV large LPV",
+    "15.02.02.02.02 BEV medium": "15.02.02.02.02 BEV medium LPV",
+    "15.02.02.02.03 BEV small": "15.02.02.02.03 BEV small LPV",
+    "15.02.02.02.04 EREV large": "15.02.02.02.04 EREV large LPV",
+    "15.02.02.02.05 EREV medium": "15.02.02.02.05 EREV medium LPV",
+    "15.02.02.02.06 EREV small": "15.02.02.02.06 EREV small LPV",
+    "15.02.02.02.07 HEV large": "15.02.02.02.07 HEV large LPV",
+    "15.02.02.02.08 HEV medium": "15.02.02.02.08 HEV medium LPV",
+    "15.02.02.02.09 HEV small": "15.02.02.02.09 HEV small LPV",
+    "15.02.02.02.10 ICE large": "15.02.02.02.10 ICE large LPV",
+    "15.02.02.02.11 ICE medium": "15.02.02.02.11 ICE medium LPV",
+    "15.02.02.02.12 ICE small": "15.02.02.02.12 ICE small LPV",
+    "15.02.02.02.13 PHEV large": "15.02.02.02.13 PHEV large LPV",
+    "15.02.02.02.14 PHEV medium": "15.02.02.02.14 PHEV medium LPV",
+    "15.02.02.02.15 PHEV small": "15.02.02.02.15 PHEV small LPV",
+    "15.02.02.03.01 BEV": "15.02.02.03.01 BEV motorcycle",
+    "15.02.02.03.02 ICE": "15.02.02.03.02 ICE motorcycle",
+}
+
 # Stable, append-only identifiers for detailed power-process children.
 #
 # These are deliberately explicit. The previous prototype assigned ordinals by
@@ -148,6 +182,16 @@ def _normalise_text(value: object) -> str:
     if pd.isna(value):
         return ""
     return " ".join(str(value).split())
+
+
+def apply_transport_flow_labels(frame: pd.DataFrame) -> pd.DataFrame:
+    """Apply stable, vehicle-explicit labels to an ESTO-shaped frame."""
+    result = frame.copy()
+    if "flows" in result:
+        result["flows"] = result["flows"].map(
+            lambda value: TRANSPORT_FLOW_LABEL_UPDATES.get(_normalise_text(value), value)
+        )
+    return result
 
 
 def _normalise_path(value: object) -> str:
@@ -1599,6 +1643,7 @@ def build_esto_extended(
 
     all_generated = pd.concat([all_generated, disaggregated_rows], ignore_index=True)
     extended = pd.concat([esto, all_generated], ignore_index=True)
+    extended = apply_transport_flow_labels(extended)
     extended = apply_general_subtotal_labels(extended, all_flow_labels, all_product_labels)
     disaggregation_value_audit = audit_even_disaggregation_values(extended, template_candidate_rows)
     key_columns = ["economy", "flows", "products"]

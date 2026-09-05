@@ -136,7 +136,8 @@ otherwise distinct Common ESTO rows.
 | FCEV where the target vehicle has an FCEV child | FCEV |
 | FCEV where the target vehicle has no FCEV child | BEV |
 | PHEV where the target vehicle has a PHEV child | PHEV |
-| PHEV for buses, motorcycles, and medium/heavy trucks, which have no PHEV child | BEV |
+| PHEV for buses and motorcycles, which have no PHEV child | BEV |
+| PHEV for medium/heavy trucks | PHEV medium truck / PHEV heavy truck |
 | HEV | ICE |
 | EREV | PHEV |
 | Diesel engine | ICE |
@@ -146,9 +147,9 @@ otherwise distinct Common ESTO rows.
 | LNG | ICE |
 
 Both Ninth gasoline-PHEV and diesel-PHEV branches can map to the same
-size-specific PHEV category where that category exists. The fuel/product axis
-must preserve the gasoline, diesel, biodiesel, electricity, or other product
-distinction.
+size-specific or truck-size PHEV category where that category exists. The
+fuel/product axis must preserve the gasoline, diesel, biodiesel, electricity,
+or other product distinction.
 
 The FCEV and PHEV fallback decisions apply only when the corresponding detailed
 LEAP/ESTO Extended child does not exist. They do not replace a genuine FCEV or
