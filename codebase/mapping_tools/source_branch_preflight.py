@@ -72,8 +72,10 @@ ALL_DEMAND_COMPONENT_COLUMNS = [
     "economy",
     "aggregated_branch",
     "component_branch",
+    "placeholder_branches",
     "detailed_branches",
     "detail_activation",
+    "nonzero_tolerance",
     "include",
     "note",
 ]
@@ -83,13 +85,18 @@ ALL_DEMAND_SELECTION_AUDIT_COLUMNS = [
     "year",
     "component_branch",
     "placeholder_branch",
+    "active_placeholder_branches",
+    "multiple_placeholder_branches_active",
     "detailed_branches",
     "detail_activation",
     "present_detailed_branches",
+    "nonzero_detailed_branches",
     "status",
     "placeholder_total_original",
     "placeholder_total_suppressed",
     "placeholder_rows_zeroed",
+    "detailed_total_suppressed",
+    "detailed_rows_zeroed",
 ]
 ALL_DEMAND_REPRESENTATION_STATUS_COLUMNS = [
     "economy",
@@ -121,6 +128,7 @@ ALL_DEMAND_REMINDER = (
 
 PERIOD_COLUMNS = ["economy", "scenario", "year"]
 ALL_DETAIL_BRANCHES_PRESENT = "all_present"
+ALL_DETAIL_BRANCHES_NONZERO = "all_nonzero"
 
 
 def _str(value: Any) -> str:
@@ -150,6 +158,17 @@ def _placeholder_branch(row: pd.Series) -> str:
     aggregated = _str(row.get("aggregated_branch"))
     component = _str(row.get("component_branch"))
     return "/".join(value for value in (aggregated, component) if value)
+
+
+def _placeholder_branches(row: pd.Series) -> list[str]:
+    """Return ordered alternative placeholder branches for one component."""
+    configured = row.get("placeholder_branches", "")
+    if isinstance(configured, list):
+        branches = [_str(value) for value in configured]
+    else:
+        branches = [_str(value) for value in _str(configured).split(";")]
+    branches = [branch for branch in branches if branch]
+    return branches or [_placeholder_branch(row)]
 
 
 def load_source_branch_fallback_rules(path: Path) -> pd.DataFrame:
@@ -403,11 +422,17 @@ def load_all_demand_aggregated_components(path: Path) -> pd.DataFrame:
                 "economy": "",
                 "aggregated_branch": aggregated_branch,
                 "component_branch": component_branch,
+                "placeholder_branches": ";".join(
+                    _str(value)
+                    for value in component.get("placeholder_branches", [])
+                    if _str(value)
+                ),
                 "detailed_branches": ";".join(
                     _str(value) for value in component.get("detailed_branches", []) if _str(value)
                 ),
                 "detail_activation": _str(component.get("detail_activation"))
                 or ALL_DETAIL_BRANCHES_PRESENT,
+                "nonzero_tolerance": component.get("nonzero_tolerance", 1e-9),
                 "include": bool(component.get("include_by_default", True)),
                 "note": _str(component.get("note")),
             }
@@ -418,11 +443,17 @@ def load_all_demand_aggregated_components(path: Path) -> pd.DataFrame:
                     "economy": _str(economy),
                     "aggregated_branch": aggregated_branch,
                     "component_branch": component_branch,
+                    "placeholder_branches": ";".join(
+                        _str(value)
+                        for value in component.get("placeholder_branches", [])
+                        if _str(value)
+                    ),
                     "detailed_branches": ";".join(
                         _str(value) for value in component.get("detailed_branches", []) if _str(value)
                     ),
                     "detail_activation": _str(component.get("detail_activation"))
                     or ALL_DETAIL_BRANCHES_PRESENT,
+                    "nonzero_tolerance": component.get("nonzero_tolerance", 1e-9),
                     "include": bool(override.get("include", True)),
                     "note": _str(override.get("note")),
                 }
@@ -442,10 +473,14 @@ def resolve_components_for_economy(components_df: pd.DataFrame, economy: str) ->
     if components_df is None or components_df.empty:
         return pd.DataFrame(columns=ALL_DEMAND_COMPONENT_COLUMNS)
     components_df = components_df.copy()
+    if "placeholder_branches" not in components_df.columns:
+        components_df["placeholder_branches"] = ""
     if "detailed_branches" not in components_df.columns:
         components_df["detailed_branches"] = ""
     if "detail_activation" not in components_df.columns:
         components_df["detail_activation"] = ALL_DETAIL_BRANCHES_PRESENT
+    if "nonzero_tolerance" not in components_df.columns:
+        components_df["nonzero_tolerance"] = 1e-9
     economy = _str(economy)
     scoped_df = components_df[components_df["economy"].map(_str) == economy]
     wildcard_df = components_df[components_df["economy"].map(_str) == ""]
@@ -469,13 +504,12 @@ def apply_all_demand_detail_fallbacks(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Prefer complete detailed demand branches over their placeholder component.
 
-    Selection is structural and period-specific: a zero-valued detailed branch
-    still counts as present. This allows old and updated economies to share one
-    pipeline while preventing double counting when an export happens to contain
-    both structures. For a multi-branch replacement such as Road, every
-    configured detailed branch must be present before the placeholder is
-    suppressed; partial detail retains the placeholder and is explicit in the
-    audit.
+    Selection is period-specific. Most components use structural activation,
+    where a zero-valued detailed branch still counts as present. Components
+    configured as ``all_nonzero`` require every replacement branch to contain
+    non-zero data in that period. This is essential for international transport,
+    whose empty Air and Shipping scaffolding must not replace a populated
+    combined bunker placeholder.
     """
     if leap_df is None or leap_df.empty or components_df is None or components_df.empty:
         return leap_df, pd.DataFrame(columns=ALL_DEMAND_SELECTION_AUDIT_COLUMNS)
@@ -485,17 +519,31 @@ def apply_all_demand_detail_fallbacks(
     for economy, _ in adjusted_df.groupby("economy", dropna=False):
         resolved = resolve_components_for_economy(components_df, economy)
         for _, component in resolved.iterrows():
-            placeholder_branch = _placeholder_branch(component)
+            placeholder_branches = _placeholder_branches(component)
             detailed_branches = _detail_branches(component)
             activation = _str(component.get("detail_activation")) or ALL_DETAIL_BRANCHES_PRESENT
-            if activation != ALL_DETAIL_BRANCHES_PRESENT:
+            try:
+                nonzero_tolerance = abs(float(component.get("nonzero_tolerance", 1e-9)))
+            except (TypeError, ValueError):
+                nonzero_tolerance = 1e-9
+            if activation not in {
+                ALL_DETAIL_BRANCHES_PRESENT,
+                ALL_DETAIL_BRANCHES_NONZERO,
+            }:
                 raise ValueError(
                     f"Unsupported all-demand detail_activation {activation!r}; "
-                    f"only {ALL_DETAIL_BRANCHES_PRESENT!r} is implemented."
+                    f"supported values are {ALL_DETAIL_BRANCHES_PRESENT!r} and "
+                    f"{ALL_DETAIL_BRANCHES_NONZERO!r}."
                 )
 
             economy_mask = adjusted_df["economy"].eq(economy)
-            placeholder_mask = economy_mask & branch_mask(adjusted_df["leap_flow"], placeholder_branch)
+            placeholder_masks = {
+                branch: economy_mask & branch_mask(adjusted_df["leap_flow"], branch)
+                for branch in placeholder_branches
+            }
+            placeholder_mask = pd.Series(False, index=adjusted_df.index)
+            for branch_rows in placeholder_masks.values():
+                placeholder_mask |= branch_rows
             detailed_mask = pd.Series(False, index=adjusted_df.index)
             for detailed_branch in detailed_branches:
                 detailed_mask |= economy_mask & branch_mask(
@@ -510,13 +558,49 @@ def apply_all_demand_detail_fallbacks(
                 period_mask = economy_mask.copy()
                 for column in PERIOD_COLUMNS[1:]:
                     period_mask &= adjusted_df[column].eq(period[column])
-                present = [
+                present = []
+                nonzero = []
+                for branch in detailed_branches:
+                    branch_rows = period_mask & branch_mask(
+                        adjusted_df["leap_flow"], branch
+                    )
+                    if not branch_rows.any():
+                        continue
+                    present.append(branch)
+                    if pd.to_numeric(
+                        adjusted_df.loc[branch_rows, "value"], errors="coerce"
+                    ).fillna(0.0).abs().gt(nonzero_tolerance).any():
+                        nonzero.append(branch)
+                activated = (
+                    nonzero if activation == ALL_DETAIL_BRANCHES_NONZERO else present
+                )
+                complete = len(activated) == len(detailed_branches)
+                structurally_present_placeholders = [
                     branch
-                    for branch in detailed_branches
-                    if (period_mask & branch_mask(adjusted_df["leap_flow"], branch)).any()
+                    for branch, branch_rows in placeholder_masks.items()
+                    if (period_mask & branch_rows).any()
                 ]
-                complete = len(present) == len(detailed_branches)
-                selected_placeholder_mask = period_mask & placeholder_mask
+                active_placeholders = [
+                    branch
+                    for branch in structurally_present_placeholders
+                    if pd.to_numeric(
+                        adjusted_df.loc[
+                            period_mask & placeholder_masks[branch], "value"
+                        ],
+                        errors="coerce",
+                    ).fillna(0.0).abs().gt(nonzero_tolerance).any()
+                ]
+                selected_placeholder = next(
+                    iter(active_placeholders or structurally_present_placeholders),
+                    placeholder_branches[0],
+                )
+                selected_placeholder_mask = period_mask & placeholder_masks.get(
+                    selected_placeholder,
+                    pd.Series(False, index=adjusted_df.index),
+                )
+                unselected_placeholder_mask = period_mask & placeholder_mask & ~selected_placeholder_mask
+                if unselected_placeholder_mask.any():
+                    adjusted_df.loc[unselected_placeholder_mask, "value"] = 0.0
                 original_total = float(
                     pd.to_numeric(
                         adjusted_df.loc[selected_placeholder_mask, "value"], errors="coerce"
@@ -524,10 +608,18 @@ def apply_all_demand_detail_fallbacks(
                 )
                 rows_zeroed = 0
                 suppressed = 0.0
+                detailed_rows_zeroed = 0
+                detailed_suppressed = 0.0
                 if complete:
-                    rows_zeroed = int(selected_placeholder_mask.sum())
-                    adjusted_df.loc[selected_placeholder_mask, "value"] = 0.0
-                    suppressed = original_total
+                    selected_all_placeholder_mask = period_mask & placeholder_mask
+                    rows_zeroed = int(selected_all_placeholder_mask.sum())
+                    suppressed = float(
+                        pd.to_numeric(
+                            adjusted_df.loc[selected_all_placeholder_mask, "value"],
+                            errors="coerce",
+                        ).fillna(0.0).sum()
+                    )
+                    adjusted_df.loc[selected_all_placeholder_mask, "value"] = 0.0
                     status = "detailed_preferred" if rows_zeroed else "detailed_only_used"
                 elif present:
                     status = (
@@ -535,6 +627,19 @@ def apply_all_demand_detail_fallbacks(
                         if selected_placeholder_mask.any()
                         else "partial_detail_no_placeholder"
                     )
+                    if (
+                        activation == ALL_DETAIL_BRANCHES_NONZERO
+                        and selected_placeholder_mask.any()
+                    ):
+                        selected_detail_mask = period_mask & detailed_mask
+                        detailed_rows_zeroed = int(selected_detail_mask.sum())
+                        detailed_suppressed = float(
+                            pd.to_numeric(
+                                adjusted_df.loc[selected_detail_mask, "value"],
+                                errors="coerce",
+                            ).fillna(0.0).sum()
+                        )
+                        adjusted_df.loc[selected_detail_mask, "value"] = 0.0
                 else:
                     status = "placeholder_only_retained"
                 audit_rows.append(
@@ -543,14 +648,19 @@ def apply_all_demand_detail_fallbacks(
                         "scenario": period["scenario"],
                         "year": period["year"],
                         "component_branch": _str(component.get("component_branch")),
-                        "placeholder_branch": placeholder_branch,
+                        "placeholder_branch": selected_placeholder,
+                        "active_placeholder_branches": ";".join(active_placeholders),
+                        "multiple_placeholder_branches_active": len(active_placeholders) > 1,
                         "detailed_branches": ";".join(detailed_branches),
                         "detail_activation": activation,
                         "present_detailed_branches": ";".join(present),
+                        "nonzero_detailed_branches": ";".join(nonzero),
                         "status": status,
                         "placeholder_total_original": original_total,
                         "placeholder_total_suppressed": suppressed,
                         "placeholder_rows_zeroed": rows_zeroed,
+                        "detailed_total_suppressed": detailed_suppressed,
+                        "detailed_rows_zeroed": detailed_rows_zeroed,
                     }
                 )
     return adjusted_df, pd.DataFrame(audit_rows, columns=ALL_DEMAND_SELECTION_AUDIT_COLUMNS)
@@ -583,9 +693,12 @@ def build_all_demand_representation_status(
         resolved = resolve_components_for_economy(components_df, economy)
         for _, component in resolved.iterrows():
             component_branch = _str(component.get("component_branch"))
-            placeholder_branch = _placeholder_branch(component)
+            configured_placeholder_branches = ";".join(
+                _placeholder_branches(component)
+            )
             detailed_branches = ";".join(_detail_branches(component))
             for _, period in economy_periods.iterrows():
+                placeholder_branch = configured_placeholder_branches
                 key = (
                     period["economy"],
                     period["scenario"],
@@ -597,6 +710,10 @@ def build_all_demand_representation_status(
                     if isinstance(audit_row, pd.DataFrame):
                         raise ValueError(f"Duplicate all-demand selection audit key: {key}")
                     status = _str(audit_row.get("status"))
+                    placeholder_branch = (
+                        _str(audit_row.get("placeholder_branch"))
+                        or placeholder_branch
+                    )
                 else:
                     status = "no_data_unavailable"
                 rows.append(

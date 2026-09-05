@@ -52,10 +52,18 @@
     },
     {
       "component_branch": "International transport",
-      "detailed_branches": ["International transport"],
-      "detail_activation": "all_present",
+      "placeholder_branches": [
+        "All demand aggregated/International transport",
+        "International transport"
+      ],
+      "detailed_branches": [
+        "Transport non road/International transport/Air",
+        "Transport non road/International transport/Shipping"
+      ],
+      "detail_activation": "all_nonzero",
+      "nonzero_tolerance": 1e-9,
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. When the configured detailed branch is present, only this placeholder component is suppressed in mapping working data; international transport retains its source sign.",
+      "note": "Declared as included in All demand aggregated. Suppress the combined placeholder only in periods where both detailed Air and Shipping branches contain non-zero data; structural zero rows do not activate detail. International transport retains its source sign.",
       "economy_overrides": {}
     }
   ]

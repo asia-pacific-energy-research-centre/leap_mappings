@@ -430,3 +430,171 @@ class TestMixedPlaceholderAndDetailedDemand:
             "Road": "placeholder_only_retained",
             "Buildings": "no_data_unavailable",
         }
+
+
+class TestInternationalTransportNonzeroFrontier:
+    """Regression contract for combined versus Air/Shipping bunker inputs."""
+
+    @staticmethod
+    def _components() -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "economy": "",
+                    "aggregated_branch": "All demand aggregated",
+                    "component_branch": "International transport",
+                    "placeholder_branches": (
+                        "All demand aggregated/International transport;"
+                        "International transport"
+                    ),
+                    "detailed_branches": (
+                        "Transport non road/International transport/Air;"
+                        "Transport non road/International transport/Shipping"
+                    ),
+                    "detail_activation": "all_nonzero",
+                    "nonzero_tolerance": 1e-9,
+                    "include": "True",
+                    "note": "",
+                }
+            ]
+        )
+
+    @staticmethod
+    def _row(year: int, flow: str, value: float, scenario: str = "Target") -> dict:
+        return {
+            "economy": "05_PRC",
+            "scenario": scenario,
+            "year": year,
+            "leap_flow": flow,
+            "leap_product": "Fuel oil",
+            "value": value,
+        }
+
+    def test_zero_structural_air_and_shipping_keep_combined_placeholder(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2022, "International transport", -10.0),
+                self._row(2022, "Transport non road/International transport/Air", 0.0),
+                self._row(2022, "Transport non road/International transport/Shipping", 0.0),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        assert adjusted.set_index("leap_flow")["value"].to_dict() == {
+            "International transport": -10.0,
+            "Transport non road/International transport/Air": 0.0,
+            "Transport non road/International transport/Shipping": 0.0,
+        }
+        result = audit.iloc[0]
+        assert result["status"] == "partial_detail_placeholder_retained"
+        assert result["present_detailed_branches"] == (
+            "Transport non road/International transport/Air;"
+            "Transport non road/International transport/Shipping"
+        )
+        assert result["nonzero_detailed_branches"] == ""
+        assert result["placeholder_branch"] == "International transport"
+
+    def test_both_negative_detail_branches_replace_combined_placeholder(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2030, "All demand aggregated/International transport", -10.0),
+                self._row(2030, "Transport non road/International transport/Air", -4.0),
+                self._row(2030, "Transport non road/International transport/Shipping", -6.0),
+            ]
+        )
+        snapshot = rows.copy(deep=True)
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        pd.testing.assert_frame_equal(rows, snapshot)
+        values = adjusted.set_index("leap_flow")["value"].to_dict()
+        assert values["All demand aggregated/International transport"] == 0.0
+        assert values["Transport non road/International transport/Air"] == -4.0
+        assert values["Transport non road/International transport/Shipping"] == -6.0
+        result = audit.iloc[0]
+        assert result["status"] == "detailed_preferred"
+        assert result["nonzero_detailed_branches"] == (
+            "Transport non road/International transport/Air;"
+            "Transport non road/International transport/Shipping"
+        )
+        assert result["placeholder_rows_zeroed"] == 1
+
+    def test_one_nonzero_detail_branch_keeps_combined_and_suppresses_partial_detail(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2030, "International transport", -10.0),
+                self._row(2030, "Transport non road/International transport/Air", -4.0),
+                self._row(2030, "Transport non road/International transport/Shipping", 0.0),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        values = adjusted.set_index("leap_flow")["value"].to_dict()
+        assert values["International transport"] == -10.0
+        assert values["Transport non road/International transport/Air"] == 0.0
+        assert values["Transport non road/International transport/Shipping"] == 0.0
+        result = audit.iloc[0]
+        assert result["status"] == "partial_detail_placeholder_retained"
+        assert result["nonzero_detailed_branches"] == (
+            "Transport non road/International transport/Air"
+        )
+        assert result["detailed_rows_zeroed"] == 2
+        assert result["detailed_total_suppressed"] == -4.0
+
+    def test_representation_switches_independently_by_year_without_overlap(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2022, "International transport", -10.0),
+                self._row(2022, "Transport non road/International transport/Air", 0.0),
+                self._row(2022, "Transport non road/International transport/Shipping", 0.0),
+                self._row(2030, "International transport", -10.0),
+                self._row(2030, "Transport non road/International transport/Air", -4.0),
+                self._row(2030, "Transport non road/International transport/Shipping", -6.0),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        selected = adjusted.assign(
+            representation=adjusted["leap_flow"].eq("International transport").map(
+                {True: "combined", False: "detail"}
+            )
+        )
+        active_representations = (
+            selected.loc[selected["value"].abs().gt(1e-9)]
+            .groupby(["year", "representation"])["value"]
+            .sum()
+            .reset_index()
+        )
+        assert active_representations.to_dict("records") == [
+            {"year": 2022, "representation": "combined", "value": -10.0},
+            {"year": 2030, "representation": "detail", "value": -10.0},
+        ]
+        assert audit.set_index("year")["status"].to_dict() == {
+            2022: "partial_detail_placeholder_retained",
+            2030: "detailed_preferred",
+        }
+
+    def test_alternate_placeholders_are_priority_selected_and_never_additive(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2030, "All demand aggregated/International transport", -10.0),
+                self._row(2030, "International transport", -10.0),
+                self._row(2030, "Transport non road/International transport/Air", -4.0),
+                self._row(2030, "Transport non road/International transport/Shipping", -6.0),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        assert adjusted.loc[
+            adjusted["leap_flow"].isin(
+                ["All demand aggregated/International transport", "International transport"]
+            ),
+            "value",
+        ].eq(0.0).all()
+        result = audit.iloc[0]
+        assert result["placeholder_branch"] == "All demand aggregated/International transport"
+        assert result["multiple_placeholder_branches_active"]

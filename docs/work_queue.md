@@ -1,5 +1,19 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-061 — Numeric international-transport representation frontier
+
+**Priority / status:** P1 · implementation and verification in progress.
+
+- Treat the combined `International transport` branches as ordered alternative
+  placeholders, never additive sources.
+- Activate detailed bunkers only when both explicit
+  `Transport non road/International transport/Air` and `Shipping` branches
+  contain non-zero data for the same economy, scenario, and year.
+- Retain the selected combined branch and suppress partial detail otherwise;
+  preserve the raw parsed export and record every suppression in the audit.
+- Publish one representation per period so downstream mappings and dashboards
+  cannot count `04-05` alongside `04` and `05`.
+
 ## MAPQ-060 — Formalise ESTO Extended as structural-only metadata
 
 **Priority / status:** P2 · `planned` · post-MAPQ-029 certification correction.
