@@ -2,7 +2,14 @@
 
 ## MAPQ-061 — Numeric international-transport representation frontier
 
-**Priority / status:** P1 · implementation and verification in progress.
+**Priority / status:** P1 · complete 2026-09-05.
+
+The production mapping chain was regenerated as
+`common_esto_20260905T033337086566Z`. PRC records all 78 Target/Reference years
+as `placeholder_only_retained`, and the published comparison data contains
+non-zero LEAP bunker values only at `04-05`, with no overlapping `04` or `05`.
+The branch-mask cache reduced the LEAP conversion from an unfinished
+1,200+ CPU-second run to 309 seconds without changing selection results.
 
 - Treat the combined `International transport` branches as ordered alternative
   placeholders, never additive sources.
