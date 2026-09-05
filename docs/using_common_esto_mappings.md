@@ -89,7 +89,12 @@ in that scope**, so a mapping is only valid for its own scope:
 For the Extended scopes, use the same ordinary ESTO historical rows and relabel
 their source identity to `ESTO_EXTENDED` before applying the mapping. Extended
 changes the available common categories; it does not supply a second set of
-historical ESTO values or license allocation into the added children.
+historical ESTO values. Mapping ingestion still performs no allocation. A
+dashboard may separately estimate missing flow-level historical context below
+an authoritative ESTO parent only when it clearly labels the estimate,
+conserves every economy/year/fuel parent exactly, leaves fuel-level charts
+unchanged, and retains the parent with a QA failure when no allocation basis
+exists.
 
 - `esto_leap_ninth` — built to accommodate ESTO, LEAP and the 9th.
 - `esto_leap` — built to accommodate ESTO and LEAP only. The 9th is not a
@@ -189,9 +194,11 @@ class of consumer-side double counting.
 
 That is a bug in the structure build, not a case for a consumer to handle.
 
-Do **not** add allocation or a fallback downstream — that turns a loud upstream
-failure into a quiet approximation, and silently wrong comparison totals are the
-exact failure this system exists to prevent.
+Do **not** add allocation or a fallback to repair common-level mapping fan-out —
+that turns a loud upstream failure into a quiet approximation, and silently
+wrong comparison totals are the exact failure this system exists to prevent.
+The labelled, parent-conserving historical context exception above does not
+repair fan-out and must never alter mapped source totals.
 
 This repository already asserts the invariant and publishes the check:
 `results/common_esto/qa_common_esto_source_aggregates_split.csv`, which is

@@ -21,9 +21,10 @@ The branch-mask cache reduced the LEAP conversion from an unfinished
 - Publish one representation per period so downstream mappings and dashboards
   cannot count `04-05` alongside `04` and `05`.
 
-## MAPQ-060 — Formalise ESTO Extended as structural-only metadata
+## MAPQ-060 — Formalise ESTO Extended structure and historical provenance
 
-**Priority / status:** P2 · `planned` · post-MAPQ-029 certification correction.
+**Priority / status:** P1 · source-classification fix complete 2026-09-05;
+consumer-provenance contract implemented in `leap_dashboard`.
 
 **Owner repositories:** `leap_mappings` + `leap_dashboard` (consult
 `leap_initialisation` where it consumes the same source contract).
@@ -37,9 +38,12 @@ must not become one.
 
 **Scope:** Separate Extended-category structure from numeric-source
 provenance while preserving the existing category IDs, mappings, and rollups.
-Keep ordinary ESTO as the observed historical source. Keep any detailed
-allocation downstream in the dashboard, using LEAP base-year shares, explicit
-estimate provenance, and an unallocated residual when required. Add a
+Keep ordinary ESTO as the observed historical source. The exact-row extractor
+must copy native ESTO `is_subtotal` classifications onto every matched Extended
+key before leaf selection; Extended hierarchy generation must not make native
+leaves disappear. Keep any detailed allocation downstream in the dashboard,
+using LEAP base-year shares, explicit estimate provenance, exact parent/fuel
+conservation, and parent retention plus QA failure when no basis exists. Add a
 structural coverage assertion: when active mappings or rollups introduce an
 ESTO Extended category, generated `data/esto_extended.csv` must contain it;
 missing or stale categories fail the check and require a human decision. The
@@ -55,6 +59,13 @@ from estimated detailed display rows by provenance rather than the
 complete category catalogue; its coverage assertion is tested; and the mapping
 pipeline, dashboard contract tests, and a representative dashboard render
 preserve aggregate values without manufacturing upstream ESTO Extended data.
+
+**2026-09-05 verification:** All 178,227 Extended keys matching the native 2024
+issue have a unique native classification. The old pipeline had 14,238
+native-leaf/Extended-subtotal mismatches and no reverse mismatches. Restoring
+native flags yields 130,305 exact comparison rows and recovers 67 PRC
+Residential product rows totalling 11,841.236698 PJ in 2022. Conflicting native
+classifications now fail explicitly.
 
 ## MAPQ-059 — Guarded LEAP Energy Balance CSV parsing
 
