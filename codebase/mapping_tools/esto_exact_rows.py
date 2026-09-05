@@ -53,12 +53,17 @@ def normalise_esto_flow_labels(esto_df: pd.DataFrame) -> pd.DataFrame:
 def _filter_extended_to_native_rows(
     extended_df: pd.DataFrame, extended_path: Path
 ) -> pd.DataFrame:
-    """Keep only rows whose keys occur in the matching native ESTO issue.
+    """Keep native ESTO keys and restore their authoritative subtotal status.
 
     ESTO Extended is built by adding rollups/disaggregations to a native ESTO
     issue.  Those derived rows are useful for structure, but must not become
     authoritative historical observations.  The matching native issue lives
     beside the Extended file as ``00APEC_<vintage>_low_with_subtotals``.
+
+    Extended generation can legitimately change hierarchy metadata while it
+    creates new structural categories.  For keys already published by ESTO,
+    however, native ``is_subtotal`` is authoritative: otherwise real leaf rows
+    can be reclassified as subtotals and disappear from the exact-row extract.
     """
     name = extended_path.name
     if not name.startswith("esto_extended_"):
@@ -75,10 +80,45 @@ def _filter_extended_to_native_rows(
     native_path = next((path for path in candidates if path.is_file()), None)
     if native_path is None:
         return extended_df
-    native = pd.read_csv(native_path, usecols=["economy", "flows", "products"], dtype=object)
-    keys = set(map(tuple, native[["economy", "flows", "products"]].itertuples(index=False, name=None)))
-    key_index = pd.MultiIndex.from_frame(extended_df[["economy", "flows", "products"]])
-    return extended_df.loc[key_index.isin(keys)].copy()
+    key_columns = ["economy", "flows", "products"]
+    native = pd.read_csv(
+        native_path,
+        usecols=[*key_columns, "is_subtotal"],
+        dtype=object,
+    )
+    native_status = native["is_subtotal"].astype(str).str.strip().str.casefold()
+    valid_status = native_status.isin({"true", "false"})
+    if not valid_status.all():
+        invalid_count = int((~valid_status).sum())
+        raise ValueError(
+            f"Native ESTO contains {invalid_count:,} invalid is_subtotal values: "
+            f"{native_path}"
+        )
+    native = native.assign(_native_is_subtotal=native_status.eq("true"))
+    status_counts = native.groupby(key_columns, dropna=False)[
+        "_native_is_subtotal"
+    ].nunique()
+    conflicting_keys = status_counts[status_counts.gt(1)]
+    if not conflicting_keys.empty:
+        raise ValueError(
+            "Native ESTO has conflicting is_subtotal classifications for "
+            f"{len(conflicting_keys):,} economy/flow/product keys: {native_path}"
+        )
+    native = native.drop_duplicates(key_columns, keep="first")
+    native_key_index = pd.MultiIndex.from_frame(native[key_columns])
+    native_flags = pd.Series(
+        native["_native_is_subtotal"].to_numpy(),
+        index=native_key_index,
+    )
+    extended_key_index = pd.MultiIndex.from_frame(extended_df[key_columns])
+    keep_mask = pd.Series(
+        extended_key_index.isin(native_key_index),
+        index=extended_df.index,
+    )
+    result = extended_df.loc[keep_mask].copy()
+    result_key_index = pd.MultiIndex.from_frame(result[key_columns])
+    result["is_subtotal"] = native_flags.reindex(result_key_index).to_numpy()
+    return result
 
 
 def configured_rollup_reference_pairs(
