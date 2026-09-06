@@ -51,7 +51,9 @@ def normalise_esto_flow_labels(esto_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _filter_extended_to_native_rows(
-    extended_df: pd.DataFrame, extended_path: Path
+    extended_df: pd.DataFrame,
+    extended_path: Path,
+    native_table_path: Path | None = None,
 ) -> pd.DataFrame:
     """Keep native ESTO keys and restore their authoritative subtotal status.
 
@@ -70,7 +72,16 @@ def _filter_extended_to_native_rows(
         return extended_df
     native_name = "00APEC_" + name[len("esto_extended_") :]
     native_name = native_name.rsplit(".", 1)[0] + ".csv"
-    candidates = [extended_path.with_name(native_name)]
+    candidates = []
+    if native_table_path is not None:
+        native_table_path = Path(native_table_path)
+        if not native_table_path.is_file():
+            raise FileNotFoundError(
+                "Explicit native ESTO table for Extended extraction does not exist: "
+                f"{native_table_path}"
+            )
+        candidates.append(native_table_path)
+    candidates.append(extended_path.with_name(native_name))
     # Portable bundles keep mapping data and the native ESTO issues in
     # sibling repository roots (leap_mappings/data and leap_initialisation/data).
     if len(extended_path.parents) >= 3:
@@ -190,6 +201,7 @@ def run_esto_exact_rows_for_path(
     mapping_workbook_path: Path,
     qa_path: Path | None = None,
     repo_root: Path | None = None,
+    native_base_table_path: Path | None = None,
 ) -> None:
     """Extract exact source rows for the Common ESTO comparison.
 
@@ -209,7 +221,11 @@ def run_esto_exact_rows_for_path(
     else:
         df = pd.read_csv(data_path, dtype=object)
     if source_system == "ESTO_EXTENDED":
-        df = _filter_extended_to_native_rows(df, Path(data_path))
+        df = _filter_extended_to_native_rows(
+            df,
+            Path(data_path),
+            native_table_path=native_base_table_path,
+        )
     df = normalise_esto_flow_labels(df)
     year_cols = [c for c in df.columns if str(c).isdigit()]
     for col in year_cols:

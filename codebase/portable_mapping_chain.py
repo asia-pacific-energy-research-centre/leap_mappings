@@ -187,6 +187,7 @@ def prepare_esto_extended_exact_rows(
     *,
     bundled_exact_rows: Path,
     esto_extended_table: Path | None,
+    native_base_table: Path | None,
     relationships_path: Path,
     mapping_workbook_path: Path,
     work_dir: Path,
@@ -205,7 +206,12 @@ def prepare_esto_extended_exact_rows(
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     fingerprint = _fingerprint(
-        [esto_extended_table, relationships_path, mapping_workbook_path]
+        [
+            esto_extended_table,
+            native_base_table,
+            relationships_path,
+            mapping_workbook_path,
+        ]
     )
     cached = work_dir / f"esto_extended_results_exact_rows_{fingerprint}.csv.gz"
     if cached.is_file():
@@ -220,6 +226,7 @@ def prepare_esto_extended_exact_rows(
         "ESTO_EXTENDED",
         relationships_path=relationships_path,
         mapping_workbook_path=mapping_workbook_path,
+        native_base_table_path=native_base_table,
     )
     notes.append(
         f"Extracted ESTO Extended exact rows from {esto_extended_table.name}."
@@ -314,6 +321,11 @@ def run_mapping_chain(job: dict) -> dict:
         esto_extended_table=(
             Path(config["esto_extended_table_path"])
             if config.get("esto_extended_table_path")
+            else None
+        ),
+        native_base_table=(
+            Path(config["esto_extended_native_table_path"])
+            if config.get("esto_extended_native_table_path")
             else None
         ),
         relationships_path=Path(artifacts["relationships_path"]),

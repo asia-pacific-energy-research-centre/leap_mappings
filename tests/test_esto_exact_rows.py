@@ -114,3 +114,33 @@ def test_extended_native_filter_rejects_conflicting_native_subtotal_flags(
             extended,
             tmp_path / "esto_extended_2024_low_with_subtotals.parquet",
         )
+
+
+def test_extended_native_filter_accepts_explicit_native_path(tmp_path) -> None:
+    native_path = tmp_path / "balance_review" / "00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
+    native_path.parent.mkdir()
+    pd.DataFrame(
+        [{
+            "economy": "01AUS",
+            "flows": "16.02 Residential",
+            "products": "07.07 Gas/diesel oil",
+            "is_subtotal": False,
+        }]
+    ).to_csv(native_path, index=False)
+    extended_path = tmp_path / "mapping_data" / "esto_extended_2026_low_with_subtotals_PRELIMINARY.parquet"
+    extended = pd.DataFrame(
+        [{
+            "economy": "01AUS",
+            "flows": "16.02 Residential",
+            "products": "07.07 Gas/diesel oil",
+            "is_subtotal": True,
+        }]
+    )
+
+    result = _filter_extended_to_native_rows(
+        extended,
+        extended_path,
+        native_table_path=native_path,
+    )
+
+    assert result["is_subtotal"].tolist() == [False]

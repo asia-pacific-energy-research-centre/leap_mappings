@@ -22,6 +22,7 @@ from codebase.mapping_tools.apply_common_esto_structure import (
     read_source_tables,
     save_broad_common_row_diagnostics,
     should_ignore_missing_common_map_flow,
+    source_with_vintage_endpoint_relevance,
     tagged_output_path,
 )
 from codebase.mapping_tools.typed_output import read_manifested_parquet
@@ -891,6 +892,47 @@ def test_component_relevance_uses_each_dataset_and_vintage_latest_year() -> None
             relevance_df["component_esto_product"],
         )
     ) == {("F1", "P1"), ("F2", "P2"), ("F3", "P3")}
+
+
+def test_vintage_endpoint_relevance_never_erases_nonzero_source_history() -> None:
+    """A zero endpoint cannot make a published historical component disappear."""
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO_EXTENDED",
+                "economy": "01_AUS",
+                "year": 2010,
+                "esto_flow": "16.02 Residential",
+                "esto_product": "07.07 Gas/diesel oil",
+                "value": 1.1,
+            },
+            {
+                "source_system": "ESTO_EXTENDED",
+                "economy": "01_AUS",
+                "year": 2024,
+                "esto_flow": "16.02 Residential",
+                "esto_product": "07.07 Gas/diesel oil",
+                "value": 0.0,
+            },
+        ]
+    )
+
+    relevance_source = source_with_vintage_endpoint_relevance(source_df, None)
+    relevance_df, _ = build_component_relevance(
+        source_df=relevance_source,
+        active_component_abs_tolerance=0,
+        ninth_projection_start_year=2023,
+        esto_base_year=2024,
+    )
+
+    assert relevance_df[["component_esto_flow", "component_esto_product"]].to_dict(
+        "records"
+    ) == [
+        {
+            "component_esto_flow": "16.02 Residential",
+            "component_esto_product": "07.07 Gas/diesel oil",
+        }
+    ]
 
 
 def test_latest_vintage_endpoint_loader_reads_only_each_files_final_year(

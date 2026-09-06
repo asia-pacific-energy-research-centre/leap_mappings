@@ -10,6 +10,7 @@ from codebase.portable_mapping_chain import (
     _apply_synthetic_rows,
     _fingerprint,
     prepare_esto_exact_rows,
+    prepare_esto_extended_exact_rows,
 )
 
 
@@ -69,6 +70,38 @@ def test_the_fingerprint_changes_when_any_input_changes(tmp_path: Path) -> None:
 
     # An absent file is a distinct state, not an error.
     assert _fingerprint([a, None]) != _fingerprint([a, b])
+
+
+def test_extended_extraction_receives_authoritative_native_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extended = _stub(tmp_path / "mapping" / "esto_extended_2026.parquet")
+    native = _stub(tmp_path / "balance_review" / "00APEC_2026.csv")
+    relationships = _stub(tmp_path / "relationships.csv")
+    workbook = _stub(tmp_path / "mapping.xlsx")
+    captured: dict[str, Path | None] = {}
+
+    def fake_extract(data_path, output_path, source_system, **kwargs):
+        captured["native"] = kwargs.get("native_base_table_path")
+        _stub(Path(output_path))
+
+    monkeypatch.setattr(
+        "codebase.mapping_tools.esto_exact_rows.run_esto_exact_rows_for_path",
+        fake_extract,
+    )
+
+    result = prepare_esto_extended_exact_rows(
+        bundled_exact_rows=_stub(tmp_path / "bundled.csv.gz"),
+        esto_extended_table=extended,
+        native_base_table=native,
+        relationships_path=relationships,
+        mapping_workbook_path=workbook,
+        work_dir=tmp_path / "work",
+        notes=[],
+    )
+
+    assert result.is_file()
+    assert captured["native"] == native
 
 
 @pytest.mark.skipif(not ESTO_2024.is_file(), reason="ESTO base table not present")

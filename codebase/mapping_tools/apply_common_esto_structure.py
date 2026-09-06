@@ -555,6 +555,7 @@ def load_latest_vintage_endpoint_rows(
             endpoint["scenario"] = "historical"
             endpoint["year"] = latest_year
             endpoint["_relevance_vintage"] = f"{source_system}:{source_path.name}"
+            endpoint["_relevance_only"] = True
             frames.append(endpoint)
     if not frames:
         return pd.DataFrame()
@@ -566,10 +567,11 @@ def source_with_vintage_endpoint_relevance(
     reference_paths: dict[str, list[Path]] | None,
 ) -> pd.DataFrame:
     """Append relevance-only vintage endpoints without changing value inputs."""
+    working_df = source_df.copy()
+    working_df["_relevance_only"] = False
     endpoint_df = load_latest_vintage_endpoint_rows(reference_paths)
     if endpoint_df.empty:
-        return source_df
-    working_df = source_df.copy()
+        return working_df
     working_df["_relevance_vintage"] = working_df["source_system"].astype(str)
     return pd.concat([working_df, endpoint_df], ignore_index=True, sort=False)
 
@@ -656,10 +658,19 @@ def build_component_relevance(
         evidence_column = str(policy["evidence_column"])
         mask = working_df["source_system"].eq(evidence_source_system) & nonzero_mask
         if period_policy == "latest_available_year":
+            relevance_only = working_df.get(
+                "_relevance_only",
+                pd.Series(True, index=working_df.index),
+            ).fillna(False).astype(bool)
+            source_fact_mask = mask & ~relevance_only
+            endpoint_mask = mask & relevance_only
             if esto_base_year is not None:
-                mask &= working_df["year"].eq(resolved_esto_base_year)
+                endpoint_mask &= working_df["year"].eq(resolved_esto_base_year)
             else:
-                dataset_mask = working_df["source_system"].eq(evidence_source_system)
+                dataset_mask = (
+                    working_df["source_system"].eq(evidence_source_system)
+                    & relevance_only
+                )
                 latest_for_vintage = working_df.loc[dataset_mask].groupby(
                     "_relevance_vintage",
                     observed=True,
@@ -668,7 +679,8 @@ def build_component_relevance(
                 latest_mask.loc[dataset_mask] = working_df.loc[
                     dataset_mask, "year"
                 ].eq(latest_for_vintage)
-                mask &= latest_mask
+                endpoint_mask &= latest_mask
+            mask = source_fact_mask | endpoint_mask
         elif period_policy == "from_projection_start":
             mask &= working_df["year"].ge(ninth_projection_start_year)
         elif period_policy != "all_periods":
