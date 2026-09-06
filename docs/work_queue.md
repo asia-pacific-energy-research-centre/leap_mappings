@@ -1,26 +1,22 @@
 # LEAP mappings work queue and handover plan
 
-## MAPQ-061 — Structural international-transport representation frontier
+## MAPQ-061 — Reconciled international-transport representation frontier
 
 **Priority / status:** P1 · revised and complete 2026-09-06.
 
-The production mapping chain was regenerated as
-`common_esto_20260905T033337086566Z`. PRC records all 78 Target/Reference years
-as `placeholder_only_retained`, and the published comparison data contains
-non-zero LEAP bunker values only at `04-05`, with no overlapping `04` or `05`.
-The branch-mask cache reduced the LEAP conversion from an unfinished
-1,200+ CPU-second run to 309 seconds without changing selection results.
+The original structural frontier allowed zero-valued Air/Shipping scaffolding
+to suppress a populated combined bunker row. The revised policy selects
+detailed bunkers only when populated children either reconcile per product to
+the populated combined row or are the sole populated representation.
 
 - Treat the combined `International transport` branches as ordered alternative
   placeholders, never additive sources.
-- Activate detailed bunkers when either exact
-  `Transport non road/International transport/Air` or `Shipping` branch is
-  present for the economy, scenario, and year. Zero is a valid reported value,
-  not evidence that the branch is unavailable.
-- Suppress the selected combined branch when detail is structurally present,
-  retain only children actually supplied by LEAP, and never manufacture an
-  absent sibling. Preserve the raw parsed export and record every suppression
-  and parent/child reconciliation difference in QA.
+- Retain the selected combined branch when Air/Shipping children are empty or
+  their per-product values do not reconcile, and suppress those incomplete
+  children so the two representations cannot double count.
+- Suppress the combined branch only when populated detail reconciles per
+  product, or when the combined representation is empty and detail is the sole
+  populated representation. Never manufacture an absent sibling.
 - Publish one representation per period so downstream mappings and dashboards
   cannot count `04-05` alongside `04` and `05`.
 

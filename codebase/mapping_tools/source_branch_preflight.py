@@ -131,6 +131,7 @@ PERIOD_COLUMNS = ["economy", "scenario", "year"]
 ALL_DETAIL_BRANCHES_PRESENT = "all_present"
 ANY_DETAIL_BRANCH_PRESENT = "any_present"
 ALL_DETAIL_BRANCHES_NONZERO = "all_nonzero"
+DETAIL_RECONCILES_PLACEHOLDER = "reconciles_placeholder"
 
 
 def _str(value: Any) -> str:
@@ -509,9 +510,10 @@ def apply_all_demand_detail_fallbacks(
     Selection is period-specific. Most components use structural activation,
     where a zero-valued detailed branch still counts as present. Components
     configured as ``all_nonzero`` require every replacement branch to contain
-    non-zero data in that period. This is essential for international transport,
-    whose empty Air and Shipping scaffolding must not replace a populated
-    combined bunker placeholder.
+    non-zero data in that period. Components configured as
+    ``reconciles_placeholder`` use populated detail only when its per-product
+    totals reconcile to a populated combined placeholder. This prevents empty
+    or partial Air/Shipping scaffolding from suppressing combined bunker data.
     """
     if leap_df is None or leap_df.empty or components_df is None or components_df.empty:
         return leap_df, pd.DataFrame(columns=ALL_DEMAND_SELECTION_AUDIT_COLUMNS)
@@ -543,12 +545,14 @@ def apply_all_demand_detail_fallbacks(
                 ALL_DETAIL_BRANCHES_PRESENT,
                 ANY_DETAIL_BRANCH_PRESENT,
                 ALL_DETAIL_BRANCHES_NONZERO,
+                DETAIL_RECONCILES_PLACEHOLDER,
             }:
                 raise ValueError(
                     f"Unsupported all-demand detail_activation {activation!r}; "
                     f"supported values are {ALL_DETAIL_BRANCHES_PRESENT!r}, "
                     f"{ANY_DETAIL_BRANCH_PRESENT!r}, and "
-                    f"{ALL_DETAIL_BRANCHES_NONZERO!r}."
+                    f"{ALL_DETAIL_BRANCHES_NONZERO!r}, and "
+                    f"{DETAIL_RECONCILES_PLACEHOLDER!r}."
                 )
 
             economy_mask = adjusted_df["economy"].eq(economy)
@@ -582,14 +586,6 @@ def apply_all_demand_detail_fallbacks(
                         adjusted_df.loc[branch_rows, "value"], errors="coerce"
                     ).fillna(0.0).abs().gt(nonzero_tolerance).any():
                         nonzero.append(branch)
-                activated = (
-                    nonzero if activation == ALL_DETAIL_BRANCHES_NONZERO else present
-                )
-                complete = (
-                    bool(activated)
-                    if activation == ANY_DETAIL_BRANCH_PRESENT
-                    else len(activated) == len(detailed_branches)
-                )
                 structurally_present_placeholders = [
                     branch
                     for branch, branch_rows in placeholder_masks.items()
@@ -621,6 +617,58 @@ def apply_all_demand_detail_fallbacks(
                         adjusted_df.loc[selected_placeholder_mask, "value"], errors="coerce"
                     ).fillna(0.0).sum()
                 )
+                if activation == DETAIL_RECONCILES_PLACEHOLDER:
+                    selected_detail_mask = period_mask & detailed_mask
+                    placeholder_by_product = (
+                        adjusted_df.loc[selected_placeholder_mask]
+                        .assign(
+                            value=lambda frame: pd.to_numeric(
+                                frame["value"], errors="coerce"
+                            ).fillna(0.0)
+                        )
+                        .groupby("leap_product", dropna=False)["value"]
+                        .sum()
+                    )
+                    detail_by_product = (
+                        adjusted_df.loc[selected_detail_mask]
+                        .assign(
+                            value=lambda frame: pd.to_numeric(
+                                frame["value"], errors="coerce"
+                            ).fillna(0.0)
+                        )
+                        .groupby("leap_product", dropna=False)["value"]
+                        .sum()
+                    )
+                    comparison = pd.concat(
+                        [
+                            placeholder_by_product.rename("placeholder"),
+                            detail_by_product.rename("detail"),
+                        ],
+                        axis=1,
+                    ).fillna(0.0)
+                    placeholder_populated = comparison["placeholder"].abs().gt(
+                        nonzero_tolerance
+                    ).any()
+                    detail_populated = comparison["detail"].abs().gt(
+                        nonzero_tolerance
+                    ).any()
+                    complete = bool(detail_populated) and (
+                        not placeholder_populated
+                        or comparison["detail"]
+                        .sub(comparison["placeholder"])
+                        .abs()
+                        .le(nonzero_tolerance)
+                        .all()
+                    )
+                else:
+                    activated = (
+                        nonzero if activation == ALL_DETAIL_BRANCHES_NONZERO else present
+                    )
+                    complete = (
+                        bool(activated)
+                        if activation == ANY_DETAIL_BRANCH_PRESENT
+                        else len(activated) == len(detailed_branches)
+                    )
                 rows_zeroed = 0
                 suppressed = 0.0
                 detailed_rows_zeroed = 0
@@ -642,10 +690,10 @@ def apply_all_demand_detail_fallbacks(
                         if selected_placeholder_mask.any()
                         else "partial_detail_no_placeholder"
                     )
-                    if (
-                        activation == ALL_DETAIL_BRANCHES_NONZERO
-                        and selected_placeholder_mask.any()
-                    ):
+                    if activation in {
+                        ALL_DETAIL_BRANCHES_NONZERO,
+                        DETAIL_RECONCILES_PLACEHOLDER,
+                    } and selected_placeholder_mask.any():
                         selected_detail_mask = period_mask & detailed_mask
                         detailed_rows_zeroed = int(selected_detail_mask.sum())
                         detailed_suppressed = float(

@@ -451,7 +451,7 @@ class TestInternationalTransportNonzeroFrontier:
                         "Transport non road/International transport/Air;"
                         "Transport non road/International transport/Shipping"
                     ),
-                    "detail_activation": "any_present",
+                    "detail_activation": "reconciles_placeholder",
                     "nonzero_tolerance": 1e-9,
                     "include": "True",
                     "note": "",
@@ -470,7 +470,7 @@ class TestInternationalTransportNonzeroFrontier:
             "value": value,
         }
 
-    def test_zero_structural_air_and_shipping_replace_combined_placeholder(self) -> None:
+    def test_zero_structural_air_and_shipping_retain_combined_placeholder(self) -> None:
         rows = pd.DataFrame(
             [
                 self._row(2022, "International transport", -10.0),
@@ -482,12 +482,12 @@ class TestInternationalTransportNonzeroFrontier:
         adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
 
         assert adjusted.set_index("leap_flow")["value"].to_dict() == {
-            "International transport": 0.0,
+            "International transport": -10.0,
             "Transport non road/International transport/Air": 0.0,
             "Transport non road/International transport/Shipping": 0.0,
         }
         result = audit.iloc[0]
-        assert result["status"] == "detailed_preferred"
+        assert result["status"] == "partial_detail_placeholder_retained"
         assert result["present_detailed_branches"] == (
             "Transport non road/International transport/Air;"
             "Transport non road/International transport/Shipping"
@@ -520,7 +520,7 @@ class TestInternationalTransportNonzeroFrontier:
         )
         assert result["placeholder_rows_zeroed"] == 1
 
-    def test_one_nonzero_detail_branch_replaces_combined_without_inventing_sibling(self) -> None:
+    def test_partial_nonreconciling_detail_is_suppressed_for_combined_placeholder(self) -> None:
         rows = pd.DataFrame(
             [
                 self._row(2030, "International transport", -10.0),
@@ -532,18 +532,18 @@ class TestInternationalTransportNonzeroFrontier:
         adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
 
         values = adjusted.set_index("leap_flow")["value"].to_dict()
-        assert values["International transport"] == 0.0
-        assert values["Transport non road/International transport/Air"] == -4.0
+        assert values["International transport"] == -10.0
+        assert values["Transport non road/International transport/Air"] == 0.0
         assert values["Transport non road/International transport/Shipping"] == 0.0
         result = audit.iloc[0]
-        assert result["status"] == "detailed_preferred"
+        assert result["status"] == "partial_detail_placeholder_retained"
         assert result["nonzero_detailed_branches"] == (
             "Transport non road/International transport/Air"
         )
-        assert result["detailed_rows_zeroed"] == 0
-        assert result["detailed_total_suppressed"] == 0.0
+        assert result["detailed_rows_zeroed"] == 2
+        assert result["detailed_total_suppressed"] == -4.0
 
-    def test_one_present_detail_branch_replaces_combined_without_adding_sibling(self) -> None:
+    def test_one_present_nonreconciling_detail_retains_combined(self) -> None:
         rows = pd.DataFrame(
             [
                 self._row(2030, "International transport", -10.0),
@@ -555,11 +555,11 @@ class TestInternationalTransportNonzeroFrontier:
 
         values = adjusted.set_index("leap_flow")["value"].to_dict()
         assert values == {
-            "International transport": 0.0,
-            "Transport non road/International transport/Air": -4.0,
+            "International transport": -10.0,
+            "Transport non road/International transport/Air": 0.0,
         }
         result = audit.iloc[0]
-        assert result["status"] == "detailed_preferred"
+        assert result["status"] == "partial_detail_placeholder_retained"
         assert result["present_detailed_branches"] == (
             "Transport non road/International transport/Air"
         )
@@ -569,6 +569,58 @@ class TestInternationalTransportNonzeroFrontier:
         assert status["present_detailed_branches"] == (
             "Transport non road/International transport/Air"
         )
+
+    def test_detail_is_used_when_combined_representation_is_empty(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2030, "International transport", 0.0),
+                self._row(2030, "Transport non road/International transport/Air", -4.0),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        values = adjusted.set_index("leap_flow")["value"].to_dict()
+        assert values == {
+            "International transport": 0.0,
+            "Transport non road/International transport/Air": -4.0,
+        }
+        assert audit.iloc[0]["status"] == "detailed_preferred"
+
+    def test_equal_grand_total_with_product_mismatch_retains_combined(self) -> None:
+        rows = pd.DataFrame(
+            [
+                self._row(2030, "International transport", -10.0),
+                {
+                    **self._row(
+                        2030,
+                        "Transport non road/International transport/Air",
+                        -10.0,
+                    ),
+                    "leap_product": "Kerosene type jet fuel",
+                },
+                self._row(
+                    2030,
+                    "Transport non road/International transport/Shipping",
+                    0.0,
+                ),
+            ]
+        )
+
+        adjusted, audit = apply_all_demand_detail_fallbacks(rows, self._components())
+
+        combined = adjusted.loc[
+            adjusted["leap_flow"].eq("International transport"), "value"
+        ].sum()
+        detailed = adjusted.loc[
+            adjusted["leap_flow"].str.startswith(
+                "Transport non road/International transport/"
+            ),
+            "value",
+        ].sum()
+        assert combined == -10.0
+        assert detailed == 0.0
+        assert audit.iloc[0]["status"] == "partial_detail_placeholder_retained"
 
     def test_representation_switches_independently_by_year_without_overlap(self) -> None:
         rows = pd.DataFrame(
@@ -596,10 +648,11 @@ class TestInternationalTransportNonzeroFrontier:
             .reset_index()
         )
         assert active_representations.to_dict("records") == [
+            {"year": 2022, "representation": "combined", "value": -10.0},
             {"year": 2030, "representation": "detail", "value": -10.0},
         ]
         assert audit.set_index("year")["status"].to_dict() == {
-            2022: "detailed_preferred",
+            2022: "partial_detail_placeholder_retained",
             2030: "detailed_preferred",
         }
 

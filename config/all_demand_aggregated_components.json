@@ -60,10 +60,10 @@
         "Transport non road/International transport/Air",
         "Transport non road/International transport/Shipping"
       ],
-      "detail_activation": "any_present",
+      "detail_activation": "reconciles_placeholder",
       "nonzero_tolerance": 1e-9,
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. Any explicit Air or Shipping child row activates the detailed bunker structure, including zero-valued rows; never infer availability from energy values or manufacture the missing sibling. International transport retains its source sign.",
+      "note": "Declared as included in All demand aggregated. Populated Air/Shipping detail replaces a populated combined bunker row only when the per-product totals reconcile. Empty or partial non-reconciling child scaffolding is suppressed and the combined source row is retained. International transport retains its source sign.",
       "economy_overrides": {}
     }
   ]
