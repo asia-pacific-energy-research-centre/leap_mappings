@@ -1,5 +1,16 @@
 # LEAP mappings work queue and handover plan
 
+## MAPQ-062 — Keep detailed road comparison roots distinct
+
+**Priority / status:** P1 · complete 2026-09-06.
+
+Removed legacy balance-extractor aliases that collapsed `Freight road`,
+`Passenger road`, and `Transport non road` into the same `Transport sector`
+identity. The canonical mapping workbook and rollup rules were already correct;
+only the consumer-facing alias layer was corrupting full-path matching.
+Regression coverage now requires all three roots to retain distinct canonical
+path keys.
+
 ## MAPQ-061 — Reconciled international-transport representation frontier
 
 **Priority / status:** P1 · revised and complete 2026-09-06.

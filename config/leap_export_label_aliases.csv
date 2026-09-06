@@ -16,7 +16,4 @@ template_balance_extractor,flow,Oil refining,Oil refineries,TRUE,Legacy balance-
 template_balance_extractor,flow,Heat production,Heat plants,TRUE,Legacy balance-template alias.
 template_balance_extractor,flow,Electricity generation,Electricity plants,TRUE,Legacy balance-template alias.
 template_balance_extractor,flow,Industry,Industry sector,TRUE,Legacy balance-template alias.
-template_balance_extractor,flow,Transport non road,Transport sector,TRUE,Legacy balance-template alias.
-template_balance_extractor,flow,Freight road,Transport sector,TRUE,Legacy balance-template alias.
-template_balance_extractor,flow,Passenger road,Transport sector,TRUE,Legacy balance-template alias.
 template_balance_extractor,fuel,Coal Sub bituminous,Sub bituminous coal,TRUE,Legacy balance-template alias.

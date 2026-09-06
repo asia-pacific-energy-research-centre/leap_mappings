@@ -95,6 +95,23 @@ def test_legacy_label_aliases_are_loaded_from_configuration() -> None:
     assert extractor._canonicalize_label("Coal Sub bituminous") == "sub bituminous coal"
 
 
+def test_transport_detail_roots_keep_distinct_full_path_identities() -> None:
+    """Legacy aliases must not collapse real detailed demand branches."""
+    extractor = TemplateBalanceExtractor(
+        template_sheet="EBal|2060",
+        mapping_pairs_path=Path("config/leap_mappings.xlsx"),
+        codebook_path=Path("config/esto_9th_leap_codebook.xlsx"),
+        explicit_pair_mappings_only=True,
+    )
+
+    keys = {
+        extractor._canonicalize_path_key(path)
+        for path in ["Freight road", "Passenger road", "Transport non road"]
+    }
+
+    assert keys == {"freight road", "passenger road", "transport non road"}
+
+
 def test_non_explicit_mode_uses_absent_child_descendant_mapping_by_default() -> None:
     extractor = _make_extractor(explicit_pair_mappings_only=False, present_child=False)
 
