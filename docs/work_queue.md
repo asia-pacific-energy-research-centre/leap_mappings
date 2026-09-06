@@ -19,6 +19,10 @@ the populated combined row or are the sole populated representation.
   populated representation. Never manufacture an absent sibling.
 - Publish one representation per period so downstream mappings and dashboards
   cannot count `04-05` alongside `04` and `05`.
+- Admit the exact `Transport non road/International transport/Air` ×
+  `Gasoline type jet fuel` pair to the maintained authority and regenerated
+  ESTO/Ninth compiled mappings, so a populated aviation component is not lost
+  after the canonical single-axis labels already resolve successfully.
 
 ## MAPQ-060 — Formalise ESTO Extended structure and historical provenance
 

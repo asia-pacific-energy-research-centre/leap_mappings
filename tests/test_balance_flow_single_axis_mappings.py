@@ -60,6 +60,50 @@ def test_balancing_flows_are_not_default_coverage_exclusions() -> None:
     assert exclusions.empty
 
 
+def test_international_air_gasoline_jet_pair_is_admitted_to_compiled_mappings() -> None:
+    source_pair = (
+        "Transport non road/International transport/Air",
+        "Gasoline type jet fuel",
+    )
+    maintained_pairs = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="extra_leap_key_pairs",
+        dtype=str,
+    ).fillna("")
+    maintained_rows = set(
+        maintained_pairs[["leap_sector", "leap_fuel"]].itertuples(
+            index=False,
+            name=None,
+        )
+    )
+
+    master_path = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+    leap_to_esto = pd.read_excel(
+        master_path,
+        sheet_name="leap_combined_esto",
+        dtype=str,
+    ).fillna("")
+    leap_to_ninth = pd.read_excel(
+        master_path,
+        sheet_name="leap_combined_ninth",
+        dtype=str,
+    ).fillna("")
+    compiled_esto_rows = set(
+        leap_to_esto[
+            ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+        ].itertuples(index=False, name=None)
+    )
+    compiled_ninth_rows = set(
+        leap_to_ninth[
+            ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+        ].itertuples(index=False, name=None)
+    )
+
+    assert source_pair in maintained_rows
+    assert source_pair in compiled_esto_rows
+    assert source_pair in compiled_ninth_rows
+
+
 def test_generated_balance_registry_uses_canonical_stock_flow_name() -> None:
     flows, _ = derive_leap_balance_structure(
         [],
