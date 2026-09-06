@@ -60,10 +60,10 @@
         "Transport non road/International transport/Air",
         "Transport non road/International transport/Shipping"
       ],
-      "detail_activation": "all_nonzero",
+      "detail_activation": "any_present",
       "nonzero_tolerance": 1e-9,
       "include_by_default": true,
-      "note": "Declared as included in All demand aggregated. Suppress the combined placeholder only in periods where both detailed Air and Shipping branches contain non-zero data; structural zero rows do not activate detail. International transport retains its source sign.",
+      "note": "Declared as included in All demand aggregated. Any explicit Air or Shipping child row activates the detailed bunker structure, including zero-valued rows; never infer availability from energy values or manufacture the missing sibling. International transport retains its source sign.",
       "economy_overrides": {}
     }
   ]

@@ -1,8 +1,8 @@
 # LEAP mappings work queue and handover plan
 
-## MAPQ-061 — Numeric international-transport representation frontier
+## MAPQ-061 — Structural international-transport representation frontier
 
-**Priority / status:** P1 · complete 2026-09-05.
+**Priority / status:** P1 · revised and complete 2026-09-06.
 
 The production mapping chain was regenerated as
 `common_esto_20260905T033337086566Z`. PRC records all 78 Target/Reference years
@@ -13,11 +13,14 @@ The branch-mask cache reduced the LEAP conversion from an unfinished
 
 - Treat the combined `International transport` branches as ordered alternative
   placeholders, never additive sources.
-- Activate detailed bunkers only when both explicit
-  `Transport non road/International transport/Air` and `Shipping` branches
-  contain non-zero data for the same economy, scenario, and year.
-- Retain the selected combined branch and suppress partial detail otherwise;
-  preserve the raw parsed export and record every suppression in the audit.
+- Activate detailed bunkers when either exact
+  `Transport non road/International transport/Air` or `Shipping` branch is
+  present for the economy, scenario, and year. Zero is a valid reported value,
+  not evidence that the branch is unavailable.
+- Suppress the selected combined branch when detail is structurally present,
+  retain only children actually supplied by LEAP, and never manufacture an
+  absent sibling. Preserve the raw parsed export and record every suppression
+  and parent/child reconciliation difference in QA.
 - Publish one representation per period so downstream mappings and dashboards
   cannot count `04-05` alongside `04` and `05`.
 

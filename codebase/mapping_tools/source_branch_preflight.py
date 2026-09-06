@@ -105,6 +105,7 @@ ALL_DEMAND_REPRESENTATION_STATUS_COLUMNS = [
     "component_branch",
     "placeholder_branch",
     "detailed_branches",
+    "present_detailed_branches",
     "representation_status",
 ]
 ALL_DEMAND_WARNING_COLUMNS = [
@@ -128,6 +129,7 @@ ALL_DEMAND_REMINDER = (
 
 PERIOD_COLUMNS = ["economy", "scenario", "year"]
 ALL_DETAIL_BRANCHES_PRESENT = "all_present"
+ANY_DETAIL_BRANCH_PRESENT = "any_present"
 ALL_DETAIL_BRANCHES_NONZERO = "all_nonzero"
 
 
@@ -539,11 +541,13 @@ def apply_all_demand_detail_fallbacks(
                 nonzero_tolerance = 1e-9
             if activation not in {
                 ALL_DETAIL_BRANCHES_PRESENT,
+                ANY_DETAIL_BRANCH_PRESENT,
                 ALL_DETAIL_BRANCHES_NONZERO,
             }:
                 raise ValueError(
                     f"Unsupported all-demand detail_activation {activation!r}; "
-                    f"supported values are {ALL_DETAIL_BRANCHES_PRESENT!r} and "
+                    f"supported values are {ALL_DETAIL_BRANCHES_PRESENT!r}, "
+                    f"{ANY_DETAIL_BRANCH_PRESENT!r}, and "
                     f"{ALL_DETAIL_BRANCHES_NONZERO!r}."
                 )
 
@@ -581,7 +585,11 @@ def apply_all_demand_detail_fallbacks(
                 activated = (
                     nonzero if activation == ALL_DETAIL_BRANCHES_NONZERO else present
                 )
-                complete = len(activated) == len(detailed_branches)
+                complete = (
+                    bool(activated)
+                    if activation == ANY_DETAIL_BRANCH_PRESENT
+                    else len(activated) == len(detailed_branches)
+                )
                 structurally_present_placeholders = [
                     branch
                     for branch, branch_rows in placeholder_masks.items()
@@ -706,6 +714,7 @@ def build_all_demand_representation_status(
             detailed_branches = ";".join(_detail_branches(component))
             for _, period in economy_periods.iterrows():
                 placeholder_branch = configured_placeholder_branches
+                present_detailed_branches = ""
                 key = (
                     period["economy"],
                     period["scenario"],
@@ -721,6 +730,9 @@ def build_all_demand_representation_status(
                         _str(audit_row.get("placeholder_branch"))
                         or placeholder_branch
                     )
+                    present_detailed_branches = _str(
+                        audit_row.get("present_detailed_branches")
+                    )
                 else:
                     status = "no_data_unavailable"
                 rows.append(
@@ -731,6 +743,7 @@ def build_all_demand_representation_status(
                         "component_branch": component_branch,
                         "placeholder_branch": placeholder_branch,
                         "detailed_branches": detailed_branches,
+                        "present_detailed_branches": present_detailed_branches,
                         "representation_status": status,
                     }
                 )
