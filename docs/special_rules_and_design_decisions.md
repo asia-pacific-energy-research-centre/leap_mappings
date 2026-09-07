@@ -860,3 +860,37 @@ Commercial flow checks.
   Every false empty-frontier ESTO card in the reviewed diagnostics disappeared.
   The four remaining ESTO flow rows all trace to the same `0.06029 PJ`
   coal-products own-use residual and are not missing-mapping cases.
+
+## MAP-019: Temporarily fan out LEAP SMR with CCS to both ESTO SMR children
+
+**Status:** Decided
+**Owner:** `leap_mappings`
+**Type:** Temporary hydrogen-transformation mapping
+**Affected areas:** `config/outlook_mappings_single_axis.xlsx`; LEAP-to-ESTO
+conversion; Common ESTO flows `09.13.02` and `09.13.03`
+
+### Decision
+
+Map the current LEAP branch `Hydrogen transformation/SMR with CCS` to both
+`09.13.02 SMR wo CCS` and `09.13.03 SMR w CCS`, with dataset scope `BOTH`.
+LEAP does not currently expose a separate SMR-without-CCS branch, so this
+temporary fan-out keeps both direct ESTO hydrogen-transformation children in
+the comparison structure.
+
+This is an explicit approximation, not a claim that SMR with CCS and SMR
+without CCS are technically equivalent. Replace the fan-out with one-to-one
+mappings if LEAP gains a distinct SMR-without-CCS branch or if populated source
+data requires the two technologies to be compared independently.
+
+Do not restore the malformed zero-only label `09.13.02 SMR with CCS`. The
+maintained `09.13.02` target is `SMR wo CCS`; `09.13.03` remains the maintained
+SMR-with-CCS target.
+
+### History
+
+- 2026-09-07: The prior duplicate-label mapping was removed because it targeted
+  `09.13.02 SMR with CCS`, which conflicts with the maintained ESTO code/label
+  pair. Review then confirmed that all historical ESTO and ESTO Extended
+  `09.13` children are currently zero-only, while Ninth carries nonzero
+  `09.13.03` projections. The reviewed temporary replacement maps the canonical
+  LEAP SMR-with-CCS branch to both correctly labelled ESTO children.
