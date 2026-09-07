@@ -201,7 +201,7 @@ def test_leap_refining_maps_only_to_inclusive_comparison_boundary() -> None:
     assert not any(row[0] == "Other loss and own use/Oil refineries" for row in ninth_rows)
 
 
-def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
+def test_esto_extended_detail_axes_do_not_duplicate_canonical_smr_path() -> None:
     leap_to_esto_flow = pd.read_excel(
         SINGLE_AXIS_PATH,
         sheet_name="leap_sector_to_esto",
@@ -225,14 +225,22 @@ def test_esto_extended_detail_axes_are_maintained_even_when_zero_only() -> None:
 
     assert (
         "Passenger road/LPVs/BEV small",
-        "15.02.02.02.03 BEV small",
+        "15.02.02.02.03 BEV small LPV",
         "ESTO_EXTENDED",
     ) in flow_rows
-    assert (
-        "Hydrogen transformation/Processes/SMR with CCS",
-        "09.13.02 SMR with CCS",
-        "ESTO_EXTENDED",
-    ) in flow_rows
+    smr_rows = {
+        row
+        for row in flow_rows
+        if row[0].replace("/Processes/", "/")
+        == "Hydrogen transformation/SMR with CCS"
+    }
+    assert smr_rows == {
+        (
+            "Hydrogen transformation/SMR with CCS",
+            "09.13.03 SMR w CCS",
+            "BOTH",
+        )
+    }
     assert (
         "Natural gas",
         "08.01 Natural gas",
