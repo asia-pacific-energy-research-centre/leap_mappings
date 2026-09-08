@@ -288,17 +288,22 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
         .str.upper()
         .str.strip()
     )
-    if "fact_value_provenance" not in working_df.columns:
-        working_df["fact_value_provenance"] = working_df["source_system"].map(
-            lambda source_system: (
-                "observed_ordinary_esto"
-                if source_system in {"ESTO", "ESTO_EXTENDED"}
-                else "source_native_observation"
-            )
+    default_provenance = working_df["source_system"].map(
+        lambda source_system: (
+            "observed_ordinary_esto"
+            if source_system in {"ESTO", "ESTO_EXTENDED"}
+            else "source_native_observation"
         )
+    )
+    if "fact_value_provenance" not in working_df.columns:
+        working_df["fact_value_provenance"] = default_provenance
     else:
         working_df["fact_value_provenance"] = (
             working_df["fact_value_provenance"].fillna("").astype(str).str.strip()
+        )
+        empty_provenance = working_df["fact_value_provenance"].eq("")
+        working_df.loc[empty_provenance, "fact_value_provenance"] = (
+            default_provenance.loc[empty_provenance]
         )
     for column in ["scenario", "year"]:
         if column not in working_df.columns:
