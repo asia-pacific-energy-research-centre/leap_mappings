@@ -30,6 +30,11 @@ def _legacy_comparison(value: float = 10.0) -> pd.DataFrame:
         {
             "comparison_scope": "esto_leap",
             "source_system": source_system,
+            "fact_value_provenance": (
+                "observed_ordinary_esto"
+                if source_system == "ESTO"
+                else "source_native_observation"
+            ),
             "economy": "20_USA",
             "scenario": scenario,
             "year": year,
@@ -94,8 +99,27 @@ def test_metadata_uses_compound_key_and_rejects_conflicts() -> None:
 def test_duplicate_fact_key_is_rejected() -> None:
     legacy = _legacy_comparison()
 
-    with pytest.raises(ValueError, match="six-column fact key"):
+    with pytest.raises(ValueError, match="six-field fact key"):
         build_common_esto_output_tables(pd.concat([legacy, legacy.iloc[[0]]], ignore_index=True))
+
+
+def test_conflicting_provenance_cannot_share_one_business_fact_key() -> None:
+    assert FACT_KEY_COLUMNS == [
+        "comparison_scope",
+        "source_system",
+        "economy",
+        "scenario",
+        "year",
+        "common_row_id",
+    ]
+    assert "fact_value_provenance" in FACT_COLUMNS
+    assert "fact_value_provenance" not in FACT_KEY_COLUMNS
+    legacy = _legacy_comparison().iloc[[0]].copy()
+    conflicting = legacy.copy()
+    conflicting["fact_value_provenance"] = "downstream_estimate"
+
+    with pytest.raises(ValueError, match="conflicting fact_value_provenance"):
+        build_common_esto_output_tables(pd.concat([legacy, conflicting], ignore_index=True))
 
 
 @pytest.mark.parametrize(
@@ -103,6 +127,7 @@ def test_duplicate_fact_key_is_rejected() -> None:
     [
         ("comparison_scope", " ", "contains empty values"),
         ("source_system", "", "contains empty values"),
+        ("fact_value_provenance", "", "fact attribute"),
         ("economy", None, "contains empty values"),
         ("scenario", "", "contains empty values"),
         ("common_row_id", "", "contains empty values"),
@@ -185,7 +210,7 @@ def test_manifest_matches_published_artifacts(tmp_path: Path) -> None:
     }
     on_disk = json.loads((tmp_path / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert on_disk == manifest
-    assert manifest["contract_version"] == "common_esto_output_contract_v1"
+    assert manifest["contract_version"] == "common_esto_output_contract_v2"
     assert manifest["observed_rows_only"] is True
     assert manifest["fact"]["columns"] == FACT_COLUMNS
     assert manifest["fact"]["key_columns"] == FACT_KEY_COLUMNS

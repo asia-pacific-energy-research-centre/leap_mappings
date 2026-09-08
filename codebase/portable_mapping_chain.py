@@ -37,6 +37,7 @@ Job schema (all paths are strings, resolved by the caller before invocation)::
         },
         "config": {
             "mapping_workbook_path": "...",
+            "esto_extended_catalogue_path": "...",
             "source_branch_fallback_rules_path": "...",
             "all_demand_components_path": "..."
         }
@@ -109,6 +110,31 @@ from codebase.mapping_tools.source_branch_preflight import (  # noqa: E402
     build_all_demand_representation_status,
     load_all_demand_aggregated_components,
 )
+from codebase.mapping_tools.esto_extended_catalogue import (  # noqa: E402
+    assert_valid_catalogue,
+    required_extended_pairs,
+)
+
+
+def validate_esto_extended_catalogue(
+    esto_extended_catalogue_path: Path,
+    mapping_workbook_path: Path,
+) -> None:
+    """Validate the structural Extended vocabulary without reading any facts."""
+    catalogue_path = Path(esto_extended_catalogue_path)
+    if not catalogue_path.is_file():
+        raise FileNotFoundError(
+            "Portable mapping requires esto_extended_catalogue_path to name a "
+            f"numeric-free structural catalogue: {catalogue_path}"
+        )
+    catalogue = pd.read_csv(catalogue_path, dtype=object)
+    assert_valid_catalogue(catalogue, required_extended_pairs(mapping_workbook_path))
+
+
+def ordinary_esto_source_paths(esto_exact_rows_path: Path) -> dict[str, Path]:
+    """Reuse ordinary ESTO observations in the ordinary and Extended scopes."""
+    path = Path(esto_exact_rows_path)
+    return {"ESTO": path, "ESTO_EXTENDED": path}
 
 
 def prepare_esto_exact_rows(
@@ -187,51 +213,18 @@ def prepare_esto_extended_exact_rows(
     *,
     bundled_exact_rows: Path,
     esto_extended_table: Path | None,
-    native_base_table: Path | None,
     relationships_path: Path,
     mapping_workbook_path: Path,
     work_dir: Path,
     notes: list[str],
 ) -> Path:
-    """Extract Extended exact rows from the matching vintage when available.
-
-    Older releases do not carry a materialised Extended table, so retaining
-    the bundled fallback keeps those releases runnable while newer releases
-    can select a vintage-specific Extended source explicitly.
-    """
-    if esto_extended_table is None or not Path(esto_extended_table).is_file():
-        return bundled_exact_rows
-
-    esto_extended_table = Path(esto_extended_table)
-    work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    fingerprint = _fingerprint(
-        [
-            esto_extended_table,
-            native_base_table,
-            relationships_path,
-            mapping_workbook_path,
-        ]
+    """Retired compatibility API for the removed numeric Extended source."""
+    del bundled_exact_rows, esto_extended_table, relationships_path
+    del mapping_workbook_path, work_dir, notes
+    raise ValueError(
+        "ESTO Extended is structural-only: reuse ordinary ESTO exact rows and "
+        "supply esto_extended_catalogue_path for structural validation."
     )
-    cached = work_dir / f"esto_extended_results_exact_rows_{fingerprint}.csv.gz"
-    if cached.is_file():
-        notes.append(f"Reused cached ESTO Extended exact rows ({cached.name}).")
-        return cached
-
-    from codebase.mapping_tools.esto_exact_rows import run_esto_exact_rows_for_path
-
-    run_esto_exact_rows_for_path(
-        esto_extended_table,
-        cached,
-        "ESTO_EXTENDED",
-        relationships_path=relationships_path,
-        mapping_workbook_path=mapping_workbook_path,
-        native_base_table_path=native_base_table,
-    )
-    notes.append(
-        f"Extracted ESTO Extended exact rows from {esto_extended_table.name}."
-    )
-    return cached
 
 
 def _fingerprint(paths: list[Path | None]) -> str:
@@ -289,6 +282,20 @@ def run_mapping_chain(job: dict) -> dict:
     artifacts = job.get("artifacts", {})
     config = job.get("config", {})
     notes: list[str] = []
+    if config.get("esto_extended_table_path"):
+        raise ValueError(
+            "esto_extended_table_path is retired because numeric ESTO Extended "
+            "history is unsupported; provide esto_extended_catalogue_path instead."
+        )
+    if not config.get("esto_extended_catalogue_path"):
+        raise ValueError(
+            "Portable mapping requires config.esto_extended_catalogue_path for "
+            "the structural-only ESTO Extended contract."
+        )
+    validate_esto_extended_catalogue(
+        Path(config["esto_extended_catalogue_path"]),
+        Path(config["mapping_workbook_path"]),
+    )
 
     # Settle which ESTO exact rows this run compares against before anything
     # else uses them: both the conversion and the fast path read them.
@@ -314,26 +321,6 @@ def run_mapping_chain(job: dict) -> dict:
         work_dir=work_dir,
         notes=notes,
     )
-    esto_extended_exact_rows_path = prepare_esto_extended_exact_rows(
-        bundled_exact_rows=Path(
-            artifacts.get("esto_extended_exact_rows_path", artifacts["esto_exact_rows_path"])
-        ),
-        esto_extended_table=(
-            Path(config["esto_extended_table_path"])
-            if config.get("esto_extended_table_path")
-            else None
-        ),
-        native_base_table=(
-            Path(config["esto_extended_native_table_path"])
-            if config.get("esto_extended_native_table_path")
-            else None
-        ),
-        relationships_path=Path(artifacts["relationships_path"]),
-        mapping_workbook_path=Path(config["mapping_workbook_path"]),
-        work_dir=work_dir,
-        notes=notes,
-    )
-
     raw_leap_path = work_dir / "raw_leap_results.csv"
     converted_path = work_dir / "leap_results_converted_to_esto.csv"
 
@@ -387,8 +374,7 @@ def run_mapping_chain(job: dict) -> dict:
         source_paths={
             "LEAP": converted_path,
             "NINTH": Path(artifacts["ninth_converted_path"]),
-            "ESTO": esto_exact_rows_path,
-            "ESTO_EXTENDED": esto_extended_exact_rows_path,
+            **ordinary_esto_source_paths(esto_exact_rows_path),
         },
         common_rows_path=common_rows_path,
         output_dir=work_dir,
@@ -405,6 +391,9 @@ def run_mapping_chain(job: dict) -> dict:
         # exist. Point it at the workbook this job was actually given.
         outlook_mappings_path=Path(config["mapping_workbook_path"]),
         source_system_overrides={"ESTO_EXTENDED": "ESTO_EXTENDED"},
+        esto_component_lineage_output_path=(
+            work_dir / "esto_component_to_common_row_lineage.csv.gz"
+        ),
     )
     comparison_rows = len(comparison_df)
     # The fast path already computes the exact source rows that have no
@@ -426,6 +415,9 @@ def run_mapping_chain(job: dict) -> dict:
         "comparison_data_path": str(work_dir / "common_esto_comparison_data.parquet"),
         "wide_data_path": str(work_dir / "common_esto_comparison_wide.csv"),
         "common_rows_path": str(common_rows_path),
+        "esto_component_lineage_path": str(
+            work_dir / "esto_component_to_common_row_lineage.csv.gz"
+        ),
         "power_interim_audit_path": str(
             work_dir / "leap_source_branch_fallback_audit.csv"
         ),

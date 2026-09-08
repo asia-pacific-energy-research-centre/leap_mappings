@@ -1586,7 +1586,12 @@ def build_esto_extended(
     output_dir: Path,
     production_dataset_path: Path | None = None,
 ) -> dict[str, Path]:
-    """Build the test dataset and its audit files without changing inputs."""
+    """Build a numeric test fixture only; production ESTO Extended is structural."""
+    if production_dataset_path is not None:
+        raise ValueError(
+            "Numeric ESTO Extended fixtures are test-only and cannot be published "
+            "as a production dataset. Use build_structural_catalogue instead."
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
     esto = pd.read_csv(base_esto_path, dtype=object, low_memory=False)
     _require_columns(esto, ESTO_REQUIRED_COLUMNS, "Base ESTO data")
@@ -1652,8 +1657,7 @@ def build_esto_extended(
         raise ValueError(f"ESTO Extended contains duplicate keys: {int(duplicate_keys.sum())}")
 
     output_paths = {
-        "dataset": output_dir / "esto_extended_test.csv",
-        "data_dataset": production_dataset_path or REPO_ROOT / "data" / "esto_extended.csv",
+        "dataset": output_dir / "esto_extended_test_fixture.csv",
         "branch_inventory": output_dir / "leap_template_branch_inventory.csv",
         "unmapped_candidates": output_dir / "unmapped_leap_branch_candidates.csv",
         "generated_rows": output_dir / "esto_extended_generated_rows.csv",
@@ -1680,15 +1684,6 @@ def build_esto_extended(
         "lng_split_audit": output_dir / "esto_extended_lng_split_audit.csv",
     }
     extended.to_csv(output_paths["dataset"], index=False)
-    # Keep the reusable production fixture compact.  Detailed provenance and
-    # review status remain available in the results/ audit artefacts and the
-    # full test dataset above, but are not part of the ESTO-shaped input that
-    # downstream mapping code consumes.
-    production_dataset = extended.drop(
-        columns=PROVENANCE_COLUMNS + ["candidate_status"],
-        errors="ignore",
-    )
-    production_dataset.to_csv(output_paths["data_dataset"], index=False)
     inventory.to_csv(output_paths["branch_inventory"], index=False)
     candidates.to_csv(output_paths["unmapped_candidates"], index=False)
     all_generated.to_csv(output_paths["generated_rows"], index=False)
@@ -1768,7 +1763,7 @@ def run_synthetic_smoke_test() -> None:
 
 
 #%%
-RUN_REAL_BUILD = True
+RUN_REAL_BUILD = False
 RUN_SYNTHETIC_SMOKE_TEST = True
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 
-CONTRACT_VERSION = "common_esto_output_contract_v1"
+CONTRACT_VERSION = "common_esto_output_contract_v2"
 FACT_FILENAME = "common_esto_comparison_fact.csv.gz"
 METADATA_FILENAME = "common_esto_row_metadata.csv"
 MANIFEST_FILENAME = "common_esto_output_contract.json"
@@ -23,13 +23,22 @@ MANIFEST_FILENAME = "common_esto_output_contract.json"
 FACT_COLUMNS = [
     "comparison_scope",
     "source_system",
+    "fact_value_provenance",
     "economy",
     "scenario",
     "year",
     "common_row_id",
     "value",
 ]
-FACT_KEY_COLUMNS = FACT_COLUMNS[:-1]
+FACT_KEY_COLUMNS = [
+    "comparison_scope",
+    "source_system",
+    "economy",
+    "scenario",
+    "year",
+    "common_row_id",
+]
+FACT_REQUIRED_ATTRIBUTE_COLUMNS = ["fact_value_provenance"]
 
 METADATA_COLUMNS = [
     "comparison_scope",
@@ -59,6 +68,7 @@ BOOLEAN_METADATA_COLUMNS = [
 LEGACY_COMPARISON_COLUMNS = [
     "comparison_scope",
     "source_system",
+    "fact_value_provenance",
     "economy",
     "scenario",
     "year",
@@ -121,6 +131,40 @@ def _validate_nonempty_keys(frame: pd.DataFrame, key_columns: list[str], table_n
             raise ValueError(f"{table_name} key column {column!r} contains empty values.")
 
 
+def _validate_required_fact_attributes(frame: pd.DataFrame) -> None:
+    """Require descriptive fact attributes without treating them as identity."""
+    for column in FACT_REQUIRED_ATTRIBUTE_COLUMNS:
+        invalid = frame[column].isna() | frame[column].astype(str).str.strip().eq("")
+        if invalid.any():
+            raise ValueError(
+                f"Common ESTO fact attribute {column!r} contains empty values."
+            )
+
+
+def _duplicate_fact_key_error(fact_df: pd.DataFrame) -> ValueError:
+    """Describe duplicate business keys, highlighting conflicting provenance."""
+    duplicate_rows = fact_df.loc[
+        fact_df.duplicated(FACT_KEY_COLUMNS, keep=False)
+    ]
+    provenance_counts = duplicate_rows.groupby(
+        FACT_KEY_COLUMNS,
+        dropna=False,
+    )["fact_value_provenance"].nunique(dropna=False)
+    if provenance_counts.gt(1).any():
+        examples = duplicate_rows[
+            FACT_KEY_COLUMNS + ["fact_value_provenance"]
+        ].head(10).to_dict("records")
+        return ValueError(
+            "Common ESTO fact has conflicting fact_value_provenance for one "
+            f"six-field fact key. Examples: {examples}"
+        )
+    examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
+    return ValueError(
+        "Common ESTO fact rows are not unique on the six-field fact key. "
+        f"Examples: {examples}"
+    )
+
+
 def _strict_boolean(value: object, column: str) -> bool:
     """Normalize only genuine booleans and canonical CSV boolean strings."""
     if isinstance(value, (bool, np.bool_)):
@@ -145,6 +189,7 @@ def _certify_legacy_comparison(legacy_comparison_df: pd.DataFrame) -> pd.DataFra
     )
     certified = legacy_comparison_df[LEGACY_COMPARISON_COLUMNS].copy()
     _validate_nonempty_keys(certified, FACT_KEY_COLUMNS, "Common ESTO fact")
+    _validate_required_fact_attributes(certified)
 
     numeric_years = pd.to_numeric(certified["year"], errors="coerce")
     invalid_years = (
@@ -193,11 +238,7 @@ def build_common_esto_output_tables(
 
     fact_df = certified[FACT_COLUMNS].copy()
     if fact_df.duplicated(FACT_KEY_COLUMNS, keep=False).any():
-        examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
-        raise ValueError(
-            "Common ESTO fact rows are not unique on the six-column fact key. "
-            f"Examples: {examples}"
-        )
+        raise _duplicate_fact_key_error(fact_df)
 
     metadata_df = metadata_candidates.reset_index(drop=True)
     return fact_df.reset_index(drop=True), metadata_df
@@ -211,10 +252,10 @@ def reconstruct_common_esto_comparison(
     _require_columns(fact_df, FACT_COLUMNS, "Common ESTO fact")
     _require_columns(metadata_df, METADATA_COLUMNS, "Common ESTO metadata")
     _validate_nonempty_keys(fact_df, FACT_KEY_COLUMNS, "Common ESTO fact")
+    _validate_required_fact_attributes(fact_df)
     _validate_nonempty_keys(metadata_df, METADATA_KEY_COLUMNS, "Common ESTO metadata")
     if fact_df.duplicated(FACT_KEY_COLUMNS, keep=False).any():
-        examples = _duplicate_key_examples(fact_df, FACT_KEY_COLUMNS)
-        raise ValueError(f"Common ESTO fact contains duplicate keys. Examples: {examples}")
+        raise _duplicate_fact_key_error(fact_df)
     if metadata_df.duplicated(METADATA_KEY_COLUMNS, keep=False).any():
         examples = _duplicate_key_examples(metadata_df, METADATA_KEY_COLUMNS)
         raise ValueError(f"Common ESTO metadata contains duplicate keys. Examples: {examples}")

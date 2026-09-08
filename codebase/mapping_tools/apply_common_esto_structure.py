@@ -84,6 +84,7 @@ ESTO_COMPONENT_LINEAGE_COLUMNS = [
     "source_aggregate_labels",
     "source_aggregate_group_ids",
     "component_sign",
+    "fact_value_provenance",
     "value",
 ]
 COMPARISON_INTERNAL_COLUMNS = [
@@ -92,7 +93,7 @@ COMPARISON_INTERNAL_COLUMNS = [
     "common_product_component_count",
 ]
 WIDE_OUTPUT_ID_COLUMNS = ["comparison_scope", "economy", "scenario", "product", "flow"]
-SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "value"]
+SOURCE_VALUE_COLUMNS = ["source_system", "economy", "scenario", "year", "esto_flow", "esto_product", "fact_value_provenance", "value"]
 SOURCE_VALUE_SCOPE_COLUMNS = ["comparison_scope"] + SOURCE_VALUE_COLUMNS
 SOURCE_CATEGORY_COLUMNS = [
     "source_system",
@@ -287,6 +288,23 @@ def normalise_source_columns(source_df: pd.DataFrame, default_source_system: str
         .str.upper()
         .str.strip()
     )
+    default_provenance = working_df["source_system"].map(
+        lambda source_system: (
+            "observed_ordinary_esto"
+            if source_system in {"ESTO", "ESTO_EXTENDED"}
+            else "source_native_observation"
+        )
+    )
+    if "fact_value_provenance" not in working_df.columns:
+        working_df["fact_value_provenance"] = default_provenance
+    else:
+        working_df["fact_value_provenance"] = (
+            working_df["fact_value_provenance"].fillna("").astype(str).str.strip()
+        )
+        empty_provenance = working_df["fact_value_provenance"].eq("")
+        working_df.loc[empty_provenance, "fact_value_provenance"] = (
+            default_provenance.loc[empty_provenance]
+        )
     for column in ["scenario", "year"]:
         if column not in working_df.columns:
             working_df[column] = ""
@@ -633,6 +651,12 @@ def build_component_relevance(
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
     source_system_aliases = source_system_aliases or {}
+    if (
+        not source_system_aliases
+        and "ESTO" not in set(working_df["source_system"])
+        and "ESTO_EXTENDED" in set(working_df["source_system"])
+    ):
+        source_system_aliases = {"ESTO": "ESTO_EXTENDED"}
     latest_year_dataset_ids = {
         source_system_aliases.get(
             str(policy["dataset_id"]), str(policy["dataset_id"])
@@ -1122,6 +1146,22 @@ def apply_common_structure(
             return comparison_df, missing_map_df, mapped_source_df, pd.DataFrame(columns=ESTO_COMPONENT_LINEAGE_COLUMNS)
         return comparison_df, missing_map_df, mapped_source_df
     source_df = expand_source_system_aliases(source_df, source_system_aliases)
+    if "fact_value_provenance" not in source_df.columns:
+        source_df = source_df.copy()
+        source_df["fact_value_provenance"] = source_df["source_system"].map(
+            lambda source_system: (
+                "observed_ordinary_esto"
+                if str(source_system).upper() in {"ESTO", "ESTO_EXTENDED"}
+                else "source_native_observation"
+            )
+        )
+    source_value_columns = [
+        column for column in SOURCE_VALUE_COLUMNS if column in source_df.columns
+    ]
+    source_df = source_df[
+        source_value_columns
+        + [column for column in source_df.columns if column not in source_value_columns]
+    ]
     common_rows_df = common_rows_df.copy()
     metadata_defaults: dict[str, object] = {
         "common_row_basis": "",
@@ -2276,6 +2316,8 @@ def save_fast_path_outputs(
     comparison_df: pd.DataFrame,
     wide_year_df: pd.DataFrame,
     output_dir: Path,
+    esto_component_lineage_df: pd.DataFrame | None = None,
+    esto_component_lineage_output_path: Path | None = None,
     run_id: str | None = None,
     run_timestamp_utc: str | None = None,
 ) -> pd.DataFrame:
@@ -2303,6 +2345,14 @@ def save_fast_path_outputs(
         output_dir / "common_esto_comparison_data.parquet",
         artifact_type="common_esto_comparison_data",
     )
+    if (
+        esto_component_lineage_df is not None
+        and esto_component_lineage_output_path is not None
+    ):
+        written_paths.append(write_csv_with_locked_fallback(
+            esto_component_lineage_df,
+            esto_component_lineage_output_path,
+        ))
     status_df = pd.DataFrame([
         {
             "run_id": resolved_run_id,
@@ -2366,6 +2416,7 @@ def run_common_esto_comparison_fast_path(
     outlook_mappings_path: Path | None = None,
     relevance_reference_paths: dict[str, list[Path]] | None = None,
     source_system_overrides: dict[str, str] | None = None,
+    esto_component_lineage_output_path: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Regenerate final Common ESTO comparison files from cached Stage 3 inputs only."""
     required_paths = [Path(path) for path in source_paths.values()] + [Path(common_rows_path)]
@@ -2421,11 +2472,17 @@ def run_common_esto_comparison_fast_path(
         relevance_df=relevance_df,
         common_rows_df=common_rows_df,
     )
-    comparison_df, missing_map_df, _ = apply_common_structure(
+    application_result = apply_common_structure(
         active_source_df,
         adjusted_common_rows_df,
         comparison_scope_systems=comparison_scope_systems,
+        return_lineage=esto_component_lineage_output_path is not None,
     )
+    if esto_component_lineage_output_path is None:
+        comparison_df, missing_map_df, _ = application_result
+        esto_component_lineage_df = None
+    else:
+        comparison_df, missing_map_df, _, esto_component_lineage_df = application_result
     missing_map_df = filter_missing_common_map_diagnostics(missing_map_df)
     wide_year_df = build_wide_year_output(
         comparison_df,
@@ -2438,6 +2495,8 @@ def run_common_esto_comparison_fast_path(
         comparison_df=comparison_df,
         wide_year_df=wide_year_df,
         output_dir=output_dir,
+        esto_component_lineage_df=esto_component_lineage_df,
+        esto_component_lineage_output_path=esto_component_lineage_output_path,
         run_id=run_id,
         run_timestamp_utc=run_timestamp_utc,
     )

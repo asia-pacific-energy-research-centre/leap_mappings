@@ -82,7 +82,11 @@ from codebase.mapping_tools.pipeline_profiling import (  # noqa: E402
 
 WORKBOOK_PATH       = REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 ESTO_CSV_PATH       = REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv"
+# Legacy numeric compatibility location. It is deliberately never selected by
+# the production builders or Stage 3; retain the constant for external callers
+# until the coordinated consumer cutover removes that compatibility surface.
 ESTO_EXTENDED_CSV_PATH = REPO_ROOT / "data" / "esto_extended.csv"
+ESTO_EXTENDED_CATALOGUE_PATH = REPO_ROOT / "data" / "esto_extended_catalogue.csv"
 NINTH_CSV_PATH      = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 SOURCE_BRANCH_FALLBACK_RULES_PATH = REPO_ROOT / "config" / "source_branch_fallback_rules.csv"
 ALL_DEMAND_COMPONENTS_PATH        = REPO_ROOT / "config" / "all_demand_aggregated_components.json"
@@ -875,33 +879,47 @@ def run_esto_exact_rows_for_path(data_path, output_path, source_system):
     )
 
 def run_esto_extended_exact_rows() -> None:
-    run_esto_exact_rows_for_path(
-        ESTO_EXTENDED_CSV_PATH,
-        ESTO_EXTENDED_ROWS_PATH,
-        "ESTO_EXTENDED",
+    raise RuntimeError(
+        "ESTO Extended is structural-only. This legacy numeric exact-row "
+        "artifact is retained for compatibility but is no longer produced."
     )
+
+
+def run_esto_extended_structural_coverage() -> None:
+    """Require the active Extended mapping vocabulary in the numeric-free catalogue."""
+    from codebase.mapping_tools.esto_extended_catalogue import (
+        assert_valid_catalogue,
+        catalogue_diagnostics,
+        required_extended_pairs,
+    )
+
+    diagnostics_path = COMMON_ESTO_DIR / "qa_esto_extended_structural_coverage.csv"
+    diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+    required = required_extended_pairs(WORKBOOK_PATH)
+    if not ESTO_EXTENDED_CATALOGUE_PATH.is_file():
+        diagnostics = pd.DataFrame([{
+            "status": "missing_catalogue",
+            "flows": "",
+            "products": "",
+            "detail": str(ESTO_EXTENDED_CATALOGUE_PATH.relative_to(REPO_ROOT)),
+        }])
+        diagnostics.to_csv(diagnostics_path, index=False)
+        raise FileNotFoundError(
+            "ESTO Extended structural catalogue is required before Stage 3: "
+            f"{ESTO_EXTENDED_CATALOGUE_PATH}"
+        )
+    catalogue = pd.read_csv(ESTO_EXTENDED_CATALOGUE_PATH, dtype=object)
+    diagnostics = catalogue_diagnostics(catalogue, required)
+    diagnostics.to_csv(diagnostics_path, index=False)
+    assert_valid_catalogue(catalogue, required)
 
 
 def run_esto_extended_delta_contract() -> dict[str, object]:
-    """Publish the optional verified base-plus-delta representation."""
-    from codebase.mapping_tools.esto_extended_delta import (
-        write_esto_extended_delta_contract,
+    """Reject publication of the retired numeric Extended delta artifact."""
+    raise RuntimeError(
+        "ESTO Extended deltas are retired: the production contract is the "
+        "numeric-free structural catalogue plus ordinary ESTO facts."
     )
-
-    print("\n" + "-" * 40)
-    print("  ESTO Extended exact-row delta contract")
-    manifest = write_esto_extended_delta_contract(
-        esto_base_path=ESTO_ROWS_PATH,
-        esto_extended_path=ESTO_EXTENDED_ROWS_PATH,
-        delta_path=ESTO_EXTENDED_DELTA_PATH,
-        manifest_path=ESTO_EXTENDED_DELTA_MANIFEST_PATH,
-    )
-    print(
-        "  Verified delta: "
-        f"{int(manifest['delta']['row_count']):,} rows, "
-        f"{int(manifest['delta']['size_bytes']):,} bytes"
-    )
-    return manifest
 
 
 def run_data_convert(write_esto_extended_delta: bool = False) -> None:
@@ -919,9 +937,6 @@ def run_data_convert(write_esto_extended_delta: bool = False) -> None:
 
     run_registered_value_adapters({
         "esto_exact_rows": profiled_adapter("prepare_esto_exact_rows", run_esto_exact_rows),
-        "esto_extended_exact_rows": profiled_adapter(
-            "prepare_esto_extended_exact_rows", run_esto_extended_exact_rows
-        ),
         "leap_to_esto": profiled_adapter("leap_adapter", run_leap_to_esto),
         "ninth_to_esto": profiled_adapter("ninth_adapter", run_ninth_to_esto),
     })
@@ -950,6 +965,7 @@ def run_stage_3(
     print("\n" + "=" * 60)
     print("STAGE 3  Apply common ESTO structure to source data")
     print("=" * 60)
+    run_esto_extended_structural_coverage()
 
     source_paths = (
         get_registered_stage3_source_paths(REPO_ROOT)
@@ -1153,7 +1169,7 @@ def run_stage_3(
     )
     esto_tree = build_esto_tree(ESTO_CSV_PATH, dataset_id="esto")
     esto_extended_tree = build_esto_tree(
-        ESTO_EXTENDED_CSV_PATH,
+        ESTO_EXTENDED_CATALOGUE_PATH,
         dataset_id="esto_extended",
     )
     ninth_tree = build_ninth_tree(NINTH_CSV_PATH, data_df=ninth_wide)
@@ -1274,7 +1290,7 @@ def run_stage_3(
         try:
             raw_anchor_source, source_mapping = load_raw_source_anchor_inputs(
                 esto_data_path=ESTO_CSV_PATH,
-                esto_extended_data_path=ESTO_EXTENDED_CSV_PATH,
+                esto_extended_data_path=ESTO_EXTENDED_CATALOGUE_PATH,
                 ninth_data_path=NINTH_CSV_PATH,
                 raw_leap_path=RAW_LEAP_PATH,
                 workbook_path=WORKBOOK_PATH,
@@ -1669,7 +1685,12 @@ def main() -> None:
     parser.add_argument(
         "--esto-extended-path",
         default=None,
-        help="Optional additional ESTO Extended CSV override; it is loaded alongside the original ESTO input.",
+        help="Deprecated legacy numeric Extended override; rejected to prevent fact publication.",
+    )
+    parser.add_argument(
+        "--esto-extended-catalogue-path",
+        default=None,
+        help="Optional numeric-free ESTO Extended structural catalogue override.",
     )
     parser.add_argument(
         "--mapping-workbook-path",
@@ -1718,17 +1739,26 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    global ESTO_CSV_PATH, ESTO_EXTENDED_CSV_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
+    global ESTO_CSV_PATH, ESTO_EXTENDED_CATALOGUE_PATH, WORKBOOK_PATH, NINTH_CSV_PATH, RAW_LEAP_PATH
     if args.esto_path:
         ESTO_CSV_PATH = Path(args.esto_path).resolve()
     if args.esto_extended_path:
-        ESTO_EXTENDED_CSV_PATH = Path(args.esto_extended_path).resolve()
+        parser.error(
+            "--esto-extended-path is retired; use --esto-extended-catalogue-path "
+            "with a numeric-free catalogue."
+        )
+    if args.esto_extended_catalogue_path:
+        ESTO_EXTENDED_CATALOGUE_PATH = Path(args.esto_extended_catalogue_path).resolve()
     if args.mapping_workbook_path:
         WORKBOOK_PATH = Path(args.mapping_workbook_path).resolve()
     if args.ninth_path:
         NINTH_CSV_PATH = Path(args.ninth_path).resolve()
     if args.raw_leap_path:
         RAW_LEAP_PATH = Path(args.raw_leap_path).resolve()
+    if args.write_esto_extended_delta or args.use_esto_extended_delta:
+        parser.error(
+            "ESTO Extended numeric delta flags are retired; use the structural catalogue."
+        )
 
     requested = [s.strip() for s in args.stages.split(",") if s.strip()]
     skipped   = {s.strip() for s in args.skip.split(",") if s.strip()}

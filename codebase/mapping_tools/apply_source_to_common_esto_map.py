@@ -68,7 +68,32 @@ def apply_source_to_common_esto_map(
         & (source_to_common_map[system_column] == source_system)
     ][["source_flow", "source_product", *COMMON_AXIS_COLUMNS]].drop_duplicates()
 
-    merged = values.merge(scoped_map, on=["source_flow", "source_product"], how="inner")
+    join_columns = ["source_flow", "source_product"]
+    normalized_join_columns = ["_source_flow_key", "_source_product_key"]
+    values_for_join = values.copy()
+    map_for_join = scoped_map.copy()
+    for source_column, join_column in zip(join_columns, normalized_join_columns):
+        values_for_join[join_column] = (
+            values_for_join[source_column].fillna("").astype(str).str.strip().str.casefold()
+        )
+        map_for_join[join_column] = (
+            map_for_join[source_column].fillna("").astype(str).str.strip().str.casefold()
+        )
+    map_for_join = map_for_join[
+        [*normalized_join_columns, *COMMON_AXIS_COLUMNS]
+    ].drop_duplicates()
+    ambiguous_keys = (
+        map_for_join.groupby(normalized_join_columns)["common_row_id"].nunique().gt(1)
+    )
+    if ambiguous_keys.any():
+        raise ValueError(
+            "Source-to-common map contains case-insensitive source-pair collisions"
+        )
+    merged = values_for_join.merge(
+        map_for_join,
+        on=normalized_join_columns,
+        how="inner",
+    )
     converted = (
         merged.groupby([*value_key_columns, *COMMON_AXIS_COLUMNS], as_index=False)[value_column]
         .sum()

@@ -134,6 +134,40 @@ def test_normalise_source_columns_uses_one_economy_code_for_compact_and_undersco
     assert result["economy"].tolist() == ["20_USA", "20_USA"]
 
 
+def test_normalise_source_columns_fills_blank_fact_provenance_by_source() -> None:
+    source_df = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO",
+                "economy": "01AUS",
+                "scenario": "historical",
+                "year": 2022,
+                "esto_flow": "01 Production",
+                "esto_product": "01 Coal",
+                "fact_value_provenance": "",
+                "value": 1.0,
+            },
+            {
+                "source_system": "LEAP",
+                "economy": "01_AUS",
+                "scenario": "Target",
+                "year": 2022,
+                "esto_flow": "01 Production",
+                "esto_product": "01 Coal",
+                "fact_value_provenance": None,
+                "value": 2.0,
+            },
+        ]
+    )
+
+    result = normalise_source_columns(source_df, "", "")
+
+    assert result["fact_value_provenance"].tolist() == [
+        "observed_ordinary_esto",
+        "source_native_observation",
+    ]
+
+
 def test_compact_source_tables_preserve_rows_and_shared_categories(
     tmp_path,
 ) -> None:
@@ -885,13 +919,13 @@ def test_component_relevance_uses_each_dataset_and_vintage_latest_year() -> None
         ninth_projection_start_year=2023,
     )
 
-    assert latest_year == 2024
+    assert latest_year == 2023
     assert set(
         zip(
             relevance_df["component_esto_flow"],
             relevance_df["component_esto_product"],
         )
-    ) == {("F1", "P1"), ("F2", "P2"), ("F3", "P3")}
+    ) == {("F1", "P1"), ("F2", "P2")}
 
 
 def test_vintage_endpoint_relevance_never_erases_nonzero_source_history() -> None:
