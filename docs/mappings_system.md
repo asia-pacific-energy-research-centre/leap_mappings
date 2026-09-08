@@ -1829,6 +1829,16 @@ pair. The required maintenance is to add that reviewed fuel pair under
 `Nonspecified road` and rerun the mapping pipeline; dashboard code does not need
 a fuel-specific change because it consumes the mapped Common ESTO row.
 
+Review record at 8 September 2026: all road data available in the 2025 ESTO
+vintage and the preliminary 2026 ESTO vintage was checked. The finalised 2026
+vintage was not yet available and is not covered by this conclusion. Kerosene
+required the fallback for Chile (`04_CHL`). Fuel oil required it for China
+(`05_PRC`) and, in the preliminary 2026 latest year, Chile (`04_CHL`). Natural
+gas liquids appeared under United States road demand only in 2009 and 2010 and
+was zero in the latest year of both reviewed vintages, so it does not affect the
+base year or projection and was not added. Repeat this check when a finalised
+2026 or later vintage is adopted.
+
 **`other_sector_comparison`**
 
 ```text
