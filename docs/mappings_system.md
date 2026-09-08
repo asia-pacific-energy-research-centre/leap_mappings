@@ -1813,7 +1813,21 @@ Each rollup context defines one comparison view:
 ```text
 Freight road    →   Road
 Passenger road  →   Road
+Nonspecified road → Road
 ```
+
+`Nonspecified road` is a deliberately narrow first-level LEAP demand branch for
+road fuels that cannot be assigned to passenger or freight road. The current
+approved pairs are `Kerosene` (`07_06_kerosene`) and `Fuel oil`
+(`07_08_fuel_oil`). It is included in Road, Transport, and total-final-energy
+rollups, so the dashboard receives it as part of the ordinary `15.02 Road`
+comparison total. It is not allocated between passenger and freight.
+
+If a later ESTO vintage contains another non-zero road fuel that the detailed
+road model does not project, the mapping QA should report the missing LEAP fuel
+pair. The required maintenance is to add that reviewed fuel pair under
+`Nonspecified road` and rerun the mapping pipeline; dashboard code does not need
+a fuel-specific change because it consumes the mapped Common ESTO row.
 
 **`other_sector_comparison`**
 
@@ -1827,6 +1841,7 @@ Other sector/Fishing       →   Agriculture and fishing
 ```text
 Freight road                              →   Transport
 Passenger road                            →   Transport
+Nonspecified road                         →   Transport
 Transport non road/Freight non road       →   Transport
 Transport non road/Nonspecified transport →   Transport
 Transport non road/Pipeline transport     →   Transport
@@ -1858,6 +1873,7 @@ All demand aggregated   →   Total final energy consumption
 Buildings               →   Total final energy consumption
 Freight road            →   Total final energy consumption
 Industry                →   Total final energy consumption
+Nonspecified road       →   Total final energy consumption
 Other sector            →   Total final energy consumption
 Passenger road          →   Total final energy consumption
 Transport non road      →   Total final energy consumption

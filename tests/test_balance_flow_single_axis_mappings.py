@@ -60,6 +60,58 @@ def test_balancing_flows_are_not_default_coverage_exclusions() -> None:
     assert exclusions.empty
 
 
+def test_nonspecified_road_maps_only_current_unassigned_road_fuels() -> None:
+    leap_to_esto = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_esto",
+        dtype=str,
+    ).fillna("")
+    leap_to_ninth = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_sector_to_ninth",
+        dtype=str,
+    ).fillna("")
+    maintained_pairs = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="extra_leap_key_pairs",
+        dtype=str,
+    ).fillna("")
+
+    assert (
+        "Nonspecified road",
+        "15.02 Road",
+        "BOTH",
+    ) in set(leap_to_esto.itertuples(index=False, name=None))
+    assert (
+        "Nonspecified road",
+        "15_02_road",
+    ) in set(leap_to_ninth.itertuples(index=False, name=None))
+
+    nonspecified_pairs = maintained_pairs.loc[
+        maintained_pairs["leap_sector"].eq("Nonspecified road"),
+        "leap_fuel",
+    ]
+    assert set(nonspecified_pairs) == {"Kerosene", "Fuel oil"}
+
+
+def test_nonspecified_road_is_included_in_road_transport_and_tfec_rollups() -> None:
+    rollups = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="leap_rollup_rules",
+        dtype=object,
+    ).fillna("")
+    active = rollups.loc[
+        rollups["input_leap_sector_name_full_path"].eq("Nonspecified road")
+        & rollups["include"].eq(True)
+    ]
+
+    assert set(active["rolled_leap_sector_name_full_path"]) == {
+        "Road",
+        "Transport",
+        "Total final energy consumption",
+    }
+
+
 def test_international_air_gasoline_jet_pair_is_admitted_to_compiled_mappings() -> None:
     source_pair = (
         "Transport non road/International transport/Air",
