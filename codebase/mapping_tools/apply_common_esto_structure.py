@@ -646,6 +646,12 @@ def build_component_relevance(
     nonzero_mask = working_df["value"].abs() > active_component_abs_tolerance
 
     source_system_aliases = source_system_aliases or {}
+    if (
+        not source_system_aliases
+        and "ESTO" not in set(working_df["source_system"])
+        and "ESTO_EXTENDED" in set(working_df["source_system"])
+    ):
+        source_system_aliases = {"ESTO": "ESTO_EXTENDED"}
     latest_year_dataset_ids = {
         source_system_aliases.get(
             str(policy["dataset_id"]), str(policy["dataset_id"])

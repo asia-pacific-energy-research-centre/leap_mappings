@@ -213,7 +213,6 @@ def prepare_esto_extended_exact_rows(
     *,
     bundled_exact_rows: Path,
     esto_extended_table: Path | None,
-    native_base_table: Path | None,
     relationships_path: Path,
     mapping_workbook_path: Path,
     work_dir: Path,
