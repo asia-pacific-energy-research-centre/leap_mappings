@@ -862,6 +862,27 @@ chart contains the expected 2023 Reference values for Hydro, Wind, Nuclear,
 Natural gas liquids, and Solar photovoltaics; 54 focused dashboard tests and
 publication readiness passed.
 
+## MAPQ-062 — Retain projected other-hydrocarbon Production pairs
+
+**Status: implemented 2026-09-08; generated mapping authorities refreshed.**
+
+Ninth `01_production / 06_x_other_hydrocarbons` has a documented one-to-many
+ESTO relationship. The maintained map already retained `06.03 Refinery
+feedstocks` and `06.04 Additives/ oxygenates`, but omitted the evidence-backed
+`06.05 Other hydrocarbons` target. This made Canada’s historical 06.05 basis
+unavailable while the separate-axis registry could also omit both Refinery
+feedstocks and Other hydrocarbons from fixed Energy Balance Production rows.
+
+- Retain `06.05 Other hydrocarbons` alongside the existing targets; do not add
+  a new 06.03 relationship.
+- Allocate the source by each economy’s observed base-year ESTO magnitudes:
+  CDA routes to 06.05, while ROK and MEX retain their 06.04 route. The source
+  total is conserved for every economy.
+- Include Refinery feedstocks and Other hydrocarbons in the fixed Energy
+  Balance product catalogue. They are required to preserve legitimate Ninth
+  projected Production pairs even where current LEAP observed-production
+  exports contain zero-only evidence.
+
 ## MAPQ-040 — Commit verified ESTO Transfers history fix
 
 **Status: complete; committed 2026-08-03 separately from the concurrent

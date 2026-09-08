@@ -12,6 +12,9 @@ from codebase.mapping_tools.leap_pair_registry import (
 from codebase.mapping_tools.build_energy_balance_relationships import (
     build_default_coverage_exclusions,
 )
+from codebase.functions.ninth_projection_mapping import (
+    allocate_ninth_projection_to_esto,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -127,6 +130,94 @@ def test_generated_balance_registry_includes_report_only_products() -> None:
     )
 
     assert set(catalogue["product"]) == FIXED_BALANCE_PRODUCTS
+
+
+def test_ninth_other_hydrocarbons_production_uses_economy_base_year_shares() -> None:
+    """CDA routes to 06.05; ROK/MEX retain their observed 06.04 route."""
+    source_values = {"03_CDA": 300.0, "10_ROK": 60.0, "13_MEX": 10.0}
+    mapping = pd.DataFrame(
+        [
+            {
+                "ninth_sector": "01_production",
+                "ninth_fuel": "06_x_other_hydrocarbons",
+                "esto_flow": "01 Production",
+                "esto_product": product,
+            }
+            for product in (
+                "06.04 Additives/ oxygenates",
+                "06.05 Other hydrocarbons",
+            )
+        ]
+    )
+    ninth_series = pd.DataFrame(
+        [
+            {
+                "economy_key": economy,
+                "ninth_sector": "01_production",
+                "ninth_fuel": "06_x_other_hydrocarbons",
+                2030: value,
+            }
+            for economy, value in source_values.items()
+        ]
+    )
+    base_values = pd.DataFrame(
+        [
+            {
+                "economy_key": economy,
+                "esto_flow": "01 Production",
+                "esto_product": product,
+                "base_value": value,
+                "base_value_abs": abs(value),
+            }
+            for economy, product, value in (
+                ("03_CDA", "06.04 Additives/ oxygenates", 0.0),
+                ("03_CDA", "06.05 Other hydrocarbons", 2790.418464),
+                ("10_ROK", "06.04 Additives/ oxygenates", 51.684786),
+                ("10_ROK", "06.05 Other hydrocarbons", 0.0),
+                ("13_MEX", "06.04 Additives/ oxygenates", 7.696431),
+                ("13_MEX", "06.05 Other hydrocarbons", 0.0),
+            )
+        ]
+    )
+
+    projection, diagnostics = allocate_ninth_projection_to_esto(
+        mapping,
+        ninth_series,
+        base_values,
+        projection_years=[2030],
+        strict_conservation=True,
+    )
+
+    values = projection.set_index(["economy_key", "esto_product"])[2030].to_dict()
+    assert values[("03_CDA", "06.05 Other hydrocarbons")] == 300.0
+    assert values[("03_CDA", "06.04 Additives/ oxygenates")] == 0.0
+    assert values[("10_ROK", "06.04 Additives/ oxygenates")] == 60.0
+    assert values[("10_ROK", "06.05 Other hydrocarbons")] == 0.0
+    assert values[("13_MEX", "06.04 Additives/ oxygenates")] == 10.0
+    assert values[("13_MEX", "06.05 Other hydrocarbons")] == 0.0
+    assert projection.groupby("economy_key")[2030].sum().to_dict() == source_values
+    assert diagnostics.empty
+
+
+def test_single_axis_ninth_other_hydrocarbons_has_two_evidence_backed_targets() -> None:
+    ninth_to_esto = pd.read_excel(
+        SINGLE_AXIS_PATH,
+        sheet_name="ninth_fuel_to_esto",
+        dtype=str,
+    ).fillna("")
+
+    products = set(
+        ninth_to_esto.loc[
+            ninth_to_esto["ninth_fuel"].eq("06_x_other_hydrocarbons"),
+            "esto_product",
+        ]
+    )
+
+    assert products == {
+        "06.03 Refinery feedstocks",
+        "06.04 Additives/ oxygenates",
+        "06.05 Other hydrocarbons",
+    }
 
 
 def test_shifted_buildings_fuel_relations_are_not_global_axis_mappings() -> None:

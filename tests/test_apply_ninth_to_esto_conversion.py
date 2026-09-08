@@ -155,6 +155,90 @@ def test_ninth_converter_uses_equal_shares_when_automatic_target_basis_is_unavai
     }
 
 
+def test_ninth_converter_uses_latest_historical_target_shares_for_projection_year() -> None:
+    """CDA/ROK/MEX retain their observed other-hydrocarbon composition."""
+    source = pd.DataFrame(
+        [
+            {
+                "economy": economy,
+                "scenario": "reference",
+                "year": 2023,
+                "ninth_sector": "01_production",
+                "ninth_fuel": "06_x_other_hydrocarbons",
+                "value": value,
+            }
+            for economy, value in (
+                ("03_CDA", 300.0),
+                ("09_ROK", 60.0),
+                ("11_MEX", 10.0),
+            )
+        ]
+    )
+    relationships = pd.DataFrame(
+        [
+            {
+                "source_flow": "01_production",
+                "source_product": "06_x_other_hydrocarbons",
+                "target_flow": "01 Production",
+                "target_product": product,
+                "allocation_share": "",
+                "allocation_source": "",
+            }
+            for product in (
+                "06.03 Refinery feedstocks",
+                "06.04 Additives/ oxygenates",
+                "06.05 Other hydrocarbons",
+            )
+        ]
+    )
+    target_values = pd.DataFrame(
+        [
+            {
+                "economy": economy,
+                "year": 2022,
+                "esto_flow": "01 Production",
+                "esto_product": product,
+                "value": value,
+            }
+            for economy, product, value in (
+                ("03CDA", "06.03 Refinery feedstocks", 0.0),
+                ("03CDA", "06.04 Additives/ oxygenates", 0.0),
+                ("03CDA", "06.05 Other hydrocarbons", 2790.418464),
+                ("09ROK", "06.03 Refinery feedstocks", 0.0),
+                ("09ROK", "06.04 Additives/ oxygenates", 51.684786),
+                ("09ROK", "06.05 Other hydrocarbons", 0.0),
+                ("11MEX", "06.03 Refinery feedstocks", 0.0),
+                ("11MEX", "06.04 Additives/ oxygenates", 7.696431),
+                ("11MEX", "06.05 Other hydrocarbons", 0.0),
+            )
+        ]
+    )
+
+    result = convert_ninth_results_to_esto(
+        source,
+        relationships,
+        target_values_df=target_values,
+    )
+
+    values = result.set_index(["economy", "target_product"])["value"].to_dict()
+    assert values == {
+        ("03_CDA", "06.03 Refinery feedstocks"): 0.0,
+        ("03_CDA", "06.04 Additives/ oxygenates"): 0.0,
+        ("03_CDA", "06.05 Other hydrocarbons"): 300.0,
+        ("09_ROK", "06.03 Refinery feedstocks"): 0.0,
+        ("09_ROK", "06.04 Additives/ oxygenates"): 60.0,
+        ("09_ROK", "06.05 Other hydrocarbons"): 0.0,
+        ("11_MEX", "06.03 Refinery feedstocks"): 0.0,
+        ("11_MEX", "06.04 Additives/ oxygenates"): 10.0,
+        ("11_MEX", "06.05 Other hydrocarbons"): 0.0,
+    }
+    assert result.groupby("economy")["value"].sum().to_dict() == {
+        "03_CDA": 300.0,
+        "09_ROK": 60.0,
+        "11_MEX": 10.0,
+    }
+
+
 def test_ninth_lineage_sums_to_aggregated_values_and_keeps_allocation_share() -> None:
     converted_df, lineage_df = convert_ninth_results_to_esto(
         _ninth_results(),

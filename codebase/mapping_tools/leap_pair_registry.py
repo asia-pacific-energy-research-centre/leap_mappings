@@ -30,7 +30,7 @@ FUEL_ROLE_LABELS = {
     "Output Fuels",
 }
 LEGACY_BRANCH_SUFFIX = "_do not use"
-LEAP_PAIR_REGISTRY_VERSION = 6
+LEAP_PAIR_REGISTRY_VERSION = 7
 FIXED_BALANCE_FLOWS = {
     "Production",
     "Imports",
@@ -53,6 +53,8 @@ FIXED_BALANCE_PRODUCTS = {
     "Hydro",
     "Natural gas liquids",
     "Nuclear",
+    "Other hydrocarbons",
+    "Refinery feedstocks",
     "Solar photovoltaics",
     "Wind",
 }
