@@ -43,6 +43,20 @@ consumer-provenance contract implemented in `leap_dashboard`.
 **Owner repositories:** `leap_mappings` + `leap_dashboard` (consult
 `leap_initialisation` where it consumes the same source contract).
 
+## MAPQ-063 — Require pair coverage for every maintained axis variable
+
+**Priority / status:** P1 · implemented and verified 2026-09-09.
+
+The separate-axis refresh now reports accepted source or target axis variables
+that occur in no applicable exact-pair universe. The non-blocking audit is
+written to `qa_axis_variables_without_pair_coverage.csv` and directs reviewers
+to complete the appropriate `extra_*_key_pairs` sheet. Eight reviewed LEAP
+pairs and eight matching ESTO Extended pairs were added for heavy/medium PHEV
+trucks across Gas/diesel oil, Biodiesel, E-fuel, and Electricity. Documentation
+now makes clear that new axis semantics and exact-pair coverage are one
+maintenance operation and that unrestricted flow-by-product Cartesian
+expansion is not permitted.
+
 **Problem:** ESTO Extended currently has two different meanings in the
 pipeline: a registry of detailed comparison categories and a source-system
 label applied to ordinary ESTO history. That overload makes it too easy to

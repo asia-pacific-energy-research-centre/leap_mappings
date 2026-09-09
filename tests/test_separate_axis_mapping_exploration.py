@@ -20,6 +20,7 @@ from codebase.separate_axis_mapping_exploration_functions import (
     build_common_graph_membership_in_memory,
     build_registry_scope_lookups,
     build_valid_pair_registry,
+    audit_axis_variable_pair_coverage,
     compare_compiled_relationships,
     compare_registry_snapshots,
     compile_axis_relationships,
@@ -1065,6 +1066,82 @@ def test_reviewed_extra_pairs_promote_existing_and_absent_pairs() -> None:
     assert bool(merged.loc[("F1", "P1"), "pair_exists_in_dataset"])
     assert merged.loc[("F2", "P2"), "pair_origin"] == "reviewed_extra"
     assert not bool(merged.loc[("F2", "P2"), "pair_exists_in_dataset"])
+
+
+def test_axis_variable_pair_coverage_reports_incomplete_extended_flow() -> None:
+    flow_mappings = pd.DataFrame([{
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "ESTO_EXTENDED",
+        "source_system": "LEAP",
+        "source_flow": "PHEV heavy",
+        "target_system": "ESTO",
+        "target_flow": "PHEV heavy truck",
+    }])
+    product_mappings = pd.DataFrame([{
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "BOTH",
+        "source_system": "LEAP",
+        "source_product": "Electricity",
+        "target_system": "ESTO",
+        "target_product": "17 Electricity",
+    }])
+    universes = {
+        "LEAP": pd.DataFrame([{"flow": "PHEV heavy", "product": "Electricity"}]),
+        "ESTO": pd.DataFrame([{"flow": "Road", "product": "17 Electricity"}]),
+        "ESTO_EXTENDED": pd.DataFrame([{"flow": "Road", "product": "17 Electricity"}]),
+    }
+
+    findings = audit_axis_variable_pair_coverage(
+        flow_mappings, product_mappings, universes
+    )
+
+    assert findings[["side", "dataset", "variable"]].to_dict("records") == [{
+        "side": "target",
+        "dataset": "ESTO_EXTENDED",
+        "variable": "PHEV heavy truck",
+    }]
+    assert findings["pair_sheet"].tolist() == ["extra_esto_extended_pairs"]
+
+
+def test_axis_variable_pair_coverage_checks_both_esto_target_scopes() -> None:
+    flow_mappings = pd.DataFrame([{
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "BOTH",
+        "source_system": "LEAP",
+        "source_flow": "Road",
+        "target_system": "ESTO",
+        "target_flow": "15 Transport",
+    }])
+    product_mappings = pd.DataFrame([{
+        "mapping_name": "leap_to_esto",
+        "comparison_scope": "BOTH",
+        "source_system": "LEAP",
+        "source_product": "Electricity",
+        "target_system": "ESTO",
+        "target_product": "17 Electricity",
+    }])
+    universes = {
+        "LEAP": pd.DataFrame([{"flow": "Road", "product": "Electricity"}]),
+        "ESTO": pd.DataFrame([{
+            "flow": "15 Transport", "product": "17 Electricity",
+        }]),
+        "ESTO_EXTENDED": pd.DataFrame([{
+            "flow": "Different flow", "product": "17 Electricity",
+        }]),
+    }
+
+    findings = audit_axis_variable_pair_coverage(
+        flow_mappings, product_mappings, universes
+    )
+
+    assert findings[["axis_name", "side", "dataset", "variable"]].to_dict(
+        "records"
+    ) == [{
+        "axis_name": "flow",
+        "side": "target",
+        "dataset": "ESTO_EXTENDED",
+        "variable": "15 Transport",
+    }]
 
 
 def test_reviewed_extra_pair_can_seed_registered_rollup_pair() -> None:

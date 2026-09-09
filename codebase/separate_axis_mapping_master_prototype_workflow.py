@@ -37,6 +37,7 @@ from codebase.separate_axis_mapping_exploration_functions import (  # noqa: E402
     apply_axis_component_exceptions,
     analyse_axis_components,
     annotate_pair_universe_temporal_evidence,
+    audit_axis_variable_pair_coverage,
     assert_no_blocking_axis_components,
     build_observed_leap_pair_evidence,
     build_compiled_mapping_sheet_frames,
@@ -95,6 +96,7 @@ USE_CURRENT_REVIEWED_SUBTOTAL_FLAGS = False
 def _github_checkout(repo_name: str) -> Path:
     """Resolve a main checkout from either a main repo or repo worktree."""
     candidates = [
+        Path.home() / "github" / repo_name,
         REPO_ROOT.parent / repo_name,
         REPO_ROOT.parent.parent / repo_name,
     ]
@@ -991,6 +993,21 @@ def run_single_axis_master_prototype(
         force_leap_registry_refresh,
         current,
     )
+    axis_pair_coverage_findings = audit_axis_variable_pair_coverage(
+        flow_axis_raw,
+        product_axis_raw,
+        pair_universes,
+    )
+    _write_csv(
+        axis_pair_coverage_findings,
+        "qa_axis_variables_without_pair_coverage.csv",
+    )
+    if not axis_pair_coverage_findings.empty:
+        print(
+            "Single-axis pair-coverage audit found "
+            f"{len(axis_pair_coverage_findings):,} variable gaps; see "
+            "qa_axis_variables_without_pair_coverage.csv."
+        )
     both_esto = _build_both_esto_registry(
         pair_universes["ESTO"],
         pair_universes["ESTO_EXTENDED"],

@@ -11,7 +11,10 @@ The mapping workbooks and the exception workbook have different jobs:
 
 1. `outlook_mappings_single_axis.xlsx` is the editable mapping authority. Maintain
    the independent sector/flow and fuel/product relationships and the editable
-   rollup rules there.
+   rollup rules there. When adding an axis variable, also ensure it appears in
+   at least one accepted exact pair in each applicable pair sheet. Use the
+   narrow `extra_*_key_pairs` sheets for valid structural pairs that current
+   data does not establish; never add a full flow-by-product cross product.
 2. `outlook_mappings_master.xlsx` is the compatibility/output workbook. Its pair
    sheets and generated rollup copies are rebuilt from the single-axis workbook;
    do not edit those generated sheets directly. The remaining display/reference

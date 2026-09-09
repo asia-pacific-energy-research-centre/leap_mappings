@@ -75,6 +75,23 @@ Every populated row is accepted. Add a row to accept a relation or exact pair;
 delete it to withdraw that acceptance. There are no enabled flags or Boolean
 checkbox controls.
 
+Axis rows and pair rows must be completed together. Each source and target
+variable named on an axis should occur in at least one accepted exact pair in
+every applicable dataset scope. The refresh writes the non-blocking
+`qa_axis_variables_without_pair_coverage.csv` report so incomplete maintenance
+is visible while established mappings can still rebuild. Each finding names
+the exact editable pair sheet to review. Add defensible pairs
+to the relevant `extra_*_key_pairs` sheet; do not manufacture a full Cartesian
+product to silence a finding. New LEAP branches normally require matching rows
+in both `extra_leap_key_pairs` and the applicable destination pair sheet until
+source-data evidence supplies the LEAP pairs directly.
+
+For a new ESTO Extended flow, add only the valid flow/product combinations to
+`extra_esto_extended_pairs`. Do not cross the new flow with every product.
+Use observed source pairs, approved sibling structure, and the modeller's
+declared branch fuels to decide the exact products. The extra-pair rows are
+structural acceptance; they do not create values or claim an observation.
+
 The compiler requires all six axis sheets. If none exist, it can derive them
 once from the old pair master as a bootstrap. If only some exist, compilation
 stops rather than silently mixing authorities.

@@ -346,6 +346,70 @@ def merge_reviewed_extra_pairs(
     ).reset_index(drop=True)
 
 
+def audit_axis_variable_pair_coverage(
+    flow_mappings: pd.DataFrame,
+    product_mappings: pd.DataFrame,
+    pair_universes: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """Report maintained axis variables absent from every applicable pair.
+
+    Axis rows express semantic mappings, while pair universes express the
+    exact combinations accepted by the compiler.  A variable present only on
+    an axis is incomplete: it cannot contribute a compiled relationship or a
+    structural catalogue row.
+    """
+    pair_sheets = {
+        "LEAP": "extra_leap_key_pairs",
+        "NINTH": "extra_ninth_key_pairs",
+        "ESTO": "extra_esto_key_pairs",
+        "ESTO_EXTENDED": "extra_esto_extended_pairs",
+    }
+    findings: list[dict[str, str]] = []
+    for axis_name, mappings, source_column, target_column, pair_column in (
+        ("flow", flow_mappings, "source_flow", "target_flow", "flow"),
+        ("product", product_mappings, "source_product", "target_product", "product"),
+    ):
+        for row in mappings.itertuples(index=False):
+            scope = _clean(row.comparison_scope).upper()
+            target_system = _clean(row.target_system).upper()
+            target_datasets = [target_system]
+            if target_system == "ESTO":
+                target_datasets = (
+                    ["ESTO", "ESTO_EXTENDED"] if scope == "BOTH" else [scope]
+                )
+            checks = [
+                (
+                    "source",
+                    _clean(row.source_system).upper(),
+                    _clean(getattr(row, source_column)),
+                )
+            ] + [
+                ("target", dataset, _clean(getattr(row, target_column)))
+                for dataset in target_datasets
+            ]
+            for side, dataset, variable in checks:
+                registry = pair_universes.get(dataset, pd.DataFrame())
+                values = set(registry.get(pair_column, pd.Series(dtype=object)).map(_clean))
+                if variable and variable not in values:
+                    findings.append({
+                        "mapping_name": _clean(row.mapping_name),
+                        "comparison_scope": scope,
+                        "axis_name": axis_name,
+                        "side": side,
+                        "dataset": dataset,
+                        "variable": variable,
+                        "pair_sheet": pair_sheets.get(dataset, ""),
+                        "status": "missing_from_applicable_pair_universe",
+                    })
+    columns = [
+        "mapping_name", "comparison_scope", "axis_name", "side",
+        "dataset", "variable", "pair_sheet", "status",
+    ]
+    return pd.DataFrame(findings, columns=columns).drop_duplicates().sort_values(
+        columns[:-1], kind="stable"
+    ).reset_index(drop=True)
+
+
 def derive_required_reviewed_extra_pairs(
     current_relationships: pd.DataFrame,
     pair_universes: dict[str, pd.DataFrame],
@@ -583,9 +647,7 @@ def expand_pair_universe_with_rollups(
                 record["product"] = rolled_product or _clean(product)
                 record["pair_origin"] = "rollup"
                 for column in boolean_columns:
-                    record[column] = bool(
-                        group[column].fillna(False).astype(bool).any()
-                    )
+                    record[column] = bool(group[column].map(_truthy).any())
                 if "pair_exists_in_dataset" in record:
                     record["pair_exists_in_dataset"] = True
                 if "pair_universe_member" in record:
@@ -667,11 +729,11 @@ def expand_pair_universe_with_rollups(
     active_historical = result.get(
         "historical_boundary_active",
         pd.Series(False, index=result.index),
-    ).fillna(False).astype(bool)
+    ).map(_truthy)
     active_projection = result.get(
         "projection_future_active",
         pd.Series(False, index=result.index),
-    ).fillna(False).astype(bool)
+    ).map(_truthy)
     rollup_only = result["pair_origin"].eq("rollup")
     rollup_involved = result["pair_origin"].isin(
         {"rollup", "raw_and_rollup"}
