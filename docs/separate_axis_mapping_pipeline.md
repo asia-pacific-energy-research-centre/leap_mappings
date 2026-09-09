@@ -86,6 +86,13 @@ product to silence a finding. New LEAP branches normally require matching rows
 in both `extra_leap_key_pairs` and the applicable destination pair sheet until
 source-data evidence supplies the LEAP pairs directly.
 
+Coverage is checked per variable, not per intended flow/product combination.
+A clean finding for a flow proves only that the flow occurs somewhere in the
+pair universe. Review the complete exact-pair set separately. For example,
+PHEV heavy and medium trucks each approve only Gas/diesel oil, Biodiesel,
+E-fuel, and Electricity: two flows times four products produces eight accepted
+ESTO Extended pairs, not a cross with every available product.
+
 For a new ESTO Extended flow, add only the valid flow/product combinations to
 `extra_esto_extended_pairs`. Do not cross the new flow with every product.
 Use observed source pairs, approved sibling structure, and the modeller's
@@ -426,7 +433,10 @@ The ordinary mapping run is:
 1. refresh pair authority and compile the compatibility master;
 2. review generation QA and run a focused hierarchy/source-row review only
    when its evidence changed;
-3. run Stages 1–3.
+3. when ESTO Extended structure changed, separately rebuild and inspect
+   `data/esto_extended_catalogue.csv` with
+   `build_all_esto_extended_vintages()`; and
+4. run Stages 1–3.
 
 ## Required gates on every promoted refresh
 
@@ -436,6 +446,10 @@ The generated master must satisfy all of these:
 - the editable duplicate audit reports zero remaining duplicate mapping keys;
 - no oversized or cross-family axis component reaches compilation;
 - every maintained relationship is reproduced or deliberately retired;
+- every pair-coverage finding introduced by the change is resolved, even
+  though older findings remain non-blocking maintenance debt;
+- an ESTO Extended change appears exactly as intended in the regenerated
+  numeric-free catalogue, with no unintended products;
 - shared relationship subtotal flags do not change unexpectedly;
 - Stage 1 relationship differences are explained by the provisional additions;
 - Stage 2 Common ESTO membership differences are understood;

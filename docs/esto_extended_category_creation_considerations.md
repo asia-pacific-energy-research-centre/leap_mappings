@@ -1,8 +1,8 @@
 # Considerations for creating ESTO Extended categories
 
-**Status:** Working design and review guide
+**Status:** Maintainer workflow and design guide
 
-**Primary workbook base:** `config/outlook_mappings_master todo.xlsx`
+**Editable authority:** `config/outlook_mappings_single_axis.xlsx`
 
 **Source branch inventory:** `data/temp/new leap rows.xlsx`
 
@@ -13,6 +13,85 @@ categories and how those categories should be connected to Ninth Outlook
 categories. It is a review guide, not evidence that the present workbook,
 generated candidates, subtotal flags, or synthetic ESTO Extended values are
 correct.
+
+## Current maintainer workflow
+
+When adding a new ESTO Extended category, treat the category, its independent
+axis mappings, and its valid exact pairs as one reviewed change:
+
+1. Confirm that the LEAP branch represents meaningful detail not already
+   represented by an ESTO category. Select an existing parent and review the
+   complete sibling group. Category structure does not create historical
+   values.
+2. Edit only `config/outlook_mappings_single_axis.xlsx`. Add the flow relation
+   to `leap_sector_to_esto` with `esto_dataset_scope = ESTO_EXTENDED`. Reuse an
+   existing product-axis relation unless the fuel/product meaning is genuinely
+   new. Add LEAP-to-Ninth or Ninth-to-ESTO relations only when those comparison
+   directions have also been reviewed.
+3. Complete exact-pair authority. First verify that the authoritative LEAP
+   template or branch inventory contains a real new branch. Add source
+   `(LEAP branch, fuel)` combinations to `extra_leap_key_pairs` only when that
+   reviewed pair is not presently established by generated evidence. Add every
+   defensible target `(ESTO Extended flow, product)` combination to
+   `extra_esto_extended_pairs`. Add no other product merely because it exists
+   elsewhere in ESTO.
+4. Run the `generate` pipeline stage. Inspect
+   `outputs/separate_axis_mapping_refresh/compiler/data/qa_axis_variables_without_pair_coverage.csv`,
+   `outputs/separate_axis_mapping_refresh/workbooks/editable_duplicate_cleanup.json`,
+   `outputs/separate_axis_mapping_refresh/compiler/data/qa_axis_components.csv`,
+   `outputs/separate_axis_mapping_refresh/compiler/data/qa_many_to_many_axis_components.csv`,
+   the regenerated workbooks, and
+   `outlook_mappings_generation_manifest.json`. The coverage report names the
+   exact `pair_sheet` to review. It proves that each axis variable occurs in at
+   least one pair; it does not prove that every intended combination exists.
+5. Rebuild `data/esto_extended_catalogue.csv` with
+   `build_all_esto_extended_vintages()`. This is currently a separate step from
+   `generate`. Verify that the intended pairs appear once and that no
+   unintended products were introduced.
+6. Run focused tests and Stages 1-3. Compare generated mappings, Common ESTO
+   membership, and values with the prior baseline. Require source-once and
+   value-preservation checks to pass, then commit the editable workbook and all
+   regenerated tracked artifacts together.
+
+From the repository root, the two structural build commands are:
+
+```powershell
+C:\Users\Work\miniconda3\python.exe codebase\run_mapping_pipeline.py --stages generate
+C:\Users\Work\miniconda3\python.exe -c "from codebase.build_esto_extended_vintages import build_all_esto_extended_vintages; print(build_all_esto_extended_vintages())"
+C:\Users\Work\miniconda3\python.exe codebase\run_mapping_pipeline.py --stages 1,2,3
+```
+
+The first command regenerates pair evidence and the compatibility master. The
+second regenerates the consumer-facing structural catalogue. Until these are
+combined in the pipeline, completing only the first command is incomplete for
+an ESTO Extended category change.
+
+### Worked example: PHEV medium and heavy trucks
+
+The LEAP branches are:
+
+```text
+Freight road/Trucks/PHEV heavy
+Freight road/Trucks/PHEV medium
+```
+
+Each branch has exactly four approved fuels: `Gas and diesel oil`,
+`Biodiesel`, `Efuel`, and `Electricity`. Their ESTO Extended flows are:
+
+```text
+15.02.01.02.07 PHEV heavy truck
+15.02.01.02.08 PHEV medium truck
+```
+
+The corresponding products are `07.07 Gas/diesel oil`, `16.06 Biodiesel`,
+`16.11 E-fuel`, and `17 Electricity`. Therefore the reviewed change contains
+eight LEAP source pairs and eight ESTO Extended target pairs: two flows times
+four specifically approved products. It does not authorize either flow with
+any other product. The independent axes describe the semantic translations;
+the pair sheets constrain which combinations may actually compile. The eight
+LEAP pairs are the intended source structure, not necessarily eight new
+`extra_leap_key_pairs` rows: omit any extras already supplied by authoritative
+generated LEAP evidence.
 
 ## 1. Keep four decisions separate
 
@@ -148,8 +227,9 @@ otherwise distinct Common ESTO rows.
 
 Both Ninth gasoline-PHEV and diesel-PHEV branches can map to the same
 size-specific or truck-size PHEV category where that category exists. The
-fuel/product axis must preserve the gasoline, diesel, biodiesel, electricity,
-or other product distinction.
+fuel/product axis must preserve the reviewed product distinction. For the LEAP
+truck example, the exact canonical targets are Gas/diesel oil, Biodiesel,
+E-fuel, and Electricity.
 
 The FCEV and PHEV fallback decisions apply only when the corresponding detailed
 LEAP/ESTO Extended child does not exist. They do not replace a genuine FCEV or
@@ -157,9 +237,9 @@ PHEV child where one is present.
 
 ## 7. Stable category identifiers
 
-Category codes must come from an explicit, persistent ESTO Extended registry.
-Do not assign production identifiers by alphabetically sorting the current
-sibling labels.
+Category codes and labels must remain stable in the maintained mapping
+contract. Do not assign production identifiers by alphabetically sorting the
+current sibling labels.
 
 Rules:
 
@@ -168,12 +248,17 @@ Rules:
 - renaming or correcting a display label does not create a new identifier;
 - aliases point to the same identifier;
 - adding an alphabetically earlier branch does not change existing identifiers;
-- the registry records the source LEAP path, parent category, category code,
-  canonical label, aliases, and review status.
+- the maintained flow-axis relation records the source LEAP path and canonical
+  ESTO Extended code/label;
+- exact-pair authority is recorded separately in the applicable `extra_*`
+  pair sheets; and
+- parentage must be supported by the established coded hierarchy or an
+  explicit reviewed hierarchy/rollup rule. An exact pair alone does not define
+  a parent.
 
-The registry's final maintained location still needs to be chosen. A
-configuration CSV is preferable to a generated results file because mappings
-and category codes must remain stable across runs.
+`data/esto_extended_catalogue.csv` is a generated, numeric-free consumer view
+of the promoted mapping authority. It is not an editable identifier registry
+and must not be used as the source from which mappings are maintained.
 
 ## 8. Aliases and legacy branches
 
@@ -221,17 +306,24 @@ human review rather than inventing a product.
 
 ## 10. Build the mapping directions in a controlled order
 
-Use the todo workbook as the current base.
+Use `config/outlook_mappings_single_axis.xlsx`; never edit
+`leap_combined_esto`, `leap_combined_ninth`, or
+`ninth_pairs_to_esto_pairs` in the generated compatibility master.
 
-1. Add the reviewed exact LEAP-to-ESTO Extended relationships to
-   `leap_combined_esto`.
-2. Complete the coarse LEAP-to-Ninth crosswalk in `leap_combined_ninth`.
-3. Add the matching complete Ninth-to-ESTO Extended crosswalk in
-   `ninth_pairs_to_esto_pairs`.
-4. Check that the three directions form a consistent triangle.
+1. Add the reviewed LEAP-to-ESTO Extended flow-axis relation and reuse or add
+   the necessary product-axis relations.
+2. Add only the defensible exact LEAP and ESTO Extended pairs to their
+   applicable `extra_*` sheets when generated evidence does not already supply
+   them.
+3. Complete the independent LEAP-to-Ninth axes when that comparison is in
+   scope.
+4. Complete the independent Ninth-to-ESTO axes and Ninth exact pairs when that
+   comparison is in scope.
+5. Run generation and check that the three compiled directions form a
+   consistent triangle without fan-out or unintended combinations.
 
-The planning workbook is evidence and a decision aid. Do not import it
-automatically.
+Planning workbooks are evidence and decision aids. Do not import them
+automatically or treat them as maintained authority.
 
 Rejected mappings are removed from the maintained mapping sheets. Do not retain
 known-wrong rows with `duplicate_to_remove = True`.
@@ -265,8 +357,8 @@ Category creation and value creation are separate.
 - Otherwise the category may exist structurally without fabricated ESTO
   historical values.
 
-The equal-split behaviour in `build_esto_extended_test.py` is test scaffolding,
-not an approved production rule.
+`build_esto_extended_test.py` is historical/test scaffolding, not category,
+pair, or value authority. Do not add production mappings there.
 
 ## 13. Validation before adoption
 
@@ -303,15 +395,18 @@ The following still need explicit review:
 
 - how parent-only Electricity, CHP, and Heat output rows should relate to
   detailed process children;
-- the maintained location and initial contents of the stable category registry;
+- whether the coded hierarchy needs a dedicated maintained parent/alias
+  registry beyond the current flow-axis and rollup authorities;
 - which new categories can receive defensible ESTO historical values and which
   should remain structural or LEAP/Ninth-only;
 - all proposed subtotal flags, pending the separate workbook-wide review.
 
 ## 15. Mapping implementation checkpoint: 2026-07-28
 
-The first reviewed implementation pass was applied to
-`config/outlook_mappings_master todo.xlsx`.
+This is historical context, not the current editing procedure. The first
+reviewed implementation pass was applied to the now-retired
+`config/outlook_mappings_master todo.xlsx`; subsequent maintenance was moved to
+`config/outlook_mappings_single_axis.xlsx` and generated outputs.
 
 Completed treatments:
 
@@ -339,11 +434,11 @@ Completed treatments:
   literal `Solar` label to Solar nonspecified, and retained source-inventory
   follow-up warnings for modeller cleanup;
 
-The power-process identifier registry is currently explicit in
-`codebase/mapping_tools/build_esto_extended_test.py`. This prevents
-alphabetical renumbering and makes aliases share one identifier, but a later
-cleanup may move the registry to maintained configuration without changing any
-assigned identifiers.
+The historical power-process identifier constants in
+`codebase/mapping_tools/build_esto_extended_test.py` remain technical debt and
+test compatibility only. New production categories and exact pairs belong in
+the single-axis workbook, and the structural catalogue is regenerated from the
+promoted mapping master.
 
 The municipal-waste source-boundary decision is now explicit. The combined
 `Municipal solid waste non and renewable` branch under
