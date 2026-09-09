@@ -8,6 +8,7 @@ from codebase.mapping_tools.build_esto_extended_test import (
     DEMO_RESIDUAL_RULE,
     _esto_code,
     _normalise_path,
+    apply_transport_flow_labels,
     apply_parent_minus_children_rule,
     build_rollup_tree_edges,
     build_extended_default_audits,
@@ -26,6 +27,24 @@ from codebase.mapping_tools.build_esto_extended_test import (
 def test_normalisation_helpers_keep_hierarchy_stable():
     assert _normalise_path(r"Transformation\CHP plants\Coal CHP") == "Transformation/CHP plants/Coal CHP"
     assert _esto_code("16.01.99 Commercial and public services unallocated") == "16.01.99"
+
+
+def test_transport_flow_labels_include_phev_truck_children():
+    labelled = apply_transport_flow_labels(
+        pd.DataFrame(
+            {
+                "flows": [
+                    "15.02.01.02.07 PHEV heavy",
+                    "15.02.01.02.08 PHEV medium",
+                ]
+            }
+        )
+    )
+
+    assert labelled["flows"].tolist() == [
+        "15.02.01.02.07 PHEV heavy truck",
+        "15.02.01.02.08 PHEV medium truck",
+    ]
 
 
 def test_parent_minus_children_generates_named_residual_with_provenance():

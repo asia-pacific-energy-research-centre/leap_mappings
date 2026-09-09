@@ -107,6 +107,8 @@ TRANSPORT_FLOW_LABEL_UPDATES = {
     "15.02.01.02.04 FCEV medium": "15.02.01.02.04 FCEV medium truck",
     "15.02.01.02.05 ICE heavy": "15.02.01.02.05 ICE heavy truck",
     "15.02.01.02.06 ICE medium": "15.02.01.02.06 ICE medium truck",
+    "15.02.01.02.07 PHEV heavy": "15.02.01.02.07 PHEV heavy truck",
+    "15.02.01.02.08 PHEV medium": "15.02.01.02.08 PHEV medium truck",
     "15.02.02.01.01 BEV": "15.02.02.01.01 BEV bus",
     "15.02.02.01.02 FCEV": "15.02.02.01.02 FCEV bus",
     "15.02.02.01.03 ICE": "15.02.02.01.03 ICE bus",
